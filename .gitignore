@@ -1,0 +1,57 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.venv
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+.windsurf/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Specific directories that might contain sensitive data
+.bmad-core/
+
+# JSONL datasets (often large)
+*.jsonl
