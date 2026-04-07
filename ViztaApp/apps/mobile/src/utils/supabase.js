@@ -1,11 +1,13 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const ExpoSecureStoreAdapter = {
-  getItem: (key) => SecureStore.getItemAsync(key),
-  setItem: (key, value) => SecureStore.setItemAsync(key, value),
-  removeItem: (key) => SecureStore.deleteItemAsync(key),
+// Use AsyncStorage instead of SecureStore to avoid the 2048-byte limit
+// that causes iOS to crash silently when supabase writes large session tokens
+const AsyncStorageAdapter = {
+  getItem: (key) => AsyncStorage.getItem(key),
+  setItem: (key, value) => AsyncStorage.setItem(key, value),
+  removeItem: (key) => AsyncStorage.removeItem(key),
 };
 
 export const supabase = createClient(
@@ -13,7 +15,7 @@ export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
   {
     auth: {
-      storage: ExpoSecureStoreAdapter,
+      storage: AsyncStorageAdapter,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,

@@ -11,8 +11,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  InteractionManager,
 } from 'react-native';
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
@@ -31,8 +32,10 @@ import {
   ChevronUp,
   X,
   Mail,
+  Heart,
 } from 'lucide-react-native';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
+import * as Notifications from 'expo-notifications';
 
 const APP_VERSION = 'V.001';
 
@@ -104,7 +107,7 @@ function LoginModal({ visible, onClose, onSuccess }) {
                     Iniciar sesión
                   </Text>
                   <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>
-                    Portal Web · Pulse Journal
+                    Portal Web · Vizta
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -232,6 +235,394 @@ function LoginModal({ visible, onClose, onSuccess }) {
   );
 }
 
+// ─── Modal de Términos y Condiciones ─────────────────────────────────────────
+function TermsModal({ visible, onClose }) {
+  const insets = useSafeAreaInsets();
+
+  const sections = [
+    {
+      title: '1. Sobre Vizta',
+      content:
+        'Vizta es una herramienta digital hecha por StandAtPD, un colectivo diseñador de herramientas digitales enfocado en la comunicación. Es una aplicación de noticias e información pública para usuarios en Guatemala y Centroamérica. Su uso es gratuito y no requiere registro.',
+    },
+    {
+      title: '2. Uso de la aplicación',
+      content:
+        'Al usar la app, aceptas utilizarla de forma legal y responsable. Está diseñada para informar, no para sustituir criterio profesional en ningún ámbito.',
+    },
+    {
+      title: '3. Contenido y pluralidad',
+      content:
+        'El contenido mostrado en Vizta proviene de diferentes medios de comunicación y fuentes públicas de la web. Esta información no garantiza ser la verdad absoluta — su propósito es ofrecer distintos puntos de vista para que el usuario forme su propio criterio. No nos hacemos responsables por la veracidad del contenido de terceros.',
+    },
+    {
+      title: '4. Curación de fuentes',
+      content:
+        'El contenido se cuida y selecciona a partir de medios y fuentes ampliamente reconocidos en el país. Si deseas sugerir un medio adicional, puedes solicitarlo escribiéndonos a contacto@standatpd.com — toda solicitud será revisada y deberá ser aprobada antes de ser integrada.',
+    },
+    {
+      title: '5. Propiedad intelectual',
+      content:
+        'El diseño, marca, código y funcionalidades propias de Vizta son creación de nuestro equipo. El contenido de noticias pertenece a sus respectivos autores y medios. Queda prohibida la reproducción comercial sin autorización.',
+    },
+    {
+      title: '6. Privacidad',
+      content:
+        'Vizta no recopila datos personales de usuarios sin cuenta. Si conectas el Portal Web, se usa tu correo electrónico únicamente para autenticación. No compartimos datos con terceros con fines comerciales.',
+    },
+    {
+      title: '7. Sin suscripciones',
+      content:
+        'Vizta no ofrece ni cobra suscripciones. Todas las funciones de la app son completamente gratuitas. El Portal Web es una herramienta separada en acceso cerrado para periodistas y comunicadores.',
+    },
+    {
+      title: '8. Limitación de responsabilidad',
+      content:
+        'No garantizamos disponibilidad continua del servicio. La app se ofrece "tal como está". No somos responsables por decisiones tomadas basadas en el contenido de la aplicación.',
+    },
+    {
+      title: '9. Cambios en los términos',
+      content:
+        'Podemos actualizar estos términos en cualquier momento. Los cambios se notificarán mediante actualizaciones de la app. El uso continuado de Vizta implica la aceptación de los términos vigentes.',
+    },
+    {
+      title: '10. Contacto',
+      content:
+        'Para dudas o consultas sobre estos términos, escríbenos a: contacto@standatpd.com',
+    },
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={{
+          backgroundColor: '#0b0d22',
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderTopWidth: 1,
+          borderColor: 'rgba(99,102,241,0.2)',
+          maxHeight: '90%',
+          paddingBottom: insets.bottom + 16,
+        }}>
+          {/* Handle */}
+          <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 4 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+          </View>
+
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 24,
+            paddingTop: 12,
+            paddingBottom: 16,
+            borderBottomWidth: 1,
+            borderColor: 'rgba(255,255,255,0.07)',
+          }}>
+            <View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+                Términos y Condiciones
+              </Text>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                Vizta · StandAtPD
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <X size={17} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Content */}
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 20, lineHeight: 18 }}>
+              Última actualización: abril 2026 · Versión Alpha
+            </Text>
+
+            {sections.map((section, i) => (
+              <View key={i} style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc', marginBottom: 6 }}>
+                  {section.title}
+                </Text>
+                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22 }}>
+                  {section.content}
+                </Text>
+              </View>
+            ))}
+
+            <View style={{
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              borderRadius: 12,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: 'rgba(99,102,241,0.2)',
+              marginTop: 4,
+            }}>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 18, textAlign: 'center' }}>
+                Al usar Vizta aceptas estos términos.{'\n'}
+                <Text style={{ color: '#a5b4fc' }}>contacto@standatpd.com</Text>
+              </Text>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Modal de Política de Privacidad ─────────────────────────────────────────
+function PrivacyModal({ visible, onClose }) {
+  const insets = useSafeAreaInsets();
+
+  const sections = [
+    {
+      title: '1. Sin recopilación de datos',
+      content:
+        'Vizta no recopila, almacena ni comparte datos personales de sus usuarios. No usamos cookies de rastreo, no tenemos analíticas de comportamiento ni vendemos información a terceros.',
+    },
+    {
+      title: '2. Uso sin cuenta',
+      content:
+        'Todas las funciones principales de Vizta son accesibles sin necesidad de crear una cuenta o proporcionar ningún dato personal.',
+    },
+    {
+      title: '3. Portal Web',
+      content:
+        'El Portal Web es la plataforma de donde nació Vizta. Es un servicio con sus propios términos y condiciones de uso, independientes a los de esta app. Si decides conectarlo, tu correo electrónico se usa únicamente para autenticarte. Puedes desconectarte en cualquier momento desde Ajustes.',
+    },
+    {
+      title: '4. Contenido de terceros',
+      content:
+        'La app muestra contenido proveniente de medios de comunicación externos. Estos medios pueden tener sus propias políticas de privacidad. Vizta no tiene control sobre el contenido ni las prácticas de esos sitios.',
+    },
+    {
+      title: '5. Cambios a esta política',
+      content:
+        'Esta política puede actualizarse conforme Vizta expanda sus funcionalidades. Cualquier cambio relevante en el manejo de datos será notificado mediante una actualización de la app. Te recomendamos revisar esta sección periódicamente.',
+    },
+    {
+      title: '6. Contacto',
+      content:
+        'Si tienes preguntas sobre privacidad, escríbenos a: contacto@standatpd.com',
+    },
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={{
+          backgroundColor: '#0b0d22',
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderTopWidth: 1,
+          borderColor: 'rgba(16,185,129,0.2)',
+          maxHeight: '90%',
+          paddingBottom: insets.bottom + 16,
+        }}>
+          {/* Handle */}
+          <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 4 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+          </View>
+
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 24,
+            paddingTop: 12,
+            paddingBottom: 16,
+            borderBottomWidth: 1,
+            borderColor: 'rgba(255,255,255,0.07)',
+          }}>
+            <View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+                Política de Privacidad
+              </Text>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                Vizta · StandAtPD
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <X size={17} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Content */}
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 20, lineHeight: 18 }}>
+              Última actualización: abril 2026 · Versión Alpha
+            </Text>
+
+            {/* Highlight box */}
+            <View style={{
+              backgroundColor: 'rgba(16,185,129,0.08)',
+              borderRadius: 12,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: 'rgba(16,185,129,0.2)',
+              marginBottom: 24,
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 10,
+            }}>
+              <Text style={{ fontSize: 18 }}>🔒</Text>
+              <Text style={{ fontSize: 13, color: 'rgba(110,231,183,0.9)', lineHeight: 20, flex: 1, fontWeight: '600' }}>
+                Vizta no recopila ni vende datos personales. Tu privacidad es una prioridad.
+              </Text>
+            </View>
+
+            {sections.map((section, i) => (
+              <View key={i} style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#6ee7b7', marginBottom: 6 }}>
+                  {section.title}
+                </Text>
+                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22 }}>
+                  {section.content}
+                </Text>
+              </View>
+            ))}
+
+            <View style={{
+              backgroundColor: 'rgba(16,185,129,0.06)',
+              borderRadius: 12,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: 'rgba(16,185,129,0.15)',
+              marginTop: 4,
+            }}>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 18, textAlign: 'center' }}>
+                ¿Tienes preguntas sobre tu privacidad?{'\n'}
+                <Text style={{ color: '#6ee7b7' }}>contacto@standatpd.com</Text>
+              </Text>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Modal de Apoyo ───────────────────────────────────────────────────────────
+function SupportModal({ visible, onClose }) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={{
+          backgroundColor: '#0b0d22',
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderTopWidth: 1,
+          borderColor: 'rgba(244,114,182,0.2)',
+          maxHeight: '90%',
+          paddingBottom: insets.bottom + 16,
+        }}>
+          {/* Handle */}
+          <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 4 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+          </View>
+
+          {/* Header */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingHorizontal: 24,
+            paddingTop: 12,
+            paddingBottom: 16,
+            borderBottomWidth: 1,
+            borderColor: 'rgba(255,255,255,0.07)',
+          }}>
+            <View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+                Apoyo
+              </Text>
+              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+                Únete a la misión
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <X size={17} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Content */}
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 32 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Icon */}
+            <View style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: 'rgba(244,114,182,0.12)',
+              borderWidth: 1,
+              borderColor: 'rgba(244,114,182,0.25)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 20,
+            }}>
+              <Heart size={24} color="#f472b6" />
+            </View>
+
+            <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', lineHeight: 26, marginBottom: 28 }}>
+              Siempre estamos buscando personas que nos apoyen a lograr la misión de diversificar los puntos de vista y poder tener una amplia variedad de noticias.{'\n\n'}
+              Si deseas colaborar, no dudes en escribirnos con tus datos y razón de interés.
+            </Text>
+
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              marginTop: 4,
+            }}>
+              <Mail size={14} color="rgba(244,114,182,0.6)" />
+              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 20 }}>
+                Escríbenos a{' '}
+                <Text style={{ color: '#f472b6', fontWeight: '700' }}>contacto@standatpd.com</Text>
+              </Text>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── FAQ Item colapsable ──────────────────────────────────────────────────────
 function FaqItem({ question, children }) {
   const [open, setOpen] = useState(false);
@@ -282,6 +673,9 @@ export default function SettingsScreen() {
   const { isConnected, connectedUser, connectedAt, disconnect } = usePulseConnectionStore();
 
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   const player = useVideoPlayer(
     require('../../../assets/videos/feed-background.mp4'),
@@ -314,6 +708,21 @@ export default function SettingsScreen() {
         visible={showLoginModal}
         onClose={() => setShowLoginModal(false)}
         onSuccess={() => setShowLoginModal(false)}
+      />
+
+      <TermsModal
+        visible={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+      />
+
+      <PrivacyModal
+        visible={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+      />
+
+      <SupportModal
+        visible={showSupportModal}
+        onClose={() => setShowSupportModal(false)}
       />
 
       <ScrollView
@@ -468,7 +877,15 @@ export default function SettingsScreen() {
                 </View>
 
                 <TouchableOpacity
-                  onPress={() => disconnect()}
+                  onPress={() => {
+                    console.log('[Settings] Cerrar sesión pressed');
+                    // Run disconnect AFTER all pending interactions/animations finish
+                    // to prevent expo-router crash when tab href changes mid-render
+                    InteractionManager.runAfterInteractions(() => {
+                      console.log('[Settings] InteractionManager fired → calling disconnect()');
+                      disconnect();
+                    });
+                  }}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -549,6 +966,73 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </FaqItem>
         </View>
+
+        {/* ── Legal ── */}
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+          <TouchableOpacity
+            onPress={() => setShowTermsModal(true)}
+            activeOpacity={0.7}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 14,
+              borderRadius: 14,
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.08)',
+            }}
+          >
+            <FileText size={14} color="rgba(255,255,255,0.35)" />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.4)', marginLeft: 7 }}>
+              Términos y Condiciones
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setShowPrivacyModal(true)}
+            activeOpacity={0.7}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 14,
+              borderRadius: 14,
+              backgroundColor: 'rgba(255,255,255,0.04)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.08)',
+            }}
+          >
+            <Text style={{ fontSize: 14 }}>🔒</Text>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.4)', marginLeft: 7 }}>
+              Privacidad
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Apoyo ── */}
+        <TouchableOpacity
+          onPress={() => setShowSupportModal(true)}
+          activeOpacity={0.7}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 10,
+            paddingVertical: 14,
+            borderRadius: 14,
+            backgroundColor: 'rgba(244,114,182,0.06)',
+            borderWidth: 1,
+            borderColor: 'rgba(244,114,182,0.15)',
+          }}
+        >
+          <Heart size={14} color="rgba(244,114,182,0.6)" />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(244,114,182,0.7)', marginLeft: 7 }}>
+            Apoyo
+          </Text>
+        </TouchableOpacity>
 
       </ScrollView>
     </View>

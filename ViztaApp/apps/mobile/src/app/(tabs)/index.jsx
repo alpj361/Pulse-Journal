@@ -25,12 +25,19 @@ import {
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://qqshdccpmypelhmyqnut.supabase.co';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// Returns ISO string for 30 hours ago — covers the latest daily cron run (every 24h)
+// without showing data older than ~1.25 days.
+function since30h() {
+  return new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
+}
 
 async function supabaseFetch(table, params = '') {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
@@ -515,6 +522,41 @@ export default function Index() {
   const insets = useSafeAreaInsets();
   const [selectedCard, setSelectedCard] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
+  const queryClient = useQueryClient();
+
+  // Realtime: notify when new news_cards are inserted
+  useEffect(() => {
+    const channel = supabase
+      .channel('feed-news-cards')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'news_cards' },
+        (payload) => {
+          const cards = payload.new?.cards;
+          const first = Array.isArray(cards) ? cards[0] : null;
+          if (!first) return;
+
+          // Refresh the hot topics query so the feed updates automatically
+          queryClient.invalidateQueries({ queryKey: ['pulse-hot-topics'] });
+
+          // Show local notification
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Vizta',
+              body: 'Revisa las ultimas noticias actualizadas',
+              data: { type: 'news_update' },
+              sound: 'default',
+            },
+            trigger: null, // immediate
+          }).catch(() => {}); // silently ignore if permissions not granted
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const player = useVideoPlayer(
     require("../../../assets/videos/feed-background.mp4"),
@@ -542,7 +584,7 @@ export default function Index() {
     queryFn: async () => {
       const rows = await supabaseFetch(
         'news_cards',
-        'select=cards,generated_at&order=generated_at.desc&limit=1'
+        `select=cards,generated_at&generated_at=gte.${since30h()}&order=generated_at.desc&limit=1`
       );
       const latest = rows[0];
       return latest?.cards || [];
@@ -577,6 +619,13 @@ export default function Index() {
   const about = trendsData?.about || [];
   const narrative = about[0] || null;
   const trendingTopics = about.slice(0, 15);
+  const topKeywords = trendsData?.top_keywords || [];
+  // Tiene about real si algún item tiene categoría distinta de "Otros"
+  // o razón que no sea el boilerplate "Tendencia relacionada con X"
+  const hasRealAbout = trendingTopics.some(item =>
+    (item.categoria && item.categoria !== 'Otros') ||
+    (item.razon_tendencia && !item.razon_tendencia.toLowerCase().startsWith('tendencia relacionada con'))
+  );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
 
@@ -687,16 +736,11 @@ export default function Index() {
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={{ padding: 18 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Zap size={13} color="#f59e0b" />
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#f59e0b', letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                        Insight del Día
-                      </Text>
-                    </View>
-                    {narrativaData.intensidad_informativa && (
-                      <IntensidadBadge nivel={narrativaData.intensidad_informativa} />
-                    )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                    <Zap size={13} color="#f59e0b" />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#f59e0b', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                      Insight del Día
+                    </Text>
                   </View>
                   {narrativaData.intencion_predominante && (
                     <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', lineHeight: 21, fontWeight: '500', marginBottom: 14, fontStyle: 'italic' }}>
@@ -724,58 +768,75 @@ export default function Index() {
           )}
 
           {/* Trending Ahora */}
-          {trendingTopics.length > 0 && (
+          {(trendingTopics.length > 0 || topKeywords.length > 0) && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
               <SectionHeader icon={<TrendingUp size={22} color="#ffffff" />} title="Trending Ahora" />
 
-              {trendingTopics.map((item, index) => (
-                <PressCard key={index} style={{ marginBottom: 14 }}>
-                  <View style={cardBase}>
-                    <LinearGradient
-                      colors={[...getCatGradient(item.categoria), 'transparent']}
-                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                      style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
-                    />
-                    <View style={{ padding: 20 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                        <View style={{
-                          backgroundColor: "rgba(255,255,255,0.15)",
-                          paddingHorizontal: 11,
-                          paddingVertical: 5,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.2)",
-                        }}>
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#ffffff", letterSpacing: 0.3 }}>
-                            {item.categoria || 'Tendencia'}
-                          </Text>
+              {hasRealAbout ? (
+                trendingTopics.map((item, index) => (
+                  <PressCard key={index} style={{ marginBottom: 14 }}>
+                    <View style={cardBase}>
+                      <LinearGradient
+                        colors={[...getCatGradient(item.categoria), 'transparent']}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                        style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
+                      />
+                      <View style={{ padding: 20 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                          <View style={{
+                            backgroundColor: "rgba(255,255,255,0.15)",
+                            paddingHorizontal: 11,
+                            paddingVertical: 5,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.2)",
+                          }}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#ffffff", letterSpacing: 0.3 }}>
+                              {item.categoria || 'Tendencia'}
+                            </Text>
+                          </View>
+                          {item.estadisticas?.tweet_volume ? (
+                            <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginLeft: 10 }}>
+                              {item.estadisticas.tweet_volume} tweets
+                            </Text>
+                          ) : null}
                         </View>
-                        {item.estadisticas?.tweet_volume ? (
-                          <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginLeft: 10 }}>
-                            {item.estadisticas.tweet_volume} tweets
+
+                        <Text style={{
+                          fontSize: 20,
+                          fontWeight: "800",
+                          color: "#ffffff",
+                          lineHeight: 27,
+                          marginBottom: item.razon_tendencia ? 10 : 0,
+                        }}>
+                          {item.nombre}
+                        </Text>
+
+                        {item.razon_tendencia ? (
+                          <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.68)", lineHeight: 20 }}>
+                            {item.razon_tendencia}
                           </Text>
                         ) : null}
                       </View>
-
-                      <Text style={{
-                        fontSize: 20,
-                        fontWeight: "800",
-                        color: "#ffffff",
-                        lineHeight: 27,
-                        marginBottom: item.razon_tendencia ? 10 : 0,
-                      }}>
-                        {item.nombre}
-                      </Text>
-
-                      {item.razon_tendencia ? (
-                        <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.68)", lineHeight: 20 }}>
-                          {item.razon_tendencia}
-                        </Text>
-                      ) : null}
                     </View>
-                  </View>
-                </PressCard>
-              ))}
+                  </PressCard>
+                ))
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {(trendingTopics.length > 0 ? trendingTopics.map(t => t.nombre) : topKeywords.map(kw => typeof kw === 'string' ? kw : kw.word || kw.keyword || kw.nombre || String(kw))).map((label, i) => (
+                    <View key={i} style={{
+                      backgroundColor: 'rgba(255,255,255,0.09)',
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.15)',
+                    }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           )}
 
@@ -830,21 +891,7 @@ export default function Index() {
                               </Text>
                             </View>
                           </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            {card.impacto_score >= 60 && (
-                              <View style={{
-                                backgroundColor: card.impacto_score >= 80 ? 'rgba(249,115,22,0.18)' : 'rgba(250,204,21,0.12)',
-                                paddingHorizontal: 8, paddingVertical: 3,
-                                borderRadius: 6, borderWidth: 1,
-                                borderColor: card.impacto_score >= 80 ? 'rgba(249,115,22,0.35)' : 'rgba(250,204,21,0.28)',
-                              }}>
-                                <Text style={{ fontSize: 11, fontWeight: '700', color: card.impacto_score >= 80 ? '#f97316' : '#facc15' }}>
-                                  ⚡ {card.impacto_score}
-                                </Text>
-                              </View>
-                            )}
-                            <ChevronRight size={16} color="rgba(255,255,255,0.35)" />
-                          </View>
+                          <ChevronRight size={16} color="rgba(255,255,255,0.35)" />
                         </View>
 
                         {/* Título */}
@@ -941,21 +988,3 @@ function SectionHeader({ icon, title }) {
   );
 }
 
-function IntensidadBadge({ nivel }) {
-  const config = {
-    alta:  { color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   label: 'ALTA' },
-    media: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  label: 'MEDIA' },
-    baja:  { color: '#6ee7b7', bg: 'rgba(110,231,183,0.15)', label: 'BAJA' },
-  };
-  const c = config[nivel?.toLowerCase()] || config.media;
-  return (
-    <View style={{
-      backgroundColor: c.bg, paddingHorizontal: 10, paddingVertical: 4,
-      borderRadius: 8, borderWidth: 1, borderColor: c.color + '50',
-    }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: c.color, letterSpacing: 0.6 }}>
-        {c.label}
-      </Text>
-    </View>
-  );
-}

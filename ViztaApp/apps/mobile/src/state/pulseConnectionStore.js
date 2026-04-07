@@ -13,17 +13,21 @@ export const usePulseConnectionStore = create(
       error: null,
 
       connect: async (email, password) => {
+        console.log('[pulseStore] connect() called');
         set({ isConnecting: true, error: null });
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
+          console.log('[pulseStore] connect() error:', error.message);
           set({ isConnecting: false, error: error.message });
           return false;
         }
+        console.log('[pulseStore] connect() success, fetching profile...');
         const { data: profile } = await supabase
           .from('profiles')
           .select('id, email, user_type, role, credits')
           .eq('id', data.user.id)
           .single();
+        console.log('[pulseStore] profile:', profile?.email);
         set({
           isConnected: true,
           isConnecting: false,
@@ -31,12 +35,21 @@ export const usePulseConnectionStore = create(
           connectedAt: new Date().toISOString(),
           error: null,
         });
+        console.log('[pulseStore] set isConnected=true DONE');
         return true;
       },
 
       disconnect: async () => {
-        await supabase.auth.signOut();
+        console.log('[pulseStore] disconnect() called');
+        try {
+          await supabase.auth.signOut();
+          console.log('[pulseStore] supabase.signOut() done');
+        } catch (e) {
+          console.log('[pulseStore] supabase.signOut() ERROR:', e?.message);
+        }
+        console.log('[pulseStore] calling set isConnected=false...');
         set({ isConnected: false, connectedUser: null, connectedAt: null, error: null });
+        console.log('[pulseStore] set isConnected=false DONE');
       },
 
       clearError: () => set({ error: null }),
@@ -49,6 +62,16 @@ export const usePulseConnectionStore = create(
         connectedUser: s.connectedUser,
         connectedAt: s.connectedAt,
       }),
+      onRehydrateStorage: () => {
+        console.log('[pulseStore] hydration starting...');
+        return (state, error) => {
+          if (error) {
+            console.log('[pulseStore] hydration ERROR:', error);
+          } else {
+            console.log('[pulseStore] hydration done — isConnected:', state?.isConnected, 'user:', state?.connectedUser?.email);
+          }
+        };
+      },
     }
   )
 );

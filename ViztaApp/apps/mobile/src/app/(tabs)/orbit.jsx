@@ -2,21 +2,39 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
+  PanResponder,
   Animated,
   StyleSheet,
   ScrollView,
   Image,
   useWindowDimensions,
+  TextInput,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback, Component } from 'react';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withDelay,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { ArrowLeft, Trash2, Clock, ChevronRight, AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Clock, ChevronRight, AlertCircle, Send } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
+
+// ── Chat constants ─────────────────────────────────────────────────────────────
+
+const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
+const CHAT_ENDPOINT_AUTH  = `${EXTRACTORW_URL}/api/vizta-chat/query`;
+const CHAT_ENDPOINT_GUEST = `${EXTRACTORW_URL}/api/vizta-chat/query-guest`;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -47,15 +65,29 @@ const CATEGORIES = {
   },
 };
 
+const CATEGORY_ORDER = ['Política', 'Violencia', 'Deportes', 'Movilidad'];
+
+// Color semántico por tipo de rol — paleta fría sobre fondo oscuro
+const ROLE_PALETTE = {
+  'Legislativo': { fg: '#a5b4fc', bg: 'rgba(129,140,248,0.1)' },
+  'Judicial':    { fg: '#fcd34d', bg: 'rgba(251,191,36,0.1)'  },
+  'Ejecutivo':   { fg: '#6ee7b7', bg: 'rgba(52,211,153,0.1)'  },
+  'Académico':   { fg: '#d8b4fe', bg: 'rgba(192,132,252,0.1)' },
+  'Acusado':     { fg: '#fca5a5', bg: 'rgba(248,113,113,0.1)' },
+  'default':     { fg: 'rgba(148,163,184,0.85)', bg: 'rgba(148,163,184,0.1)' },
+};
+
 // ── Helper components ─────────────────────────────────────────────────────────
 
 function IntensidadBadge({ nivel }) {
+  // nivel puede llegar como número (75) o string ('alta')
+  const nivelStr = typeof nivel === 'number' ? intensidadFromScore(nivel) : nivel;
   const config = {
     alta:  { color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   label: 'ALTA' },
     media: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  label: 'MEDIA' },
     baja:  { color: '#6ee7b7', bg: 'rgba(110,231,183,0.15)', label: 'BAJA' },
   };
-  const c = config[nivel?.toLowerCase()] || config.media;
+  const c = config[nivelStr?.toLowerCase?.()] || config.media;
   return (
     <View style={{
       backgroundColor: c.bg, paddingHorizontal: 10, paddingVertical: 4,
@@ -86,16 +118,27 @@ function SectionLabel({ title }) {
 function DetailCard({ children, style }) {
   return (
     <View style={[{
-      backgroundColor: 'rgba(255,255,255,0.06)',
       borderRadius: 16,
+      overflow: 'hidden',
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.1)',
-      padding: 16,
       marginBottom: 12,
     }, style]}>
-      {children}
+      <BlurView intensity={18} tint="dark">
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', padding: 16 }}>
+          {children}
+        </View>
+      </BlurView>
     </View>
   );
+}
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+
+// Returns ISO string for 30 hours ago — covers the latest daily cron run (every 24h)
+// without showing data older than ~1.25 days.
+function since30h() {
+  return new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
 }
 
 // ── Category data helpers ─────────────────────────────────────────────────────
@@ -122,108 +165,169 @@ function intensidadFromScore(score) {
 
 // ── News card (real data) ─────────────────────────────────────────────────────
 
-function NewsCard({ card }) {
-  const impacto = card.impacto_score ?? 0;
-  const impactoColor = impacto >= 70 ? '#ef4444' : impacto >= 40 ? '#f59e0b' : '#6ee7b7';
+function NewsCard({ card, index = 0 }) {
+  // Stagger entrance
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(20);
+  // Press feedback
+  const scale = useSharedValue(1);
+  const pressOpacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = withDelay(index * 60, withSpring(1, { damping: 18 }));
+    translateY.value = withDelay(index * 60, withSpring(0, { mass: 0.8, damping: 14 }));
+  }, []);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value * pressOpacity.value,
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
 
   return (
-    <View style={{
-      backgroundColor: 'rgba(255,255,255,0.06)',
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)',
-      padding: 18,
-      marginBottom: 14,
-    }}>
-      {/* Top row: category chip + impacto */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <View style={{
-          backgroundColor: 'rgba(255,255,255,0.1)',
-          paddingHorizontal: 10, paddingVertical: 4,
-          borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
-        }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff', letterSpacing: 0.3 }}>
-            {card.categoria || 'General'}
+    <Pressable
+      onPressIn={() => {
+        scale.value = withSpring(0.97, { stiffness: 400, damping: 20 });
+        pressOpacity.value = withSpring(0.82, { stiffness: 400 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { stiffness: 300, damping: 20 });
+        pressOpacity.value = withSpring(1, { stiffness: 300 });
+      }}
+    >
+      <Reanimated.View style={[{
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.09)',
+        marginBottom: 10,
+      }, animStyle]}>
+        <BlurView intensity={18} tint="dark">
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', padding: 16 }}>
+        {/* Title */}
+        <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.92)', lineHeight: 21, marginBottom: 6 }}>
+          {card.titulo}
+        </Text>
+
+        {/* Resumen */}
+        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 19, marginBottom: 10 }}
+          numberOfLines={3}>
+          {card.resumen}
+        </Text>
+
+        {/* Entidades — solo texto, sin chips de colores */}
+        {card.entidades?.length > 0 && (
+          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', lineHeight: 16 }} numberOfLines={1}>
+            {card.entidades.slice(0, 4).join(' · ')}
+          </Text>
+        )}
+        </View>
+        </BlurView>
+      </Reanimated.View>
+    </Pressable>
+  );
+}
+
+// ── Error boundary for CategoryDetail ────────────────────────────────────────
+
+class DetailErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[Orbit] CategoryDetail CRASH:', error?.message);
+    console.error('[Orbit] Stack:', error?.stack);
+    console.error('[Orbit] Component stack:', info?.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, backgroundColor: '#080a18', alignItems: 'center', justifyContent: 'center', padding: 30 }}>
+          <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700', marginBottom: 8 }}>
+            Error en CategoryDetail
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textAlign: 'center' }}>
+            {this.state.error?.message}
           </Text>
         </View>
-        {impacto > 0 && (
-          <View style={{
-            backgroundColor: impactoColor + '18',
-            paddingHorizontal: 8, paddingVertical: 3,
-            borderRadius: 6, borderWidth: 1, borderColor: impactoColor + '40',
-          }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: impactoColor }}>
-              ⚡ {impacto}
-            </Text>
-          </View>
-        )}
-      </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
-      {/* Title */}
-      <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff', lineHeight: 22, marginBottom: 8 }}>
-        {card.titulo}
-      </Text>
+// ── Timeline item with press feedback ────────────────────────────────────────
 
-      {/* Resumen */}
-      <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.68)', lineHeight: 20, marginBottom: 12 }}
-        numberOfLines={3}>
-        {card.resumen}
-      </Text>
+function TimelineItem({ t, i, total, config }) {
+  const scale = useSharedValue(1);
+  const itemOpacity = useSharedValue(1);
 
-      {/* Impacto bar */}
-      {impacto > 0 && (
-        <View style={{ marginBottom: 12 }}>
-          <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
-            <View style={{ height: 3, width: `${impacto}%`, borderRadius: 2, backgroundColor: impactoColor }} />
-          </View>
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: itemOpacity.value,
+  }));
+
+  const texto = typeof t === 'string' ? t : (t.texto || '');
+
+  return (
+    <Pressable
+      onPressIn={() => {
+        scale.value = withSpring(0.97, { stiffness: 500, damping: 22 });
+        itemOpacity.value = withSpring(0.7, { stiffness: 500 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { stiffness: 300, damping: 18 });
+        itemOpacity.value = withSpring(1, { stiffness: 300 });
+      }}
+    >
+      <Reanimated.View style={[{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < total - 1 ? 12 : 0 }, animStyle]}>
+        <View style={{ alignItems: 'center', width: 6, marginRight: 12, marginTop: 5 }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: config.color }} />
+          {i < total - 1 && (
+            <View style={{ width: 1, height: 20, backgroundColor: config.color + '28', marginTop: 3 }} />
+          )}
         </View>
-      )}
-
-      {/* Entidades */}
-      {card.entidades?.length > 0 && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
-          {card.entidades.slice(0, 4).map((e, i) => (
-            <View key={i} style={{
-              backgroundColor: 'rgba(99,102,241,0.14)',
-              paddingHorizontal: 8, paddingVertical: 3,
-              borderRadius: 6, borderWidth: 1, borderColor: 'rgba(99,102,241,0.28)',
-            }}>
-              <Text style={{ fontSize: 11, color: 'rgba(165,180,252,0.9)' }}>{e}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* Perspectivas */}
-      {card.perspectivas?.length > 0 && (
-        <View style={{ gap: 5 }}>
-          {card.perspectivas.slice(0, 2).map((p, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#6366f1', marginTop: 7 }} />
-              <Text style={{ flex: 1, fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 18 }}>{p}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
+        <Text style={{ flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19 }}>
+          {texto}
+        </Text>
+      </Reanimated.View>
+    </Pressable>
   );
 }
 
 // ── Category Detail screen ────────────────────────────────────────────────────
 
-function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, insets }) {
+function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, insets, feedData, onSwipeLeft, onSwipeRight, categoryIndex, totalCategories }) {
   const config = CATEGORIES[category];
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+        Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5,
+      onPanResponderRelease: (_, { dx, vx }) => {
+        if (dx < -50 || vx < -0.5) onSwipeLeft?.();
+        else if (dx > 50 || vx > 0.5) onSwipeRight?.();
+      },
+    })
+  ).current;
 
   const cards = (allCards || [])
     .filter(c => matchesCategory(c, category))
     .sort((a, b) => (b.impacto_score || 0) - (a.impacto_score || 0));
 
-  const topScore    = cards[0]?.impacto_score ?? 0;
-  const intensidad  = cards.length > 0 ? intensidadFromScore(topScore) : null;
   const lastUpdated = relativeTime(generatedAt);
 
+  const feedEntry = (feedData || []).find(f => f.categoria === category);
+  const d = feedEntry?.data || null;
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#080a18' }}>
+    <View style={{ flex: 1, backgroundColor: '#080a18' }} {...panResponder.panHandlers}>
       {/* Header */}
       <View style={{
         flexDirection: 'row',
@@ -256,9 +360,27 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
               <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{lastUpdated}</Text>
             </View>
           )}
+          {/* Navigation dots */}
+          {totalCategories > 1 && (
+            <View style={{ flexDirection: 'row', gap: 5, marginTop: 6 }}>
+              {Array.from({ length: totalCategories }).map((_, i) => (
+                <View
+                  key={i}
+                  style={{
+                    width: i === categoryIndex ? 16 : 5,
+                    height: 5,
+                    borderRadius: 2.5,
+                    backgroundColor: i === categoryIndex
+                      ? config.color
+                      : 'rgba(255,255,255,0.2)',
+                  }}
+                />
+              ))}
+            </View>
+          )}
         </View>
 
-        {intensidad ? <IntensidadBadge nivel={intensidad} /> : <View style={{ width: 50 }} />}
+        <View style={{ width: 50 }} />
       </View>
 
       {/* Category orb */}
@@ -283,7 +405,11 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
           <Image source={config.image} style={{ width: 64, height: 64 }} resizeMode="cover" />
         </View>
         <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', letterSpacing: 0.5 }}>
-          {cards.length > 0 ? `${cards.length} temas activos` : 'Sin datos disponibles'}
+          {cards.length > 0
+            ? `${cards.length} temas activos`
+            : relativeTime(feedEntry?.generated_at || generatedAt)
+              ? `Actualizado ${relativeTime(feedEntry?.generated_at || generatedAt)}`
+              : null}
         </Text>
       </View>
 
@@ -298,7 +424,6 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
         showsVerticalScrollIndicator={false}
       >
         {isLoading ? (
-          /* Loading */
           <View style={{ alignItems: 'center', paddingTop: 40, gap: 12 }}>
             <View style={{
               width: 40, height: 40, borderRadius: 20,
@@ -309,38 +434,291 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
             </View>
             <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)' }}>Cargando datos...</Text>
           </View>
-        ) : cards.length === 0 ? (
-          /* Empty state — no fake data */
-          <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
-            <View style={{
-              width: 56, height: 56, borderRadius: 28,
-              backgroundColor: 'rgba(255,255,255,0.05)',
-              alignItems: 'center', justifyContent: 'center',
-              borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-            }}>
-              <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
-            </View>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
-              Sin noticias recientes
-            </Text>
-            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
-              No hay datos de {category.toLowerCase()} en el último ciclo de análisis.
-            </Text>
-          </View>
         ) : (
-          /* Real cards */
           <>
-            <Text style={{
-              fontSize: 11, fontWeight: '700',
-              color: 'rgba(255,255,255,0.35)',
-              letterSpacing: 1, textTransform: 'uppercase',
-              marginBottom: 14,
-            }}>
-              Hot Topics
-            </Text>
-            {cards.map((card, i) => (
-              <NewsCard key={card.id || i} card={card} />
-            ))}
+            {/* ── Feed Pulso section ── */}
+            {d && (
+              <View style={{ marginBottom: 24 }}>
+                <SectionLabel title="Pulso" />
+
+                {category === 'Deportes' && (
+                  <>
+                    {d.narrativaLiga && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: '#fff', lineHeight: 22, marginBottom: 6 }}>
+                          {d.narrativaLiga.titulo}
+                        </Text>
+                        {d.narrativaLiga.descripcion && (
+                          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.68)', lineHeight: 20 }}>
+                            {d.narrativaLiga.descripcion}
+                          </Text>
+                        )}
+                      </DetailCard>
+                    )}
+                    {d.momentosClave?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.38)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                          MOMENTOS CLAVE
+                        </Text>
+                        {d.momentosClave.map((m, i) => (
+                          <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < d.momentosClave.length - 1 ? 10 : 0 }}>
+                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: m.color || config.color, marginTop: 7, marginRight: 10 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 3 }}>{m.titulo}</Text>
+                              {m.descripcion && <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 18 }}>{m.descripcion}</Text>}
+                            </View>
+                          </View>
+                        ))}
+                      </DetailCard>
+                    )}
+                    {d.discursoComparativo?.length > 0 && (
+                      <DetailCard>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.38)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                          DISCURSO
+                        </Text>
+                        {d.discursoComparativo.map((item, i) => (
+                          <Text key={i} style={{ fontSize: 13, color: 'rgba(255,255,255,0.68)', lineHeight: 20, fontStyle: 'italic', marginBottom: i < d.discursoComparativo.length - 1 ? 8 : 0 }}>
+                            "{typeof item === 'string' ? item : item.narrativa || item.texto || ''}"
+                          </Text>
+                        ))}
+                      </DetailCard>
+                    )}
+                  </>
+                )}
+
+                {category === 'Violencia' && (
+                  <>
+                    {d.narrativaMediatica?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        {d.narrativaMediatica.map((n, i) => (
+                          <View key={i} style={{ marginBottom: i < d.narrativaMediatica.length - 1 ? 12 : 0 }}>
+                            <Text style={{ fontSize: i === 0 ? 15 : 13, fontWeight: '800', color: '#fff', lineHeight: 21, marginBottom: 4 }}>
+                              {n.titulo}
+                            </Text>
+                            {n.descripcion && (
+                              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.68)', lineHeight: 19 }}>
+                                {n.descripcion}
+                              </Text>
+                            )}
+                          </View>
+                        ))}
+                      </DetailCard>
+                    )}
+                    {d.patronesSemana?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.38)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                          PATRONES
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {d.patronesSemana.map((p, i) => (
+                            <View key={i} style={{
+                              backgroundColor: 'rgba(220,38,38,0.12)',
+                              paddingHorizontal: 10, paddingVertical: 4,
+                              borderRadius: 8, borderWidth: 1, borderColor: 'rgba(220,38,38,0.28)',
+                            }}>
+                              <Text style={{ fontSize: 12, color: 'rgba(252,165,165,0.9)' }}>{typeof p === 'string' ? p : p.zona || ''}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </DetailCard>
+                    )}
+                    {d.respuestaInstitucional?.length > 0 && (
+                      <DetailCard>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.38)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                          RESPUESTA INSTITUCIONAL
+                        </Text>
+                        {d.respuestaInstitucional.map((r, i) => (
+                          <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < d.respuestaInstitucional.length - 1 ? 8 : 0 }}>
+                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: config.color, marginTop: 7, marginRight: 10 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>{r.actor}</Text>
+                              {r.accion && <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 18 }}>{r.accion}</Text>}
+                            </View>
+                          </View>
+                        ))}
+                      </DetailCard>
+                    )}
+                  </>
+                )}
+
+                {category === 'Movilidad' && (
+                  <>
+                    {d.narrativaMovilidad?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        {d.narrativaMovilidad.map((n, i) => (
+                          <View key={i} style={{ marginBottom: i < d.narrativaMovilidad.length - 1 ? 12 : 0 }}>
+                            <Text style={{ fontSize: i === 0 ? 15 : 13, fontWeight: '800', color: '#fff', lineHeight: 21, marginBottom: 4 }}>
+                              {n.titulo}
+                            </Text>
+                            {n.descripcion && (
+                              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.68)', lineHeight: 19 }}>
+                                {n.descripcion}
+                              </Text>
+                            )}
+                          </View>
+                        ))}
+                      </DetailCard>
+                    )}
+                    {d.zonasCriticas?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.38)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                          ZONAS CRÍTICAS
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                          {d.zonasCriticas.map((z, i) => {
+                            const nivel = (z.nivel || '').toLowerCase();
+                            const chipColor = nivel === 'alta' || nivel === 'alto' ? '#ef4444' : nivel === 'media' || nivel === 'medio' ? '#f59e0b' : '#6ee7b7';
+                            return (
+                              <View key={i} style={{
+                                backgroundColor: chipColor + '18',
+                                paddingHorizontal: 10, paddingVertical: 4,
+                                borderRadius: 8, borderWidth: 1, borderColor: chipColor + '40',
+                              }}>
+                                <Text style={{ fontSize: 12, color: chipColor }}>{z.nombre || z.zona || z}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </DetailCard>
+                    )}
+                    {d.timeline?.length > 0 && (
+                      <DetailCard>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.38)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>
+                          TIMELINE
+                        </Text>
+                        {d.timeline.map((t, i) => (
+                          <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < d.timeline.length - 1 ? 8 : 0 }}>
+                            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: config.color, marginTop: 7, marginRight: 10 }} />
+                            <Text style={{ flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 19 }}>{typeof t === 'string' ? t : t.texto || ''}</Text>
+                          </View>
+                        ))}
+                      </DetailCard>
+                    )}
+                  </>
+                )}
+
+                {category === 'Política' && (
+                  <>
+                    {/* ── Narrativas ── */}
+                    {d.narrativas?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12 }}>
+                        {d.narrativas.map((n, i) => (
+                          <View key={i}>
+                            {i > 0 && (
+                              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: 12 }} />
+                            )}
+                            <Text style={{
+                              fontSize: i === 0 ? 15 : 13,
+                              fontWeight: i === 0 ? '700' : '500',
+                              color: i === 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.65)',
+                              lineHeight: i === 0 ? 22 : 20,
+                              marginBottom: n.descripcion ? 5 : 0,
+                            }}>
+                              {n.titulo}
+                            </Text>
+                            {n.descripcion && i === 0 && (
+                              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 19 }}>
+                                {n.descripcion}
+                              </Text>
+                            )}
+                          </View>
+                        ))}
+                      </DetailCard>
+                    )}
+
+                    {/* ── Actores ── */}
+                    {d.actores?.length > 0 && (
+                      <DetailCard style={{ marginBottom: 12, paddingVertical: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 8 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.25)', letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                            Actores
+                          </Text>
+                          <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
+                            {d.actores.length}
+                          </Text>
+                        </View>
+                        {d.actores.map((a, i) => {
+                          const rp = ROLE_PALETTE[a.rol] || ROLE_PALETTE['default'];
+                          return (
+                            <View key={i} style={{
+                              paddingVertical: 10, paddingHorizontal: 4,
+                              borderTopWidth: i > 0 ? 1 : 0,
+                              borderTopColor: 'rgba(255,255,255,0.04)',
+                            }}>
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.9)', lineHeight: 19 }}>
+                                {a.nombre}
+                              </Text>
+                              {/* Role badge as subtitle */}
+                              <View style={{
+                                alignSelf: 'flex-start',
+                                backgroundColor: rp.bg,
+                                paddingHorizontal: 7, paddingVertical: 2,
+                                borderRadius: 4, marginTop: 4,
+                              }}>
+                                <Text style={{ fontSize: 9, fontWeight: '700', color: rp.fg, letterSpacing: 0.6 }}>
+                                  {(a.rol || '—').toUpperCase()}
+                                </Text>
+                              </View>
+                              {a.narrativaPrincipal && (
+                                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 17, marginTop: 5 }}>
+                                  {a.narrativaPrincipal}
+                                </Text>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </DetailCard>
+                    )}
+
+                    {/* ── Timeline ── */}
+                    {d.timeline?.length > 0 && (
+                      <DetailCard>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.25)', letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 14 }}>
+                          Timeline
+                        </Text>
+                        {d.timeline.map((t, i) => (
+                          <TimelineItem key={i} t={t} i={i} total={d.timeline.length} config={config} />
+                        ))}
+                      </DetailCard>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+
+            {/* Hot Topics */}
+            {cards.length > 0 ? (
+              <>
+                <Text style={{
+                  fontSize: 10, fontWeight: '600',
+                  color: 'rgba(255,255,255,0.25)',
+                  letterSpacing: 1.4, textTransform: 'uppercase',
+                  marginBottom: 12,
+                }}>
+                  Noticias
+                </Text>
+                {cards.map((card, i) => (
+                  <NewsCard key={card.id || i} card={card} index={i} />
+                ))}
+              </>
+            ) : !d ? (
+              <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
+                <View style={{
+                  width: 56, height: 56, borderRadius: 28,
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                }}>
+                  <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+                </View>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                  Sin noticias recientes
+                </Text>
+                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
+                  No hay datos de {category.toLowerCase()} en el último ciclo de análisis.
+                </Text>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -399,12 +777,17 @@ function buildPaths(angle) {
   return { back, mid, front };
 }
 
-function ParticleSphere({ cx, cy }) {
+function ParticleSphere({ cx, cy, paused }) {
   const angleRef = useRef(0);
   const rafRef   = useRef(null);
   const [paths, setPaths] = useState(() => buildPaths(0));
 
   useEffect(() => {
+    if (paused) {
+      cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
     let lastTs = 0;
 
     const tick = (ts) => {
@@ -417,7 +800,7 @@ function ParticleSphere({ cx, cy }) {
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, []);
+  }, [paused]);
 
   return (
     <Canvas style={{
@@ -493,6 +876,91 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
   );
 }
 
+// ── Chat message bubble ───────────────────────────────────────────────────────
+
+function ChatBubble({ message }) {
+  const isUser = message.role === 'user';
+
+  if (message.loading) {
+    return (
+      <View style={{ alignItems: 'flex-start', marginBottom: 10, paddingHorizontal: 16 }}>
+        <View style={{
+          backgroundColor: 'rgba(100,149,237,0.12)',
+          borderRadius: 16,
+          borderBottomLeftRadius: 4,
+          paddingHorizontal: 14,
+          paddingVertical: 10,
+          borderWidth: 1,
+          borderColor: 'rgba(100,149,237,0.2)',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+            {[0, 1, 2].map((i) => (
+              <View
+                key={i}
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: 2.5,
+                  backgroundColor: 'rgba(100,149,237,0.7)',
+                  opacity: 0.4 + i * 0.2,
+                }}
+              />
+            ))}
+          </View>
+          <Text style={{ fontSize: 11, color: 'rgba(100,149,237,0.6)' }}>Vizta está pensando...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{
+      alignItems: isUser ? 'flex-end' : 'flex-start',
+      marginBottom: 10,
+      paddingHorizontal: 16,
+    }}>
+      {!isUser && (
+        <Text style={{
+          fontSize: 10,
+          fontWeight: '700',
+          color: 'rgba(100,149,237,0.6)',
+          letterSpacing: 0.5,
+          marginBottom: 4,
+          marginLeft: 2,
+        }}>
+          VIZTA
+        </Text>
+      )}
+      <View style={{
+        maxWidth: '82%',
+        backgroundColor: isUser
+          ? 'rgba(124,58,237,0.25)'
+          : 'rgba(100,149,237,0.1)',
+        borderRadius: 16,
+        borderBottomLeftRadius: isUser ? 16 : 4,
+        borderBottomRightRadius: isUser ? 4 : 16,
+        paddingHorizontal: 13,
+        paddingVertical: 9,
+        borderWidth: 1,
+        borderColor: isUser
+          ? 'rgba(124,58,237,0.35)'
+          : 'rgba(100,149,237,0.18)',
+      }}>
+        <Text style={{
+          fontSize: 14,
+          color: isUser ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.82)',
+          lineHeight: 20,
+        }}>
+          {message.text}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function OrbitScreen() {
@@ -500,20 +968,230 @@ export default function OrbitScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
-  // Fetch latest news_cards on mount so data is ready when user taps a category
+  // ── Chat state ──────────────────────────────────────────────────────────────
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatFocused, setChatFocused] = useState(false);
+  const chatSessionId = useRef(`orbit-${Math.random().toString(36).slice(2)}`);
+  const chatScrollRef = useRef(null);
+
+  // focusAnim: 0 = orbit visible, 1 = chat focused (native driver — opacity/transform only)
+  // orbitMaxHeight: collapses orbit height (JS driver — layout only)
+  const focusAnim = useRef(new Animated.Value(0)).current;
+  const orbitMaxHeight = useRef(new Animated.Value(380)).current;
+  // Track if user deliberately entered chat (suppress blur-on-send collapse)
+  const chatEnteredRef = useRef(false);
+
+  const focusChat = useCallback(() => {
+    chatEnteredRef.current = true;
+    setChatFocused(true);
+    // iOS drawer curve (cubic-bezier(0.32, 0.72, 0, 1))
+    const iosCurve = t =>
+      3 * (1 - t) * (1 - t) * t * 0.32 +
+      3 * (1 - t) * t * t * 0.72 +
+      t * t * t;
+
+    Animated.timing(focusAnim, {
+      toValue: 1,
+      duration: 280,
+      easing: iosCurve,
+      useNativeDriver: true,
+    }).start();
+
+    Animated.timing(orbitMaxHeight, {
+      toValue: 0,
+      duration: 260,
+      easing: iosCurve,
+      useNativeDriver: false,
+    }).start();
+  }, [focusAnim, orbitMaxHeight]);
+
+  const collapseOrbit = useCallback(() => {
+    Keyboard.dismiss();
+    // Strong ease-out (cubic-bezier(0.23, 1, 0.32, 1))
+    const easeOut = t =>
+      3 * (1 - t) * (1 - t) * t * 0.23 +
+      3 * (1 - t) * t * t * 1.0 +
+      t * t * t;
+
+    chatEnteredRef.current = false;
+    setChatFocused(false);
+
+    Animated.timing(focusAnim, {
+      toValue: 0,
+      duration: 220,
+      easing: easeOut,
+      useNativeDriver: true,
+    }).start();
+
+    Animated.timing(orbitMaxHeight, {
+      toValue: 380,
+      duration: 240,
+      easing: easeOut,
+      useNativeDriver: false,
+    }).start();
+  }, [focusAnim, orbitMaxHeight]);
+
+  // Only collapse orbit if user wasn't in chat mode (e.g. keyboard hides after send)
+  const blurChat = useCallback(() => {
+    if (chatEnteredRef.current) return; // still in chat context
+    collapseOrbit();
+  }, [collapseOrbit]);
+
+  const clearChat = useCallback(() => {
+    setChatMessages([]);
+    setChatInput('');
+    chatSessionId.current = `orbit-${Math.random().toString(36).slice(2)}`;
+  }, []);
+
+  const sendMessage = useCallback(async () => {
+    console.log('[Chat] sendMessage called, input:', chatInput, 'loading:', chatLoading);
+    const text = chatInput.trim();
+    if (!text || chatLoading) {
+      console.log('[Chat] Skipping — empty or loading');
+      return;
+    }
+
+    setChatInput('');
+    setChatLoading(true);
+
+    const userMsg = { id: Date.now().toString(), role: 'user', text };
+    const loadingMsg = { id: `loading-${Date.now()}`, role: 'assistant', text: '', loading: true };
+
+    setChatMessages(prev => [...prev, userMsg, loadingMsg]);
+
+    // Scroll to bottom after adding messages
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+    try {
+      console.log('[Chat] Getting Supabase session...');
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) console.warn('[Chat] Session error:', sessionError);
+      const token = sessionData?.session?.access_token;
+      console.log('[Chat] Token present:', !!token);
+
+      // Route: authenticated → full ViztaAgent flow, guest → Minimax free direct
+      const endpoint = token ? CHAT_ENDPOINT_AUTH : CHAT_ENDPOINT_GUEST;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      console.log('[Chat] Fetching:', endpoint, '| authenticated:', !!token);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          message: text,
+          sessionId: chatSessionId.current,
+        }),
+      });
+
+      console.log('[Chat] Response status:', res.status, res.statusText);
+
+      if (!res.ok) {
+        // Try to parse server's error body (e.g. 429 rate limit with friendly message)
+        const errText = await res.text().catch(() => '');
+        console.error('[Chat] HTTP error body:', errText);
+        let serverMsg = null;
+        try {
+          const errJson = JSON.parse(errText);
+          serverMsg = errJson?.response?.message || null;
+        } catch (_) {}
+        if (serverMsg) {
+          // Show the server's message directly (e.g. rate limit explanation)
+          setChatMessages(prev =>
+            prev
+              .filter(m => !m.loading)
+              .concat({ id: `err-${Date.now()}`, role: 'assistant', text: serverMsg })
+          );
+          return;
+        }
+        throw new Error(`Error ${res.status}: ${res.statusText}`);
+      }
+
+      const rawText = await res.text();
+      console.log('[Chat] Raw response (first 200):', rawText.slice(0, 200));
+
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        console.error('[Chat] JSON parse error:', parseErr, 'raw:', rawText.slice(0, 300));
+        throw new Error('Respuesta inválida del servidor (no es JSON).');
+      }
+
+      console.log('[Chat] Response keys:', Object.keys(data));
+      console.log('[Chat] data.response type:', typeof data.response, JSON.stringify(data.response)?.slice(0, 120));
+
+      // The server returns { success, response: { agent, message, type }, conversationId, metadata }
+      const responseText =
+        data.finalResponse ||
+        (typeof data.response === 'string' ? data.response : null) ||
+        data.response?.message ||
+        data.response?.text ||
+        data.response?.content ||
+        data.message ||
+        data.content ||
+        'Sin respuesta del servidor.';
+
+      console.log('[Chat] Response text resolved (first 100):', String(responseText).slice(0, 100));
+
+      setChatMessages(prev =>
+        prev
+          .filter(m => !m.loading)
+          .concat({ id: `ai-${Date.now()}`, role: 'assistant', text: responseText })
+      );
+    } catch (err) {
+      console.error('[Chat] CAUGHT ERROR:', err?.message, err?.stack);
+      const errorText = err.message?.includes('401')
+        ? 'Inicia sesión para usar el chat de Vizta.'
+        : `Error: ${err.message || 'No se pudo conectar con Vizta.'}`;
+
+      setChatMessages(prev =>
+        prev
+          .filter(m => !m.loading)
+          .concat({ id: `err-${Date.now()}`, role: 'assistant', text: errorText })
+      );
+    } finally {
+      console.log('[Chat] finally — resetting loading');
+      setChatLoading(false);
+      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 150);
+    }
+  }, [chatInput, chatLoading]);
+
+  // Fetch today's news_cards (Guatemala time, UTC-6)
   const { data: newsData, isLoading: newsLoading } = useQuery({
     queryKey: ['orbit-news-cards'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('news_cards')
         .select('cards, generated_at')
+        .gte('generated_at', since30h())
         .order('generated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
       if (error) throw error;
-      return data;
+      return data?.[0] || null;
     },
     staleTime: 1000 * 60 * 10,
+  });
+
+  const { data: feedData } = useQuery({
+    queryKey: ['orbit-feed-data'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('feed_data')
+        .select('categoria, data, generated_at')
+        .order('generated_at', { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      const seen = new Set();
+      return (data || []).filter(r => {
+        if (seen.has(r.categoria)) return false;
+        seen.add(r.categoria);
+        return true;
+      });
+    },
+    staleTime: 1000 * 60 * 15,
   });
 
   const allCards    = newsData?.cards || [];
@@ -521,6 +1199,32 @@ export default function OrbitScreen() {
 
   const pulseAnim = useRef(new Animated.Value(0.55)).current;
   const detailTranslateY = useRef(new Animated.Value(screenHeight)).current;
+  const detailTranslateX = useRef(new Animated.Value(0)).current;
+
+  const handleSwipeCategory = (direction) => {
+    const idx = CATEGORY_ORDER.indexOf(selectedCategory);
+    const newIdx = direction === 'left'
+      ? (idx + 1) % CATEGORY_ORDER.length
+      : (idx - 1 + CATEGORY_ORDER.length) % CATEGORY_ORDER.length;
+
+    const exitTo = direction === 'left' ? -screenWidth : screenWidth;
+    const enterFrom = direction === 'left' ? screenWidth : -screenWidth;
+
+    Animated.timing(detailTranslateX, {
+      toValue: exitTo,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      setSelectedCategory(CATEGORY_ORDER[newIdx]);
+      detailTranslateX.setValue(enterFrom);
+      Animated.spring(detailTranslateX, {
+        toValue: 0,
+        tension: 80,
+        friction: 13,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
 
   const player = useVideoPlayer(
     require('../../../assets/videos/feed-background.mp4'),
@@ -587,6 +1291,11 @@ export default function OrbitScreen() {
       <StatusBar style="light" />
 
       {/* ── Selector screen ── */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={insets.bottom}
+      >
       <View style={{ flex: 1, paddingTop: insets.top }}>
         {/* Header */}
         <View style={{
@@ -608,31 +1317,52 @@ export default function OrbitScreen() {
           </Text>
 
           <TouchableOpacity
+            onPress={clearChat}
             style={{
               width: 36, height: 36, borderRadius: 18,
-              backgroundColor: 'rgba(255,255,255,0.08)',
+              backgroundColor: chatMessages.length > 0
+                ? 'rgba(239,68,68,0.15)'
+                : 'rgba(255,255,255,0.08)',
               alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Trash2 size={16} color="rgba(255,255,255,0.45)" />
+            <Trash2
+              size={16}
+              color={chatMessages.length > 0 ? 'rgba(239,68,68,0.8)' : 'rgba(255,255,255,0.45)'}
+            />
           </TouchableOpacity>
         </View>
 
         {/* Subtitle */}
-        <Text style={{
+        <Animated.Text style={{
           textAlign: 'center',
           fontSize: 15,
           color: 'rgba(255,255,255,0.50)',
           fontWeight: '500',
           marginBottom: 20,
           letterSpacing: 0.2,
+          opacity: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
         }}>
           Selecciona un tema
-        </Text>
+        </Animated.Text>
 
-        {/* Orbit layout */}
-        <View style={{ height: containerHeight, position: 'relative' }}>
-
+        {/* Outer wrapper: collapses height (JS driver) */}
+        <Animated.View style={{
+          maxHeight: orbitMaxHeight,
+          overflow: 'hidden',
+        }}>
+        {/* Inner wrapper: opacity + scale (native driver) */}
+        <Animated.View style={{
+          height: containerHeight,
+          position: 'relative',
+          opacity: focusAnim.interpolate({ inputRange: [0, 0.6], outputRange: [1, 0], extrapolate: 'clamp' }),
+          transform: [{
+            translateY: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -40] }),
+          }, {
+            scale: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] }),
+          }],
+          pointerEvents: chatFocused ? 'none' : 'auto',
+        }}>
           {/* ── Connecting lines ── */}
 
           {/* Top line (center-orb-top-edge → política-orb-bottom-edge) */}
@@ -695,7 +1425,7 @@ export default function OrbitScreen() {
           }} />
 
           {/* ── Particle sphere (3D, Skia) ── */}
-          <ParticleSphere cx={cX} cy={cY} />
+          <ParticleSphere cx={cX} cy={cY} paused={chatFocused} />
 
           {/* ── Category orbs ── */}
 
@@ -754,36 +1484,178 @@ export default function OrbitScreen() {
               isSelected={selectedCategory === 'Movilidad'}
             />
           </View>
-        </View>
+        </Animated.View>
+        </Animated.View>
 
-        {/* Hint text */}
-        <Text style={{
-          textAlign: 'center',
-          fontSize: 12,
-          color: 'rgba(255,255,255,0.22)',
-          marginTop: 8,
-          letterSpacing: 0.3,
-        }}>
-          Toca un orb para explorar
-        </Text>
+        {/* ── Vizta Chat ── */}
+        <View style={{ flex: 1, marginTop: 12 }}>
+
+          {/* Divider with label + back button when chat is focused */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            marginBottom: 8,
+          }}>
+            {chatFocused ? (
+              <TouchableOpacity
+                onPress={collapseOrbit}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  paddingVertical: 2,
+                  paddingRight: 10,
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <ArrowLeft size={13} color='rgba(100,149,237,0.65)' />
+                <Text style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  color: 'rgba(100,149,237,0.65)',
+                  letterSpacing: 0.8,
+                }}>
+                  ORBE
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(100,149,237,0.15)' }} />
+            )}
+            <Text style={{
+              fontSize: 10,
+              fontWeight: '700',
+              color: 'rgba(100,149,237,0.45)',
+              letterSpacing: 1.2,
+              marginHorizontal: chatFocused ? 0 : 10,
+              flex: chatFocused ? 1 : 0,
+              textAlign: chatFocused ? 'right' : 'center',
+            }}>
+              VIZTA CHAT
+            </Text>
+            {!chatFocused && (
+              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(100,149,237,0.15)' }} />
+            )}
+          </View>
+
+          {/* Messages scroll */}
+          <ScrollView
+            ref={chatScrollRef}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: 4 }}
+            showsVerticalScrollIndicator={false}
+            keyboardDismissMode="interactive"
+          >
+            {chatMessages.length === 0 && (
+              <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
+                <Text style={{
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.2)',
+                  textAlign: 'center',
+                  lineHeight: 18,
+                }}>
+                  Pregunta a Vizta sobre Guatemala{'\n'}política, seguridad, deportes...
+                </Text>
+              </View>
+            )}
+            {chatMessages.map(msg => (
+              <ChatBubble key={msg.id} message={msg} />
+            ))}
+          </ScrollView>
+
+          {/* Input bar */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'flex-end',
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            paddingBottom: insets.bottom + 10,
+            gap: 8,
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(100,149,237,0.12)',
+          }}>
+            <View style={{
+              flex: 1,
+              backgroundColor: 'rgba(255,255,255,0.07)',
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: 'rgba(100,149,237,0.25)',
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              minHeight: 42,
+              justifyContent: 'center',
+            }}>
+              <TextInput
+                value={chatInput}
+                onChangeText={setChatInput}
+                placeholder="Pregunta a Vizta..."
+                placeholderTextColor="rgba(255,255,255,0.25)"
+                multiline
+                maxLength={500}
+                style={{
+                  color: '#fff',
+                  fontSize: 14,
+                  lineHeight: 20,
+                  maxHeight: 80,
+                }}
+                returnKeyType="send"
+                onSubmitEditing={sendMessage}
+                blurOnSubmit={false}
+                editable={!chatLoading}
+                onFocus={focusChat}
+                onBlur={blurChat}
+              />
+            </View>
+
+            <TouchableOpacity
+              onPress={sendMessage}
+              disabled={!chatInput.trim() || chatLoading}
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: chatInput.trim() && !chatLoading
+                  ? 'rgba(100,149,237,0.85)'
+                  : 'rgba(255,255,255,0.08)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Send
+                size={18}
+                color={chatInput.trim() && !chatLoading
+                  ? '#fff'
+                  : 'rgba(255,255,255,0.25)'}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
+      </KeyboardAvoidingView>
 
       {/* ── Detail view (slides up from bottom) ── */}
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
-          { transform: [{ translateY: detailTranslateY }] },
+          { transform: [{ translateY: detailTranslateY }, { translateX: detailTranslateX }] },
         ]}
       >
         {selectedCategory && (
-          <CategoryDetail
-            category={selectedCategory}
-            allCards={allCards}
-            isLoading={newsLoading}
-            generatedAt={generatedAt}
-            onBack={handleBack}
-            insets={insets}
-          />
+          <DetailErrorBoundary key={selectedCategory}>
+            <CategoryDetail
+              category={selectedCategory}
+              allCards={allCards}
+              isLoading={newsLoading}
+              generatedAt={generatedAt}
+              onBack={handleBack}
+              insets={insets}
+              feedData={feedData || []}
+              onSwipeLeft={() => handleSwipeCategory('left')}
+              onSwipeRight={() => handleSwipeCategory('right')}
+              categoryIndex={CATEGORY_ORDER.indexOf(selectedCategory)}
+              totalCategories={CATEGORY_ORDER.length}
+            />
+          </DetailErrorBoundary>
         )}
       </Animated.View>
     </View>

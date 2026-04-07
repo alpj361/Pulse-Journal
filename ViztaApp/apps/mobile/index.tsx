@@ -2,7 +2,9 @@ import ExceptionsManager from 'react-native/Libraries/Core/ExceptionsManager';
 
 if (__DEV__) {
   ExceptionsManager.handleException = (error, isFatal) => {
-    // no-op
+    // Log the error so we can debug it, then no-op to prevent app reload
+    console.error('[FATAL ERROR CAUGHT]', isFatal ? '(FATAL)' : '(non-fatal)', error?.message || error);
+    if (error?.stack) console.error('[STACK]', error.stack);
   };
 }
 
