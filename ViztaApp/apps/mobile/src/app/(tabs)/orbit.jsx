@@ -9,13 +9,13 @@ import {
   ScrollView,
   Image,
   useWindowDimensions,
-  TextInput,
-  KeyboardAvoidingView,
-  Keyboard,
+  // TextInput,       // AI Chat — hidden for App Store Review
+  // KeyboardAvoidingView, // AI Chat — hidden for App Store Review
+  // Keyboard,        // AI Chat — hidden for App Store Review
   Platform,
 } from 'react-native';
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
-import { useRef, useState, useEffect, useCallback, Component } from 'react';
+import { useRef, useState, useEffect, /* useCallback, */ Component } from 'react';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -26,15 +26,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { ArrowLeft, Trash2, Clock, ChevronRight, AlertCircle, Send } from 'lucide-react-native';
+import { ArrowLeft, Clock, AlertCircle /*, Trash2, ChevronRight, Send — hidden for App Store Review */ } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 
-// ── Chat constants ─────────────────────────────────────────────────────────────
-
-const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
-const CHAT_ENDPOINT_AUTH  = `${EXTRACTORW_URL}/api/vizta-chat/query`;
-const CHAT_ENDPOINT_GUEST = `${EXTRACTORW_URL}/api/vizta-chat/query-guest`;
+// ── Chat constants — hidden for App Store Review ───────────────────────────────
+// const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
+// const CHAT_ENDPOINT_AUTH  = `${EXTRACTORW_URL}/api/vizta-chat/query`;
+// const CHAT_ENDPOINT_GUEST = `${EXTRACTORW_URL}/api/vizta-chat/query-guest`;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -876,8 +875,9 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
   );
 }
 
-// ── Chat message bubble ───────────────────────────────────────────────────────
+// ── Chat message bubble — hidden for App Store Review ────────────────────────
 
+/* APP_STORE_REVIEW: ChatBubble hidden
 function ChatBubble({ message }) {
   const isUser = message.role === 'user';
 
@@ -960,6 +960,7 @@ function ChatBubble({ message }) {
     </View>
   );
 }
+*/ // END APP_STORE_REVIEW
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
@@ -968,19 +969,15 @@ export default function OrbitScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
-  // ── Chat state ──────────────────────────────────────────────────────────────
+  /* APP_STORE_REVIEW: Chat state + functions hidden
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatFocused, setChatFocused] = useState(false);
   const chatSessionId = useRef(`orbit-${Math.random().toString(36).slice(2)}`);
   const chatScrollRef = useRef(null);
-
-  // focusAnim: 0 = orbit visible, 1 = chat focused (native driver — opacity/transform only)
-  // orbitMaxHeight: collapses orbit height (JS driver — layout only)
   const focusAnim = useRef(new Animated.Value(0)).current;
   const orbitMaxHeight = useRef(new Animated.Value(380)).current;
-  // Track if user deliberately entered chat (suppress blur-on-send collapse)
   const chatEnteredRef = useRef(false);
 
   const focusChat = useCallback(() => {
@@ -1159,6 +1156,8 @@ export default function OrbitScreen() {
     }
   }, [chatInput, chatLoading]);
 
+  */ // END APP_STORE_REVIEW
+
   // Fetch today's news_cards (Guatemala time, UTC-6)
   const { data: newsData, isLoading: newsLoading } = useQuery({
     queryKey: ['orbit-news-cards'],
@@ -1291,11 +1290,7 @@ export default function OrbitScreen() {
       <StatusBar style="light" />
 
       {/* ── Selector screen ── */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={insets.bottom}
-      >
+      <View style={{ flex: 1 }}>
       <View style={{ flex: 1, paddingTop: insets.top }}>
         {/* Header */}
         <View style={{
@@ -1316,52 +1311,26 @@ export default function OrbitScreen() {
             VIZTA
           </Text>
 
-          <TouchableOpacity
-            onPress={clearChat}
-            style={{
-              width: 36, height: 36, borderRadius: 18,
-              backgroundColor: chatMessages.length > 0
-                ? 'rgba(239,68,68,0.15)'
-                : 'rgba(255,255,255,0.08)',
-              alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Trash2
-              size={16}
-              color={chatMessages.length > 0 ? 'rgba(239,68,68,0.8)' : 'rgba(255,255,255,0.45)'}
-            />
-          </TouchableOpacity>
+          <View style={{ width: 36, height: 36 }} />
         </View>
 
         {/* Subtitle */}
-        <Animated.Text style={{
+        <Text style={{
           textAlign: 'center',
           fontSize: 15,
           color: 'rgba(255,255,255,0.50)',
           fontWeight: '500',
           marginBottom: 20,
           letterSpacing: 0.2,
-          opacity: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
         }}>
           Selecciona un tema
-        </Animated.Text>
+        </Text>
 
-        {/* Outer wrapper: collapses height (JS driver) */}
-        <Animated.View style={{
-          maxHeight: orbitMaxHeight,
-          overflow: 'hidden',
-        }}>
-        {/* Inner wrapper: opacity + scale (native driver) */}
-        <Animated.View style={{
+        {/* Orbit wrapper */}
+        <View style={{ height: containerHeight, position: 'relative' }}>
+        <View style={{
           height: containerHeight,
           position: 'relative',
-          opacity: focusAnim.interpolate({ inputRange: [0, 0.6], outputRange: [1, 0], extrapolate: 'clamp' }),
-          transform: [{
-            translateY: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -40] }),
-          }, {
-            scale: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] }),
-          }],
-          pointerEvents: chatFocused ? 'none' : 'auto',
         }}>
           {/* ── Connecting lines ── */}
 
@@ -1425,7 +1394,7 @@ export default function OrbitScreen() {
           }} />
 
           {/* ── Particle sphere (3D, Skia) ── */}
-          <ParticleSphere cx={cX} cy={cY} paused={chatFocused} />
+          <ParticleSphere cx={cX} cy={cY} paused={false} />
 
           {/* ── Category orbs ── */}
 
@@ -1484,154 +1453,11 @@ export default function OrbitScreen() {
               isSelected={selectedCategory === 'Movilidad'}
             />
           </View>
-        </Animated.View>
-        </Animated.View>
-
-        {/* ── Vizta Chat ── */}
-        <View style={{ flex: 1, marginTop: 12 }}>
-
-          {/* Divider with label + back button when chat is focused */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            marginBottom: 8,
-          }}>
-            {chatFocused ? (
-              <TouchableOpacity
-                onPress={collapseOrbit}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  paddingVertical: 2,
-                  paddingRight: 10,
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <ArrowLeft size={13} color='rgba(100,149,237,0.65)' />
-                <Text style={{
-                  fontSize: 10,
-                  fontWeight: '700',
-                  color: 'rgba(100,149,237,0.65)',
-                  letterSpacing: 0.8,
-                }}>
-                  ORBE
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(100,149,237,0.15)' }} />
-            )}
-            <Text style={{
-              fontSize: 10,
-              fontWeight: '700',
-              color: 'rgba(100,149,237,0.45)',
-              letterSpacing: 1.2,
-              marginHorizontal: chatFocused ? 0 : 10,
-              flex: chatFocused ? 1 : 0,
-              textAlign: chatFocused ? 'right' : 'center',
-            }}>
-              VIZTA CHAT
-            </Text>
-            {!chatFocused && (
-              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(100,149,237,0.15)' }} />
-            )}
-          </View>
-
-          {/* Messages scroll */}
-          <ScrollView
-            ref={chatScrollRef}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: 4 }}
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode="interactive"
-          >
-            {chatMessages.length === 0 && (
-              <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
-                <Text style={{
-                  fontSize: 12,
-                  color: 'rgba(255,255,255,0.2)',
-                  textAlign: 'center',
-                  lineHeight: 18,
-                }}>
-                  Pregunta a Vizta sobre Guatemala{'\n'}política, seguridad, deportes...
-                </Text>
-              </View>
-            )}
-            {chatMessages.map(msg => (
-              <ChatBubble key={msg.id} message={msg} />
-            ))}
-          </ScrollView>
-
-          {/* Input bar */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'flex-end',
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            paddingBottom: insets.bottom + 10,
-            gap: 8,
-            borderTopWidth: 1,
-            borderTopColor: 'rgba(100,149,237,0.12)',
-          }}>
-            <View style={{
-              flex: 1,
-              backgroundColor: 'rgba(255,255,255,0.07)',
-              borderRadius: 22,
-              borderWidth: 1,
-              borderColor: 'rgba(100,149,237,0.25)',
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-              minHeight: 42,
-              justifyContent: 'center',
-            }}>
-              <TextInput
-                value={chatInput}
-                onChangeText={setChatInput}
-                placeholder="Pregunta a Vizta..."
-                placeholderTextColor="rgba(255,255,255,0.25)"
-                multiline
-                maxLength={500}
-                style={{
-                  color: '#fff',
-                  fontSize: 14,
-                  lineHeight: 20,
-                  maxHeight: 80,
-                }}
-                returnKeyType="send"
-                onSubmitEditing={sendMessage}
-                blurOnSubmit={false}
-                editable={!chatLoading}
-                onFocus={focusChat}
-                onBlur={blurChat}
-              />
-            </View>
-
-            <TouchableOpacity
-              onPress={sendMessage}
-              disabled={!chatInput.trim() || chatLoading}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                backgroundColor: chatInput.trim() && !chatLoading
-                  ? 'rgba(100,149,237,0.85)'
-                  : 'rgba(255,255,255,0.08)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Send
-                size={18}
-                color={chatInput.trim() && !chatLoading
-                  ? '#fff'
-                  : 'rgba(255,255,255,0.25)'}
-              />
-            </TouchableOpacity>
-          </View>
         </View>
+        </View>
+
       </View>
-      </KeyboardAvoidingView>
+      </View>
 
       {/* ── Detail view (slides up from bottom) ── */}
       <Animated.View

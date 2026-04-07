@@ -676,7 +676,7 @@ export default function CodexScreen() {
   const router = useRouter();
   const { isConnected } = usePulseConnectionStore();
 
-  // ── Instagram Posts state ──
+  /* APP_STORE_REVIEW: Instagram Posts state hidden
   const [instagramPosts, setInstagramPosts] = useState([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [showAddPostModal, setShowAddPostModal] = useState(false);
@@ -686,8 +686,9 @@ export default function CodexScreen() {
   const [extractError, setExtractError] = useState(null);
   const [savingPost, setSavingPost] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  */ // END APP_STORE_REVIEW
 
-  const [activeTab, setActiveTab] = useState('wiki'); // 'wiki' | 'codex' | 'posts'
+  const [activeTab, setActiveTab] = useState('wiki'); // 'wiki' | 'codex'
   const [wikiFilter, setWikiFilter] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -709,7 +710,7 @@ export default function CodexScreen() {
     }
   );
 
-  // ── Instagram: fetch saved posts ──
+  /* APP_STORE_REVIEW: Instagram functions hidden
   const fetchInstagramPosts = async () => {
     setIsLoadingPosts(true);
     const { data, error } = await supabase
@@ -792,16 +793,15 @@ export default function CodexScreen() {
     }
   };
 
+    fetchInstagramPosts();
+  }, [isConnected, activeTab]);
+  */ // END APP_STORE_REVIEW
+
   useEffect(() => {
     if (!isConnected) return;
     fetchWiki();
     fetchCodex();
   }, [isConnected]);
-
-  useEffect(() => {
-    if (!isConnected || activeTab !== 'posts') return;
-    fetchInstagramPosts();
-  }, [isConnected, activeTab]);
 
   const fetchWiki = async () => {
     setIsLoadingWiki(true);
@@ -928,7 +928,7 @@ export default function CodexScreen() {
             {[
               { id: 'wiki', label: 'Wiki' },
               { id: 'codex', label: 'Codex' },
-              { id: 'posts', label: 'Posts' },
+              // { id: 'posts', label: 'Posts' }, // APP_STORE_REVIEW: hidden
             ].map((tab) => (
               <TouchableOpacity
                 key={tab.id}
@@ -957,261 +957,8 @@ export default function CodexScreen() {
             ))}
           </View>
 
-          {/* ── Instagram Add Post Modal ── */}
-          <Modal
-            visible={showAddPostModal}
-            animationType="slide"
-            transparent
-            onRequestClose={() => { setShowAddPostModal(false); setExtractedPost(null); setExtractError(null); setPostUrl(''); }}
-          >
-            <Pressable
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}
-              onPress={() => { setShowAddPostModal(false); setExtractedPost(null); setExtractError(null); setPostUrl(''); }}
-            >
-              <Pressable onPress={e => e.stopPropagation()} style={{ maxHeight: '92%' }}>
-                <View style={{ backgroundColor: '#0a0c1b', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(225,48,108,0.25)', flex: 1 }}>
-                  {/* Handle */}
-                  <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
-                    <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
-                  </View>
-                  {/* Header */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 14, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Camera size={20} color="#fff" />
-                      <Text style={{ fontSize: 18, fontWeight: '800', color: '#fff' }}>Guardar Post</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => { setShowAddPostModal(false); setExtractedPost(null); setExtractError(null); setPostUrl(''); }} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
-                      <X size={15} color="rgba(255,255,255,0.6)" />
-                    </TouchableOpacity>
-                  </View>
 
-                  <ScrollView contentContainerStyle={{ padding: 22, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-                    {/* URL Input */}
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.8, marginBottom: 10 }}>URL DEL POST</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', paddingHorizontal: 14, marginBottom: 14, gap: 10 }}>
-                      <TextInput
-                        value={postUrl}
-                        onChangeText={setPostUrl}
-                        placeholder="https://www.instagram.com/p/..."
-                        placeholderTextColor="rgba(255,255,255,0.25)"
-                        style={{ flex: 1, color: '#fff', fontSize: 13, paddingVertical: 14 }}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        keyboardType="url"
-                      />
-                      {postUrl.length > 0 && (
-                        <TouchableOpacity onPress={() => setPostUrl('')}>
-                          <X size={14} color="rgba(255,255,255,0.35)" />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-
-                    {/* Extract button */}
-                    <TouchableOpacity
-                      onPress={handleExtractPost}
-                      disabled={!postUrl.trim() || extracting}
-                      style={{ backgroundColor: !postUrl.trim() || extracting ? 'rgba(225,48,108,0.25)' : 'rgba(225,48,108,0.7)', borderRadius: 12, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(225,48,108,0.4)', marginBottom: extracting ? 10 : 16 }}
-                    >
-                      {extracting
-                        ? <ActivityIndicator size="small" color="#fff" />
-                        : <Text style={{ fontSize: 14, fontWeight: '700', color: !postUrl.trim() ? 'rgba(255,255,255,0.3)' : '#fff' }}>Extraer imágenes →</Text>
-                      }
-                    </TouchableOpacity>
-
-                    {/* Warning: don't close while extracting */}
-                    {extracting && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)' }}>
-                        <AlertCircle size={15} color="rgba(245,158,11,0.9)" />
-                        <Text style={{ fontSize: 12, color: 'rgba(245,158,11,0.9)', flex: 1, lineHeight: 17 }}>
-                          Extrayendo imágenes, esto puede tardar hasta 2 minutos. No cierres la app.
-                        </Text>
-                      </View>
-                    )}
-
-                    {/* Error */}
-                    {extractError && (
-                      <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <AlertCircle size={16} color="rgba(239,68,68,0.8)" />
-                        <Text style={{ fontSize: 13, color: 'rgba(239,68,68,0.9)', flex: 1 }}>{extractError}</Text>
-                      </View>
-                    )}
-
-                    {/* Extracted post preview */}
-                    {extractedPost && (
-                      <View>
-                        {/* Author + meta */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14, backgroundColor: 'rgba(225,48,108,0.08)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(225,48,108,0.2)' }}>
-                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(225,48,108,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                            <Camera size={18} color="#fff" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            {extractedPost.author && <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>@{extractedPost.author}</Text>}
-                            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
-                              {extractedPost.extracted_images?.length || 0} imagen{extractedPost.extracted_images?.length !== 1 ? 'es' : ''} · {extractedPost.is_reel ? 'Reel' : 'Post'}
-                            </Text>
-                          </View>
-                          <View style={{ backgroundColor: 'rgba(16,185,129,0.2)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(16,185,129,0.35)' }}>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#6ee7b7' }}>✓ Listo</Text>
-                          </View>
-                        </View>
-
-                        {/* Carousel preview */}
-                        {extractedPost.extracted_images?.length > 0 && (
-                          <View style={{ marginBottom: 14 }}>
-                            <View style={{ position: 'relative', borderRadius: 14, overflow: 'hidden', aspectRatio: 4/3, marginBottom: 8 }}>
-                              <Image
-                                source={{ uri: extractedPost.extracted_images[carouselIndex] }}
-                                style={{ width: '100%', height: '100%' }}
-                                resizeMode="cover"
-                              />
-                              {extractedPost.extracted_images.length > 1 && (
-                                <>
-                                  <TouchableOpacity
-                                    onPress={() => setCarouselIndex(i => Math.max(0, i - 1))}
-                                    disabled={carouselIndex === 0}
-                                    style={{ position: 'absolute', left: 8, top: '50%', width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', opacity: carouselIndex === 0 ? 0.3 : 1 }}
-                                  >
-                                    <ChevronLeft size={18} color="#fff" />
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    onPress={() => setCarouselIndex(i => Math.min(extractedPost.extracted_images.length - 1, i + 1))}
-                                    disabled={carouselIndex === extractedPost.extracted_images.length - 1}
-                                    style={{ position: 'absolute', right: 8, top: '50%', width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', opacity: carouselIndex === extractedPost.extracted_images.length - 1 ? 0.3 : 1 }}
-                                  >
-                                    <ChevronRight size={18} color="#fff" />
-                                  </TouchableOpacity>
-                                  <View style={{ position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 5 }}>
-                                    {extractedPost.extracted_images.map((_, i) => (
-                                      <View key={i} style={{ width: i === carouselIndex ? 16 : 6, height: 6, borderRadius: 3, backgroundColor: i === carouselIndex ? '#fff' : 'rgba(255,255,255,0.4)' }} />
-                                    ))}
-                                  </View>
-                                </>
-                              )}
-                            </View>
-                            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
-                              {carouselIndex + 1} / {extractedPost.extracted_images.length}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Caption */}
-                        {extractedPost.description && (
-                          <Text numberOfLines={3} style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 19, marginBottom: 16 }}>
-                            {extractedPost.description}
-                          </Text>
-                        )}
-
-                        {/* Save button */}
-                        <TouchableOpacity
-                          onPress={handleSavePost}
-                          disabled={savingPost}
-                          style={{ backgroundColor: savingPost ? 'rgba(16,185,129,0.25)' : 'rgba(16,185,129,0.7)', borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(16,185,129,0.4)' }}
-                        >
-                          {savingPost
-                            ? <ActivityIndicator size="small" color="#fff" />
-                            : <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Guardar en Codex</Text>
-                          }
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </ScrollView>
-                </View>
-              </Pressable>
-            </Pressable>
-          </Modal>
-
-          {activeTab === 'posts' ? (
-            /* ── Posts (Instagram) tab ── */
-            <View style={{ flex: 1 }}>
-              {/* FAB para agregar post */}
-              <View style={{ paddingHorizontal: 24, marginBottom: 14, flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <TouchableOpacity
-                  onPress={() => setShowAddPostModal(true)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: 'rgba(225,48,108,0.7)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: 'rgba(225,48,108,0.5)' }}
-                >
-                  <Plus size={14} color="#fff" />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Agregar post</Text>
-                </TouchableOpacity>
-              </View>
-
-              {isLoadingPosts ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator size="large" color="rgba(225,48,108,0.8)" />
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 20 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {instagramPosts.length === 0 ? (
-                    <View style={{ alignItems: 'center', paddingTop: 60, gap: 14 }}>
-                      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(225,48,108,0.12)', borderWidth: 1, borderColor: 'rgba(225,48,108,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                        <Camera size={28} color="rgba(255,255,255,0.7)" />
-                      </View>
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.6)' }}>Sin posts guardados</Text>
-                      <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', textAlign: 'center', maxWidth: 260, lineHeight: 19 }}>
-                        Guarda carruseles e imágenes de Instagram en tu Codex personal
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => setShowAddPostModal(true)}
-                        style={{ backgroundColor: 'rgba(225,48,108,0.6)', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 22, borderWidth: 1, borderColor: 'rgba(225,48,108,0.4)', marginTop: 4 }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>+ Agregar primer post</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    instagramPosts.map((post) => {
-                      const images = post.metadata?.images || [];
-                      const author = post.metadata?.author;
-                      const description = post.metadata?.description;
-                      const thumb = images[0];
-                      const count = images.length;
-                      return (
-                        <View key={post.id} style={{ backgroundColor: 'rgba(8,10,24,0.72)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(225,48,108,0.15)', marginBottom: 12, overflow: 'hidden' }}>
-                          {/* Thumbnail */}
-                          {thumb ? (
-                            <View style={{ position: 'relative' }}>
-                              <Image source={{ uri: thumb }} style={{ width: '100%', aspectRatio: 1.5 }} resizeMode="cover" />
-                              {count > 1 && (
-                                <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                  <Text style={{ fontSize: 10, color: '#fff', fontWeight: '700' }}>⊞ {count}</Text>
-                                </View>
-                              )}
-                              {post.metadata?.is_reel && (
-                                <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(225,48,108,0.75)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
-                                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#fff' }}>▶ Reel</Text>
-                                </View>
-                              )}
-                            </View>
-                          ) : null}
-                          {/* Info */}
-                          <View style={{ padding: 12 }}>
-                            {author && (
-                              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 4 }}>@{author}</Text>
-                            )}
-                            {description ? (
-                              <Text numberOfLines={2} style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 18 }}>{description}</Text>
-                            ) : null}
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                              <View style={{ backgroundColor: 'rgba(225,48,108,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(225,48,108,0.25)' }}>
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(225,48,108,0.9)' }}>instagram</Text>
-                              </View>
-                              {post.created_at && (
-                                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                                  {new Date(post.created_at).toLocaleDateString('es-GT', { day: 'numeric', month: 'short' })}
-                                </Text>
-                              )}
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })
-                  )}
-                </ScrollView>
-              )}
-            </View>
-          ) : activeTab === 'wiki' ? (
+          {activeTab === 'wiki' ? (
             <View style={{ flex: 1 }}>
               {/* Search */}
               <View style={{
