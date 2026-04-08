@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.standatpd.vizta",
       "buildNumber": "13",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["audio", "remote-notification"]
       }
     },
     "android": {
@@ -58,9 +59,6 @@
           "supportsPictureInPicture": true
         }
       ],
-      "expo-font",
-      "expo-secure-store",
-      "expo-web-browser",
       [
         "expo-notifications",
         {
@@ -68,7 +66,10 @@
           "color": "#6366f1",
           "sounds": []
         }
-      ]
+      ],
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "web": {
       "bundler": "metro",
