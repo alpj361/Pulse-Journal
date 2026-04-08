@@ -12,9 +12,7 @@ import 'react-native-url-polyfill/auto';
 import './src/__create/polyfills';
 global.Buffer = require('buffer').Buffer;
 
-if (__DEV__) {
-  require('@expo/metro-runtime');
-}
+import '@expo/metro-runtime';
 import { AppRegistry, LogBox } from 'react-native';
 import { DeviceErrorBoundaryWrapper } from './__create/DeviceErrorBoundary';
 import AnythingMenu from './src/__create/anything-menu';
