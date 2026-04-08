@@ -1,0 +1,23 @@
+diff --git a/node_modules/whatwg-url/lib/utils.js b/node_modules/whatwg-url/lib/utils.js
+index 3af1770..f848a4d 100644
+--- a/node_modules/whatwg-url/lib/utils.js
++++ b/node_modules/whatwg-url/lib/utils.js
+@@ -48,15 +48,9 @@ function initCtorRegistry(globalObject) {
+     Object.getPrototypeOf(new globalObject.Array()[Symbol.iterator]())
+   );
+ 
+-  try {
+-    ctorRegistry["%AsyncIteratorPrototype%"] = Object.getPrototypeOf(
+-      Object.getPrototypeOf(
+-        globalObject.eval("(async function* () {})").prototype
+-      )
+-    );
+-  } catch {
+-    ctorRegistry["%AsyncIteratorPrototype%"] = AsyncIteratorPrototype;
+-  }
++  // Hermes (React Native) does not support eval() in production builds.
++  // Use the statically-obtained AsyncIteratorPrototype instead.
++  ctorRegistry["%AsyncIteratorPrototype%"] = AsyncIteratorPrototype;
+ 
+   globalObject[ctorRegistrySymbol] = ctorRegistry;
+   return ctorRegistry;
