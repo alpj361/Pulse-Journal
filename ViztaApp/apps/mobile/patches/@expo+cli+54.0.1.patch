@@ -1,3 +1,21 @@
+diff --git a/node_modules/@expo/cli/build/src/run/ios/launchApp.js b/node_modules/@expo/cli/build/src/run/ios/launchApp.js
+index 90c07e8..e044672 100644
+--- a/node_modules/@expo/cli/build/src/run/ios/launchApp.js
++++ b/node_modules/@expo/cli/build/src/run/ios/launchApp.js
+@@ -112,11 +112,8 @@ async function launchAppAsync(binaryPath, manager, props, appId) {
+             appId
+         }).attachAsync();
+     }
+-    await manager.getDefaultDevServer().openCustomRuntimeAsync('simulator', {
+-        applicationId: appId
+-    }, {
+-        device
+-    });
++    // Launch app directly without dev client URL scheme
++    await device.launchApplicationIdAsync(appId);
+ }
+ async function getLaunchInfoForBinaryAsync(binaryPath) {
+     const builtInfoPlistPath = _path().default.join(binaryPath, 'Info.plist');
 diff --git a/node_modules/@expo/cli/build/src/start/server/middleware/ExpoGoManifestHandlerMiddleware.js b/node_modules/@expo/cli/build/src/start/server/middleware/ExpoGoManifestHandlerMiddleware.js
 index b5cba1b..2cbb2a5 100644
 --- a/node_modules/@expo/cli/build/src/start/server/middleware/ExpoGoManifestHandlerMiddleware.js

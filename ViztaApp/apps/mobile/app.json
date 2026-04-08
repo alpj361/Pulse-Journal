@@ -10,10 +10,13 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "13",
+      "buildNumber": "14",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["audio", "remote-notification"]
+        "UIBackgroundModes": [
+          "audio",
+          "remote-notification"
+        ]
       }
     },
     "android": {
