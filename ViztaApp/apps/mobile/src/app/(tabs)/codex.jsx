@@ -10,7 +10,7 @@ import {
   Pressable,
   Image,
 } from 'react-native';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Sparkles, Camera, Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { supabase } from '../../utils/supabase';
 
@@ -196,6 +197,8 @@ function WikiItem({ item, onPress }) {
 
 function WikiSearchModal({ item, onClose }) {
   const [step, setStep] = useState('select'); // 'detect' | 'select' | 'results'
+  const [detectLoading, setDetectLoading] = useState(false);
+  const [detectedInfo, setDetectedInfo] = useState(null);
   const [actorType, setActorType] = useState(() => {
     const SPANISH_TO_ACTOR_ID = {
       'persona': 'person', 'organización': 'organization',
@@ -211,10 +214,14 @@ function WikiSearchModal({ item, onClose }) {
   const [expandedKeys, setExpandedKeys] = useState(new Set());
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState(null);
+  // Estado local de investigación guardada para poder actualizar sin cerrar el modal
+  const [localResearch, setLocalResearch] = useState(item.metadata?.research || {});
 
   const getToken = async () => {
     const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token;
+    const token = data?.session?.access_token;
+    console.log('[WikiSearch] getToken →', token ? `OK (${token.slice(0,20)}...)` : 'NULL - no session!');
+    return token;
   };
 
 
@@ -252,24 +259,52 @@ function WikiSearchModal({ item, onClose }) {
 
   const searchDimension = async (dim, token) => {
     const query = buildDimensionQuery(item.name, dim.key);
+    const url = `${EXTRACTORW_URL}/api/mcp/execute`;
+    const body = { tool_name: 'search', parameters: { query, provider: engine, location: 'Guatemala', num_results: 5 } };
+    console.log(`[WikiSearch] 🔍 searchDimension "${dim.key}" → POST ${url}`);
+    console.log(`[WikiSearch]   query: "${query}"`);
+    console.log(`[WikiSearch]   body:`, JSON.stringify(body));
+    console.log(`[WikiSearch]   token present: ${!!token}`);
     try {
-      const res = await fetch(`${EXTRACTORW_URL}/api/mcp/execute`, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ tool_name: 'search', parameters: { query, provider: engine, location: 'Guatemala', num_results: 5 } }),
+        body: JSON.stringify(body),
       });
-      const json = await res.json();
-      const data = json?.result?.data || json?.result || {};
-      const analysis = engine === 'perplexity' ? (data?.analysis || '') : undefined;
-      const sources = engine === 'perplexity'
-        ? (data?.search_results || [])
-        : (data?.search_results || json?.result?.search_results || []);
+      console.log(`[WikiSearch] 📡 Response status: ${res.status} ${res.statusText}`);
+      const text = await res.text();
+      console.log(`[WikiSearch] 📄 Raw response (first 500 chars): ${text.slice(0, 500)}`);
+      let json;
+      try { json = JSON.parse(text); } catch (e) { console.log(`[WikiSearch] ❌ JSON parse error: ${e.message}`); throw new Error(`JSON parse error: ${e.message}`); }
+      console.log(`[WikiSearch] ✅ json.success: ${json?.success}, result keys: ${Object.keys(json?.result || {}).join(', ')}`);
+      // Response shapes from backend:
+      // Perplexity success: { result: { success, data: { search_results, analysis }, ... } }
+      // Exa success:        { result: { success, result: { search_results }, ... } }
+      // Exa fallback:       { result: { success, result: { search_results }, ... } }
+      const outer = json?.result || {};
+      // Try all possible nesting levels for search_results
+      const sources =
+        outer?.data?.search_results ||      // Perplexity
+        outer?.result?.search_results ||    // Exa direct / fallback
+        outer?.search_results ||            // flat
+        [];
+      const analysis =
+        outer?.data?.analysis ||            // Perplexity analysis
+        outer?.result?.analysis ||          // Exa analysis
+        outer?.formatted_response ||        // generic formatted_response
+        outer?.analysis ||                  // flat
+        '';
+      console.log(`[WikiSearch] 📊 analysis length: ${analysis?.length}, sources count: ${sources?.length}`);
+      if (!json?.success && json?.error) {
+        throw new Error(json.error);
+      }
 
       setResults(prev => prev?.map(r =>
         r.dimension.key === dim.key ? { ...r, status: 'done', analysis, sources } : r
       ));
       return { key: dim.key, dim, analysis, sources };
     } catch (err) {
+      console.log(`[WikiSearch] ❌ searchDimension error for "${dim.key}": ${err.message}`);
       setResults(prev => prev?.map(r =>
         r.dimension.key === dim.key ? { ...r, status: 'error', error: err.message } : r
       ));
@@ -279,8 +314,16 @@ function WikiSearchModal({ item, onClose }) {
 
   const handleSearch = async () => {
     if (selectedDims.size === 0) return;
+    console.log(`[WikiSearch] 🚀 handleSearch START — item: "${item.name}", engine: ${engine}, dims: [${[...selectedDims].join(', ')}]`);
+    console.log(`[WikiSearch] 🌐 EXTRACTORW_URL: ${EXTRACTORW_URL}`);
     const token = await getToken();
+    if (!token) {
+      console.log('[WikiSearch] ❌ No hay token — abortando búsqueda');
+      setError('No hay sesión activa. Por favor inicia sesión nuevamente.');
+      return;
+    }
     const activeDims = DIMENSIONS.filter(d => selectedDims.has(d.key));
+    console.log(`[WikiSearch] 📋 Dimensiones activas: ${activeDims.map(d => d.key).join(', ')}`);
     const initial = activeDims.map(d => ({ dimension: d, status: 'loading', analysis: '', sources: [] }));
     setResults(initial);
     setExpandedKeys(new Set(activeDims.map(d => d.key)));
@@ -301,7 +344,9 @@ function WikiSearchModal({ item, onClose }) {
     // Auto-save results to DB
     if (dimResults.length > 0) {
       try {
-        const existing = item.metadata?.research || {};
+        // Fetch fresh metadata from DB to avoid overwriting existing research
+        const { data: cur } = await supabase.from('wiki_items').select('metadata').eq('id', item.id).single();
+        const existing = cur?.metadata?.research || {};
         const newResearch = { ...existing };
         dimResults.forEach(({ dim: d, key, analysis, sources }) => {
           newResearch[key] = {
@@ -311,7 +356,7 @@ function WikiSearchModal({ item, onClose }) {
           };
         });
         const updates = {
-          metadata: { ...item.metadata, research: newResearch, research_last_updated: new Date().toISOString() },
+          metadata: { ...cur?.metadata, research: newResearch, research_last_updated: new Date().toISOString() },
         };
         // Si hay resultado de bio y el item no tiene descripción, guardar como descripción
         const bioResult = dimResults.find(r => r.key === 'bio');
@@ -349,8 +394,7 @@ function WikiSearchModal({ item, onClose }) {
 
   const catKey = normalizeSubcategory(item.subcategory);
   const catColors = WIKI_CATEGORY_COLORS[catKey] || { bg: 'rgba(255,255,255,0.08)', border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.6)' };
-  const savedResearch = item.metadata?.research;
-  const hasSavedResearch = savedResearch && Object.keys(savedResearch).length > 0;
+  const hasSavedResearch = localResearch && Object.keys(localResearch).length > 0;
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -397,9 +441,45 @@ function WikiSearchModal({ item, onClose }) {
               {/* Investigación guardada (si existe y no hay búsqueda activa) */}
               {hasSavedResearch && !results && (
                 <View style={{ marginBottom: 20 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.35)', letterSpacing: 0.8, marginBottom: 10 }}>INVESTIGACIÓN GUARDADA</Text>
-                  {Object.entries(savedResearch).map(([key, val]) => (
-                    <View key={key} style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.35)', letterSpacing: 0.8 }}>INVESTIGACIÓN GUARDADA</Text>
+                    <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>mantén presionado para eliminar</Text>
+                  </View>
+                  {Object.entries(localResearch).map(([key, val]) => (
+                    <TouchableOpacity
+                      key={key}
+                      onLongPress={() => {
+                        const { Alert } = require('react-native');
+                        Alert.alert(
+                          'Eliminar investigación',
+                          `¿Eliminar "${val.label}" de la investigación guardada?`,
+                          [
+                            { text: 'Cancelar', style: 'cancel' },
+                            {
+                              text: 'Eliminar',
+                              style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  const { data: cur } = await supabase.from('wiki_items').select('metadata').eq('id', item.id).single();
+                                  const newResearch = { ...(cur?.metadata?.research || {}) };
+                                  delete newResearch[key];
+                                  await supabase.from('wiki_items').update({
+                                    metadata: { ...cur?.metadata, research: newResearch },
+                                  }).eq('id', item.id);
+                                  // Actualizar estado local para re-render inmediato
+                                  setLocalResearch(newResearch);
+                                } catch (e) {
+                                  console.log('[delete research] error:', e.message);
+                                }
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                      delayLongPress={500}
+                      activeOpacity={0.7}
+                      style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}
+                    >
                       <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.55)', marginBottom: val.analysis ? 5 : 0 }}>
                         {val.icon} {val.label}
                       </Text>
@@ -408,7 +488,7 @@ function WikiSearchModal({ item, onClose }) {
                           {val.analysis}
                         </Text>
                       ) : null}
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
@@ -797,23 +877,70 @@ export default function CodexScreen() {
   }, [isConnected, activeTab]);
   */ // END APP_STORE_REVIEW
 
+  // Escuchar cambios de sesión de Supabase para recargar wiki cuando la sesión esté lista
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[codex] onAuthStateChange →', event, 'session:', session ? `OK user=${session.user?.email}` : 'NULL');
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session && isConnected) {
+        console.log('[codex] ✅ Sesión disponible — recargando wiki y codex');
+        fetchWiki(session);
+        fetchCodex();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [isConnected]);
+
   useEffect(() => {
     if (!isConnected) return;
+    // Intentar fetch inmediato — si la sesión no está lista aún, onAuthStateChange lo manejará
     fetchWiki();
     fetchCodex();
   }, [isConnected]);
 
-  const fetchWiki = async () => {
+  // Refresca la wiki cada vez que el tab recibe foco (ej: se agregó un item desde otra pantalla)
+  useFocusEffect(
+    useCallback(() => {
+      if (!isConnected) return;
+      fetchWiki();
+    }, [isConnected])
+  );
+
+  const fetchWiki = async (sessionOverride) => {
+    console.log('[fetchWiki] 🚀 START — isConnected:', isConnected);
     setIsLoadingWiki(true);
     setWikiError(null);
+
+    // Verificar sesión activa de Supabase
+    let session = sessionOverride;
+    if (!session) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      session = sessionData?.session;
+    }
+    console.log('[fetchWiki] 🔑 Supabase session:', session ? `OK user=${session.user?.email}` : 'NULL - no session!');
+
+    // Si no hay sesión, no tiene sentido intentar — RLS bloqueará todo
+    if (!session) {
+      console.log('[fetchWiki] ⚠️ Sin sesión Supabase — esperando onAuthStateChange para reintento automático');
+      setIsLoadingWiki(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('wiki_items')
-      .select('id, name, subcategory, description, relevance_score, tags, created_at')
+      .select('id, name, subcategory, description, relevance_score, tags, metadata, created_at')
       .order('created_at', { ascending: false });
+
+    console.log('[fetchWiki] 📊 Result — data count:', data?.length ?? 'null', '| error:', error?.message ?? 'none');
+    if (data && data.length > 0) {
+      console.log('[fetchWiki] 📋 First items:', JSON.stringify(data.slice(0, 3).map(d => ({ id: d.id, name: d.name, subcategory: d.subcategory }))));
+    }
+
     setIsLoadingWiki(false);
     if (error) {
+      console.log('[fetchWiki] ❌ ERROR:', error.message, error.details, error.hint);
       setWikiError(error.message);
     } else {
+      console.log('[fetchWiki] ✅ Setting wikiItems:', data?.length, 'items');
       setWikiItems(data || []);
     }
   };
@@ -834,16 +961,25 @@ export default function CodexScreen() {
     }
   };
 
-  const filteredWiki = wikiItems.filter((item) => {
-    const matchesCategory =
-      wikiFilter === 'Todos' ||
-      normalizeSubcategory(item.subcategory) === wikiFilter.toLowerCase();
-    const matchesSearch =
-      !searchQuery ||
-      item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const filteredWiki = (() => {
+    console.log('[filteredWiki] 🔎 wikiItems total:', wikiItems.length, '| wikiFilter:', wikiFilter, '| searchQuery:', searchQuery);
+    const result = wikiItems.filter((item) => {
+      const normalized = normalizeSubcategory(item.subcategory);
+      const matchesCategory =
+        wikiFilter === 'Todos' ||
+        normalized === wikiFilter.toLowerCase();
+      const matchesSearch =
+        !searchQuery ||
+        item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!matchesCategory) {
+        console.log(`[filteredWiki]   ❌ "${item.name}" filtered out — subcategory="${item.subcategory}" normalized="${normalized}" != "${wikiFilter.toLowerCase()}"`);
+      }
+      return matchesCategory && matchesSearch;
+    });
+    console.log('[filteredWiki] ✅ filteredWiki count:', result.length);
+    return result;
+  })();
 
   return (
     <View style={{ flex: 1 }}>

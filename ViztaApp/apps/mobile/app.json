@@ -14,7 +14,6 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
-          "audio",
           "remote-notification"
         ]
       }
@@ -25,10 +24,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.standatpd.vizta",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      "permissions": []
     },
     "plugins": [
       [
@@ -41,11 +37,11 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain"
+          "imageWidth": 300,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
         }
       ],
-      "expo-audio",
       [
         "expo-build-properties",
         {
@@ -58,8 +54,8 @@
       [
         "expo-video",
         {
-          "supportsBackgroundPlayback": true,
-          "supportsPictureInPicture": true
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
         }
       ],
       [

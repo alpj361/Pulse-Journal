@@ -603,6 +603,37 @@ function SupportModal({ visible, onClose }) {
               Si deseas colaborar, no dudes en escribirnos con tus datos y razón de interés.
             </Text>
 
+            {/* Account info */}
+            <View style={{
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              borderRadius: 14,
+              padding: 16,
+              marginBottom: 24,
+              borderWidth: 1,
+              borderColor: 'rgba(99,102,241,0.2)',
+            }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#a5b4fc', letterSpacing: 0.5, marginBottom: 8 }}>
+                ¿CÓMO PUEDO CREAR UNA CUENTA?
+              </Text>
+              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 20 }}>
+                Vizta es gratuita y no requiere cuenta. El Portal Web funciona por invitación, pero cualquier usuario puede registrarse y solicitar acceso en:
+              </Text>
+              <TouchableOpacity
+                onPress={() => Linking.openURL('https://jornal.standatpd.com')}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 12,
+                  gap: 6,
+                }}
+              >
+                <Globe size={13} color="#a5b4fc" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc' }}>
+                  jornal.standatpd.com
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -965,6 +996,37 @@ export default function SettingsScreen() {
               </Text>
             </TouchableOpacity>
           </FaqItem>
+
+          <View style={{ marginTop: 10 }}>
+            <FaqItem question="¿Cómo puedo crear una cuenta?">
+              <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22, marginTop: 12 }}>
+                Vizta es de acceso completamente gratuito y no requiere cuenta para usar la aplicación.
+              </Text>
+              <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22, marginTop: 8 }}>
+                El Portal Web — herramienta avanzada para periodistas y comunicadores — funciona por invitación. Sin embargo, cualquier usuario puede registrarse y solicitar acceso desde nuestro sitio web.
+              </Text>
+              <TouchableOpacity
+                onPress={() => Linking.openURL('https://jornal.standatpd.com')}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 16,
+                  backgroundColor: 'rgba(99,102,241,0.12)',
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: 'rgba(99,102,241,0.25)',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <Globe size={14} color="#a5b4fc" />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc', marginLeft: 7 }}>
+                  jornal.standatpd.com
+                </Text>
+              </TouchableOpacity>
+            </FaqItem>
+          </View>
         </View>
 
         {/* ── Legal ── */}

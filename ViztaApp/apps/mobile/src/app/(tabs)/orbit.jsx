@@ -13,6 +13,7 @@ import {
   // KeyboardAvoidingView, // AI Chat — hidden for App Store Review
   // Keyboard,        // AI Chat — hidden for App Store Review
   Platform,
+  Linking,
 } from 'react-native';
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { useRef, useState, useEffect, /* useCallback, */ Component } from 'react';
@@ -21,6 +22,8 @@ import Reanimated, {
   useAnimatedStyle,
   withDelay,
   withSpring,
+  withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -300,6 +303,146 @@ function TimelineItem({ t, i, total, config }) {
   );
 }
 
+// ── Legal tab helper components ───────────────────────────────────────────────
+
+function EstadoBadge({ estado }) {
+  const cfg = {
+    aprobada:     { fg: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+    en_debate:    { fg: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    rechazada:    { fg: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+    presentada:   { fg: 'rgba(148,163,184,0.85)', bg: 'rgba(148,163,184,0.1)' },
+    'en_comisión':{ fg: '#c084fc', bg: 'rgba(192,132,252,0.12)' },
+  };
+  const c = cfg[(estado || '').toLowerCase()] || { fg: 'rgba(148,163,184,0.8)', bg: 'rgba(148,163,184,0.1)' };
+  return (
+    <View style={{
+      alignSelf: 'flex-start',
+      backgroundColor: c.bg,
+      paddingHorizontal: 8, paddingVertical: 3,
+      borderRadius: 6, borderWidth: 1, borderColor: c.fg + '50',
+      marginBottom: 6,
+    }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: c.fg, letterSpacing: 0.5 }}>
+        {(estado || 'pendiente').replace(/_/g, ' ').toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function TipoBadge({ tipo }) {
+  const colors = {
+    'aprobación':  '#34d399',
+    'debate':      '#fbbf24',
+    'sesión':      '#818cf8',
+    'comisión':    '#a78bfa',
+    'rechazo':     '#f87171',
+    'lectura':     '#38bdf8',
+    'presentación':'#94a3b8',
+    'votación':    '#fb923c',
+    'declaración': '#e879f9',
+  };
+  const color = colors[(tipo || '').toLowerCase()] || 'rgba(148,163,184,0.8)';
+  return (
+    <View style={{
+      alignSelf: 'flex-start',
+      backgroundColor: color + '18',
+      paddingHorizontal: 8, paddingVertical: 3,
+      borderRadius: 6, borderWidth: 1, borderColor: color + '50',
+      marginRight: 8,
+      flexShrink: 0,
+    }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color, letterSpacing: 0.5 }}>
+        {(tipo || '').toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function FuenteLink({ fuente }) {
+  if (!fuente?.enlace) return null;
+  return (
+    <TouchableOpacity
+      onPress={() => Linking.openURL(fuente.enlace).catch(() => {})}
+      style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, alignSelf: 'flex-start' }}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+    >
+      <Text style={{ fontSize: 11, color: 'rgba(124,58,237,0.65)', fontStyle: 'italic' }}>
+        {fuente.usuario ? `@${fuente.usuario}` : 'Ver fuente'}
+      </Text>
+      <Text style={{ fontSize: 11, color: 'rgba(124,58,237,0.45)', marginLeft: 3 }}>↗</Text>
+    </TouchableOpacity>
+  );
+}
+
+function IniciativaCard({ item, index }) {
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    opacity.value = withDelay(index * 50, withSpring(1, { damping: 18 }));
+  }, []);
+  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Reanimated.View style={[{ marginBottom: 12 }, animStyle]}>
+      <DetailCard style={{ marginBottom: 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <EstadoBadge estado={item.estado} />
+          {item.numero && (
+            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+              No. {item.numero}
+            </Text>
+          )}
+        </View>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.92)', lineHeight: 20, marginBottom: item.descripcion ? 6 : 0 }}>
+          {item.titulo}
+        </Text>
+        {item.descripcion && (
+          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 19, marginBottom: 6 }} numberOfLines={3}>
+            {item.descripcion}
+          </Text>
+        )}
+        {item.diputados_involucrados?.length > 0 && (
+          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', lineHeight: 16 }} numberOfLines={2}>
+            {item.diputados_involucrados.join(' · ')}
+          </Text>
+        )}
+        <FuenteLink fuente={item.fuente} />
+      </DetailCard>
+    </Reanimated.View>
+  );
+}
+
+function LegalTimeline({ items, config }) {
+  if (!items?.length) return null;
+  return (
+    <DetailCard style={{ marginBottom: 12 }}>
+      <SectionLabel title="Timeline de Sesión" />
+      {items.map((t, i) => (
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < items.length - 1 ? 14 : 0 }}>
+          <View style={{ alignItems: 'center', width: 6, marginRight: 12, marginTop: 6 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: config.color }} />
+            {i < items.length - 1 && (
+              <View style={{ width: 1, height: 24, backgroundColor: config.color + '28', marginTop: 3 }} />
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3, gap: 6 }}>
+              {t.tipo && <TipoBadge tipo={t.tipo} />}
+              {t.hora && (
+                <Text style={{ fontSize: 11, color: config.color + 'bb' }}>
+                  {t.hora}
+                </Text>
+              )}
+            </View>
+            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19 }}>
+              {typeof t === 'string' ? t : (t.texto || '')}
+            </Text>
+            <FuenteLink fuente={t.fuente} />
+          </View>
+        </View>
+      ))}
+    </DetailCard>
+  );
+}
+
 // ── Category Detail screen ────────────────────────────────────────────────────
 
 function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, insets, feedData, onSwipeLeft, onSwipeRight, categoryIndex, totalCategories }) {
@@ -315,6 +458,26 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
       },
     })
   ).current;
+
+  const [activeTab, setActiveTab] = useState('pulso');
+  const tabFadeOpacity = useSharedValue(1);
+  const tabScale0 = useSharedValue(1);
+  const tabScale1 = useSharedValue(1);
+
+  const leyEntry = (feedData || []).find(f => f.categoria === 'ley');
+  const leyData = leyEntry?.data || null;
+
+  const handleTabSwitch = (tab) => {
+    if (tab === activeTab) return;
+    tabFadeOpacity.value = withTiming(0, { duration: 80 }, () => {
+      runOnJS(setActiveTab)(tab);
+      tabFadeOpacity.value = withTiming(1, { duration: 120 });
+    });
+  };
+
+  const tabFadeStyle = useAnimatedStyle(() => ({ opacity: tabFadeOpacity.value }));
+  const tabPillStyle0 = useAnimatedStyle(() => ({ transform: [{ scale: tabScale0.value }] }));
+  const tabPillStyle1 = useAnimatedStyle(() => ({ transform: [{ scale: tabScale1.value }] }));
 
   const cards = (allCards || [])
     .filter(c => matchesCategory(c, category))
@@ -435,10 +598,61 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
           </View>
         ) : (
           <>
+            {/* ── Tab switcher (only for Política) ── */}
+            {category === 'Política' && (
+              <View style={{
+                flexDirection: 'row',
+                alignSelf: 'center',
+                marginBottom: 20,
+                backgroundColor: 'rgba(255,255,255,0.06)',
+                borderRadius: 12,
+                padding: 3,
+                gap: 2,
+              }}>
+                <Pressable
+                  onPress={() => handleTabSwitch('pulso')}
+                  onPressIn={() => { tabScale0.value = withSpring(0.96, { stiffness: 400, damping: 20 }); }}
+                  onPressOut={() => { tabScale0.value = withSpring(1, { stiffness: 300, damping: 18 }); }}
+                >
+                  <Reanimated.View style={[{
+                    paddingVertical: 8,
+                    paddingHorizontal: 24,
+                    borderRadius: 9,
+                    backgroundColor: activeTab === 'pulso' ? config.color + '22' : 'transparent',
+                    borderWidth: 1,
+                    borderColor: activeTab === 'pulso' ? config.color + '55' : 'transparent',
+                  }, tabPillStyle0]}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: activeTab === 'pulso' ? config.color : 'rgba(255,255,255,0.35)' }}>
+                      Pulso
+                    </Text>
+                  </Reanimated.View>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleTabSwitch('legal')}
+                  onPressIn={() => { tabScale1.value = withSpring(0.96, { stiffness: 400, damping: 20 }); }}
+                  onPressOut={() => { tabScale1.value = withSpring(1, { stiffness: 300, damping: 18 }); }}
+                >
+                  <Reanimated.View style={[{
+                    paddingVertical: 8,
+                    paddingHorizontal: 24,
+                    borderRadius: 9,
+                    backgroundColor: activeTab === 'legal' ? config.color + '22' : 'transparent',
+                    borderWidth: 1,
+                    borderColor: activeTab === 'legal' ? config.color + '55' : 'transparent',
+                  }, tabPillStyle1]}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: activeTab === 'legal' ? config.color : 'rgba(255,255,255,0.35)' }}>
+                      Legal
+                    </Text>
+                  </Reanimated.View>
+                </Pressable>
+              </View>
+            )}
+
+            <Reanimated.View style={tabFadeStyle}>
             {/* ── Feed Pulso section ── */}
-            {d && (
+            {d && (activeTab === 'pulso' || category !== 'Política') && (
               <View style={{ marginBottom: 24 }}>
-                <SectionLabel title="Pulso" />
+                {category !== 'Política' && <SectionLabel title="Pulso" />}
 
                 {category === 'Deportes' && (
                   <>
@@ -596,7 +810,7 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
                   </>
                 )}
 
-                {category === 'Política' && (
+                {category === 'Política' && activeTab === 'pulso' && (
                   <>
                     {/* ── Narrativas ── */}
                     {d.narrativas?.length > 0 && (
@@ -685,39 +899,234 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
               </View>
             )}
 
-            {/* Hot Topics */}
-            {cards.length > 0 ? (
-              <>
-                <Text style={{
-                  fontSize: 10, fontWeight: '600',
-                  color: 'rgba(255,255,255,0.25)',
-                  letterSpacing: 1.4, textTransform: 'uppercase',
-                  marginBottom: 12,
-                }}>
-                  Noticias
-                </Text>
-                {cards.map((card, i) => (
-                  <NewsCard key={card.id || i} card={card} index={i} />
-                ))}
-              </>
-            ) : !d ? (
-              <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
-                <View style={{
-                  width: 56, height: 56, borderRadius: 28,
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-                }}>
-                  <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+            {/* ── Legal tab content ── */}
+            {category === 'Política' && activeTab === 'legal' && (
+              leyData ? (
+                <View style={{ marginBottom: 24 }}>
+                  {/* Header: tipo_dia + lastUpdated + intensidad */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {leyData.tipo_dia && (
+                        <View style={{
+                          backgroundColor: leyData.tipo_dia === 'sesion_activa'
+                            ? 'rgba(52,211,153,0.12)'
+                            : 'rgba(148,163,184,0.08)',
+                          paddingHorizontal: 10, paddingVertical: 4,
+                          borderRadius: 8, borderWidth: 1,
+                          borderColor: leyData.tipo_dia === 'sesion_activa'
+                            ? '#34d39950'
+                            : 'rgba(148,163,184,0.2)',
+                        }}>
+                          <Text style={{
+                            fontSize: 11, fontWeight: '700', letterSpacing: 0.6,
+                            color: leyData.tipo_dia === 'sesion_activa'
+                              ? '#34d399'
+                              : 'rgba(148,163,184,0.7)',
+                          }}>
+                            {leyData.tipo_dia === 'sesion_activa' ? 'SESIÓN ACTIVA' : 'PUBLICACIONES'}
+                          </Text>
+                        </View>
+                      )}
+                      {leyData.lastUpdated && (
+                        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                          {leyData.lastUpdated}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Timeline — solo en sesion_activa, posición prominente */}
+                  {leyData.tipo_dia === 'sesion_activa' && leyData.timeline?.length > 0 && (
+                    <LegalTimeline items={leyData.timeline} config={config} />
+                  )}
+
+                  {/* Avances */}
+                  {leyData.avances?.length > 0 && (
+                    <DetailCard style={{ marginBottom: 12 }}>
+                      <SectionLabel title="Avances Legislativos" />
+                      {leyData.avances.map((av, i) => (
+                        <View key={i} style={{ marginBottom: i < leyData.avances.length - 1 ? 12 : 0 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4, gap: 6 }}>
+                            <TipoBadge tipo={av.tipo} />
+                            {av.fecha && (
+                              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                                {av.fecha}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.88)', lineHeight: 19, marginBottom: av.descripcion ? 4 : 0 }}>
+                            {av.titulo}
+                          </Text>
+                          {av.descripcion && (
+                            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 18 }}>
+                              {av.descripcion}
+                            </Text>
+                          )}
+                          <FuenteLink fuente={av.fuente} />
+                          {i < leyData.avances.length - 1 && (
+                            <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginTop: 10 }} />
+                          )}
+                        </View>
+                      ))}
+                    </DetailCard>
+                  )}
+
+                  {/* Iniciativas */}
+                  {leyData.iniciativas?.length > 0 && (
+                    <>
+                      <SectionLabel title="Iniciativas" />
+                      {leyData.iniciativas.map((item, i) => (
+                        <IniciativaCard key={item.id || i} item={item} index={i} />
+                      ))}
+                    </>
+                  )}
+
+                  {/* Diputados */}
+                  {leyData.diputados?.length > 0 && (
+                    <DetailCard style={{ marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.25)', letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                          Diputados
+                        </Text>
+                        <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
+                          {leyData.diputados.length}
+                        </Text>
+                      </View>
+                      {leyData.diputados.map((dp, i) => {
+                        const posColors = {
+                          'ponente':   '#a5b4fc',
+                          'moderador': '#6ee7b7',
+                          'a favor':   '#34d399',
+                          'en contra': '#f87171',
+                        };
+                        const posColor = posColors[dp.posicion] || 'rgba(148,163,184,0.8)';
+                        return (
+                          <View key={i} style={{
+                            paddingVertical: 10, paddingHorizontal: 4,
+                            borderTopWidth: i > 0 ? 1 : 0,
+                            borderTopColor: 'rgba(255,255,255,0.04)',
+                          }}>
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.9)', lineHeight: 19 }}>
+                              {dp.nombre}
+                            </Text>
+                            {dp.partido && (
+                              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
+                                {dp.partido}
+                              </Text>
+                            )}
+                            <View style={{
+                              alignSelf: 'flex-start',
+                              backgroundColor: posColor + '18',
+                              paddingHorizontal: 7, paddingVertical: 2,
+                              borderRadius: 4, marginTop: 5,
+                            }}>
+                              <Text style={{ fontSize: 9, fontWeight: '700', color: posColor, letterSpacing: 0.6 }}>
+                                {(dp.posicion || '—').replace(/_/g, ' ').toUpperCase()}
+                              </Text>
+                            </View>
+                            {dp.temas?.length > 0 && (
+                              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 17, marginTop: 5 }}>
+                                {dp.temas.join(' · ')}
+                              </Text>
+                            )}
+                            <FuenteLink fuente={dp.fuente} />
+                          </View>
+                        );
+                      })}
+                    </DetailCard>
+                  )}
+
+                  {/* Discusiones */}
+                  {leyData.discusiones?.length > 0 && (
+                    <DetailCard style={{ marginBottom: 12 }}>
+                      <SectionLabel title="Discusiones" />
+                      {leyData.discusiones.map((disc, i) => (
+                        <View key={i} style={{ marginBottom: i < leyData.discusiones.length - 1 ? 14 : 0 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.88)', lineHeight: 19, marginBottom: 4 }}>
+                            {disc.tema}
+                          </Text>
+                          {disc.descripcion && (
+                            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 18, marginBottom: disc.posiciones?.length ? 6 : 0 }}>
+                              {disc.descripcion}
+                            </Text>
+                          )}
+                          {disc.posiciones?.length > 0 && (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 2 }}>
+                              {disc.posiciones.map((pos, j) => (
+                                <View key={j} style={{
+                                  backgroundColor: 'rgba(124,58,237,0.12)',
+                                  paddingHorizontal: 8, paddingVertical: 3,
+                                  borderRadius: 6, borderWidth: 1, borderColor: 'rgba(124,58,237,0.3)',
+                                }}>
+                                  <Text style={{ fontSize: 11, color: '#a78bfa' }}>
+                                    {typeof pos === 'string' ? pos : (pos.texto || '')}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                          <FuenteLink fuente={disc.fuente} />
+                        </View>
+                      ))}
+                    </DetailCard>
+                  )}
                 </View>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
-                  Sin noticias recientes
-                </Text>
-                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
-                  No hay datos de {category.toLowerCase()} en el último ciclo de análisis.
-                </Text>
-              </View>
-            ) : null}
+              ) : (
+                <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
+                  <View style={{
+                    width: 56, height: 56, borderRadius: 28,
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    alignItems: 'center', justifyContent: 'center',
+                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                  }}>
+                    <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                    Sin datos legislativos
+                  </Text>
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
+                    No hay actividad legislativa reciente disponible.
+                  </Text>
+                </View>
+              )
+            )}
+
+            {/* Hot Topics — hidden on Legal tab */}
+            {(category !== 'Política' || activeTab === 'pulso') && (
+              cards.length > 0 ? (
+                <>
+                  <Text style={{
+                    fontSize: 10, fontWeight: '600',
+                    color: 'rgba(255,255,255,0.25)',
+                    letterSpacing: 1.4, textTransform: 'uppercase',
+                    marginBottom: 12,
+                  }}>
+                    Noticias
+                  </Text>
+                  {cards.map((card, i) => (
+                    <NewsCard key={card.id || i} card={card} index={i} />
+                  ))}
+                </>
+              ) : !d ? (
+                <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
+                  <View style={{
+                    width: 56, height: 56, borderRadius: 28,
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    alignItems: 'center', justifyContent: 'center',
+                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                  }}>
+                    <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                    Sin noticias recientes
+                  </Text>
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
+                    No hay datos de {category.toLowerCase()} en el último ciclo de análisis.
+                  </Text>
+                </View>
+              ) : null
+            )}
+            </Reanimated.View>
           </>
         )}
       </ScrollView>

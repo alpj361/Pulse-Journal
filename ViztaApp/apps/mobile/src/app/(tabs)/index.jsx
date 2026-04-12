@@ -92,12 +92,20 @@ function EntityWikiModal({ entityName, onClose }) {
 
   const createEntry = async () => {
     setCreating(true);
-    const { data } = await supabase
+    console.log('[EntityWikiModal] createEntry START — entityName:', entityName);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    console.log('[EntityWikiModal] userId:', userId);
+    const payload = { name: entityName, subcategory: 'person', relevance_score: 50, ...(userId ? { user_id: userId } : {}) };
+    console.log('[EntityWikiModal] insert payload:', JSON.stringify(payload));
+    const { data, error } = await supabase
       .from('wiki_items')
-      .insert({ name: entityName, subcategory: 'persona', relevance_score: 50 })
+      .insert(payload)
       .select('id, name, subcategory, description')
       .single();
+    console.log('[EntityWikiModal] insert result — data:', JSON.stringify(data), '| error:', error ? JSON.stringify(error) : null);
     if (data) { setWikiItem(data); setCreated(true); }
+    if (error) console.warn('[EntityWikiModal] createEntry FAILED:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint);
     setCreating(false);
   };
 
@@ -310,12 +318,20 @@ function NewsCardModal({ card, onClose }) {
 
   const createEntry = async () => {
     setCreating(true);
-    const { data } = await supabase
+    console.log('[NewsCardModal] createEntry START — entityName:', entityName);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    console.log('[NewsCardModal] userId:', userId);
+    const payload = { name: entityName, subcategory: 'person', relevance_score: 50, ...(userId ? { user_id: userId } : {}) };
+    console.log('[NewsCardModal] insert payload:', JSON.stringify(payload));
+    const { data, error } = await supabase
       .from('wiki_items')
-      .insert({ name: entityName, subcategory: 'persona', relevance_score: 50 })
+      .insert(payload)
       .select('id, name, subcategory, description')
       .single();
+    console.log('[NewsCardModal] insert result — data:', JSON.stringify(data), '| error:', error ? JSON.stringify(error) : null);
     if (data) { setEntityWikiItem(data); setCreated(true); }
+    if (error) console.warn('[NewsCardModal] createEntry FAILED:', error.message, '| code:', error.code, '| details:', error.details, '| hint:', error.hint);
     setCreating(false);
   };
 

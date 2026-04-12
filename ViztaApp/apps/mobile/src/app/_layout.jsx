@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useNotifications } from '@/utils/useNotifications';
+import { usePulseConnectionStore } from '../state/pulseConnectionStore';
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
@@ -21,6 +22,7 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const { initiate, isReady } = useAuth();
+  const { initSessionSync } = usePulseConnectionStore();
   useNotifications();
 
   console.log('[RootLayout] render — isReady:', isReady);
@@ -28,8 +30,11 @@ export default function RootLayout() {
   useEffect(() => {
     console.log('[RootLayout] MOUNTED');
     initiate();
+    // Sincronizar estado de Zustand con sesión real de Supabase
+    const unsubscribe = initSessionSync();
     return () => {
       console.log('[RootLayout] UNMOUNTED ← this should never happen during logout!');
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [initiate]);
 
