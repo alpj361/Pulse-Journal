@@ -10,9 +10,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "18",
+      "buildNumber": "19",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true,
         "UIBackgroundModes": [
           "remote-notification"
         ]
