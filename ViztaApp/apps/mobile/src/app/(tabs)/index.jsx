@@ -638,9 +638,14 @@ export default function Index() {
   const topKeywords = trendsData?.top_keywords || [];
   // Tiene about real si algún item tiene categoría distinta de "Otros"
   // o razón que no sea el boilerplate "Tendencia relacionada con X"
-  const hasRealAbout = trendingTopics.some(item =>
-    (item.categoria && item.categoria !== 'Otros') ||
-    (item.razon_tendencia && !item.razon_tendencia.toLowerCase().startsWith('tendencia relacionada con'))
+  const hasRealAbout = trendingTopics.length > 0 && trendingTopics.some(item =>
+    item.nombre &&
+    (
+      (item.categoria && item.categoria !== 'Otros') ||
+      (item.razon_tendencia &&
+       !item.razon_tendencia.toLowerCase().startsWith('tendencia relacionada con') &&
+       item.razon_tendencia.length > 20)
+    )
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];

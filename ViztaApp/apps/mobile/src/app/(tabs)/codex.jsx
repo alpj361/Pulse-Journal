@@ -23,6 +23,7 @@ import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { supabase } from '../../utils/supabase';
 
 const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
+const EXTRACTORT_URL = process.env.EXPO_PUBLIC_EXTRACTORT_URL || 'https://api.standatpd.com';
 
 const ACTOR_TYPES = [
   { id: 'person', label: 'Persona' },
@@ -72,6 +73,14 @@ const SUBCATEGORY_NORMALIZE = {
   event: 'evento',
   concept: 'concepto',
   entity: 'organización',
+  // codex_universe_items tipos
+  actor: 'persona',
+  entidad: 'organización',
+  evento: 'evento',
+  evidencia: 'concepto',
+  biblioteca: 'concepto',
+  territorio: 'lugar',
+  fuente: 'concepto',
 };
 
 function normalizeSubcategory(val) {
@@ -209,7 +218,7 @@ function WikiSearchModal({ item, onClose }) {
   });
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedDims, setSelectedDims] = useState(new Set());
-  const [engine, setEngine] = useState('perplexity');
+  const [engine, setEngine] = useState('parallel');
   const [results, setResults] = useState(null);  // [{ dimension, status, analysis, sources, error }]
   const [expandedKeys, setExpandedKeys] = useState(new Set());
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -331,7 +340,7 @@ function WikiSearchModal({ item, onClose }) {
     setSaveSuccess(false);
 
     let dimResults = [];
-    if (engine === 'perplexity') {
+    if (engine === 'parallel') {
       for (const dim of activeDims) {
         const r = await searchDimension(dim, token);
         if (r) dimResults.push(r);
@@ -341,8 +350,8 @@ function WikiSearchModal({ item, onClose }) {
       dimResults = settled.filter(s => s.status === 'fulfilled' && s.value).map(s => s.value);
     }
 
-    // Auto-save results to DB
-    if (dimResults.length > 0) {
+    // Auto-save results to DB — only for wiki_items (universe items have prefixed ids)
+    if (dimResults.length > 0 && item._source !== 'universe') {
       try {
         // Fetch fresh metadata from DB to avoid overwriting existing research
         const { data: cur } = await supabase.from('wiki_items').select('metadata').eq('id', item.id).single();
@@ -375,7 +384,7 @@ function WikiSearchModal({ item, onClose }) {
       r.dimension.key === dim.key ? { ...r, status: 'loading', error: undefined, sources: [] } : r
     ));
     const result = await searchDimension(dim, token);
-    if (result) {
+    if (result && item._source !== 'universe') {
       try {
         const { data: cur } = await supabase.from('wiki_items').select('metadata').eq('id', item.id).single();
         const existing = cur?.metadata?.research || {};
@@ -554,14 +563,14 @@ function WikiSearchModal({ item, onClose }) {
                   {/* Motor */}
                   <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.8, marginBottom: 10 }}>MOTOR</Text>
                   <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                    {['perplexity', 'exa'].map(e => (
+                    {['parallel', 'exa'].map(e => (
                       <TouchableOpacity key={e} onPress={() => setEngine(e)} style={{
                         paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10,
                         backgroundColor: engine === e ? 'rgba(124,58,237,0.6)' : 'rgba(255,255,255,0.07)',
                         borderWidth: 1, borderColor: engine === e ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.1)',
                       }}>
                         <Text style={{ fontSize: 13, fontWeight: '700', color: engine === e ? '#fff' : 'rgba(255,255,255,0.5)' }}>
-                          {e === 'perplexity' ? '⚡ Perplexity' : '🔍 Exa'}
+                          {e === 'parallel' ? '🌐 Parallel' : '🔍 Exa'}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -592,7 +601,7 @@ function WikiSearchModal({ item, onClose }) {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       {saveSuccess && <Text style={{ fontSize: 11, color: 'rgba(16,185,129,0.8)' }}>✓ guardado</Text>}
                       <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                        {engine === 'perplexity' ? '⚡ Perplexity' : '🔍 Exa'}
+                        {engine === 'parallel' ? '🌐 Parallel' : '🔍 Exa'}
                       </Text>
                       <TouchableOpacity onPress={() => { setResults(null); setSaveSuccess(false); }}>
                         <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>✕</Text>
@@ -693,6 +702,101 @@ function WikiSearchModal({ item, onClose }) {
   );
 }
 
+// ── PostCard: tarjeta de Instagram post/reel con transcripción expandible ──
+function PostCard({ post, isReel, transcription, thumbUri }) {
+  const [expanded, setExpanded] = useState(false);
+  const date = post.created_at
+    ? new Date(post.created_at).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+
+  return (
+    <View style={{
+      backgroundColor: 'rgba(8,10,24,0.72)',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isReel ? 'rgba(225,48,108,0.25)' : 'rgba(255,255,255,0.1)',
+      padding: 14,
+      marginBottom: 10,
+    }}>
+      {/* Thumbnail */}
+      {thumbUri && (
+        <View style={{ position: 'relative', marginBottom: 10 }}>
+          <Image
+            source={{ uri: thumbUri }}
+            style={{ width: '100%', height: 180, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.05)' }}
+            resizeMode="cover"
+          />
+          {isReel && (
+            <View style={{
+              position: 'absolute', top: 8, left: 8,
+              backgroundColor: 'rgba(225,48,108,0.85)',
+              borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+            }}>
+              <Video size={11} color="#fff" />
+              <Text style={{ fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.5 }}>REEL</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Sin thumbnail pero es reel */}
+      {!thumbUri && isReel && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <View style={{
+            backgroundColor: 'rgba(225,48,108,0.2)', borderRadius: 8,
+            paddingHorizontal: 8, paddingVertical: 4,
+            flexDirection: 'row', alignItems: 'center', gap: 4,
+            borderWidth: 1, borderColor: 'rgba(225,48,108,0.4)',
+          }}>
+            <Video size={11} color="rgba(225,48,108,0.9)" />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: 'rgba(225,48,108,0.9)', letterSpacing: 0.5 }}>REEL</Text>
+          </View>
+        </View>
+      )}
+
+      <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }} numberOfLines={1}>{post.name}</Text>
+      {post.description ? (
+        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 18, marginTop: 5 }} numberOfLines={3}>
+          {post.description}
+        </Text>
+      ) : null}
+
+      {/* Transcripción expandible (solo reels) */}
+      {isReel && transcription ? (
+        <View style={{
+          backgroundColor: 'rgba(225,48,108,0.08)',
+          borderRadius: 8, padding: 10, marginTop: 10,
+          borderWidth: 1, borderColor: 'rgba(225,48,108,0.2)',
+        }}>
+          <TouchableOpacity
+            onPress={() => setExpanded(e => !e)}
+            activeOpacity={0.7}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(225,48,108,0.7)', letterSpacing: 0.6 }}>
+              🎙 TRANSCRIPCIÓN
+            </Text>
+            <Text style={{ fontSize: 11, color: 'rgba(225,48,108,0.6)' }}>
+              {expanded ? '▲ ocultar' : '▼ ver completa'}
+            </Text>
+          </TouchableOpacity>
+          <Text
+            style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 17, marginTop: 6 }}
+            numberOfLines={expanded ? undefined : 4}
+          >
+            {transcription}
+          </Text>
+        </View>
+      ) : null}
+
+      {date && (
+        <Text style={{ fontSize: 11, color: 'rgba(225,48,108,0.7)', marginTop: 8 }}>{date}</Text>
+      )}
+    </View>
+  );
+}
+
 function CodexItem({ item }) {
   const TypeIcon = CODEX_TYPE_ICONS[item.tipo?.toLowerCase()] || FileText;
   const colors = CODEX_TYPE_COLORS[item.tipo?.toLowerCase()] || {
@@ -756,7 +860,6 @@ export default function CodexScreen() {
   const router = useRouter();
   const { isConnected } = usePulseConnectionStore();
 
-  /* APP_STORE_REVIEW: Instagram Posts state hidden
   const [instagramPosts, setInstagramPosts] = useState([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [showAddPostModal, setShowAddPostModal] = useState(false);
@@ -766,7 +869,6 @@ export default function CodexScreen() {
   const [extractError, setExtractError] = useState(null);
   const [savingPost, setSavingPost] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
-  */ // END APP_STORE_REVIEW
 
   const [activeTab, setActiveTab] = useState('wiki'); // 'wiki' | 'codex'
   const [wikiFilter, setWikiFilter] = useState('Todos');
@@ -790,13 +892,12 @@ export default function CodexScreen() {
     }
   );
 
-  /* APP_STORE_REVIEW: Instagram functions hidden
   const fetchInstagramPosts = async () => {
     setIsLoadingPosts(true);
     const { data, error } = await supabase
-      .from('codex_items')
-      .select('id, titulo, tipo, fecha, etiquetas, metadata, created_at')
-      .eq('tipo', 'instagram')
+      .from('codex_universe_items')
+      .select('id, name, tipo, description, tags, thumbnail_url, details, created_at')
+      .eq('flag', 'instagram')
       .order('created_at', { ascending: false })
       .limit(50);
     setIsLoadingPosts(false);
@@ -804,6 +905,8 @@ export default function CodexScreen() {
   };
 
   // ── Instagram: extract post from URL ──
+  // Detecta si es reel (/reel/) → usa /instagram/transcribe en ExtractorT
+  // Si es post normal (/p/) → usa /api/instagram/extract en ExtractorW
   const handleExtractPost = async () => {
     if (!postUrl.trim()) return;
     setExtracting(true);
@@ -811,21 +914,53 @@ export default function CodexScreen() {
     setExtractedPost(null);
     setCarouselIndex(0);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      const res = await fetch(`${EXTRACTORW_URL}/api/instagram/extract`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ url: postUrl.trim() }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setExtractedPost(json);
+      const url = postUrl.trim();
+      const isReel = url.includes('/reel/');
+
+      if (isReel) {
+        // Reels → ExtractorT /instagram/transcribe (incluye audio→Whisper)
+        const res = await fetch(`${EXTRACTORT_URL}/instagram/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        const json = await res.json();
+        if (json.success) {
+          // Normalizar respuesta al mismo shape que usa el resto del componente
+          setExtractedPost({
+            success: true,
+            source_url: url,
+            author: json.author || null,
+            description: json.description || null,
+            is_reel: true,
+            thumbnail_url: json.thumbnail_url || null,
+            video_url: json.video_url || null,
+            transcription: json.transcription || null,
+            post_id: json.post_id || null,
+            // Para compatibilidad con el render de imágenes existente
+            extracted_images: json.thumbnail_url ? [json.thumbnail_url] : [],
+          });
+        } else {
+          setExtractError(json.error || 'No se pudo transcribir el reel');
+        }
       } else {
-        setExtractError(json.error?.message || 'No se pudo extraer el post');
+        // Posts normales → ExtractorW /api/instagram/extract
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        const res = await fetch(`${EXTRACTORW_URL}/api/instagram/extract`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ url }),
+        });
+        const json = await res.json();
+        if (json.success) {
+          setExtractedPost(json);
+        } else {
+          setExtractError(json.error?.message || 'No se pudo extraer el post');
+        }
       }
     } catch (e) {
       setExtractError('Error de conexión. Verifica tu red.');
@@ -834,29 +969,38 @@ export default function CodexScreen() {
     }
   };
 
-  // ── Instagram: save post to codex_items ──
+  // ── Instagram: save post to codex_universe_items ──
   const handleSavePost = async () => {
     if (!extractedPost) return;
     setSavingPost(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
-      const titulo = extractedPost.author
+
+      const name = extractedPost.author
         ? `@${extractedPost.author}${extractedPost.description ? ' — ' + extractedPost.description.slice(0, 60) : ''}`
         : extractedPost.description?.slice(0, 80) || 'Post de Instagram';
 
-      const { error } = await supabase.from('codex_items').insert({
-        titulo,
-        tipo: 'instagram',
-        fecha: new Date().toISOString(),
-        etiquetas: ['instagram'],
-        metadata: {
+      const { error } = await supabase.from('codex_universe_items').insert({
+        name,
+        tipo: 'Evidencia',
+        flag: 'instagram',
+        description: extractedPost.description || '',
+        thumbnail_url: extractedPost.thumbnail_url || extractedPost.extracted_images?.[0] || null,
+        tags: ['instagram', ...(extractedPost.is_reel ? ['reel', 'video'] : [])],
+        aliases: extractedPost.author ? [`@${extractedPost.author}`] : [],
+        details: {
           source_url: extractedPost.source_url,
-          images: extractedPost.extracted_images,
+          images: extractedPost.extracted_images || [],
           author: extractedPost.author,
-          description: extractedPost.description,
-          is_reel: extractedPost.is_reel,
+          is_reel: extractedPost.is_reel || false,
+          video_url: extractedPost.video_url || null,
+          thumbnail_url: extractedPost.thumbnail_url || null,
+          transcription: extractedPost.transcription || null,
+          post_id: extractedPost.post_id || null,
         },
+        mentions: [],
+        datasets: [],
         ...(userId ? { user_id: userId } : {}),
       });
       if (!error) {
@@ -865,6 +1009,8 @@ export default function CodexScreen() {
         setExtractedPost(null);
         setExtractError(null);
         fetchInstagramPosts();
+      } else {
+        setExtractError(error.message);
       }
     } catch (e) {
       setExtractError('Error al guardar. Intenta de nuevo.');
@@ -873,9 +1019,11 @@ export default function CodexScreen() {
     }
   };
 
+  // Cargar posts de Instagram cuando el tab está activo
+  useEffect(() => {
+    if (!isConnected || activeTab !== 'posts') return;
     fetchInstagramPosts();
   }, [isConnected, activeTab]);
-  */ // END APP_STORE_REVIEW
 
   // Escuchar cambios de sesión de Supabase para recargar wiki cuando la sesión esté lista
   useEffect(() => {
@@ -925,24 +1073,51 @@ export default function CodexScreen() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('wiki_items')
-      .select('id, name, subcategory, description, relevance_score, tags, metadata, created_at')
-      .order('created_at', { ascending: false });
+    // Fetch both tables in parallel
+    const [wikiResult, universeResult] = await Promise.all([
+      supabase
+        .from('wiki_items')
+        .select('id, name, subcategory, description, relevance_score, tags, metadata, created_at')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('codex_universe_items')
+        .select('id, name, tipo, description, tags, aliases, details, created_at')
+        .order('created_at', { ascending: false }),
+    ]);
 
-    console.log('[fetchWiki] 📊 Result — data count:', data?.length ?? 'null', '| error:', error?.message ?? 'none');
-    if (data && data.length > 0) {
-      console.log('[fetchWiki] 📋 First items:', JSON.stringify(data.slice(0, 3).map(d => ({ id: d.id, name: d.name, subcategory: d.subcategory }))));
-    }
+    console.log('[fetchWiki] 📊 wiki_items count:', wikiResult.data?.length ?? 'null', '| error:', wikiResult.error?.message ?? 'none');
+    console.log('[fetchWiki] 📊 codex_universe_items count:', universeResult.data?.length ?? 'null', '| error:', universeResult.error?.message ?? 'none');
 
     setIsLoadingWiki(false);
-    if (error) {
-      console.log('[fetchWiki] ❌ ERROR:', error.message, error.details, error.hint);
-      setWikiError(error.message);
-    } else {
-      console.log('[fetchWiki] ✅ Setting wikiItems:', data?.length, 'items');
-      setWikiItems(data || []);
+
+    if (wikiResult.error && universeResult.error) {
+      console.log('[fetchWiki] ❌ Both errors:', wikiResult.error.message, universeResult.error.message);
+      setWikiError(wikiResult.error.message);
+      return;
     }
+
+    // Map codex_universe_items to the same shape as wiki_items
+    const universeItems = (universeResult.data || []).map(item => ({
+      id: `universe_${item.id}`,
+      _sourceId: item.id,
+      _source: 'universe',
+      name: item.name,
+      subcategory: item.tipo, // Actor, Entidad, Evento, etc. — normalizeSubcategory handles these
+      description: item.description || '',
+      tags: item.tags || [],
+      metadata: { details: item.details },
+      created_at: item.created_at,
+    }));
+
+    // Merge: wiki_items first (they have research/metadata), then universe items not already in wiki
+    const wikiNames = new Set((wikiResult.data || []).map(w => w.name?.toLowerCase()));
+    const deduplicatedUniverse = universeItems.filter(u => !wikiNames.has(u.name?.toLowerCase()));
+
+    const merged = [...(wikiResult.data || []), ...deduplicatedUniverse]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    console.log('[fetchWiki] ✅ Merged wikiItems:', merged.length, '(wiki:', wikiResult.data?.length ?? 0, '+ universe:', deduplicatedUniverse.length, ')');
+    setWikiItems(merged);
   };
 
   const fetchCodex = async () => {
@@ -1064,7 +1239,7 @@ export default function CodexScreen() {
             {[
               { id: 'wiki', label: 'Wiki' },
               { id: 'codex', label: 'Codex' },
-              // { id: 'posts', label: 'Posts' }, // APP_STORE_REVIEW: hidden
+              { id: 'posts', label: 'Posts' },
             ].map((tab) => (
               <TouchableOpacity
                 key={tab.id}
@@ -1094,7 +1269,174 @@ export default function CodexScreen() {
           </View>
 
 
-          {activeTab === 'wiki' ? (
+          {activeTab === 'posts' ? (
+            /* ── Posts tab (Instagram) ── */
+            <View style={{ flex: 1 }}>
+              {/* Add Post button */}
+              <View style={{ paddingHorizontal: 24, marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setShowAddPostModal(true)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    backgroundColor: 'rgba(225,48,108,0.7)', borderRadius: 14, paddingVertical: 12,
+                    borderWidth: 1, borderColor: 'rgba(225,48,108,0.5)',
+                  }}
+                >
+                  <Plus size={16} color="#fff" />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Agregar post de Instagram</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Add Post Modal */}
+              {showAddPostModal && (
+                <Modal visible animationType="slide" transparent onRequestClose={() => setShowAddPostModal(false)}>
+                  <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }} onPress={() => setShowAddPostModal(false)}>
+                    <Pressable onPress={e => e.stopPropagation()}>
+                      <View style={{ backgroundColor: '#0a0c1b', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 24, paddingBottom: 40 }}>
+                        <Text style={{ fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 16 }}>Agregar post</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, height: 48, marginBottom: 14 }}>
+                          <Link size={15} color="rgba(255,255,255,0.4)" />
+                          <TextInput
+                            value={postUrl}
+                            onChangeText={setPostUrl}
+                            placeholder="https://www.instagram.com/p/..."
+                            placeholderTextColor="rgba(255,255,255,0.25)"
+                            style={{ flex: 1, color: '#fff', fontSize: 13, marginLeft: 8 }}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                          />
+                        </View>
+
+                        {extractError && (
+                          <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)' }}>
+                            <Text style={{ fontSize: 12, color: 'rgba(239,68,68,0.9)' }}>{extractError}</Text>
+                          </View>
+                        )}
+
+                        {extractedPost && (
+                          <View style={{ marginBottom: 14 }}>
+                            {/* Thumbnail / Carousel */}
+                            {extractedPost.extracted_images?.length > 0 && (
+                              <View style={{ position: 'relative', marginBottom: 10 }}>
+                                <Image
+                                  source={{ uri: extractedPost.extracted_images[carouselIndex] }}
+                                  style={{ width: '100%', height: 200, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)' }}
+                                  resizeMode="cover"
+                                />
+                                {/* Badge REEL sobre thumbnail en el preview */}
+                                {extractedPost.is_reel && (
+                                  <View style={{
+                                    position: 'absolute', top: 8, left: 8,
+                                    backgroundColor: 'rgba(225,48,108,0.85)',
+                                    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+                                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                                  }}>
+                                    <Video size={11} color="#fff" />
+                                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 0.5 }}>REEL</Text>
+                                  </View>
+                                )}
+                                {extractedPost.extracted_images.length > 1 && (
+                                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', position: 'absolute', top: '50%', width: '100%', paddingHorizontal: 8 }}>
+                                    <TouchableOpacity onPress={() => setCarouselIndex(i => Math.max(0, i - 1))} style={{ backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6 }}>
+                                      <ChevronLeft size={18} color="#fff" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => setCarouselIndex(i => Math.min(extractedPost.extracted_images.length - 1, i + 1))} style={{ backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6 }}>
+                                      <ChevronRight size={18} color="#fff" />
+                                    </TouchableOpacity>
+                                  </View>
+                                )}
+                                {extractedPost.extracted_images.length > 1 && (
+                                  <Text style={{ textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{carouselIndex + 1}/{extractedPost.extracted_images.length}</Text>
+                                )}
+                              </View>
+                            )}
+                            {extractedPost.author && (
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.8)', marginBottom: 4 }}>
+                                @{extractedPost.author}
+                              </Text>
+                            )}
+                            {extractedPost.description && (
+                              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 18, marginBottom: extractedPost.transcription ? 10 : 0 }} numberOfLines={3}>
+                                {extractedPost.description}
+                              </Text>
+                            )}
+                            {/* Transcripción preview (solo reels) */}
+                            {extractedPost.is_reel && extractedPost.transcription ? (
+                              <View style={{
+                                backgroundColor: 'rgba(225,48,108,0.08)',
+                                borderRadius: 8, padding: 10,
+                                borderWidth: 1, borderColor: 'rgba(225,48,108,0.2)',
+                              }}>
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(225,48,108,0.7)', letterSpacing: 0.6, marginBottom: 4 }}>
+                                  🎙 TRANSCRIPCIÓN
+                                </Text>
+                                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 17 }} numberOfLines={5}>
+                                  {extractedPost.transcription}
+                                </Text>
+                              </View>
+                            ) : extractedPost.is_reel ? (
+                              <View style={{
+                                backgroundColor: 'rgba(225,48,108,0.05)',
+                                borderRadius: 8, padding: 10,
+                                borderWidth: 1, borderColor: 'rgba(225,48,108,0.15)',
+                                flexDirection: 'row', alignItems: 'center', gap: 6,
+                              }}>
+                                <Text style={{ fontSize: 11, color: 'rgba(225,48,108,0.6)' }}>🎙 Sin transcripción disponible</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        )}
+
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                          {!extractedPost ? (
+                            <TouchableOpacity
+                              onPress={handleExtractPost}
+                              disabled={extracting || !postUrl.trim()}
+                              style={{ flex: 1, backgroundColor: extracting ? 'rgba(225,48,108,0.3)' : 'rgba(225,48,108,0.7)', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(225,48,108,0.5)' }}
+                            >
+                              {extracting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Extraer post</Text>}
+                            </TouchableOpacity>
+                          ) : (
+                            <>
+                              <TouchableOpacity onPress={() => { setExtractedPost(null); setPostUrl(''); setExtractError(null); }} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.6)' }}>Cancelar</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={handleSavePost} disabled={savingPost} style={{ flex: 1, backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(16,185,129,0.5)' }}>
+                                {savingPost ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Guardar</Text>}
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    </Pressable>
+                  </Pressable>
+                </Modal>
+              )}
+
+              {/* Posts list */}
+              {isLoadingPosts ? (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator size="large" color="rgba(225,48,108,0.8)" />
+                </View>
+              ) : (
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+                  {instagramPosts.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingTop: 40 }}>
+                      <Camera size={32} color="rgba(225,48,108,0.4)" style={{ marginBottom: 12 }} />
+                      <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)' }}>No hay posts guardados</Text>
+                    </View>
+                  ) : (
+                    instagramPosts.map(post => {
+                      const isReel = post.tags?.includes('reel') || post.details?.is_reel;
+                      const transcription = post.details?.transcription;
+                      const thumbUri = post.thumbnail_url || post.details?.thumbnail_url || post.details?.images?.[0];
+                      return <PostCard key={post.id} post={post} isReel={isReel} transcription={transcription} thumbUri={thumbUri} />;
+                    })
+                  )}
+                </ScrollView>
+              )}
+            </View>
+          ) : activeTab === 'wiki' ? (
             <View style={{ flex: 1 }}>
               {/* Search */}
               <View style={{

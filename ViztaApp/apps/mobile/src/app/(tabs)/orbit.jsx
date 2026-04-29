@@ -8,15 +8,18 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  Modal,
+  ActivityIndicator,
   useWindowDimensions,
-  // TextInput,       // AI Chat — hidden for App Store Review
-  // KeyboardAvoidingView, // AI Chat — hidden for App Store Review
-  // Keyboard,        // AI Chat — hidden for App Store Review
+  TextInput,
+  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Linking,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
-import { useRef, useState, useEffect, /* useCallback, */ Component } from 'react';
+import { useRef, useState, useEffect, useCallback, Component } from 'react';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -29,14 +32,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { ArrowLeft, Clock, AlertCircle /*, Trash2, ChevronRight, Send — hidden for App Store Review */ } from 'lucide-react-native';
+import { ArrowLeft, Clock, AlertCircle, Trash2, ChevronRight, Send } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 
-// ── Chat constants — hidden for App Store Review ───────────────────────────────
-// const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
-// const CHAT_ENDPOINT_AUTH  = `${EXTRACTORW_URL}/api/vizta-chat/query`;
-// const CHAT_ENDPOINT_GUEST = `${EXTRACTORW_URL}/api/vizta-chat/query-guest`;
+// ── Chat constants ────────────────────────────────────────────────────────────
+const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
+const CHAT_ENDPOINT_AUTH  = `${EXTRACTORW_URL}/api/vizta-chat/query`;
+const CHAT_ENDPOINT_GUEST = `${EXTRACTORW_URL}/api/vizta-chat/query-guest`;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1225,7 +1228,7 @@ function ParticleSphere({ cx, cy, paused }) {
   );
 }
 
-// ── Category orb ──────────────────────────────────────────────────────────────
+// ── Category orb ─────────────────────────────────────────────────────────────
 
 function CategoryOrb({ name, config, onPress, isSelected }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -1284,9 +1287,173 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
   );
 }
 
-// ── Chat message bubble — hidden for App Store Review ────────────────────────
+// ── Tool call card (collapsible) ─────────────────────────────────────────────
 
-/* APP_STORE_REVIEW: ChatBubble hidden
+// ── Simple Markdown renderer ─────────────────────────────────────────────────
+function MarkdownText({ text, isUser }) {
+  if (!text) return null;
+  const baseColor = isUser ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.82)';
+  const lines = String(text).split('\n');
+
+  return (
+    <View style={{ gap: 2 }}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <View key={idx} style={{ height: 4 }} />;
+
+        // Heading: ## or ###
+        if (trimmed.startsWith('### ')) {
+          return (
+            <Text key={idx} style={{ fontSize: 13, fontWeight: '700', color: 'rgba(100,149,237,0.95)', marginTop: 6, marginBottom: 2 }}>
+              {trimmed.slice(4)}
+            </Text>
+          );
+        }
+        if (trimmed.startsWith('## ')) {
+          return (
+            <Text key={idx} style={{ fontSize: 14, fontWeight: '700', color: 'rgba(100,149,237,1)', marginTop: 8, marginBottom: 2 }}>
+              {trimmed.slice(3)}
+            </Text>
+          );
+        }
+
+        // Bullet list: - or *
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const bulletText = trimmed.slice(2);
+          return (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginVertical: 1 }}>
+              <Text style={{ fontSize: 12, color: 'rgba(100,149,237,0.7)', marginTop: 3 }}>•</Text>
+              <InlineText text={bulletText} baseColor={baseColor} style={{ flex: 1 }} />
+            </View>
+          );
+        }
+
+        // Numbered list: 1. 2. etc
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.+)/);
+        if (numMatch) {
+          return (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginVertical: 1 }}>
+              <Text style={{ fontSize: 12, color: 'rgba(100,149,237,0.6)', minWidth: 16, marginTop: 3 }}>{numMatch[1]}.</Text>
+              <InlineText text={numMatch[2]} baseColor={baseColor} style={{ flex: 1 }} />
+            </View>
+          );
+        }
+
+        // Normal paragraph
+        return <InlineText key={idx} text={trimmed} baseColor={baseColor} style={{ marginVertical: 1 }} />;
+      })}
+    </View>
+  );
+}
+
+// Renders a line with inline **bold** and *italic* support
+function InlineText({ text, baseColor, style }) {
+  // Split by **bold** or *italic*
+  const parts = [];
+  const regex = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index), bold: false, italic: false });
+    }
+    if (match[1] !== undefined) {
+      parts.push({ text: match[1], bold: true, italic: false });
+    } else if (match[2] !== undefined) {
+      parts.push({ text: match[2], bold: false, italic: true });
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), bold: false, italic: false });
+  }
+
+  if (parts.length === 0 || (parts.length === 1 && !parts[0].bold && !parts[0].italic)) {
+    return (
+      <Text style={[{ fontSize: 14, color: baseColor, lineHeight: 20 }, style]}>
+        {text}
+      </Text>
+    );
+  }
+
+  return (
+    <Text style={[{ fontSize: 14, lineHeight: 20 }, style]}>
+      {parts.map((p, i) => (
+        <Text
+          key={i}
+          style={{
+            color: p.bold ? '#fff' : baseColor,
+            fontWeight: p.bold ? '700' : '400',
+            fontStyle: p.italic ? 'italic' : 'normal',
+          }}
+        >
+          {p.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+function ToolCallCard({ tool }) {
+  const [expanded, setExpanded] = useState(false);
+  const toolName = tool.name || tool.tool || 'herramienta';
+  const query = tool.query || tool.parameters?.query || tool.input?.query || null;
+  const resultCount = tool.result_count ?? tool.results?.length ?? null;
+
+  const toolIcons = {
+    search: '🔍', web_search: '🌐', scrape: '📄', nitter: '🐦',
+    twitter: '🐦', instagram: '📷', perplexity: '🔮', exa: '🔎',
+    trending: '📈', news: '📰', default: '🔧',
+  };
+  const icon = toolIcons[toolName.toLowerCase()] || toolIcons.default;
+
+  return (
+    <TouchableOpacity
+      onPress={() => setExpanded(e => !e)}
+      activeOpacity={0.75}
+      style={{
+        backgroundColor: 'rgba(6,182,212,0.07)',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(6,182,212,0.2)',
+        padding: 9,
+        marginBottom: 6,
+        maxWidth: '82%',
+        marginLeft: 16,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontSize: 13 }}>{icon}</Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(6,182,212,0.85)', letterSpacing: 0.4 }}>
+            {toolName}
+          </Text>
+          {resultCount !== null && (
+            <View style={{ backgroundColor: 'rgba(6,182,212,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+              <Text style={{ fontSize: 9, color: 'rgba(6,182,212,0.7)', fontWeight: '700' }}>{resultCount}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={{ fontSize: 9, color: 'rgba(6,182,212,0.5)' }}>{expanded ? '▲' : '▼'}</Text>
+      </View>
+      {query && !expanded && (
+        <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3 }} numberOfLines={1}>
+          {query}
+        </Text>
+      )}
+      {expanded && (
+        <View style={{ marginTop: 6, borderTopWidth: 1, borderColor: 'rgba(6,182,212,0.12)', paddingTop: 6 }}>
+          {query && <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 3 }}>🔍 {query}</Text>}
+          {tool.status && <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Estado: {tool.status}</Text>}
+          {tool.error && <Text style={{ fontSize: 10, color: 'rgba(239,68,68,0.7)' }}>Error: {tool.error}</Text>}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// ── Chat message bubble ───────────────────────────────────────────────────────
+
 function ChatBubble({ message }) {
   const isUser = message.role === 'user';
 
@@ -1329,8 +1496,17 @@ function ChatBubble({ message }) {
     <View style={{
       alignItems: isUser ? 'flex-end' : 'flex-start',
       marginBottom: 10,
-      paddingHorizontal: 16,
+      paddingHorizontal: isUser ? 16 : 0,
     }}>
+      {/* Tool calls — shown before assistant text */}
+      {!isUser && message.toolsUsed?.length > 0 && (
+        <View style={{ marginBottom: 4 }}>
+          {message.toolsUsed.map((tool, i) => (
+            <ToolCallCard key={i} tool={tool} />
+          ))}
+        </View>
+      )}
+
       {!isUser && (
         <Text style={{
           fontSize: 10,
@@ -1338,13 +1514,14 @@ function ChatBubble({ message }) {
           color: 'rgba(100,149,237,0.6)',
           letterSpacing: 0.5,
           marginBottom: 4,
-          marginLeft: 2,
+          marginLeft: 18,
         }}>
           VIZTA
         </Text>
       )}
       <View style={{
         maxWidth: '82%',
+        marginLeft: isUser ? 0 : 16,
         backgroundColor: isUser
           ? 'rgba(124,58,237,0.25)'
           : 'rgba(100,149,237,0.1)',
@@ -1358,18 +1535,11 @@ function ChatBubble({ message }) {
           ? 'rgba(124,58,237,0.35)'
           : 'rgba(100,149,237,0.18)',
       }}>
-        <Text style={{
-          fontSize: 14,
-          color: isUser ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.82)',
-          lineHeight: 20,
-        }}>
-          {message.text}
-        </Text>
+        <MarkdownText text={message.text} isUser={isUser} />
       </View>
     </View>
   );
 }
-*/ // END APP_STORE_REVIEW
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
@@ -1378,16 +1548,69 @@ export default function OrbitScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
-  /* APP_STORE_REVIEW: Chat state + functions hidden
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatFocused, setChatFocused] = useState(false);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const chatSessionId = useRef(`orbit-${Math.random().toString(36).slice(2)}`);
   const chatScrollRef = useRef(null);
   const focusAnim = useRef(new Animated.Value(0)).current;
   const orbitMaxHeight = useRef(new Animated.Value(380)).current;
   const chatEnteredRef = useRef(false);
+
+  // Load history: local AsyncStorage + Supabase sync
+  useEffect(() => {
+    // 1. Load local cache immediately
+    AsyncStorage.getItem('orbit_chat_history').then(raw => {
+      if (raw) {
+        try { setChatHistory(JSON.parse(raw)); } catch (_) {}
+      }
+    }).catch(() => {});
+
+    // 2. Sync from Supabase if user is logged in
+    const syncFromSupabase = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: convs, error } = await supabase
+          .from('vizta_conversations')
+          .select('id, title, snippet, created_at, updated_at, message_count, session_id')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(50);
+
+        if (error || !convs || convs.length === 0) return;
+
+        // Convert to local format
+        const remoteHistory = convs.map(c => ({
+          id: c.id,
+          snippet: c.snippet || c.title || 'Conversación',
+          timestamp: c.updated_at || c.created_at,
+          messages: [], // lazy-load on restore
+          messageCount: c.message_count || 0,
+          sessionId: c.session_id,
+          fromSupabase: true,
+        }));
+
+        setChatHistory(prev => {
+          // Merge: remote entries take precedence over local by id
+          const localIds = new Set(prev.filter(e => !e.fromSupabase).map(e => e.id));
+          const localOnly = prev.filter(e => localIds.has(e.id));
+          const merged = [...remoteHistory, ...localOnly]
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          return merged;
+        });
+      } catch (err) {
+        console.log('Supabase history sync error:', err?.message);
+      }
+    };
+
+    syncFromSupabase();
+  }, []);
 
   const focusChat = useCallback(() => {
     chatEnteredRef.current = true;
@@ -1445,10 +1668,96 @@ export default function OrbitScreen() {
     collapseOrbit();
   }, [collapseOrbit]);
 
+  const saveToHistory = useCallback((messages) => {
+    if (!messages || messages.length < 2) return; // need at least 1 user + 1 assistant
+    const realMessages = messages.filter(m => !m.loading);
+    if (realMessages.length < 2) return;
+
+    // Build a snippet from the first user message
+    const firstUser = realMessages.find(m => m.role === 'user');
+    const snippet = firstUser?.text?.slice(0, 60) || 'Conversación';
+
+    const entry = {
+      id: chatSessionId.current,
+      snippet,
+      timestamp: new Date().toISOString(),
+      messages: realMessages,
+    };
+
+    setChatHistory(prev => {
+      const updated = [entry, ...prev.filter(h => h.id !== entry.id)].slice(0, 20);
+      AsyncStorage.setItem('orbit_chat_history', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
   const clearChat = useCallback(() => {
-    setChatMessages([]);
+    // Save current conversation before clearing
+    setChatMessages(prev => {
+      saveToHistory(prev);
+      return [];
+    });
     setChatInput('');
     chatSessionId.current = `orbit-${Math.random().toString(36).slice(2)}`;
+  }, [saveToHistory]);
+
+  const restoreConversation = useCallback(async (entry) => {
+    setHistoryVisible(false);
+    chatSessionId.current = entry.id;
+
+    // If entry has messages already (local), restore directly
+    if (entry.messages && entry.messages.length > 0) {
+      setChatMessages(entry.messages);
+      focusChat();
+      return;
+    }
+
+    // Lazy-load from Supabase if fromSupabase flag
+    if (entry.fromSupabase) {
+      setChatLoading(true);
+      focusChat();
+      try {
+        const { data: msgs, error } = await supabase
+          .from('vizta_messages')
+          .select('id, role, content, tool_used, created_at')
+          .eq('conversation_id', entry.id)
+          .order('created_at', { ascending: true });
+
+        if (!error && msgs && msgs.length > 0) {
+          const restored = msgs.map(m => {
+            // Normalize tool_used (string from DB) to toolsUsed array format
+            const toolsUsed = m.tool_used && m.tool_used !== 'quick_response' && m.tool_used !== 'chat_response'
+              ? [{ name: m.tool_used, tool: m.tool_used }]
+              : [];
+            return {
+              id: m.id,
+              role: m.role,
+              text: m.content || '',
+              toolsUsed,
+            };
+          });
+          setChatMessages(restored);
+        } else {
+          setChatMessages([]);
+        }
+      } catch (err) {
+        console.log('Error loading Supabase messages:', err?.message);
+        setChatMessages([]);
+      } finally {
+        setChatLoading(false);
+      }
+    } else {
+      setChatMessages([]);
+      focusChat();
+    }
+  }, [focusChat]);
+
+  const deleteHistoryEntry = useCallback((entryId) => {
+    setChatHistory(prev => {
+      const updated = prev.filter(h => h.id !== entryId);
+      AsyncStorage.setItem('orbit_chat_history', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
   }, []);
 
   const sendMessage = useCallback(async () => {
@@ -1540,12 +1849,26 @@ export default function OrbitScreen() {
         data.content ||
         'Sin respuesta del servidor.';
 
+      // Extract tools used from server response (ViztaAgent format)
+      const toolsUsed =
+        data.metadata?.toolsUsed ||
+        data.toolsUsed ||
+        data.tools_used ||
+        data.response?.toolsUsed ||
+        [];
+
       console.log('[Chat] Response text resolved (first 100):', String(responseText).slice(0, 100));
+      console.log('[Chat] Tools used:', toolsUsed?.length ?? 0);
 
       setChatMessages(prev =>
         prev
           .filter(m => !m.loading)
-          .concat({ id: `ai-${Date.now()}`, role: 'assistant', text: responseText })
+          .concat({
+            id: `ai-${Date.now()}`,
+            role: 'assistant',
+            text: responseText,
+            toolsUsed: Array.isArray(toolsUsed) ? toolsUsed : [],
+          })
       );
     } catch (err) {
       console.error('[Chat] CAUGHT ERROR:', err?.message, err?.stack);
@@ -1564,8 +1887,6 @@ export default function OrbitScreen() {
       setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 150);
     }
   }, [chatInput, chatLoading]);
-
-  */ // END APP_STORE_REVIEW
 
   // Fetch today's news_cards (Guatemala time, UTC-6)
   const { data: newsData, isLoading: newsLoading } = useQuery({
@@ -1699,7 +2020,10 @@ export default function OrbitScreen() {
       <StatusBar style="light" />
 
       {/* ── Selector screen ── */}
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
       <View style={{ flex: 1, paddingTop: insets.top }}>
         {/* Header */}
         <View style={{
@@ -1736,7 +2060,7 @@ export default function OrbitScreen() {
         </Text>
 
         {/* Orbit wrapper */}
-        <View style={{ height: containerHeight, position: 'relative' }}>
+        <Animated.View style={{ maxHeight: orbitMaxHeight, overflow: 'hidden' }}>
         <View style={{
           height: containerHeight,
           position: 'relative',
@@ -1863,10 +2187,208 @@ export default function OrbitScreen() {
             />
           </View>
         </View>
+        </Animated.View>
+
+        {/* ── Chat messages area ── */}
+        <Animated.View style={{ flex: 1, opacity: focusAnim }}>
+          <ScrollView
+            ref={chatScrollRef}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {chatMessages.length === 0 && (
+              <Text style={{
+                textAlign: 'center',
+                color: 'rgba(255,255,255,0.22)',
+                fontSize: 13,
+                marginTop: 28,
+              }}>
+                Hazme una pregunta
+              </Text>
+            )}
+            {chatMessages.map(msg => (
+              <ChatBubble key={msg.id} message={msg} />
+            ))}
+          </ScrollView>
+        </Animated.View>
+
+        {/* ── Chat input row ── */}
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          paddingBottom: Math.max(10, insets.bottom),
+          gap: 8,
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(100,149,237,0.10)',
+          backgroundColor: 'rgba(0,0,0,0.25)',
+        }}>
+          <TouchableOpacity
+            onPress={clearChat}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Trash2 size={16} color="rgba(255,255,255,0.30)" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setHistoryVisible(true)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Clock size={16} color={chatHistory.length > 0 ? 'rgba(100,149,237,0.65)' : 'rgba(255,255,255,0.25)'} />
+          </TouchableOpacity>
+
+          <TextInput
+            value={chatInput}
+            onChangeText={setChatInput}
+            onFocus={focusChat}
+            onBlur={blurChat}
+            placeholder="Pregúntale a Vizta…"
+            placeholderTextColor="rgba(255,255,255,0.30)"
+            returnKeyType="send"
+            onSubmitEditing={sendMessage}
+            blurOnSubmit={false}
+            style={{
+              flex: 1,
+              color: '#fff',
+              fontSize: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              backgroundColor: 'rgba(100,149,237,0.08)',
+              borderRadius: 22,
+              borderWidth: 1,
+              borderColor: chatFocused
+                ? 'rgba(100,149,237,0.40)'
+                : 'rgba(255,255,255,0.10)',
+            }}
+          />
+
+          <TouchableOpacity
+            onPress={sendMessage}
+            disabled={chatLoading || !chatInput.trim()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Send
+              size={18}
+              color={chatLoading || !chatInput.trim()
+                ? 'rgba(100,149,237,0.30)'
+                : 'rgba(100,149,237,0.90)'}
+            />
+          </TouchableOpacity>
         </View>
 
       </View>
-      </View>
+      </KeyboardAvoidingView>
+
+      {/* ── History Modal ── */}
+      <Modal
+        visible={historyVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setHistoryVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'flex-end',
+          backgroundColor: 'rgba(0,0,0,0.55)',
+        }}>
+          <View style={{
+            backgroundColor: 'rgba(8,10,30,0.98)',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            height: '85%',
+            borderTopWidth: 1,
+            borderColor: 'rgba(100,149,237,0.18)',
+          }}>
+            {/* Modal header */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(100,149,237,0.10)',
+            }}>
+              <Text style={{
+                fontSize: 15,
+                fontWeight: '700',
+                color: '#fff',
+                letterSpacing: 0.3,
+              }}>
+                Historial de Chats
+              </Text>
+              <TouchableOpacity onPress={() => setHistoryVisible(false)}>
+                <Text style={{ fontSize: 13, color: 'rgba(100,149,237,0.7)' }}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* List */}
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+            >
+              {chatHistory.length === 0 ? (
+                <Text style={{
+                  color: 'rgba(255,255,255,0.30)',
+                  fontSize: 13,
+                  textAlign: 'center',
+                  marginTop: 32,
+                }}>
+                  Sin conversaciones guardadas
+                </Text>
+              ) : (
+                chatHistory.map((entry) => {
+                  const date = new Date(entry.timestamp);
+                  const label = date.toLocaleDateString('es-GT', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  });
+                  return (
+                    <TouchableOpacity
+                      key={entry.id}
+                      onPress={() => restoreConversation(entry)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(100,149,237,0.07)',
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: 'rgba(100,149,237,0.14)',
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        marginBottom: 10,
+                        gap: 10,
+                      }}
+                    >
+                      <Clock size={14} color="rgba(100,149,237,0.55)" />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          numberOfLines={1}
+                          style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '500' }}
+                        >
+                          {entry.snippet}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)', marginTop: 3 }}>
+                          {label} · {entry.messageCount || entry.messages?.length || 0} mensajes
+                          {entry.fromSupabase ? ' · WEB' : ''}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation(); deleteHistoryEntry(entry.id); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2 size={13} color="rgba(255,255,255,0.22)" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Detail view (slides up from bottom) ── */}
       <Animated.View

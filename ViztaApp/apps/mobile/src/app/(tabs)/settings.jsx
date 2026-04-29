@@ -271,22 +271,32 @@ function TermsModal({ visible, onClose }) {
         'Vizta no recopila datos personales de usuarios sin cuenta. Si conectas el Portal Web, se usa tu correo electrónico únicamente para autenticación. No compartimos datos con terceros con fines comerciales.',
     },
     {
-      title: '7. Sin suscripciones',
+      title: '7. Búsqueda con Inteligencia Artificial',
+      content:
+        'Vizta incluye una función de búsqueda de personas en el Codex mediante inteligencia artificial. Al ingresar un nombre, este se envía como consulta a motores de búsqueda e IA para obtener información pública disponible en internet. El nombre ingresado se usa exclusivamente para ejecutar la búsqueda y no se almacena ni asocia a tu perfil. Los resultados provienen de fuentes públicas y no garantizamos su exactitud.',
+    },
+    {
+      title: '8. Posts y guardado de contenido',
+      content:
+        'Vizta permite guardar artículos y enlaces como posts en tu perfil. Esta función actúa como un marcador personal (bookmark) de contenido web. Los posts que guardes se almacenan asociados a tu cuenta en el Portal Web si estás conectado. Puedes eliminarlos en cualquier momento. No vendemos ni compartimos esta información con terceros.',
+    },
+    {
+      title: '9. Sin suscripciones',
       content:
         'Vizta no ofrece ni cobra suscripciones. Todas las funciones de la app son completamente gratuitas. El Portal Web es una herramienta separada en acceso cerrado para periodistas y comunicadores.',
     },
     {
-      title: '8. Limitación de responsabilidad',
+      title: '10. Limitación de responsabilidad',
       content:
         'No garantizamos disponibilidad continua del servicio. La app se ofrece "tal como está". No somos responsables por decisiones tomadas basadas en el contenido de la aplicación.',
     },
     {
-      title: '9. Cambios en los términos',
+      title: '11. Cambios en los términos',
       content:
         'Podemos actualizar estos términos en cualquier momento. Los cambios se notificarán mediante actualizaciones de la app. El uso continuado de Vizta implica la aceptación de los términos vigentes.',
     },
     {
-      title: '10. Contacto',
+      title: '12. Contacto',
       content:
         'Para dudas o consultas sobre estos términos, escríbenos a: contacto@standatpd.com',
     },
@@ -402,17 +412,27 @@ function PrivacyModal({ visible, onClose }) {
         'El Portal Web es la plataforma de donde nació Vizta. Es un servicio con sus propios términos y condiciones de uso, independientes a los de esta app. Si decides conectarlo, tu correo electrónico se usa únicamente para autenticarte. Puedes desconectarte en cualquier momento desde Ajustes.',
     },
     {
-      title: '4. Contenido de terceros',
+      title: '4. Búsqueda de personas en el Codex',
+      content:
+        'Cuando utilizas la función "Buscar más información" en el Codex, el nombre que ingresas se envía como consulta a servicios externos de búsqueda e inteligencia artificial para obtener información pública disponible en internet. Este nombre se utiliza únicamente para ejecutar la consulta puntual y no se guarda en nuestros servidores ni se asocia a tu identidad o perfil de usuario.',
+    },
+    {
+      title: '5. Posts y bookmarks',
+      content:
+        'Si guardas artículos o enlaces como posts desde la app, estos se almacenan en tu cuenta del Portal Web (si estás conectado). Esta información es exclusivamente tuya: no la compartimos con terceros ni la usamos con fines publicitarios. Puedes eliminar tus posts en cualquier momento.',
+    },
+    {
+      title: '6. Contenido de terceros',
       content:
         'La app muestra contenido proveniente de medios de comunicación externos. Estos medios pueden tener sus propias políticas de privacidad. Vizta no tiene control sobre el contenido ni las prácticas de esos sitios.',
     },
     {
-      title: '5. Cambios a esta política',
+      title: '7. Cambios a esta política',
       content:
         'Esta política puede actualizarse conforme Vizta expanda sus funcionalidades. Cualquier cambio relevante en el manejo de datos será notificado mediante una actualización de la app. Te recomendamos revisar esta sección periódicamente.',
     },
     {
-      title: '6. Contacto',
+      title: '8. Contacto',
       content:
         'Si tienes preguntas sobre privacidad, escríbenos a: contacto@standatpd.com',
     },
