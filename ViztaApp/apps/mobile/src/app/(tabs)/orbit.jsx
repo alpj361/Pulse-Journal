@@ -16,6 +16,7 @@ import {
   Keyboard,
   Platform,
   Linking,
+  FlatList,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
@@ -1394,60 +1395,195 @@ function InlineText({ text, baseColor, style }) {
   );
 }
 
+// ── Tool call map (icon + label per tool name) ────────────────────────────────
+const TOOL_META = {
+  codex:                { icon: '📖', label: 'buscando en el Codex', color: '#818cf8' },
+  codex_search:         { icon: '📖', label: 'buscando en el Codex', color: '#818cf8' },
+  codex_lookup:         { icon: '📖', label: 'consultando el Codex', color: '#818cf8' },
+  nitter:               { icon: '🐦', label: 'revisando redes sociales', color: '#38bdf8' },
+  nitter_search:        { icon: '🐦', label: 'revisando redes sociales', color: '#38bdf8' },
+  nitter_context:       { icon: '🐦', label: 'contexto de redes', color: '#38bdf8' },
+  perplexity:           { icon: '🔮', label: 'buscando en la web', color: '#a78bfa' },
+  perplexity_search:    { icon: '🔮', label: 'buscando en la web', color: '#a78bfa' },
+  search:               { icon: '🌐', label: 'buscando en la web', color: '#a78bfa' },
+  web_search:           { icon: '🌐', label: 'buscando en la web', color: '#a78bfa' },
+  news:                 { icon: '📰', label: 'consultando noticias', color: '#34d399' },
+  fetch_news:           { icon: '📰', label: 'consultando noticias', color: '#34d399' },
+  news_search:          { icon: '📰', label: 'consultando noticias', color: '#34d399' },
+  tendencias:           { icon: '📈', label: 'consultando tendencias', color: '#f59e0b' },
+  tendencias_query:     { icon: '📈', label: 'consultando tendencias', color: '#f59e0b' },
+  political_context:    { icon: '📈', label: 'contexto político', color: '#f59e0b' },
+  get_trends:           { icon: '📈', label: 'consultando tendencias', color: '#f59e0b' },
+  create_universe_item: { icon: '✨', label: 'creando en el Universo', color: '#e879f9' },
+  update_universe_item: { icon: '✨', label: 'actualizando el Universo', color: '#e879f9' },
+  resolve_entity:       { icon: '✨', label: 'resolviendo entidad', color: '#e879f9' },
+};
+
+function resolveMeta(toolName) {
+  const key = (toolName || '').toLowerCase().replace(/[\s-]/g, '_');
+  return TOOL_META[key] || { icon: '🔧', label: toolName || 'herramienta', color: '#94a3b8' };
+}
+
+// ── Glassmorphism Tool Call Card ──────────────────────────────────────────────
 function ToolCallCard({ tool }) {
   const [expanded, setExpanded] = useState(false);
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
   const toolName = tool.name || tool.tool || 'herramienta';
   const query = tool.query || tool.parameters?.query || tool.input?.query || null;
   const resultCount = tool.result_count ?? tool.results?.length ?? null;
+  const isCompleted = resultCount !== null || tool.status === 'completed';
 
-  const toolIcons = {
-    search: '🔍', web_search: '🌐', scrape: '📄', nitter: '🐦',
-    twitter: '🐦', instagram: '📷', perplexity: '🔮', exa: '🔎',
-    trending: '📈', news: '📰', default: '🔧',
-  };
-  const icon = toolIcons[toolName.toLowerCase()] || toolIcons.default;
+  const { icon, label, color } = resolveMeta(toolName);
+
+  // Shimmer animation while running (not completed)
+  useEffect(() => {
+    if (isCompleted) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0, duration: 1400, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isCompleted]);
+
+  const shimmerOpacity = shimmerAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.04, 0.10, 0.04],
+  });
 
   return (
     <TouchableOpacity
       onPress={() => setExpanded(e => !e)}
-      activeOpacity={0.75}
+      activeOpacity={0.80}
       style={{
-        backgroundColor: 'rgba(6,182,212,0.07)',
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(6,182,212,0.2)',
-        padding: 9,
         marginBottom: 6,
-        maxWidth: '82%',
         marginLeft: 16,
+        maxWidth: '85%',
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: isCompleted
+          ? color + '30'
+          : color + '45',
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 13 }}>{icon}</Text>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(6,182,212,0.85)', letterSpacing: 0.4 }}>
-            {toolName}
-          </Text>
-          {resultCount !== null && (
-            <View style={{ backgroundColor: 'rgba(6,182,212,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
-              <Text style={{ fontSize: 9, color: 'rgba(6,182,212,0.7)', fontWeight: '700' }}>{resultCount}</Text>
+      <BlurView intensity={22} tint="dark" style={{ borderRadius: 12 }}>
+        <View style={{
+          backgroundColor: isCompleted
+            ? 'rgba(8,10,24,0.68)'
+            : 'rgba(8,10,24,0.72)',
+          borderRadius: 12,
+          padding: 10,
+        }}>
+          {/* Shimmer overlay while running */}
+          {!isCompleted && (
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                borderRadius: 12,
+                backgroundColor: color,
+                opacity: shimmerOpacity,
+              }}
+            />
+          )}
+
+          {/* Main row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* Icon circle */}
+            <View style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: color + '1A',
+              borderWidth: 1,
+              borderColor: color + '40',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={{ fontSize: 13 }}>{icon}</Text>
+            </View>
+
+            {/* Label + status */}
+            <View style={{ flex: 1 }}>
+              <Text style={{
+                fontSize: 12,
+                fontWeight: '600',
+                color: isCompleted ? 'rgba(255,255,255,0.75)' : color,
+                letterSpacing: 0.2,
+              }} numberOfLines={1}>
+                {isCompleted ? `✓ ${label}` : label + '…'}
+              </Text>
+              {query && (
+                <Text style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.38)',
+                  marginTop: 1,
+                }} numberOfLines={1}>
+                  "{query}"
+                </Text>
+              )}
+            </View>
+
+            {/* Result count badge */}
+            {resultCount !== null && (
+              <View style={{
+                backgroundColor: color + '20',
+                borderRadius: 6,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderWidth: 1,
+                borderColor: color + '35',
+              }}>
+                <Text style={{
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: '700',
+                }}>
+                  {resultCount}
+                </Text>
+              </View>
+            )}
+
+            {/* Expand chevron */}
+            {(query || tool.status || tool.error) && (
+              <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>
+                {expanded ? '▲' : '▼'}
+              </Text>
+            )}
+          </View>
+
+          {/* Expanded detail */}
+          {expanded && (query || tool.status || tool.error) && (
+            <View style={{
+              marginTop: 8,
+              paddingTop: 8,
+              borderTopWidth: 1,
+              borderTopColor: 'rgba(255,255,255,0.08)',
+              gap: 3,
+            }}>
+              {query && (
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                  🔍 {query}
+                </Text>
+              )}
+              {tool.status && (
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+                  Estado: {tool.status}
+                </Text>
+              )}
+              {tool.error && (
+                <Text style={{ fontSize: 10, color: 'rgba(239,68,68,0.7)' }}>
+                  Error: {tool.error}
+                </Text>
+              )}
             </View>
           )}
         </View>
-        <Text style={{ fontSize: 9, color: 'rgba(6,182,212,0.5)' }}>{expanded ? '▲' : '▼'}</Text>
-      </View>
-      {query && !expanded && (
-        <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 3 }} numberOfLines={1}>
-          {query}
-        </Text>
-      )}
-      {expanded && (
-        <View style={{ marginTop: 6, borderTopWidth: 1, borderColor: 'rgba(6,182,212,0.12)', paddingTop: 6 }}>
-          {query && <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 3 }}>🔍 {query}</Text>}
-          {tool.status && <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Estado: {tool.status}</Text>}
-          {tool.error && <Text style={{ fontSize: 10, color: 'rgba(239,68,68,0.7)' }}>Error: {tool.error}</Text>}
-        </View>
-      )}
+      </BlurView>
     </TouchableOpacity>
   );
 }
@@ -1560,6 +1696,108 @@ export default function OrbitScreen() {
   const focusAnim = useRef(new Animated.Value(0)).current;
   const orbitMaxHeight = useRef(new Animated.Value(380)).current;
   const chatEnteredRef = useRef(false);
+
+  // @mention state
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionPosition, setMentionPosition] = useState(0);
+  const [codexItems, setCodexItems] = useState([]);
+  const [filteredCodexItems, setFilteredCodexItems] = useState([]);
+
+  // Load Codex items for @mention (wiki_items + codex_universe_items)
+  useEffect(() => {
+    const loadCodexItems = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: universeData } = await supabase
+          .from('codex_universe_items')
+          .select('id, name, tipo, description')
+          .neq('tipo', 'post')
+          .limit(400);
+
+        const universeItems = (universeData || []).map(i => ({
+          id: `univ-${i.id}`,
+          title: i.name,
+          subtitle: i.tipo || 'Universo',
+          type: 'universe',
+          description: i.description,
+        })).sort((a, b) => a.title.localeCompare(b.title));
+
+        setCodexItems(universeItems);
+      } catch (err) {
+        console.log('[Mentions] Error loading codex items:', err?.message);
+      }
+    };
+    loadCodexItems();
+  }, []);
+
+  // Filter codex items based on mentionQuery
+  useEffect(() => {
+    if (!mentionQuery.trim()) {
+      setFilteredCodexItems(codexItems.slice(0, 6));
+    } else {
+      const q = mentionQuery.toLowerCase();
+      const filtered = codexItems
+        .filter(item =>
+          item.title?.toLowerCase().includes(q) ||
+          item.subtitle?.toLowerCase().includes(q)
+        )
+        .slice(0, 8);
+      setFilteredCodexItems(filtered);
+    }
+  }, [mentionQuery, codexItems]);
+
+  // Handle text change with @mention detection
+  const handleChatInputChange = useCallback((text) => {
+    setChatInput(text);
+
+    // Find last @ in the text
+    const lastAt = text.lastIndexOf('@');
+    if (lastAt !== -1) {
+      const textAfterAt = text.slice(lastAt + 1);
+      // Show mentions if no space after @
+      if (!textAfterAt.includes(' ')) {
+        setMentionPosition(lastAt);
+        setMentionQuery(textAfterAt);
+        setShowMentions(true);
+        return;
+      }
+    }
+    setShowMentions(false);
+  }, []);
+
+  // Select a mention from the dropdown
+  // We store mentions as «Name» (guillemets) internally so they're easy to parse
+  const selectMention = useCallback((item) => {
+    const before = chatInput.slice(0, mentionPosition);
+    const after = chatInput.slice(mentionPosition + 1 + mentionQuery.length);
+    // No @ prefix — guillemets wrap the full name as a token
+    const newText = `${before}«${item.title}» ${after}`;
+    setChatInput(newText);
+    setShowMentions(false);
+    setMentionQuery('');
+  }, [chatInput, mentionPosition, mentionQuery]);
+
+  // Parse text into segments: plain text vs «mention» tokens
+  const parseMentionSegments = useCallback((text) => {
+    const segments = [];
+    // Match «...» guillemet-wrapped tokens
+    const regex = /«([^»]+)»/g;
+    let last = 0;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      if (m.index > last) segments.push({ type: 'text', value: text.slice(last, m.index) });
+      segments.push({ type: 'mention', value: m[1] });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) segments.push({ type: 'text', value: text.slice(last) });
+    return segments;
+  }, []);
+
+  const mentionSegments = parseMentionSegments(chatInput);
+  const hasMentions = mentionSegments.some(s => s.type === 'mention');
 
   // Load history: local AsyncStorage + Supabase sync
   useEffect(() => {
@@ -2239,30 +2477,257 @@ export default function OrbitScreen() {
             <Clock size={16} color={chatHistory.length > 0 ? 'rgba(100,149,237,0.65)' : 'rgba(255,255,255,0.25)'} />
           </TouchableOpacity>
 
-          <TextInput
-            value={chatInput}
-            onChangeText={setChatInput}
-            onFocus={focusChat}
-            onBlur={blurChat}
-            placeholder="Pregúntale a Vizta…"
-            placeholderTextColor="rgba(255,255,255,0.30)"
-            returnKeyType="send"
-            onSubmitEditing={sendMessage}
-            blurOnSubmit={false}
-            style={{
-              flex: 1,
-              color: '#fff',
-              fontSize: 14,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
+          <View style={{ flex: 1, position: 'relative' }}>
+            {/* @mention autocomplete dropdown */}
+            {showMentions && filteredCodexItems.length > 0 && (
+              <View style={{
+                position: 'absolute',
+                bottom: 50,
+                left: 0,
+                right: 0,
+                maxHeight: 240,
+                borderRadius: 16,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.08)',
+                zIndex: 999,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: -4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 16,
+                elevation: 20,
+              }}>
+                <BlurView intensity={60} tint="dark" style={{ flex: 1 }}>
+                  <View style={{ backgroundColor: 'rgba(6,7,20,0.80)', flex: 1 }}>
+                    {/* Header strip */}
+                    <View style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderBottomWidth: 1,
+                      borderBottomColor: 'rgba(255,255,255,0.05)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <Text style={{
+                        fontSize: 9,
+                        color: 'rgba(255,255,255,0.30)',
+                        fontWeight: '700',
+                        letterSpacing: 1.4,
+                        textTransform: 'uppercase',
+                      }}>
+                        Codex
+                      </Text>
+                      {mentionQuery.length > 0 && (
+                        <Text style={{
+                          fontSize: 9,
+                          color: 'rgba(100,149,237,0.50)',
+                          letterSpacing: 0.3,
+                        }}>
+                          {mentionQuery}
+                        </Text>
+                      )}
+                    </View>
+
+                    <FlatList
+                      data={filteredCodexItems}
+                      keyExtractor={item => item.id}
+                      keyboardShouldPersistTaps="always"
+                      showsVerticalScrollIndicator={false}
+                      renderItem={({ item, index }) => {
+                        const typeStyle = item.type === 'wiki'
+                          ? { dot: '#a78bfa', label: item.subtitle || 'concepto' }
+                          : { dot: '#6495ED', label: item.subtitle || 'universo' };
+
+                        return (
+                          <TouchableOpacity
+                            onPress={() => selectMention(item)}
+                            activeOpacity={0.65}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 14,
+                              paddingVertical: 11,
+                              borderBottomWidth: index < filteredCodexItems.length - 1 ? 1 : 0,
+                              borderBottomColor: 'rgba(255,255,255,0.04)',
+                              gap: 12,
+                            }}
+                          >
+                            {/* Color dot */}
+                            <View style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: typeStyle.dot,
+                              flexShrink: 0,
+                              opacity: 0.85,
+                            }} />
+
+                            {/* Name */}
+                            <Text style={{
+                              flex: 1,
+                              fontSize: 13,
+                              fontWeight: '500',
+                              color: 'rgba(255,255,255,0.88)',
+                              letterSpacing: 0.1,
+                            }} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+
+                            {/* Type pill */}
+                            <View style={{
+                              paddingHorizontal: 7,
+                              paddingVertical: 2,
+                              borderRadius: 5,
+                              backgroundColor: typeStyle.dot + '15',
+                            }}>
+                              <Text style={{
+                                fontSize: 9,
+                                color: typeStyle.dot,
+                                fontWeight: '600',
+                                letterSpacing: 0.5,
+                                textTransform: 'uppercase',
+                              }}>
+                                {typeStyle.label}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  </View>
+                </BlurView>
+              </View>
+            )}
+
+            {/* Empty state for @mention with no results */}
+            {showMentions && filteredCodexItems.length === 0 && codexItems.length === 0 && (
+              <View style={{
+                position: 'absolute',
+                bottom: 50,
+                left: 0,
+                right: 0,
+                borderRadius: 14,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.07)',
+                zIndex: 999,
+              }}>
+                <BlurView intensity={55} tint="dark">
+                  <View style={{
+                    backgroundColor: 'rgba(6,7,20,0.80)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                  }}>
+                    <Text style={{
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,0.30)',
+                      letterSpacing: 0.2,
+                    }}>
+                      Tu Codex está vacío
+                    </Text>
+                  </View>
+                </BlurView>
+              </View>
+            )}
+
+            {/* Rich text input container with glowing @mention display */}
+            <View style={{
               backgroundColor: 'rgba(100,149,237,0.08)',
               borderRadius: 22,
               borderWidth: 1,
               borderColor: chatFocused
                 ? 'rgba(100,149,237,0.40)'
                 : 'rgba(255,255,255,0.10)',
-            }}
-          />
+              minHeight: 42,
+              justifyContent: 'center',
+              overflow: 'hidden',
+            }}>
+              {/* Glow overlay when mentions present */}
+              {hasMentions && (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    borderRadius: 22,
+                    backgroundColor: 'rgba(100,149,237,0.04)',
+                    shadowColor: '#6495ED',
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 10,
+                  }}
+                />
+              )}
+
+              {/* Rich display layer — visible when there are @mentions */}
+              {hasMentions ? (
+                <Text
+                  style={{
+                    fontSize: 14,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    lineHeight: 20,
+                  }}
+                  numberOfLines={1}
+                >
+                  {mentionSegments.map((seg, i) => {
+                    if (seg.type === 'mention') {
+                      return (
+                        <Text
+                          key={i}
+                          style={{
+                            color: 'rgba(180,210,255,0.95)',
+                            fontWeight: '600',
+                            letterSpacing: 0.1,
+                            textShadowColor: 'rgba(100,149,237,0.8)',
+                            textShadowOffset: { width: 0, height: 0 },
+                            textShadowRadius: 8,
+                          }}
+                        >
+                          {seg.value}
+                        </Text>
+                      );
+                    }
+                    return (
+                      <Text
+                        key={i}
+                        style={{
+                          color: 'rgba(255,255,255,0.55)',
+                          fontWeight: '400',
+                        }}
+                      >
+                        {seg.value}
+                      </Text>
+                    );
+                  })}
+                </Text>
+              ) : null}
+
+              {/* Actual TextInput — transparent when mentions displayed, normal otherwise */}
+              <TextInput
+                value={chatInput}
+                onChangeText={handleChatInputChange}
+                onFocus={focusChat}
+                onBlur={blurChat}
+                placeholder={hasMentions ? '' : 'Pregúntale a Vizta… (@ para mencionar)'}
+                placeholderTextColor="rgba(255,255,255,0.30)"
+                returnKeyType="send"
+                onSubmitEditing={sendMessage}
+                blurOnSubmit={false}
+                multiline={false}
+                style={{
+                  color: hasMentions ? 'transparent' : '#fff',
+                  fontSize: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  ...(hasMentions ? {
+                    ...StyleSheet.absoluteFillObject,
+                    borderRadius: 22,
+                  } : {}),
+                }}
+              />
+            </View>
+          </View>
 
           <TouchableOpacity
             onPress={sendMessage}

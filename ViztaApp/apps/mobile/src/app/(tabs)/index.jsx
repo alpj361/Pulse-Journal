@@ -636,9 +636,10 @@ export default function Index() {
   const narrative = about[0] || null;
   const trendingTopics = about.slice(0, 15);
   const topKeywords = trendsData?.top_keywords || [];
-  // Tiene about real si algún item tiene categoría distinta de "Otros"
-  // o razón que no sea el boilerplate "Tendencia relacionada con X"
-  const hasRealAbout = trendingTopics.length > 0 && trendingTopics.some(item =>
+  // Modo complejo (cards con gradiente) solo si TODOS los items tienen datos ricos:
+  // categoría distinta de "Otros" o razón de tendencia real. Si no hay items o
+  // ninguno tiene datos, se muestran como pills simples.
+  const hasRealAbout = trendingTopics.length > 0 && trendingTopics.every(item =>
     item.nombre &&
     (
       (item.categoria && item.categoria !== 'Otros') ||

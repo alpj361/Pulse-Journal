@@ -983,7 +983,7 @@ export default function CodexScreen() {
 
       const { error } = await supabase.from('codex_universe_items').insert({
         name,
-        tipo: 'Evidencia',
+        tipo: 'post',
         flag: 'instagram',
         description: extractedPost.description || '',
         thumbnail_url: extractedPost.thumbnail_url || extractedPost.extracted_images?.[0] || null,
@@ -1082,6 +1082,7 @@ export default function CodexScreen() {
       supabase
         .from('codex_universe_items')
         .select('id, name, tipo, description, tags, aliases, details, created_at')
+        .neq('tipo', 'post')
         .order('created_at', { ascending: false }),
     ]);
 
