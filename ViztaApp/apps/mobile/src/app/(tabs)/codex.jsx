@@ -9,6 +9,8 @@ import {
   Modal,
   Pressable,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +18,8 @@ import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Sparkles, Camera, Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Sparkles, Camera, Plus, ChevronLeft, ChevronRight, ClipboardPaste, Eye, EyeOff } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
@@ -60,41 +63,49 @@ function buildDimensionQuery(name, key) {
   }
 }
 
-const WIKI_CATEGORIES = ['Todos', 'persona', 'organización', 'lugar', 'evento', 'concepto'];
+const WIKI_CATEGORIES = ['Todos', 'Actor', 'Entidad', 'Territorio', 'Concepto', 'Evento', 'Evidencia'];
 
-// Maps English subcategory values (from DB/backend) to Spanish display keys
+// Maps legacy/English subcategory values to the real Spanish DB names (capitalized)
 const SUBCATEGORY_NORMALIZE = {
-  person: 'persona',
-  people: 'persona',
-  organization: 'organización',
-  org: 'organización',
-  location: 'lugar',
-  place: 'lugar',
-  event: 'evento',
-  concept: 'concepto',
-  entity: 'organización',
-  // codex_universe_items tipos
-  actor: 'persona',
-  entidad: 'organización',
-  evento: 'evento',
-  evidencia: 'concepto',
-  biblioteca: 'concepto',
-  territorio: 'lugar',
-  fuente: 'concepto',
+  // English legacy (wiki_items)
+  person: 'Actor',
+  people: 'Actor',
+  organization: 'Entidad',
+  org: 'Entidad',
+  entity: 'Entidad',
+  location: 'Territorio',
+  place: 'Territorio',
+  event: 'Evento',
+  concept: 'Concepto',
+  evidence: 'Evidencia',
+  // Spanish legacy (lowercase)
+  persona: 'Actor',
+  organización: 'Entidad',
+  lugar: 'Territorio',
+  concepto: 'Concepto',
+  evento: 'Evento',
+  evidencia: 'Evidencia',
+  // Direct codex_universe_items tipos (lowercased for matching)
+  actor: 'Actor',
+  entidad: 'Entidad',
+  territorio: 'Territorio',
+  biblioteca: 'Concepto',
+  fuente: 'Evidencia',
 };
 
 function normalizeSubcategory(val) {
   if (!val) return '';
-  const lower = val.toLowerCase();
-  return SUBCATEGORY_NORMALIZE[lower] || lower;
+  const lower = val.toLowerCase().trim();
+  return SUBCATEGORY_NORMALIZE[lower] || val;
 }
 
 const WIKI_CATEGORY_COLORS = {
-  persona: { bg: 'rgba(99,102,241,0.2)', border: 'rgba(99,102,241,0.4)', text: '#a5b4fc' },
-  organización: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.4)', text: '#fcd34d' },
-  lugar: { bg: 'rgba(16,185,129,0.2)', border: 'rgba(16,185,129,0.4)', text: '#6ee7b7' },
-  evento: { bg: 'rgba(239,68,68,0.2)', border: 'rgba(239,68,68,0.4)', text: '#fca5a5' },
-  concepto: { bg: 'rgba(139,92,246,0.2)', border: 'rgba(139,92,246,0.3)', text: '#c4b5fd' },
+  Actor:      { bg: 'rgba(99,102,241,0.2)',  border: 'rgba(99,102,241,0.4)',  text: '#a5b4fc' },
+  Entidad:    { bg: 'rgba(59,130,246,0.2)',  border: 'rgba(59,130,246,0.4)',  text: '#93c5fd' },
+  Territorio: { bg: 'rgba(16,185,129,0.2)', border: 'rgba(16,185,129,0.4)', text: '#6ee7b7' },
+  Concepto:   { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.4)', text: '#fcd34d' },
+  Evento:     { bg: 'rgba(249,115,22,0.2)', border: 'rgba(249,115,22,0.4)', text: '#fdba74' },
+  Evidencia:  { bg: 'rgba(236,72,153,0.2)', border: 'rgba(236,72,153,0.4)', text: '#f9a8d4' },
 };
 
 const CODEX_TYPE_ICONS = {
@@ -210,8 +221,12 @@ function WikiSearchModal({ item, onClose }) {
   const [detectedInfo, setDetectedInfo] = useState(null);
   const [actorType, setActorType] = useState(() => {
     const SPANISH_TO_ACTOR_ID = {
-      'persona': 'person', 'organización': 'organization',
-      'lugar': 'location', 'evento': 'event', 'concepto': 'concept',
+      'Actor': 'person',
+      'Entidad': 'organization',
+      'Territorio': 'location',
+      'Evento': 'event',
+      'Concepto': 'concept',
+      'Evidencia': 'concept',
     };
     const n = normalizeSubcategory(item.subcategory);
     return SPANISH_TO_ACTOR_ID[n] || 'person';
@@ -705,9 +720,34 @@ function WikiSearchModal({ item, onClose }) {
 // ── PostCard: tarjeta de Instagram post/reel con transcripción expandible ──
 function PostCard({ post, isReel, transcription, thumbUri }) {
   const [expanded, setExpanded] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisView, setAnalysisView] = useState('anotado'); // 'anotado' | 'organizado'
+  const [analysisData, setAnalysisData] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+
   const date = post.created_at
     ? new Date(post.created_at).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
+
+
+  async function handleAnalyze() {
+    if (analysisData) { setAnalysisOpen(o => !o); return; }
+    setAnalysisLoading(true);
+    setAnalysisOpen(true);
+    // DEMO: simula respuesta de la IA con datos de ejemplo
+    await new Promise(r => setTimeout(r, 1200));
+    setAnalysisData({
+      anotado: (post.description || post.name || 'Sin contenido') +
+        '\n\n[IA] Este contenido fue publicado en el contexto de las dinámicas políticas guatemaltecas. ' +
+        'Se identifican referencias a actores clave del sector público y menciones a procesos de transparencia. ' +
+        'El tono es informativo con matices críticos hacia las instituciones mencionadas.',
+      temas: ['Política', 'Guatemala', 'Transparencia', isReel ? 'Video' : 'Publicación'],
+      entidades: ['Guatemala', post.name ? post.name.split(' ')[0] : 'Autor'],
+      resumen: 'Publicación sobre temas de relevancia pública en Guatemala. Contenido de tipo ' + (isReel ? 'reel/video' : 'post') + ' con alcance informativo.',
+      sentimiento: '😐 Neutral',
+    });
+    setAnalysisLoading(false);
+  }
 
   return (
     <View style={{
@@ -755,7 +795,27 @@ function PostCard({ post, isReel, transcription, thumbUri }) {
         </View>
       )}
 
-      <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }} numberOfLines={1}>{post.name}</Text>
+      {/* Header row: title + eye button */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff', flex: 1, marginRight: 8 }} numberOfLines={2}>{post.name}</Text>
+        <TouchableOpacity
+          onPress={handleAnalyze}
+          activeOpacity={0.75}
+          style={{
+            width: 34, height: 34, borderRadius: 17,
+            backgroundColor: analysisOpen ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.06)',
+            borderWidth: 1,
+            borderColor: analysisOpen ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.12)',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          {analysisLoading
+            ? <ActivityIndicator size="small" color="rgba(99,102,241,0.9)" />
+            : <Eye size={16} color={analysisOpen ? 'rgba(99,102,241,0.9)' : 'rgba(255,255,255,0.45)'} />
+          }
+        </TouchableOpacity>
+      </View>
+
       {post.description ? (
         <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 18, marginTop: 5 }} numberOfLines={3}>
           {post.description}
@@ -790,13 +850,103 @@ function PostCard({ post, isReel, transcription, thumbUri }) {
         </View>
       ) : null}
 
+      {/* Panel de análisis IA */}
+      {analysisOpen && (
+        <View style={{
+          backgroundColor: 'rgba(99,102,241,0.07)',
+          borderRadius: 10, padding: 12, marginTop: 10,
+          borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)',
+        }}>
+          {/* Tab toggle */}
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+            {['anotado', 'organizado'].map(v => (
+              <TouchableOpacity
+                key={v}
+                onPress={() => setAnalysisView(v)}
+                activeOpacity={0.75}
+                style={{
+                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+                  backgroundColor: analysisView === v ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.05)',
+                  borderWidth: 1,
+                  borderColor: analysisView === v ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)',
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '700', color: analysisView === v ? 'rgba(99,102,241,1)' : 'rgba(255,255,255,0.4)' }}>
+                  {v === 'anotado' ? '📝 Anotado' : '🗂 Organizado'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {analysisLoading && (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <ActivityIndicator color="rgba(99,102,241,0.8)" />
+              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>Analizando contenido…</Text>
+            </View>
+          )}
+
+          {!analysisLoading && analysisData?.error && (
+            <Text style={{ fontSize: 12, color: 'rgba(255,80,80,0.8)', lineHeight: 17 }}>⚠ {analysisData.error}</Text>
+          )}
+
+          {!analysisLoading && analysisData && !analysisData.error && (
+            <>
+              {analysisView === 'anotado' && (
+                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 18 }}>
+                  {analysisData.anotado || '—'}
+                </Text>
+              )}
+              {analysisView === 'organizado' && (
+                <View style={{ gap: 8 }}>
+                  {analysisData.temas && analysisData.temas.length > 0 && (
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.5 }}>TEMAS</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                        {analysisData.temas.map((t, i) => (
+                          <View key={i} style={{ backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                            <Text style={{ fontSize: 11, color: 'rgba(200,201,255,0.9)' }}>{t}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  {analysisData.entidades && analysisData.entidades.length > 0 && (
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.5 }}>ENTIDADES</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                        {analysisData.entidades.map((e, i) => (
+                          <View key={i} style={{ backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                            <Text style={{ fontSize: 11, color: 'rgba(134,239,172,0.9)' }}>{e}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                  {analysisData.resumen && (
+                    <View>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.5 }}>RESUMEN</Text>
+                      <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 17 }}>{analysisData.resumen}</Text>
+                    </View>
+                  )}
+                  {analysisData.sentimiento && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', letterSpacing: 0.5 }}>SENTIMIENTO</Text>
+                      <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{analysisData.sentimiento}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
+
       {date && (
         <Text style={{ fontSize: 11, color: 'rgba(225,48,108,0.7)', marginTop: 8 }}>{date}</Text>
       )}
     </View>
   );
 }
-
 function CodexItem({ item }) {
   const TypeIcon = CODEX_TYPE_ICONS[item.tipo?.toLowerCase()] || FileText;
   const colors = CODEX_TYPE_COLORS[item.tipo?.toLowerCase()] || {
@@ -1143,7 +1293,7 @@ export default function CodexScreen() {
       const normalized = normalizeSubcategory(item.subcategory);
       const matchesCategory =
         wikiFilter === 'Todos' ||
-        normalized === wikiFilter.toLowerCase();
+        normalized === wikiFilter;
       const matchesSearch =
         !searchQuery ||
         item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1291,9 +1441,18 @@ export default function CodexScreen() {
               {/* Add Post Modal */}
               {showAddPostModal && (
                 <Modal visible animationType="slide" transparent onRequestClose={() => setShowAddPostModal(false)}>
-                  <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }} onPress={() => setShowAddPostModal(false)}>
+                  <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={{ flex: 1, justifyContent: 'flex-end' }}
+                  >
+                    <Pressable style={{ flex: 1 }} onPress={() => setShowAddPostModal(false)} />
                     <Pressable onPress={e => e.stopPropagation()}>
-                      <View style={{ backgroundColor: '#0a0c1b', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 24, paddingBottom: 40 }}>
+                      <View style={{ backgroundColor: '#0a0c1b', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(255,255,255,0.1)', maxHeight: '90%' }}>
+                        <ScrollView
+                          contentContainerStyle={{ padding: 24, paddingBottom: 40 }}
+                          keyboardShouldPersistTaps="handled"
+                          showsVerticalScrollIndicator={false}
+                        >
                         <Text style={{ fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 16 }}>Agregar post</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, height: 48, marginBottom: 14 }}>
                           <Link size={15} color="rgba(255,255,255,0.4)" />
@@ -1306,6 +1465,16 @@ export default function CodexScreen() {
                             autoCapitalize="none"
                             autoCorrect={false}
                           />
+                          <TouchableOpacity
+                            onPress={async () => {
+                              const text = await Clipboard.getStringAsync();
+                              if (text) setPostUrl(text);
+                            }}
+                            style={{ padding: 6, marginLeft: 4 }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <ClipboardPaste size={18} color="#fff" />
+                          </TouchableOpacity>
                         </View>
 
                         {extractError && (
@@ -1408,9 +1577,10 @@ export default function CodexScreen() {
                             </>
                           )}
                         </View>
+                        </ScrollView>
                       </View>
                     </Pressable>
-                  </Pressable>
+                  </KeyboardAvoidingView>
                 </Modal>
               )}
 
