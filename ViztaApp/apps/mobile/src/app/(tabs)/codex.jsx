@@ -24,6 +24,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { supabase } from '../../utils/supabase';
+import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 
 const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
 const EXTRACTORT_URL = process.env.EXPO_PUBLIC_EXTRACTORT_URL || 'https://api.standatpd.com';
@@ -151,6 +152,7 @@ function WikiItem({ item, onPress }) {
     border: 'rgba(255,255,255,0.15)',
     text: 'rgba(255,255,255,0.6)',
   };
+  const actorAvatar = catKey === 'Actor' ? (item.metadata?.avatar ?? null) : null;
 
   return (
     <TouchableOpacity
@@ -166,9 +168,14 @@ function WikiItem({ item, onPress }) {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff', flex: 1 }} numberOfLines={1}>
-          {item.name}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: actorAvatar ? 10 : 0 }}>
+          {actorAvatar && (
+            <Avatar config={actorAvatar} seed={item.name} size={40} showBorder={false} />
+          )}
+          <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff', flex: 1 }} numberOfLines={1}>
+            {item.name}
+          </Text>
+        </View>
         {item.subcategory && (
           <View style={{
             backgroundColor: catColors.bg,
@@ -215,7 +222,33 @@ function WikiItem({ item, onPress }) {
 
 // ── Wiki Search Modal (3-step: detect → dimensions → results) ─────────────────
 
-function WikiSearchModal({ item, onClose }) {
+function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
+  const catKey = normalizeSubcategory(item.subcategory);
+  const catColors = WIKI_CATEGORY_COLORS[catKey] || { bg: 'rgba(255,255,255,0.08)', border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.6)' };
+  const isActor = catKey === 'Actor';
+
+  const [localAvatar, setLocalAvatar] = useState(item.metadata?.avatar ?? null);
+  const [showAvatarBuilder, setShowAvatarBuilder] = useState(false);
+
+  const handleSaveAvatar = async (newConfig) => {
+    setLocalAvatar(newConfig);
+    if (item._source !== 'universe') {
+      try {
+        const { data: cur } = await supabase
+          .from('wiki_items')
+          .select('metadata')
+          .eq('id', item.id)
+          .single();
+        await supabase.from('wiki_items').update({
+          metadata: { ...cur?.metadata, avatar: newConfig },
+        }).eq('id', item.id);
+      } catch (e) {
+        console.log('[WikiSearchModal] avatar save error:', e.message);
+      }
+    }
+    onAvatarUpdate?.(newConfig);
+  };
+
   const [step, setStep] = useState('select'); // 'detect' | 'select' | 'results'
   const [detectLoading, setDetectLoading] = useState(false);
   const [detectedInfo, setDetectedInfo] = useState(null);
@@ -416,42 +449,58 @@ function WikiSearchModal({ item, onClose }) {
     }
   };
 
-  const catKey = normalizeSubcategory(item.subcategory);
-  const catColors = WIKI_CATEGORY_COLORS[catKey] || { bg: 'rgba(255,255,255,0.08)', border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.6)' };
   const hasSavedResearch = localResearch && Object.keys(localResearch).length > 0;
+  const actorInitials = isActor && item.name
+    ? item.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    : '';
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }} onPress={onClose}>
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <View style={{
-            backgroundColor: '#0a0c1b',
-            borderTopLeftRadius: 24, borderTopRightRadius: 24,
-            borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
-            borderColor: 'rgba(255,255,255,0.1)',
-            maxHeight: '92%',
-          }}>
-            {/* Handle */}
-            <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
-              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
-            </View>
-
-            {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 14, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: '#fff' }} numberOfLines={1}>{item.name}</Text>
-                {item.subcategory && (
-                  <View style={{ marginTop: 4 }}>
-                    <View style={{ backgroundColor: catColors.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: catColors.border, alignSelf: 'flex-start' }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: catColors.text }}>{catKey}</Text>
-                    </View>
-                  </View>
-                )}
+    <>
+      <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+            <View style={{
+              backgroundColor: '#0a0c1b',
+              borderTopLeftRadius: 24, borderTopRightRadius: 24,
+              borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+              borderColor: 'rgba(255,255,255,0.1)',
+              maxHeight: '92%',
+            }}>
+              {/* Handle */}
+              <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
+                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
               </View>
-              <TouchableOpacity onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginLeft: 12 }}>
-                <X size={15} color="rgba(255,255,255,0.6)" />
-              </TouchableOpacity>
-            </View>
+
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 14, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
+                {isActor && (
+                  <TouchableOpacity onPress={() => setShowAvatarBuilder(true)} activeOpacity={0.8} style={{ marginRight: 12 }}>
+                    {localAvatar ? (
+                      <Avatar config={localAvatar} seed={item.name} size={46} showBorder={false} />
+                    ) : (
+                      <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(99,102,241,0.12)', borderWidth: 1.5, borderColor: 'rgba(99,102,241,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: '#a5b4fc' }}>{actorInitials}</Text>
+                      </View>
+                    )}
+                    <View style={{ position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9, backgroundColor: '#6366f1', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#0a0c1b' }}>
+                      <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800', lineHeight: 14 }}>{localAvatar ? '✎' : '+'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: '#fff' }} numberOfLines={1}>{item.name}</Text>
+                  {item.subcategory && (
+                    <View style={{ marginTop: 4 }}>
+                      <View style={{ backgroundColor: catColors.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: catColors.border, alignSelf: 'flex-start' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: catColors.text }}>{catKey}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', marginLeft: 12 }}>
+                  <X size={15} color="rgba(255,255,255,0.6)" />
+                </TouchableOpacity>
+              </View>
 
             <ScrollView contentContainerStyle={{ padding: 22, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
@@ -709,12 +758,95 @@ function WikiSearchModal({ item, onClose }) {
                   )}
                 </View>
               )}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+              </ScrollView>
+            </View>
+        </View>
+        <AvatarBuilderModal
+          visible={showAvatarBuilder}
+          onClose={() => setShowAvatarBuilder(false)}
+          onSave={handleSaveAvatar}
+          initialConfig={localAvatar}
+          seed={item.name}
+        />
+      </Modal>
+    </>
   );
+}
+
+/**
+ * buildSegmentsFromAnnotations — construye segmentos coloreados para la vista "anotado"
+ * usando los actores y entidades detectados por el LLM para marcar fragmentos en el texto original.
+ * @param {string} text — texto original completo
+ * @param {string[]} actores — lista de actores detectados por el LLM
+ * @param {string[]} entidades — lista de entidades detectadas por el LLM
+ * @param {string[]} hechos — lista de hechos/eventos detectados por el LLM
+ * @returns {{ text: string, type: 'actor'|'entidad'|'hecho'|'normal' }[]}
+ */
+function buildSegmentsFromAnnotations(text, actores = [], entidades = [], hechos = []) {
+  if (!text) return [];
+
+  // Palabras clave que indican hechos verificables (verbos de acción)
+  const FACT_WORDS = ['declaró', 'anunció', 'denunció', 'firmó', 'ordenó', 'aprobó', 'rechazó',
+    'investiga', 'acusó', 'señaló', 'afirmó', 'confirmó', 'reveló', 'publicó', 'aseguró',
+    'advirtió', 'exigió', 'presentó', 'solicitó', 'demandó', 'indicó'];
+
+  // Construir mapa de términos con su tipo (actores tienen prioridad sobre entidades)
+  const termMap = [];
+  for (const actor of actores) {
+    if (actor && actor.trim().length > 2) termMap.push({ term: actor.trim(), type: 'actor' });
+  }
+  for (const ent of entidades) {
+    if (ent && ent.trim().length > 2) termMap.push({ term: ent.trim(), type: 'entidad' });
+  }
+  // Ordenar por longitud descendente para que frases largas tengan precedencia
+  termMap.sort((a, b) => b.term.length - a.term.length);
+
+  const segments = [];
+  let remaining = text;
+  let safetyLimit = 0;
+
+  while (remaining.length > 0 && safetyLimit < 1000) {
+    safetyLimit++;
+    let matched = false;
+
+    // Intentar hacer match con actores/entidades del LLM (case-insensitive)
+    for (const { term, type } of termMap) {
+      if (remaining.toLowerCase().startsWith(term.toLowerCase())) {
+        segments.push({ text: remaining.slice(0, term.length), type });
+        remaining = remaining.slice(term.length);
+        matched = true;
+        break;
+      }
+    }
+    if (matched) continue;
+
+    // Extraer siguiente token (palabra o whitespace)
+    const spaceIdx = remaining.search(/\s/);
+    const newlineIdx = remaining.indexOf('\n');
+    let wordEnd;
+    if (spaceIdx === -1 && newlineIdx === -1) wordEnd = remaining.length;
+    else if (spaceIdx === -1) wordEnd = newlineIdx;
+    else if (newlineIdx === -1) wordEnd = spaceIdx;
+    else wordEnd = Math.min(spaceIdx, newlineIdx);
+
+    if (wordEnd === 0) {
+      const wsEnd = remaining.search(/\S/);
+      if (wsEnd === -1) { segments.push({ text: remaining, type: 'normal' }); remaining = ''; }
+      else { segments.push({ text: remaining.slice(0, wsEnd), type: 'normal' }); remaining = remaining.slice(wsEnd); }
+      continue;
+    }
+
+    const word = remaining.slice(0, wordEnd);
+    const wordClean = word.toLowerCase().replace(/[.,;:!?¿¡"'«»()[\]]/g, '');
+    if (FACT_WORDS.includes(wordClean)) {
+      segments.push({ text: word, type: 'hecho' });
+    } else {
+      segments.push({ text: word, type: 'normal' });
+    }
+    remaining = remaining.slice(wordEnd);
+  }
+
+  return segments;
 }
 
 // ── PostCard: tarjeta de Instagram post/reel con transcripción expandible ──
@@ -722,31 +854,109 @@ function PostCard({ post, isReel, transcription, thumbUri }) {
   const [expanded, setExpanded] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisView, setAnalysisView] = useState('anotado'); // 'anotado' | 'organizado'
-  const [analysisData, setAnalysisData] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // Pre-cargar análisis guardado desde details del post (si ya existe)
+  const [analysisData, setAnalysisData] = useState(() => {
+    const saved = post.details?.analysis;
+    if (!saved) return null;
+    // Reconstruir anotadoSegments desde el texto y los datos guardados
+    const rawText = transcription || post.description || post.name || '';
+    return {
+      ...saved,
+      anotadoSegments: buildSegmentsFromAnnotations(rawText, saved.actores || [], saved.entidades || [], []),
+    };
+  });
 
   const date = post.created_at
     ? new Date(post.created_at).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
 
-
   async function handleAnalyze() {
+    // Si ya tenemos datos (desde DB o sesión anterior): solo toggle el panel
     if (analysisData) { setAnalysisOpen(o => !o); return; }
+
     setAnalysisLoading(true);
     setAnalysisOpen(true);
-    // DEMO: simula respuesta de la IA con datos de ejemplo
-    await new Promise(r => setTimeout(r, 1200));
-    setAnalysisData({
-      anotado: (post.description || post.name || 'Sin contenido') +
-        '\n\n[IA] Este contenido fue publicado en el contexto de las dinámicas políticas guatemaltecas. ' +
-        'Se identifican referencias a actores clave del sector público y menciones a procesos de transparencia. ' +
-        'El tono es informativo con matices críticos hacia las instituciones mencionadas.',
-      temas: ['Política', 'Guatemala', 'Transparencia', isReel ? 'Video' : 'Publicación'],
-      entidades: ['Guatemala', post.name ? post.name.split(' ')[0] : 'Autor'],
-      resumen: 'Publicación sobre temas de relevancia pública en Guatemala. Contenido de tipo ' + (isReel ? 'reel/video' : 'post') + ' con alcance informativo.',
-      sentimiento: '😐 Neutral',
-    });
-    setAnalysisLoading(false);
+
+    try {
+      // 1. Texto a analizar
+      const rawText = transcription || post.description || post.name || '';
+      if (!rawText.trim()) {
+        setAnalysisData({ error: 'No hay texto disponible para analizar.' });
+        return;
+      }
+
+      // 2. Obtener token Supabase
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+
+      // 3. Llamar al endpoint de ExtractorW (GPT-4o-mini via OpenRouter)
+      console.log('[handleAnalyze] 🔍 Llamando a /api/ai/analyze-content...');
+      const res = await fetch(`${EXTRACTORW_URL}/api/ai/analyze-content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          text: rawText,
+          title: post.name || '',
+        }),
+      });
+
+      const json = await res.json();
+      console.log('[handleAnalyze] 📡 Respuesta:', res.status, json?.success);
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || json.message || 'Error en el análisis');
+      }
+
+      const d = json.analysis || {};
+
+      // 4. Mapear respuesta al shape del UI
+      const actores   = d.actores    || [];
+      const entidades = [...(d.entidades || []), ...(d.territorios || [])];
+      const temas     = d.eventos    || [];
+      const contexto  = d.narrativa  || '';
+      const resumen   = d.hechos?.[0] || contexto.slice(0, 120) || '';
+
+      // 5. Construir segmentos coloreados
+      const anotadoSegments = buildSegmentsFromAnnotations(rawText, actores, entidades, d.hechos || []);
+
+      const newAnalysis = { anotadoSegments, temas, actores, entidades, contexto, resumen };
+      setAnalysisData(newAnalysis);
+
+      // 6. Persistir en codex_universe_items.details para no repetir el análisis
+      console.log('[handleAnalyze] 💾 Guardando análisis en DB...');
+      try {
+        // Leer details actuales para no sobreescribir otros campos
+        const { data: current } = await supabase
+          .from('codex_universe_items')
+          .select('details')
+          .eq('id', post.id)
+          .single();
+
+        // Guardar sin anotadoSegments (se reconstruyen al cargar, son datos derivados)
+        const analysisToSave = { temas, actores, entidades, contexto, resumen, analyzed_at: new Date().toISOString() };
+
+        await supabase
+          .from('codex_universe_items')
+          .update({ details: { ...(current?.details || {}), analysis: analysisToSave } })
+          .eq('id', post.id);
+
+        console.log('[handleAnalyze] ✅ Análisis guardado en DB');
+      } catch (dbErr) {
+        // Error al guardar en DB es no-crítico: el análisis ya está en estado local
+        console.warn('[handleAnalyze] ⚠️ No se pudo guardar en DB:', dbErr.message);
+      }
+
+    } catch (err) {
+      console.error('[handleAnalyze] ❌ Error:', err.message);
+      setAnalysisData({ error: err.message || 'Error al analizar el contenido.' });
+    } finally {
+      setAnalysisLoading(false);
+    }
   }
 
   return (
@@ -822,124 +1032,131 @@ function PostCard({ post, isReel, transcription, thumbUri }) {
         </Text>
       ) : null}
 
-      {/* Transcripción expandible (solo reels) */}
+      {/* Transcripción + panel unificado (solo reels con transcripción) */}
       {isReel && transcription ? (
-        <View style={{
-          backgroundColor: 'rgba(225,48,108,0.08)',
-          borderRadius: 8, padding: 10, marginTop: 10,
-          borderWidth: 1, borderColor: 'rgba(225,48,108,0.2)',
-        }}>
-          <TouchableOpacity
-            onPress={() => setExpanded(e => !e)}
-            activeOpacity={0.7}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-          >
-            <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(225,48,108,0.7)', letterSpacing: 0.6 }}>
-              🎙 TRANSCRIPCIÓN
-            </Text>
-            <Text style={{ fontSize: 11, color: 'rgba(225,48,108,0.6)' }}>
-              {expanded ? '▲ ocultar' : '▼ ver completa'}
-            </Text>
-          </TouchableOpacity>
-          <Text
-            style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 17, marginTop: 6 }}
-            numberOfLines={expanded ? undefined : 4}
-          >
-            {transcription}
-          </Text>
-        </View>
-      ) : null}
-
-      {/* Panel de análisis IA */}
-      {analysisOpen && (
         <View style={{
           backgroundColor: 'rgba(99,102,241,0.07)',
           borderRadius: 10, padding: 12, marginTop: 10,
           borderWidth: 1, borderColor: 'rgba(99,102,241,0.2)',
         }}>
-          {/* Tab toggle */}
-          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
-            {['anotado', 'organizado'].map(v => (
-              <TouchableOpacity
-                key={v}
-                onPress={() => setAnalysisView(v)}
-                activeOpacity={0.75}
-                style={{
-                  paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
-                  backgroundColor: analysisView === v ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.05)',
-                  borderWidth: 1,
-                  borderColor: analysisView === v ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)',
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: analysisView === v ? 'rgba(99,102,241,1)' : 'rgba(255,255,255,0.4)' }}>
-                  {v === 'anotado' ? '📝 Anotado' : '🗂 Organizado'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {/* Tab toggle — solo si el análisis está disponible */}
+          {analysisOpen && (
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+              {['anotado', 'organizado'].map(v => (
+                <TouchableOpacity
+                  key={v}
+                  onPress={() => setAnalysisView(v)}
+                  activeOpacity={0.75}
+                  style={{
+                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+                    backgroundColor: analysisView === v ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.05)',
+                    borderWidth: 1,
+                    borderColor: analysisView === v ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: analysisView === v ? 'rgba(99,102,241,1)' : 'rgba(255,255,255,0.4)' }}>
+                    {v === 'anotado' ? 'Transcripcion' : 'Organizado'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
-          {analysisLoading && (
+          {analysisOpen && analysisLoading && (
             <View style={{ alignItems: 'center', paddingVertical: 12 }}>
               <ActivityIndicator color="rgba(99,102,241,0.8)" />
               <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>Analizando contenido…</Text>
             </View>
           )}
 
-          {!analysisLoading && analysisData?.error && (
+          {analysisOpen && !analysisLoading && analysisData?.error && (
             <Text style={{ fontSize: 12, color: 'rgba(255,80,80,0.8)', lineHeight: 17 }}>⚠ {analysisData.error}</Text>
           )}
 
-          {!analysisLoading && analysisData && !analysisData.error && (
+          {/* Transcripción — visible cuando no hay análisis O cuando tab=Transcripcion */}
+          {(!analysisOpen || (analysisOpen && !analysisLoading && analysisView === 'anotado')) && (
             <>
-              {analysisView === 'anotado' && (
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 18 }}>
-                  {analysisData.anotado || '—'}
+              <TouchableOpacity
+                onPress={() => setExpanded(e => !e)}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}
+              >
+                {!analysisOpen && (
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.7)', letterSpacing: 0.6 }}>
+                    TRANSCRIPCIÓN
+                  </Text>
+                )}
+                <Text style={{ fontSize: 11, color: 'rgba(99,102,241,0.6)', marginLeft: analysisOpen ? 'auto' : 0 }}>
+                  {expanded ? '▲ ocultar' : '▼ ver completa'}
                 </Text>
-              )}
-              {analysisView === 'organizado' && (
-                <View style={{ gap: 8 }}>
-                  {analysisData.temas && analysisData.temas.length > 0 && (
-                    <View>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.5 }}>TEMAS</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                        {analysisData.temas.map((t, i) => (
-                          <View key={i} style={{ backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-                            <Text style={{ fontSize: 11, color: 'rgba(200,201,255,0.9)' }}>{t}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-                  {analysisData.entidades && analysisData.entidades.length > 0 && (
-                    <View>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.5 }}>ENTIDADES</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                        {analysisData.entidades.map((e, i) => (
-                          <View key={i} style={{ backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
-                            <Text style={{ fontSize: 11, color: 'rgba(134,239,172,0.9)' }}>{e}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-                  {analysisData.resumen && (
-                    <View>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.5 }}>RESUMEN</Text>
-                      <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 17 }}>{analysisData.resumen}</Text>
-                    </View>
-                  )}
-                  {analysisData.sentimiento && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', letterSpacing: 0.5 }}>SENTIMIENTO</Text>
-                      <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{analysisData.sentimiento}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
+              </TouchableOpacity>
+              <Text style={{ fontSize: 12, lineHeight: 20 }} numberOfLines={expanded ? undefined : 4}>
+                {analysisOpen && analysisData && !analysisData.error
+                  ? (analysisData.anotadoSegments || []).map((seg, i) => {
+                      if (seg.type === 'actor') return <Text key={i} style={{ color: 'rgba(251,191,36,1)', fontWeight: '700' }}>{seg.text}</Text>;
+                      if (seg.type === 'entidad') return <Text key={i} style={{ color: 'rgba(99,102,241,1)', fontWeight: '700' }}>{seg.text}</Text>;
+                      if (seg.type === 'hecho') return <Text key={i} style={{ color: 'rgba(52,211,153,1)', fontWeight: '700' }}>{seg.text}</Text>;
+                      return <Text key={i} style={{ color: 'rgba(255,255,255,0.6)' }}>{seg.text}</Text>;
+                    })
+                  : <Text style={{ color: 'rgba(255,255,255,0.6)' }}>{transcription}</Text>
+                }
+              </Text>
             </>
           )}
+
+          {/* Tab Organizado — solo cuando está disponible */}
+          {analysisOpen && !analysisLoading && analysisData && !analysisData.error && analysisView === 'organizado' && (
+            <View style={{ gap: 12 }}>
+              {/* Temas */}
+              {analysisData.temas && analysisData.temas.length > 0 && (
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 6, letterSpacing: 0.8 }}>🏷 TEMAS</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                    {analysisData.temas.map((t, i) => (
+                      <View key={i} style={{ backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' }}>
+                        <Text style={{ fontSize: 11, color: 'rgba(200,201,255,0.95)', fontWeight: '600' }}>{t}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {/* Actores */}
+              {analysisData.actores && analysisData.actores.length > 0 && (
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(251,191,36,0.85)', marginBottom: 6, letterSpacing: 0.8 }}>👤 ACTORES</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                    {analysisData.actores.map((a, i) => (
+                      <View key={i} style={{ backgroundColor: 'rgba(251,191,36,0.1)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(251,191,36,0.3)' }}>
+                        <Text style={{ fontSize: 11, color: 'rgba(251,191,36,0.95)', fontWeight: '600' }}>{a}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {/* Entidades */}
+              {analysisData.entidades && analysisData.entidades.length > 0 && (
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(52,211,153,0.85)', marginBottom: 6, letterSpacing: 0.8 }}>🏛 ENTIDADES</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                    {analysisData.entidades.map((e, i) => (
+                      <View key={i} style={{ backgroundColor: 'rgba(52,211,153,0.1)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(52,211,153,0.3)' }}>
+                        <Text style={{ fontSize: 11, color: 'rgba(52,211,153,0.95)', fontWeight: '600' }}>{e}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {/* Postura / Contexto */}
+              {analysisData.contexto && (
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 10, borderLeftWidth: 3, borderLeftColor: 'rgba(99,102,241,0.5)' }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.8)', marginBottom: 4, letterSpacing: 0.8 }}>📌 POSTURA / CONTEXTO</Text>
+                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', lineHeight: 18 }}>{analysisData.contexto}</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
-      )}
+      ) : null}
 
       {date && (
         <Text style={{ fontSize: 11, color: 'rgba(225,48,108,0.7)', marginTop: 8 }}>{date}</Text>
@@ -1326,6 +1543,13 @@ export default function CodexScreen() {
         <WikiSearchModal
           item={selectedWikiItem}
           onClose={() => setSelectedWikiItem(null)}
+          onAvatarUpdate={(newAvatar) => {
+            setWikiItems(prev => prev.map(w =>
+              w.id === selectedWikiItem.id
+                ? { ...w, metadata: { ...w.metadata, avatar: newAvatar } }
+                : w
+            ))
+          }}
         />
       )}
 
@@ -1538,7 +1762,7 @@ export default function CodexScreen() {
                                 borderWidth: 1, borderColor: 'rgba(225,48,108,0.2)',
                               }}>
                                 <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(225,48,108,0.7)', letterSpacing: 0.6, marginBottom: 4 }}>
-                                  🎙 TRANSCRIPCIÓN
+                                  TRANSCRIPCIÓN
                                 </Text>
                                 <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 17 }} numberOfLines={5}>
                                   {extractedPost.transcription}

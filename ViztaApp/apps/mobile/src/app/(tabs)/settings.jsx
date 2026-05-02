@@ -13,7 +13,7 @@ import {
   Linking,
   InteractionManager,
 } from 'react-native';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
@@ -36,8 +36,10 @@ import {
 } from 'lucide-react-native';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import * as Notifications from 'expo-notifications';
+import { Avatar, AvatarBuilderModal } from '../../components/avatar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const APP_VERSION = 'V.001';
+const APP_VERSION = 'V.002';
 
 function formatDate(isoString) {
   if (!isoString) return '';
@@ -727,6 +729,14 @@ export default function SettingsScreen() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [avatarConfig, setAvatarConfig] = useState(null);
+  const [showAvatarBuilder, setShowAvatarBuilder] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('@pulzos_avatar').then(json => {
+      if (json) setAvatarConfig(JSON.parse(json));
+    });
+  }, []);
 
   const player = useVideoPlayer(
     require('../../../assets/videos/feed-background.mp4'),
@@ -774,6 +784,17 @@ export default function SettingsScreen() {
       <SupportModal
         visible={showSupportModal}
         onClose={() => setShowSupportModal(false)}
+      />
+
+      <AvatarBuilderModal
+        visible={showAvatarBuilder}
+        onClose={() => setShowAvatarBuilder(false)}
+        onSave={async (cfg) => {
+          await AsyncStorage.setItem('@pulzos_avatar', JSON.stringify(cfg));
+          setAvatarConfig(cfg);
+        }}
+        initialConfig={avatarConfig}
+        seed={connectedUser?.email}
       />
 
       <ScrollView
@@ -862,19 +883,27 @@ export default function SettingsScreen() {
               <View style={{ padding: 20 }}>
                 {/* Avatar row */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                  <View style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 22,
-                    backgroundColor: 'rgba(99,102,241,0.25)',
-                    borderWidth: 1,
-                    borderColor: 'rgba(99,102,241,0.45)',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 12,
-                  }}>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#a5b4fc' }}>{initials}</Text>
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => setShowAvatarBuilder(true)}
+                    style={{ marginRight: 12 }}
+                    activeOpacity={0.8}
+                  >
+                    <Avatar
+                      seed={connectedUser?.email}
+                      config={avatarConfig}
+                      size={44}
+                      showBorder={false}
+                    />
+                    <View style={{
+                      position: 'absolute', bottom: -2, right: -2,
+                      width: 18, height: 18, borderRadius: 9,
+                      backgroundColor: '#6366f1',
+                      alignItems: 'center', justifyContent: 'center',
+                      borderWidth: 1.5, borderColor: '#0b0d22',
+                    }}>
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 14 }}>+</Text>
+                    </View>
+                  </TouchableOpacity>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }} numberOfLines={1}>
                       {connectedUser?.email}

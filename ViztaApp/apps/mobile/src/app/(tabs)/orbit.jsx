@@ -33,7 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { ArrowLeft, Clock, AlertCircle, Trash2, ChevronRight, Send } from 'lucide-react-native';
+import { ArrowLeft, Clock, AlertCircle, Trash2, ChevronRight, Send, ChevronDown } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 
@@ -1231,7 +1231,7 @@ function ParticleSphere({ cx, cy, paused }) {
 
 // ── Category orb ─────────────────────────────────────────────────────────────
 
-function CategoryOrb({ name, config, onPress, isSelected }) {
+function CategoryOrb({ name, config, onPress, isSelected, labelAbove = false }) {
   const scale = useRef(new Animated.Value(1)).current;
 
   const handlePress = () => {
@@ -1252,8 +1252,21 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
     onPress(name);
   };
 
+  const label = (
+    <Text style={{
+      fontSize: 11,
+      fontWeight: '700',
+      color: isSelected ? config.color : 'rgba(255,255,255,0.75)',
+      textAlign: 'center',
+      letterSpacing: 0.8,
+    }}>
+      {name.toUpperCase()}
+    </Text>
+  );
+
   return (
     <TouchableOpacity onPress={handlePress} activeOpacity={0.9}>
+      {labelAbove && <View style={{ marginBottom: 8 }}>{label}</View>}
       <Animated.View style={{
         width: ORB_SIZE,
         height: ORB_SIZE,
@@ -1274,16 +1287,7 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
           resizeMode="cover"
         />
       </Animated.View>
-      <Text style={{
-        marginTop: 8,
-        fontSize: 11,
-        fontWeight: '700',
-        color: isSelected ? config.color : 'rgba(255,255,255,0.75)',
-        textAlign: 'center',
-        letterSpacing: 0.8,
-      }}>
-        {name.toUpperCase()}
-      </Text>
+      {!labelAbove && <View style={{ marginTop: 8 }}>{label}</View>}
     </TouchableOpacity>
   );
 }
@@ -1694,7 +1698,7 @@ export default function OrbitScreen() {
   const chatSessionId = useRef(`orbit-${Math.random().toString(36).slice(2)}`);
   const chatScrollRef = useRef(null);
   const focusAnim = useRef(new Animated.Value(0)).current;
-  const orbitMaxHeight = useRef(new Animated.Value(380)).current;
+  const orbitMaxHeight = useRef(new Animated.Value(500)).current;
   const chatEnteredRef = useRef(false);
 
   // @mention state
@@ -1893,7 +1897,7 @@ export default function OrbitScreen() {
     }).start();
 
     Animated.timing(orbitMaxHeight, {
-      toValue: 380,
+      toValue: 500,
       duration: 240,
       easing: easeOut,
       useNativeDriver: false,
@@ -2232,7 +2236,7 @@ export default function OrbitScreen() {
 
   // Orbit layout geometry
   const cX = screenWidth / 2;
-  const containerHeight = 360;
+  const containerHeight = 500;
   const cY = containerHeight / 2;
 
   // Clamp horizontal radius so orbs don't go off screen
@@ -2422,10 +2426,45 @@ export default function OrbitScreen() {
               config={CATEGORIES['Movilidad']}
               onPress={handleSelectCategory}
               isSelected={selectedCategory === 'Movilidad'}
+              labelAbove={true}
             />
           </View>
         </View>
         </Animated.View>
+
+        {/* ── Back button header — visible when chat is open ── */}
+        {chatFocused && (
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(100,149,237,0.08)',
+          }}>
+            <TouchableOpacity
+              onPress={collapseOrbit}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingVertical: 4,
+                paddingHorizontal: 2,
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ChevronDown size={16} color="rgba(100,149,237,0.80)" />
+              <Text style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: 'rgba(100,149,237,0.80)',
+                letterSpacing: 0.2,
+              }}>
+                Ver categorías
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── Chat messages area ── */}
         <Animated.View style={{ flex: 1, opacity: focusAnim }}>
