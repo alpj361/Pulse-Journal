@@ -414,27 +414,37 @@ function PrivacyModal({ visible, onClose }) {
         'El Portal Web es la plataforma de donde nació Vizta. Es un servicio con sus propios términos y condiciones de uso, independientes a los de esta app. Si decides conectarlo, tu correo electrónico se usa únicamente para autenticarte. Puedes desconectarte en cualquier momento desde Ajustes.',
     },
     {
-      title: '4. Búsqueda de personas en el Codex',
-      content:
-        'Cuando utilizas la función "Buscar más información" en el Codex, el nombre que ingresas se envía como consulta a servicios externos de búsqueda e inteligencia artificial para obtener información pública disponible en internet. Este nombre se utiliza únicamente para ejecutar la consulta puntual y no se guarda en nuestros servidores ni se asocia a tu identidad o perfil de usuario.',
-    },
-    {
-      title: '5. Posts y bookmarks',
+      title: '4. Posts y bookmarks',
       content:
         'Si guardas artículos o enlaces como posts desde la app, estos se almacenan en tu cuenta del Portal Web (si estás conectado). Esta información es exclusivamente tuya: no la compartimos con terceros ni la usamos con fines publicitarios. Puedes eliminar tus posts en cualquier momento.',
     },
     {
-      title: '6. Contenido de terceros',
+      title: '5. Vizta Chat',
+      content:
+        'Las consultas que realizas en el chat de IA se envían a servicios externos de inteligencia artificial para generar respuestas. Estas consultas se usan únicamente para procesar tu pregunta puntual y no se asocian a tu identidad. Si tienes el Portal Web conectado, el chat puede guardar contexto de conversaciones anteriores para mejorar tus respuestas futuras. Puedes desconectar el Portal Web en cualquier momento desde Ajustes para borrar este contexto.',
+    },
+    {
+      title: '6. Memoria de conversación',
+      content:
+        'Si estás conectado al Portal Web, Vizta puede conservar un historial resumido de tus conversaciones con la IA para personalizar futuras respuestas. Este historial está asociado únicamente a tu cuenta y no se comparte con terceros. Puedes eliminar este contexto desconectando tu cuenta desde Ajustes.',
+    },
+    {
+      title: '7. Notificaciones',
+      content:
+        'Vizta puede solicitarte permiso para enviarte notificaciones push. Si aceptas, se genera un token de dispositivo que se usa exclusivamente para enviar notificaciones de la app. Este token no se vende ni comparte con terceros. Puedes revocar este permiso en cualquier momento desde la configuración de tu dispositivo.',
+    },
+    {
+      title: '8. Contenido de terceros',
       content:
         'La app muestra contenido proveniente de medios de comunicación externos. Estos medios pueden tener sus propias políticas de privacidad. Vizta no tiene control sobre el contenido ni las prácticas de esos sitios.',
     },
     {
-      title: '7. Cambios a esta política',
+      title: '9. Cambios a esta política',
       content:
         'Esta política puede actualizarse conforme Vizta expanda sus funcionalidades. Cualquier cambio relevante en el manejo de datos será notificado mediante una actualización de la app. Te recomendamos revisar esta sección periódicamente.',
     },
     {
-      title: '8. Contacto',
+      title: '10. Contacto',
       content:
         'Si tienes preguntas sobre privacidad, escríbenos a: contacto@standatpd.com',
     },

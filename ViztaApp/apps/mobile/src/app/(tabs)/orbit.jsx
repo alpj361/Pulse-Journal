@@ -1695,6 +1695,7 @@ export default function OrbitScreen() {
   const [chatHistory, setChatHistory] = useState([]);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const chatSessionId = useRef(`orbit-${Math.random().toString(36).slice(2)}`);
   const chatScrollRef = useRef(null);
   const focusAnim = useRef(new Animated.Value(0)).current;
@@ -1802,6 +1803,17 @@ export default function OrbitScreen() {
 
   const mentionSegments = parseMentionSegments(chatInput);
   const hasMentions = mentionSegments.some(s => s.type === 'mention');
+
+  // Detect auth state for UI gating (guest vs authenticated)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsAuthenticated(!!data?.session?.access_token);
+    }).catch(() => {});
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsAuthenticated(!!session?.access_token);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Load history: local AsyncStorage + Supabase sync
   useEffect(() => {
@@ -2033,13 +2045,27 @@ export default function OrbitScreen() {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      console.log('[Chat] Fetching:', endpoint, '| authenticated:', !!token);
+      // Extract @mention items from the message text («name» tokens)
+      const mentionMatches = [...text.matchAll(/«([^»]+)»/g)].map(m => m[1]);
+      const mentionedItems = mentionMatches.length > 0
+        ? codexItems
+            .filter(item => mentionMatches.includes(item.title))
+            .map(item => ({
+              id: item.id,
+              title: item.title,
+              type: item.type || item.subtitle || 'universe',
+              description: item.description || '',
+            }))
+        : [];
+
+      console.log('[Chat] Fetching:', endpoint, '| authenticated:', !!token, '| mentions:', mentionedItems.length);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           message: text,
           sessionId: chatSessionId.current,
+          ...(mentionedItems.length > 0 && { mentioned_items: mentionedItems }),
         }),
       });
 
@@ -2509,12 +2535,14 @@ export default function OrbitScreen() {
             <Trash2 size={16} color="rgba(255,255,255,0.30)" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setHistoryVisible(true)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Clock size={16} color={chatHistory.length > 0 ? 'rgba(100,149,237,0.65)' : 'rgba(255,255,255,0.25)'} />
-          </TouchableOpacity>
+          {isAuthenticated && (
+            <TouchableOpacity
+              onPress={() => setHistoryVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Clock size={16} color={chatHistory.length > 0 ? 'rgba(100,149,237,0.65)' : 'rgba(255,255,255,0.25)'} />
+            </TouchableOpacity>
+          )}
 
           <View style={{ flex: 1, position: 'relative' }}>
             {/* @mention autocomplete dropdown */}

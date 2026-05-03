@@ -18,7 +18,7 @@ import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Sparkles, Camera, Plus, ChevronLeft, ChevronRight, ClipboardPaste, Eye, EyeOff } from 'lucide-react-native';
+import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Camera, Plus, ChevronLeft, ChevronRight, ClipboardPaste, Eye, EyeOff } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -28,41 +28,6 @@ import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 
 const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
 const EXTRACTORT_URL = process.env.EXPO_PUBLIC_EXTRACTORT_URL || 'https://api.standatpd.com';
-
-const ACTOR_TYPES = [
-  { id: 'person', label: 'Persona' },
-  { id: 'organization', label: 'Organización' },
-  { id: 'location', label: 'Lugar' },
-  { id: 'event', label: 'Evento' },
-  { id: 'concept', label: 'Concepto' },
-];
-
-const DIMENSIONS = [
-  { key: 'bio',           label: 'Biografía',           icon: '📅' },
-  { key: 'profession',    label: 'Profesión / Cargo',    icon: '💼' },
-  { key: 'historical',    label: 'Contexto histórico',   icon: '📚' },
-  { key: 'alliances',     label: 'Alianzas',             icon: '🤝' },
-  { key: 'controversies', label: 'Controversias',        icon: '⚡' },
-  { key: 'achievements',  label: 'Logros',               icon: '🏆' },
-  { key: 'opinions',      label: 'Posición pública',     icon: '🎤' },
-  { key: 'recent',        label: 'Noticias recientes',   icon: '📰' },
-];
-
-const currentYear = new Date().getFullYear();
-
-function buildDimensionQuery(name, key) {
-  switch (key) {
-    case 'bio':           return `¿Quién es ${name}? fecha de nacimiento edad lugar de origen familia historia personal Guatemala`;
-    case 'profession':    return `${name} Guatemala cargo actual profesión estudios trayectoria profesional institución`;
-    case 'historical':    return `historia y antecedentes de ${name} Guatemala cronología eventos pasados contexto previo a ${currentYear}`;
-    case 'alliances':     return `${name} Guatemala aliados socios políticos relaciones vínculos con instituciones y personas`;
-    case 'controversies': return `${name} Guatemala escándalos denuncias problemas legales acusaciones polémicas`;
-    case 'achievements':  return `logros éxitos obras resultados reconocimientos de ${name} Guatemala qué ha conseguido`;
-    case 'opinions':      return `declaraciones discursos postura pública de ${name} Guatemala qué ha dicho`;
-    case 'recent':        return `${name} Guatemala noticias ${currentYear} actividad reciente últimas semanas`;
-    default:              return `${name} Guatemala ${key}`;
-  }
-}
 
 const WIKI_CATEGORIES = ['Todos', 'Actor', 'Entidad', 'Territorio', 'Concepto', 'Evento', 'Evidencia'];
 
@@ -220,7 +185,7 @@ function WikiItem({ item, onPress }) {
   );
 }
 
-// ── Wiki Search Modal (3-step: detect → dimensions → results) ─────────────────
+// ── Wiki Item Detail Modal ─────────────────────────────────────────────────────
 
 function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
   const catKey = normalizeSubcategory(item.subcategory);
@@ -229,6 +194,7 @@ function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
 
   const [localAvatar, setLocalAvatar] = useState(item.metadata?.avatar ?? null);
   const [showAvatarBuilder, setShowAvatarBuilder] = useState(false);
+  const [localResearch, setLocalResearch] = useState(item.metadata?.research || {});
 
   const handleSaveAvatar = async (newConfig) => {
     setLocalAvatar(newConfig);
@@ -247,206 +213,6 @@ function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
       }
     }
     onAvatarUpdate?.(newConfig);
-  };
-
-  const [step, setStep] = useState('select'); // 'detect' | 'select' | 'results'
-  const [detectLoading, setDetectLoading] = useState(false);
-  const [detectedInfo, setDetectedInfo] = useState(null);
-  const [actorType, setActorType] = useState(() => {
-    const SPANISH_TO_ACTOR_ID = {
-      'Actor': 'person',
-      'Entidad': 'organization',
-      'Territorio': 'location',
-      'Evento': 'event',
-      'Concepto': 'concept',
-      'Evidencia': 'concept',
-    };
-    const n = normalizeSubcategory(item.subcategory);
-    return SPANISH_TO_ACTOR_ID[n] || 'person';
-  });
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [selectedDims, setSelectedDims] = useState(new Set());
-  const [engine, setEngine] = useState('parallel');
-  const [results, setResults] = useState(null);  // [{ dimension, status, analysis, sources, error }]
-  const [expandedKeys, setExpandedKeys] = useState(new Set());
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [error, setError] = useState(null);
-  // Estado local de investigación guardada para poder actualizar sin cerrar el modal
-  const [localResearch, setLocalResearch] = useState(item.metadata?.research || {});
-
-  const getToken = async () => {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    console.log('[WikiSearch] getToken →', token ? `OK (${token.slice(0,20)}...)` : 'NULL - no session!');
-    return token;
-  };
-
-
-  const handleDetect = async () => {
-    setDetectLoading(true);
-    setError(null);
-    try {
-      const token = await getToken();
-      const res = await fetch(`${EXTRACTORW_URL}/api/wiki/exa-profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: item.name, type: actorType }),
-      });
-      if (res.ok) setDetectedInfo(await res.json());
-    } catch (_) { /* silent — detection is optional */ }
-    finally { setDetectLoading(false); }
-    setStep('select');
-  };
-
-  const toggleDim = (key) => {
-    setSelectedDims(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
-  const toggleExpanded = (key) => {
-    setExpandedKeys(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
-  const searchDimension = async (dim, token) => {
-    const query = buildDimensionQuery(item.name, dim.key);
-    const url = `${EXTRACTORW_URL}/api/mcp/execute`;
-    const body = { tool_name: 'search', parameters: { query, provider: engine, location: 'Guatemala', num_results: 5 } };
-    console.log(`[WikiSearch] 🔍 searchDimension "${dim.key}" → POST ${url}`);
-    console.log(`[WikiSearch]   query: "${query}"`);
-    console.log(`[WikiSearch]   body:`, JSON.stringify(body));
-    console.log(`[WikiSearch]   token present: ${!!token}`);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-      console.log(`[WikiSearch] 📡 Response status: ${res.status} ${res.statusText}`);
-      const text = await res.text();
-      console.log(`[WikiSearch] 📄 Raw response (first 500 chars): ${text.slice(0, 500)}`);
-      let json;
-      try { json = JSON.parse(text); } catch (e) { console.log(`[WikiSearch] ❌ JSON parse error: ${e.message}`); throw new Error(`JSON parse error: ${e.message}`); }
-      console.log(`[WikiSearch] ✅ json.success: ${json?.success}, result keys: ${Object.keys(json?.result || {}).join(', ')}`);
-      // Response shapes from backend:
-      // Perplexity success: { result: { success, data: { search_results, analysis }, ... } }
-      // Exa success:        { result: { success, result: { search_results }, ... } }
-      // Exa fallback:       { result: { success, result: { search_results }, ... } }
-      const outer = json?.result || {};
-      // Try all possible nesting levels for search_results
-      const sources =
-        outer?.data?.search_results ||      // Perplexity
-        outer?.result?.search_results ||    // Exa direct / fallback
-        outer?.search_results ||            // flat
-        [];
-      const analysis =
-        outer?.data?.analysis ||            // Perplexity analysis
-        outer?.result?.analysis ||          // Exa analysis
-        outer?.formatted_response ||        // generic formatted_response
-        outer?.analysis ||                  // flat
-        '';
-      console.log(`[WikiSearch] 📊 analysis length: ${analysis?.length}, sources count: ${sources?.length}`);
-      if (!json?.success && json?.error) {
-        throw new Error(json.error);
-      }
-
-      setResults(prev => prev?.map(r =>
-        r.dimension.key === dim.key ? { ...r, status: 'done', analysis, sources } : r
-      ));
-      return { key: dim.key, dim, analysis, sources };
-    } catch (err) {
-      console.log(`[WikiSearch] ❌ searchDimension error for "${dim.key}": ${err.message}`);
-      setResults(prev => prev?.map(r =>
-        r.dimension.key === dim.key ? { ...r, status: 'error', error: err.message } : r
-      ));
-      return null;
-    }
-  };
-
-  const handleSearch = async () => {
-    if (selectedDims.size === 0) return;
-    console.log(`[WikiSearch] 🚀 handleSearch START — item: "${item.name}", engine: ${engine}, dims: [${[...selectedDims].join(', ')}]`);
-    console.log(`[WikiSearch] 🌐 EXTRACTORW_URL: ${EXTRACTORW_URL}`);
-    const token = await getToken();
-    if (!token) {
-      console.log('[WikiSearch] ❌ No hay token — abortando búsqueda');
-      setError('No hay sesión activa. Por favor inicia sesión nuevamente.');
-      return;
-    }
-    const activeDims = DIMENSIONS.filter(d => selectedDims.has(d.key));
-    console.log(`[WikiSearch] 📋 Dimensiones activas: ${activeDims.map(d => d.key).join(', ')}`);
-    const initial = activeDims.map(d => ({ dimension: d, status: 'loading', analysis: '', sources: [] }));
-    setResults(initial);
-    setExpandedKeys(new Set(activeDims.map(d => d.key)));
-    setStep('results');
-    setSaveSuccess(false);
-
-    let dimResults = [];
-    if (engine === 'parallel') {
-      for (const dim of activeDims) {
-        const r = await searchDimension(dim, token);
-        if (r) dimResults.push(r);
-      }
-    } else {
-      const settled = await Promise.allSettled(activeDims.map(d => searchDimension(d, token)));
-      dimResults = settled.filter(s => s.status === 'fulfilled' && s.value).map(s => s.value);
-    }
-
-    // Auto-save results to DB — only for wiki_items (universe items have prefixed ids)
-    if (dimResults.length > 0 && item._source !== 'universe') {
-      try {
-        // Fetch fresh metadata from DB to avoid overwriting existing research
-        const { data: cur } = await supabase.from('wiki_items').select('metadata').eq('id', item.id).single();
-        const existing = cur?.metadata?.research || {};
-        const newResearch = { ...existing };
-        dimResults.forEach(({ dim: d, key, analysis, sources }) => {
-          newResearch[key] = {
-            label: d.label, icon: d.icon, analysis,
-            sources: sources.map(s => ({ title: s.title, url: s.url, snippet: s.highlights?.[0] || s.snippet })),
-            timestamp: new Date().toISOString(), engine,
-          };
-        });
-        const updates = {
-          metadata: { ...cur?.metadata, research: newResearch, research_last_updated: new Date().toISOString() },
-        };
-        // Si hay resultado de bio y el item no tiene descripción, guardar como descripción
-        const bioResult = dimResults.find(r => r.key === 'bio');
-        if (bioResult?.analysis && !item.description) {
-          updates.description = bioResult.analysis.slice(0, 500);
-        }
-        await supabase.from('wiki_items').update(updates).eq('id', item.id);
-        setSaveSuccess(true);
-      } catch (_) { /* silencioso — los resultados siguen visibles en UI */ }
-    }
-  };
-
-  const retryDimension = async (dim) => {
-    const token = await getToken();
-    setResults(prev => prev?.map(r =>
-      r.dimension.key === dim.key ? { ...r, status: 'loading', error: undefined, sources: [] } : r
-    ));
-    const result = await searchDimension(dim, token);
-    if (result && item._source !== 'universe') {
-      try {
-        const { data: cur } = await supabase.from('wiki_items').select('metadata').eq('id', item.id).single();
-        const existing = cur?.metadata?.research || {};
-        existing[result.key] = {
-          label: result.dim.label, icon: result.dim.icon, analysis: result.analysis,
-          sources: result.sources.map(s => ({ title: s.title, url: s.url, snippet: s.highlights?.[0] || s.snippet })),
-          timestamp: new Date().toISOString(), engine,
-        };
-        await supabase.from('wiki_items').update({
-          metadata: { ...cur?.metadata, research: existing, research_last_updated: new Date().toISOString() },
-        }).eq('id', item.id);
-        setSaveSuccess(true);
-      } catch (_) { /* silencioso */ }
-    }
   };
 
   const hasSavedResearch = localResearch && Object.keys(localResearch).length > 0;
@@ -511,8 +277,8 @@ function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
                 </Text>
               ) : null}
 
-              {/* Investigación guardada (si existe y no hay búsqueda activa) */}
-              {hasSavedResearch && !results && (
+              {/* Investigación guardada */}
+              {hasSavedResearch && (
                 <View style={{ marginBottom: 20 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.35)', letterSpacing: 0.8 }}>INVESTIGACIÓN GUARDADA</Text>
@@ -539,7 +305,6 @@ function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
                                   await supabase.from('wiki_items').update({
                                     metadata: { ...cur?.metadata, research: newResearch },
                                   }).eq('id', item.id);
-                                  // Actualizar estado local para re-render inmediato
                                   setLocalResearch(newResearch);
                                 } catch (e) {
                                   console.log('[delete research] error:', e.message);
@@ -566,198 +331,17 @@ function WikiSearchModal({ item, onClose, onAvatarUpdate }) {
                 </View>
               )}
 
-              {/* Acordeón de búsqueda */}
-              <TouchableOpacity
-                onPress={() => setSearchOpen(o => !o)}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                  backgroundColor: searchOpen ? 'rgba(6,182,212,0.12)' : 'rgba(255,255,255,0.05)',
-                  borderRadius: 12, padding: 14,
-                  borderWidth: 1, borderColor: searchOpen ? 'rgba(6,182,212,0.3)' : 'rgba(255,255,255,0.1)',
-                  marginBottom: searchOpen ? 16 : 0,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Sparkles size={14} color={searchOpen ? 'rgba(6,182,212,0.9)' : 'rgba(255,255,255,0.4)'} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: searchOpen ? 'rgba(6,182,212,0.9)' : 'rgba(255,255,255,0.5)' }}>
-                    Buscar información
-                  </Text>
-                  {saveSuccess && <Text style={{ fontSize: 11, color: 'rgba(16,185,129,0.8)' }}>✓ guardado</Text>}
-                </View>
-                <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{searchOpen ? '▲' : '▼'}</Text>
-              </TouchableOpacity>
-
-              {searchOpen && (
-                <View>
-                  {/* Tipo de actor */}
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.8, marginBottom: 10 }}>TIPO DE ACTOR</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 7, marginBottom: 20 }}>
-                    {ACTOR_TYPES.map(t => (
-                      <TouchableOpacity key={t.id} onPress={() => setActorType(t.id)} style={{
-                        paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10,
-                        backgroundColor: actorType === t.id ? 'rgba(6,182,212,0.6)' : 'rgba(255,255,255,0.07)',
-                        borderWidth: 1, borderColor: actorType === t.id ? 'rgba(6,182,212,0.5)' : 'rgba(255,255,255,0.1)',
-                      }}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: actorType === t.id ? '#fff' : 'rgba(255,255,255,0.5)' }}>{t.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  {/* Dimensiones */}
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.8, marginBottom: 10 }}>¿QUÉ INVESTIGAR?</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-                    {DIMENSIONS.map(d => {
-                      const active = selectedDims.has(d.key);
-                      return (
-                        <TouchableOpacity key={d.key} onPress={() => toggleDim(d.key)} style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6,
-                          paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
-                          backgroundColor: active ? 'rgba(6,182,212,0.18)' : 'rgba(255,255,255,0.06)',
-                          borderWidth: 1, borderColor: active ? 'rgba(6,182,212,0.5)' : 'rgba(255,255,255,0.1)',
-                          width: '47%',
-                        }}>
-                          <Text style={{ fontSize: 14 }}>{d.icon}</Text>
-                          <Text style={{ fontSize: 12, fontWeight: '600', color: active ? '#67e8f9' : 'rgba(255,255,255,0.55)', flex: 1 }} numberOfLines={1}>{d.label}</Text>
-                          {active && <Text style={{ fontSize: 10, color: '#67e8f9' }}>✓</Text>}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {/* Motor */}
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: 0.8, marginBottom: 10 }}>MOTOR</Text>
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                    {['parallel', 'exa'].map(e => (
-                      <TouchableOpacity key={e} onPress={() => setEngine(e)} style={{
-                        paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10,
-                        backgroundColor: engine === e ? 'rgba(124,58,237,0.6)' : 'rgba(255,255,255,0.07)',
-                        borderWidth: 1, borderColor: engine === e ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.1)',
-                      }}>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: engine === e ? '#fff' : 'rgba(255,255,255,0.5)' }}>
-                          {e === 'parallel' ? '🌐 Parallel' : '🔍 Exa'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={handleSearch}
-                    disabled={selectedDims.size === 0}
-                    style={{
-                      backgroundColor: selectedDims.size === 0 ? 'rgba(6,182,212,0.2)' : 'rgba(6,182,212,0.7)',
-                      borderRadius: 14, paddingVertical: 13, alignItems: 'center',
-                      borderWidth: 1, borderColor: 'rgba(6,182,212,0.4)',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: selectedDims.size === 0 ? 'rgba(255,255,255,0.3)' : '#fff' }}>
-                      {selectedDims.size === 0 ? 'Selecciona dimensiones' : `Buscar (${selectedDims.size}) →`}
-                    </Text>
-                  </TouchableOpacity>
+              {/* Tags */}
+              {item.tags?.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {item.tags.map((tag, i) => (
+                    <View key={i} style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                      <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontWeight: '600' }}>{tag}</Text>
+                    </View>
+                  ))}
                 </View>
               )}
 
-              {/* Resultados */}
-              {results && (
-                <View style={{ marginTop: 20 }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#e2e8f0' }}>Resultados</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      {saveSuccess && <Text style={{ fontSize: 11, color: 'rgba(16,185,129,0.8)' }}>✓ guardado</Text>}
-                      <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                        {engine === 'parallel' ? '🌐 Parallel' : '🔍 Exa'}
-                      </Text>
-                      <TouchableOpacity onPress={() => { setResults(null); setSaveSuccess(false); }}>
-                        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {results.map(r => {
-                    const expanded = expandedKeys.has(r.dimension.key);
-                    return (
-                      <View key={r.dimension.key} style={{ borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 12, marginBottom: 8, overflow: 'hidden' }}>
-                        <TouchableOpacity
-                          onPress={() => toggleExpanded(r.dimension.key)}
-                          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, backgroundColor: 'rgba(255,255,255,0.04)' }}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            {r.status === 'loading'
-                              ? <ActivityIndicator size="small" color="rgba(6,182,212,0.8)" />
-                              : <Text style={{ fontSize: 15 }}>{r.dimension.icon}</Text>
-                            }
-                            <Text style={{ fontSize: 13, fontWeight: '600', color: '#e2e8f0' }}>{r.dimension.label}</Text>
-                          </View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            {r.status === 'loading' && <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Buscando...</Text>}
-                            {r.status === 'done' && r.sources.length > 0 && <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{r.sources.length} fuentes</Text>}
-                            {r.status === 'error' && <Text style={{ fontSize: 11, color: 'rgba(239,68,68,0.8)' }}>Error</Text>}
-                            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>{expanded ? '▲' : '▼'}</Text>
-                          </View>
-                        </TouchableOpacity>
-
-                        {expanded && (
-                          <View style={{ padding: 14, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.07)', backgroundColor: 'rgba(0,0,0,0.2)' }}>
-                            {r.status === 'loading' && (
-                              <View style={{ gap: 6 }}>
-                                {[1,2,3].map(i => <View key={i} style={{ height: 10, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 4, width: `${90 - i * 10}%` }} />)}
-                              </View>
-                            )}
-                            {r.status === 'error' && (
-                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 12, color: 'rgba(239,68,68,0.8)', flex: 1 }}>{r.error}</Text>
-                                <TouchableOpacity onPress={() => retryDimension(r.dimension)}>
-                                  <Text style={{ fontSize: 12, color: 'rgba(6,182,212,0.8)', fontWeight: '600', marginLeft: 12 }}>Reintentar</Text>
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                            {r.status === 'done' && (
-                              <>
-                                {r.analysis ? (
-                                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 20, marginBottom: r.sources.length > 0 ? 12 : 0 }}>
-                                    {r.analysis}
-                                  </Text>
-                                ) : null}
-                                {r.sources.length > 0 && (
-                                  <>
-                                    <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.35)', letterSpacing: 0.8, marginBottom: 8, borderTopWidth: r.analysis ? 1 : 0, borderColor: 'rgba(255,255,255,0.08)', paddingTop: r.analysis ? 10 : 0 }}>
-                                      FUENTES
-                                    </Text>
-                                    {r.sources.map((s, i) => {
-                                      let hostname = s.url;
-                                      try { hostname = new URL(s.url).hostname.replace('www.', ''); } catch {}
-                                      return (
-                                        <View key={i} style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }}>
-                                          <Text style={{ fontSize: 12, fontWeight: '600', color: '#e2e8f0', marginBottom: 3 }} numberOfLines={2}>{s.title}</Text>
-                                          {(s.snippet || s.highlights?.[0]) && (
-                                            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 4 }} numberOfLines={2}>
-                                              {s.snippet || s.highlights?.[0]}
-                                            </Text>
-                                          )}
-                                          <Text style={{ fontSize: 11, color: 'rgba(6,182,212,0.7)' }}>{hostname}</Text>
-                                        </View>
-                                      );
-                                    })}
-                                  </>
-                                )}
-                                {!r.analysis && r.sources.length === 0 && (
-                                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', textAlign: 'center', paddingVertical: 8 }}>Sin resultados para esta dimensión</Text>
-                                )}
-                              </>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-
-                  {error && (
-                    <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10, padding: 12, marginTop: 8, borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)' }}>
-                      <Text style={{ fontSize: 12, color: 'rgba(239,68,68,0.9)' }}>{error}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
               </ScrollView>
             </View>
         </View>
