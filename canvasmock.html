@@ -1,0 +1,2496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vizta — Canvas Flujos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Caveat:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── RESET ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  /* ── TOKENS ────────────────────────────────────────── */
+  :root {
+    --bg:          #f2ede6;
+    --bg-warm:     #ede7de;
+    --paper:       #f7f3ed;
+    --paper-alt:   #faf7f2;
+    --ink:         #2a2118;
+    --ink-2:       #4a3f32;
+    --ink-3:       #7a6e62;
+    --ink-4:       #b0a89e;
+    --border:      rgba(42,33,24,.1);
+    --border-md:   rgba(42,33,24,.16);
+    --shadow-sm:   0 1px 3px rgba(42,33,24,.08), 0 1px 2px rgba(42,33,24,.06);
+    --shadow-md:   0 4px 16px rgba(42,33,24,.1), 0 2px 6px rgba(42,33,24,.08);
+    --shadow-lg:   0 8px 32px rgba(42,33,24,.14), 0 4px 12px rgba(42,33,24,.1);
+    --glass-bg:    rgba(247,243,237,.82);
+    --glass-border:rgba(255,255,255,.6);
+
+    /* type colors */
+    --c-actor:     #2d6a4f;
+    --c-actor-bg:  #d8f3dc;
+    --c-entity:    #1d4e89;
+    --c-entity-bg: #d6e8ff;
+    --c-event:     #7b2d00;
+    --c-event-bg:  #ffe8d6;
+    --c-post:      #5c3d99;
+    --c-post-bg:   #ede0ff;
+
+    /* note tints */
+    --note-yellow: #fff9c4;
+    --note-green:  #e8f5e9;
+    --note-rose:   #fce4ec;
+    --note-blue:   #e3f2fd;
+    --note-shadow: rgba(0,0,0,.18);
+  }
+
+  /* ── BASE ──────────────────────────────────────────── */
+  html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--ink); }
+
+  /* ── TOPBAR ────────────────────────────────────────── */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    height: 48px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-md);
+    display: flex; align-items: center; padding: 0 16px; gap: 0;
+  }
+  .topbar-brand {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; color: var(--ink-2);
+    padding-right: 16px; border-right: 1px solid var(--border-md);
+    margin-right: 8px;
+  }
+  .topbar-brand svg { color: var(--ink-3); }
+  .topbar-breadcrumb {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--ink-3);
+    padding-right: 16px; border-right: 1px solid var(--border-md);
+    margin-right: 16px;
+  }
+  .topbar-breadcrumb span { color: var(--ink); font-weight: 500; }
+  .topbar-tabs { display: flex; align-items: center; gap: 2px; }
+  .topbar-tab {
+    padding: 5px 14px; border-radius: 8px; font-size: 13px;
+    font-weight: 500; color: var(--ink-3); cursor: pointer;
+    border: 1px solid transparent; transition: all .15s;
+    background: none;
+  }
+  .topbar-tab:hover { background: rgba(42,33,24,.06); color: var(--ink-2); }
+  .topbar-tab.active {
+    background: var(--ink); color: #fff;
+    border-color: var(--ink);
+  }
+  .topbar-right {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+  }
+  .btn-sm {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 8px; font-size: 12px;
+    font-weight: 500; cursor: pointer; transition: all .15s;
+    border: 1px solid var(--border-md);
+    background: var(--paper); color: var(--ink-2);
+  }
+  .btn-sm:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn-primary {
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }
+  .btn-primary:hover { background: var(--ink-2); }
+
+  /* ── TOOLBAR ───────────────────────────────────────── */
+  .toolbar {
+    position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+    z-index: 90;
+    display: flex; align-items: center; gap: 2px;
+    padding: 5px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md);
+  }
+  .tool-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 10px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    color: var(--ink-3); background: none; border: none;
+    transition: all .15s; white-space: nowrap;
+  }
+  .tool-btn:hover { background: rgba(42,33,24,.07); color: var(--ink); }
+  .tool-btn.active {
+    background: var(--ink); color: #fff;
+  }
+  .tool-sep { width: 1px; height: 20px; background: var(--border-md); margin: 0 2px; }
+
+  /* ── CANVAS AREA ───────────────────────────────────── */
+  .canvas-wrap {
+    position: fixed; inset: 0; padding-top: 48px;
+    overflow: hidden; cursor: default;
+  }
+  .canvas {
+    position: absolute; inset: 0;
+    /* dot grid */
+    background-image: radial-gradient(circle, rgba(42,33,24,.18) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-color: var(--bg);
+    overflow: hidden;
+  }
+
+  /* world: transformed layer that holds all cards/notes */
+  #canvasWorld {
+    position: absolute; inset: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  /* ── SVG CONNECTIONS ───────────────────────────────── */
+  .connections-svg {
+    position: absolute; inset: 0;
+    pointer-events: none; overflow: visible;
+  }
+  .conn-line {
+    fill: none;
+    stroke: var(--ink-4);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    opacity: .7;
+  }
+  .conn-line.strong { stroke: var(--ink-3); stroke-dasharray: none; opacity: .9; }
+  .conn-arrow { fill: var(--ink-4); }
+
+  /* ── ACTOR CARD ────────────────────────────────────── */
+  .card {
+    position: absolute;
+    min-width: 168px; max-width: 200px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 14px 14px 12px;
+    box-shadow: var(--shadow-md);
+    cursor: grab;
+    transition: box-shadow .2s, transform .15s;
+    user-select: none;
+    overflow: visible; /* anchors must overflow the card edges */
+  }
+  .card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+  }
+  .card:active { cursor: grabbing; }
+  .card.actor:hover { box-shadow: 0 0 0 2px var(--c-actor), var(--shadow-lg); }
+  .card.entity:hover { box-shadow: 0 0 0 2px var(--c-entity), var(--shadow-lg); }
+  .card.event:hover { box-shadow: 0 0 0 2px var(--c-event), var(--shadow-lg); }
+
+  .card-close {
+    position: absolute; top: -7px; right: -7px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #ff5f57; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: opacity .15s;
+  }
+  .card:hover .card-close { opacity: 1; }
+  .card-close svg { color: #fff; }
+
+  .card-avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    margin-bottom: 8px;
+    border: 2px solid var(--glass-border);
+    overflow: hidden;
+  }
+  .card-avatar.actor-av { background: var(--c-actor-bg); color: var(--c-actor); }
+  .card-avatar.entity-av { background: var(--c-entity-bg); color: var(--c-entity); }
+  .card-avatar.event-av  { background: var(--c-event-bg);  color: var(--c-event);  }
+
+  .card-name {
+    font-size: 12.5px; font-weight: 600; color: var(--ink);
+    line-height: 1.35; margin-bottom: 8px;
+  }
+  .card-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 10.5px; font-weight: 500;
+  }
+  .card-badge.actor  { background: var(--c-actor-bg);  color: var(--c-actor);  }
+  .card-badge.entity { background: var(--c-entity-bg); color: var(--c-entity); }
+  .card-badge.event  { background: var(--c-event-bg);  color: var(--c-event);  }
+
+  .card-resize {
+    position: absolute; bottom: 5px; right: 5px;
+    cursor: se-resize; color: var(--ink-4); opacity: 0;
+    transition: opacity .15s;
+  }
+  .card:hover .card-resize { opacity: 1; }
+
+  /* ── POST-IT NOTE ──────────────────────────────────── */
+  .note {
+    position: absolute;
+    width: 200px;
+    border-radius: 3px 14px 14px 3px;
+    box-shadow:
+      4px 6px 16px var(--note-shadow),
+      1px 2px 4px rgba(0,0,0,.1),
+      inset 0 0 0 1px rgba(255,255,255,.3);
+    cursor: grab;
+    transition: box-shadow .2s, transform .15s;
+    user-select: none;
+    /* overflow: hidden removed — anchors need to overflow the card edges */
+  }
+  .note:hover {
+    box-shadow:
+      6px 10px 28px var(--note-shadow),
+      2px 3px 6px rgba(0,0,0,.12),
+      inset 0 0 0 1px rgba(255,255,255,.4);
+    transform: translateY(-2px) rotate(var(--rot, 0deg)) scale(1.01);
+  }
+  .note:active { cursor: grabbing; }
+
+  .note.yellow { background: var(--note-yellow); --rot: -1.5deg; transform: rotate(-1.5deg); }
+  .note.green  { background: var(--note-green);  --rot:  1.2deg; transform: rotate(1.2deg);  }
+  .note.rose   { background: var(--note-rose);   --rot: -0.8deg; transform: rotate(-0.8deg); }
+  .note.blue   { background: var(--note-blue);   --rot:  1.8deg; transform: rotate(1.8deg);  }
+
+  /* paper grain texture overlay */
+  .note::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 1;
+  }
+
+  /* tape strip at top */
+  .note::after {
+    content: '';
+    position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
+    width: 48px; height: 14px;
+    background: rgba(255,255,255,.55);
+    border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    z-index: 2;
+  }
+
+  .note-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px 4px;
+    position: relative; z-index: 3;
+  }
+  .note-dots { display: flex; gap: 4px; }
+  .note-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,.12);
+  }
+  .dot-red    { background: #ff5f57; }
+  .dot-yellow { background: #febc2e; }
+  .dot-green  { background: #28c840; }
+
+  .note-close {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: rgba(0,0,0,.08); border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: opacity .15s;
+  }
+  .note:hover .note-close { opacity: 1; }
+
+  .note-body {
+    padding: 4px 10px 12px;
+    position: relative; z-index: 3;
+  }
+  .note-textarea {
+    width: 100%; min-height: 90px;
+    background: transparent; border: none; outline: none; resize: none;
+    font-family: 'Caveat', cursive; font-size: 15px; font-weight: 400;
+    line-height: 1.5; color: rgba(0,0,0,.72);
+    cursor: text;
+  }
+  /* ruled lines */
+  .note-ruled .note-textarea {
+    background-image: repeating-linear-gradient(
+      transparent, transparent 23px,
+      rgba(0,0,0,.07) 23px, rgba(0,0,0,.07) 24px
+    );
+    background-size: 100% 24px;
+    line-height: 24px;
+  }
+
+  /* ── INSTAGRAM POST CARD ──────────────────────────── */
+  .post-card {
+    position: absolute;
+    width: 200px;
+    background: var(--paper);
+    border: 1px solid var(--border-md);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md);
+    cursor: grab;
+    transition: box-shadow .2s, transform .15s;
+    user-select: none;
+    /* overflow visible so conn-anchors are not clipped */
+  }
+  .post-card:hover {
+    box-shadow: 0 0 0 2px var(--c-post), var(--shadow-md);
+    transform: translateY(-2px);
+  }
+  .post-card:active { cursor: grabbing; }
+  .post-card.dragging { transform: rotate(1.5deg) scale(1.02) !important; }
+
+  /* header: account row */
+  .post-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px 7px;
+    border-bottom: 1px solid var(--border);
+  }
+  .post-account-av {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .post-account-info { flex: 1; min-width: 0; }
+  .post-account-name {
+    font-size: 11px; font-weight: 600; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .post-account-handle { font-size: 9.5px; color: var(--ink-4); }
+  .post-type-badge {
+    display: flex; align-items: center; gap: 3px;
+    padding: 2px 7px; border-radius: 20px;
+    font-size: 9.5px; font-weight: 600; flex-shrink: 0;
+  }
+  .post-type-badge.reel   { background: #fce7f3; color: #9d174d; }
+  .post-type-badge.post   { background: var(--c-post-bg); color: var(--c-post); }
+  .post-type-badge.carousel { background: #fef3c7; color: #92400e; }
+
+  /* thumbnail area */
+  .post-thumb {
+    width: 100%; height: 130px;
+    background: #e8e0d8;
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .post-thumb-img {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block;
+  }
+  /* gradient overlay bottom */
+  .post-thumb::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0; height: 40%;
+    background: linear-gradient(to top, rgba(0,0,0,.45), transparent);
+    pointer-events: none;
+  }
+
+  /* reel-specific: vertical ratio hint + play icon */
+  .post-card.reel .post-thumb {
+    height: 155px;
+    background: linear-gradient(145deg, #1a1a2e, #2d1b69);
+  }
+  .post-thumb-play {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,.18);
+    backdrop-filter: blur(4px);
+    border: 1.5px solid rgba(255,255,255,.35);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .post-reel-duration {
+    position: absolute; bottom: 7px; right: 8px;
+    font-size: 10px; font-weight: 600; color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+
+  /* carousel: dots indicator + slide counter */
+  .post-carousel-dots {
+    position: absolute; bottom: 7px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 4px; align-items: center;
+  }
+  .carousel-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: rgba(255,255,255,.5);
+  }
+  .carousel-dot.active {
+    width: 14px; border-radius: 3px;
+    background: #fff;
+  }
+  .post-carousel-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(255,255,255,.22); backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,.3);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .post-carousel-arrow.right { right: 7px; }
+  .post-carousel-arrow.left  { left: 7px; }
+
+  /* static post placeholder (no image) */
+  .post-thumb-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; color: var(--ink-4);
+    font-size: 10.5px; font-weight: 500;
+  }
+
+  /* caption row */
+  .post-caption {
+    padding: 8px 10px 4px;
+    font-size: 11px; color: var(--ink-2); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .post-caption b { color: var(--ink); }
+
+  /* footer: stats row */
+  .post-footer {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px 9px;
+  }
+  .post-stat {
+    display: flex; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 500; color: var(--ink-4);
+  }
+  .post-stat svg { flex-shrink: 0; }
+  .post-date {
+    margin-left: auto;
+    font-size: 9.5px; color: var(--ink-4);
+  }
+
+  /* close btn */
+  .post-close {
+    position: absolute; top: -7px; right: -7px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #ff5f57; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: opacity .15s;
+    z-index: 10;
+  }
+  .post-card:hover .post-close { opacity: 1; }
+
+  /* ── SNIPPET / PROMPT CARD ─────────────────────────── */
+  .snippet-card {
+    position: absolute;
+    width: 220px;
+    background: var(--paper-alt);
+    border: 1px solid var(--border-md);
+    border-left: 3px solid var(--c-post);
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: var(--shadow-sm);
+    cursor: grab;
+    transition: box-shadow .2s;
+    user-select: none;
+  }
+  .snippet-card:hover { box-shadow: 0 0 0 2px var(--c-post), var(--shadow-md); }
+  .snippet-card:active { cursor: grabbing; }
+  .snippet-label {
+    font-size: 10px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--c-post);
+    margin-bottom: 6px;
+  }
+  .snippet-text {
+    font-size: 12px; color: var(--ink-2); line-height: 1.5;
+    font-family: 'Courier New', monospace;
+  }
+  .snippet-close {
+    position: absolute; top: -7px; right: -7px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #ff5f57; border: 2px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; opacity: 0; transition: opacity .15s;
+  }
+  .snippet-card:hover .snippet-close { opacity: 1; }
+
+  /* ── MINIMAP ───────────────────────────────────────── */
+  .minimap {
+    position: fixed; bottom: 20px; right: 20px;
+    width: 140px; height: 88px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    z-index: 80;
+  }
+  .minimap-label {
+    position: absolute; bottom: 5px; left: 8px;
+    font-size: 9px; font-weight: 500; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink-4);
+  }
+  .minimap-dot {
+    position: absolute;
+    width: 6px; height: 6px; border-radius: 50%;
+    transform: translate(-50%,-50%);
+  }
+  .minimap-viewport {
+    position: absolute;
+    border: 1.5px solid var(--ink-3); border-radius: 3px;
+    background: rgba(42,33,24,.05);
+  }
+
+  /* ── SIDEBAR (BANDEJA) ─────────────────────────────── */
+  .bandeja {
+    position: fixed; right: 0; top: 48px; bottom: 0;
+    width: 268px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-left: 1px solid var(--border-md);
+    display: flex; flex-direction: column;
+    z-index: 85;
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+  }
+  .bandeja.hidden { transform: translateX(100%); }
+
+  .bandeja-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .bandeja-title {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .bandeja-title h3 {
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bandeja-count {
+    font-size: 10.5px; font-weight: 500; color: var(--ink-4);
+  }
+
+  .bandeja-search {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; background: rgba(42,33,24,.05);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .bandeja-search input {
+    background: none; border: none; outline: none;
+    font-size: 12px; color: var(--ink); width: 100%;
+    font-family: 'Inter', sans-serif;
+  }
+  .bandeja-search input::placeholder { color: var(--ink-4); }
+
+  .bandeja-filters {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    padding: 10px 16px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-chip {
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--border-md);
+    background: transparent; color: var(--ink-3);
+    transition: all .12s;
+  }
+  .filter-chip:hover { background: rgba(42,33,24,.06); }
+  .filter-chip.active {
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }
+
+  .bandeja-list { flex: 1; overflow-y: auto; padding: 8px 10px; }
+  .bandeja-list::-webkit-scrollbar { width: 4px; }
+  .bandeja-list::-webkit-scrollbar-track { background: transparent; }
+  .bandeja-list::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 4px; }
+
+  .bandeja-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 8px; border-radius: 10px; cursor: pointer;
+    transition: background .12s; margin-bottom: 2px;
+  }
+  .bandeja-item:hover { background: rgba(42,33,24,.06); }
+  .bandeja-item:active { background: rgba(42,33,24,.1); }
+
+  .bi-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+    overflow: hidden;
+  }
+  .bi-avatar.actor-av  { background: var(--c-actor-bg);  color: var(--c-actor);  }
+  .bi-avatar.entity-av { background: var(--c-entity-bg); color: var(--c-entity); }
+  .bi-avatar.event-av  { background: var(--c-event-bg);  color: var(--c-event);  }
+  .bi-avatar.post-av   { background: var(--c-post-bg);   color: var(--c-post);   }
+
+  .bi-info { flex: 1; min-width: 0; }
+  .bi-name {
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bi-meta { font-size: 10.5px; color: var(--ink-4); margin-top: 1px; }
+
+  .bi-drag {
+    color: var(--ink-4); opacity: 0; transition: opacity .12s; cursor: grab;
+  }
+  .bandeja-item:hover .bi-drag { opacity: 1; }
+
+  .bandeja-section {
+    padding: 10px 16px 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-4);
+  }
+
+  /* ── TOGGLE BANDEJA BTN ────────────────────────────── */
+  .toggle-bandeja {
+    position: fixed; right: 278px; top: 60px;
+    width: 28px; height: 28px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px; box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 86; color: var(--ink-3);
+    transition: all .15s;
+  }
+  .toggle-bandeja:hover { background: var(--paper); color: var(--ink); }
+
+  /* ── ADD MENU ──────────────────────────────────────── */
+  .add-menu {
+    position: fixed; top: 96px; left: 16px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    z-index: 91;
+    min-width: 180px;
+    display: none;
+  }
+  .add-menu.show { display: block; }
+  .add-menu-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 10px;
+    font-size: 13px; color: var(--ink-2); cursor: pointer;
+    transition: background .12s;
+  }
+  .add-menu-item:hover { background: rgba(42,33,24,.07); }
+  .add-menu-item svg { color: var(--ink-4); flex-shrink: 0; }
+
+  /* ── CANVAS LABEL ──────────────────────────────────── */
+  .canvas-label {
+    position: fixed; top: 58px; left: 16px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-4);
+    z-index: 80;
+  }
+
+  /* ── ANIMATIONS ────────────────────────────────────── */
+  @keyframes card-in {
+    from { opacity: 0; transform: scale(.92) translateY(8px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0); }
+  }
+  .card, .note, .snippet-card, .post-card { animation: card-in .25s cubic-bezier(.4,0,.2,1) both; }
+
+  @keyframes menu-in {
+    from { opacity: 0; transform: scale(.95) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0); }
+  }
+  .add-menu.show { animation: menu-in .18s cubic-bezier(.4,0,.2,1) both; }
+
+  /* ── DRAG STATES ───────────────────────────────────── */
+  .dragging {
+    cursor: grabbing !important;
+    box-shadow: var(--shadow-lg), 0 0 0 2px rgba(42,33,24,.2) !important;
+    transform: rotate(1.5deg) scale(1.02) !important;
+    z-index: 200 !important;
+  }
+  .note.dragging { transform: rotate(2deg) scale(1.03) !important; }
+
+  /* ── ZOOM CONTROLS ─────────────────────────────────── */
+  .zoom-controls {
+    position: fixed; bottom: 20px; left: 20px;
+    display: flex; flex-direction: column; gap: 2px;
+    z-index: 80;
+  }
+  .zoom-btn {
+    width: 30px; height: 30px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px; box-shadow: var(--shadow-sm);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--ink-3); font-size: 14px;
+    font-weight: 600; transition: all .12s;
+  }
+  .zoom-btn:hover { background: var(--paper); color: var(--ink); }
+  .zoom-label {
+    text-align: center; font-size: 9.5px; font-weight: 500;
+    color: var(--ink-4); letter-spacing: .04em; margin-top: 2px;
+  }
+
+  /* ── CONNECT MODE ──────────────────────────────────── */
+  .connect-mode .canvas  { cursor: crosshair; }
+  .connect-mode .card,
+  .connect-mode .note,
+  .connect-mode .post-card { cursor: crosshair; }
+
+  /* anchor dots that appear on card edges in connect mode */
+  .conn-anchor {
+    position: absolute;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--c-entity);
+    box-shadow: 0 0 0 2px rgba(29,78,137,.18);
+    opacity: 0;
+    pointer-events: all;
+    cursor: crosshair;
+    transition: opacity .15s, transform .15s;
+    z-index: 20;
+  }
+  .conn-anchor.top    { top: -6px;    left: 50%; transform: translate(-50%, 0); }
+  .conn-anchor.bottom { bottom: -6px; left: 50%; transform: translate(-50%, 0); }
+  .conn-anchor.left   { left: -6px;   top: 50%;  transform: translate(0, -50%); }
+  .conn-anchor.right  { right: -6px;  top: 50%;  transform: translate(0, -50%); }
+
+  .connect-mode .card:hover .conn-anchor,
+  .connect-mode .note:hover .conn-anchor,
+  .connect-mode .post-card:hover .conn-anchor,
+  .connect-mode .snippet-card:hover .conn-anchor { opacity: 1; }
+
+  .connect-mode .conn-anchor.top:hover,
+  .connect-mode .conn-anchor.bottom:hover {
+    background: var(--c-entity);
+    transform: translate(-50%, 0) scale(1.5);
+    box-shadow: 0 0 0 4px rgba(29,78,137,.22);
+  }
+  .connect-mode .conn-anchor.left:hover,
+  .connect-mode .conn-anchor.right:hover {
+    background: var(--c-entity);
+    transform: translate(0, -50%) scale(1.5);
+    box-shadow: 0 0 0 4px rgba(29,78,137,.22);
+  }
+
+  /* source card highlight while connecting */
+  .connect-source {
+    box-shadow: 0 0 0 2.5px var(--c-entity), var(--shadow-lg) !important;
+    z-index: 50;
+  }
+
+  /* ghost line while dragging connection */
+  #connGhostLine {
+    stroke: var(--c-entity);
+    stroke-width: 2;
+    stroke-dasharray: 7 4;
+    fill: none;
+    opacity: .7;
+    pointer-events: none;
+    display: none;
+  }
+
+  /* rendered connection lines */
+  .conn-edge {
+    fill: none;
+    stroke-linecap: round;
+    transition: stroke .15s, opacity .15s;
+    cursor: pointer;
+  }
+  .conn-edge:hover { opacity: .6; }
+  .conn-edge.rel-relaciona  { stroke: var(--ink-3);    stroke-width: 1.8; stroke-dasharray: 6 4; }
+  .conn-edge.rel-reporta    { stroke: var(--c-actor);  stroke-width: 2;   }
+  .conn-edge.rel-financia   { stroke: var(--c-event);  stroke-width: 2;   }
+  .conn-edge.rel-investiga  { stroke: var(--c-entity); stroke-width: 2;   stroke-dasharray: 3 3; }
+  .conn-edge.rel-participa  { stroke: #e8a020;         stroke-width: 1.8; }
+
+  /* connection label pill */
+  .conn-label {
+    font-size: 9px; font-weight: 600; fill: var(--ink-3);
+    pointer-events: none;
+  }
+  .conn-label-bg {
+    fill: var(--paper); opacity: .88;
+    rx: 4; ry: 4;
+  }
+
+  /* delete button that appears on conn hover */
+  .conn-delete-btn {
+    fill: #ff5f57; cursor: pointer;
+    opacity: 0; transition: opacity .15s;
+  }
+  .conn-group:hover .conn-delete-btn { opacity: 1; }
+  .conn-group:hover .conn-edge { opacity: .5; }
+
+  /* ── CONNECT SUB-TOOLBAR ───────────────────────────── */
+  .connect-sub {
+    position: fixed; top: 102px; left: 50%; transform: translateX(-50%);
+    z-index: 89;
+    display: none; align-items: center; gap: 4px;
+    padding: 5px 8px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+  }
+  .connect-sub.show { display: flex; animation: menu-in .18s cubic-bezier(.4,0,.2,1) both; }
+  .conn-type-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 8px;
+    font-size: 11px; font-weight: 500; cursor: pointer;
+    color: var(--ink-3); background: none; border: none;
+    transition: all .12s; white-space: nowrap;
+  }
+  .conn-type-btn:hover { background: rgba(42,33,24,.07); color: var(--ink); }
+  .conn-type-btn.active { background: var(--ink); color: #fff; }
+  .conn-type-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* toast that shows when hovering a connectable card */
+  .conn-hint {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff; font-size: 11.5px; font-weight: 500;
+    padding: 6px 14px; border-radius: 20px;
+    box-shadow: var(--shadow-md);
+    pointer-events: none; z-index: 200;
+    opacity: 0; transition: opacity .2s;
+  }
+  .connect-mode .conn-hint { opacity: 1; }
+
+  /* ── DRAW MODE ─────────────────────────────────────── */
+  .draw-mode .canvas { cursor: crosshair; }
+  .draw-svg {
+    position: absolute; inset: 0;
+    pointer-events: none; overflow: visible; z-index: 10;
+  }
+  .draw-mode .draw-svg { pointer-events: all; cursor: crosshair; }
+  .draw-path {
+    fill: none;
+    stroke: var(--ink-3);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: .85;
+  }
+  .draw-path.arrow-path {
+    marker-end: url(#draw-arrow);
+  }
+  .draw-path.highlight {
+    stroke: #e8a020;
+    stroke-width: 3;
+    opacity: .7;
+  }
+
+  /* in-progress ghost line */
+  #drawGhost {
+    fill: none;
+    stroke: var(--ink-3);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 5 4;
+    opacity: .5;
+    pointer-events: none;
+  }
+
+  /* draw toolbar sub-options */
+  .draw-sub {
+    position: fixed; top: 108px; left: 50%; transform: translateX(-50%);
+    z-index: 89;
+    display: none; align-items: center; gap: 3px;
+    padding: 4px 6px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+  .draw-sub.show { display: flex; }
+  .draw-sub-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 8px;
+    font-size: 11.5px; font-weight: 500; cursor: pointer;
+    color: var(--ink-3); background: none; border: none;
+    transition: all .12s; white-space: nowrap;
+  }
+  .draw-sub-btn:hover { background: rgba(42,33,24,.07); color: var(--ink); }
+  .draw-sub-btn.active { background: var(--ink-2); color: #fff; }
+  .draw-sub-sep { width: 1px; height: 16px; background: var(--border-md); margin: 0 2px; }
+
+  /* color swatches in draw sub */
+  .swatch {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer; transition: transform .12s;
+    flex-shrink: 0;
+  }
+  .swatch:hover { transform: scale(1.2); }
+  .swatch.active { border-color: var(--ink); }
+
+  /* ── EXPLORER PANEL ────────────────────────────────── */
+  .explorer {
+    position: fixed; right: 0; top: 48px; bottom: 0;
+    width: 340px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-left: 1px solid var(--border-md);
+    display: flex; flex-direction: column;
+    z-index: 85;
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+  }
+  .explorer.hidden { transform: translateX(100%); }
+
+  .explorer-header {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .explorer-title {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .explorer-title h3 {
+    font-size: 12px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink);
+    flex: 1;
+  }
+  .explorer-close {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: none; border: none; cursor: pointer;
+    color: var(--ink-4); display: flex; align-items: center;
+    justify-content: center; transition: all .12s;
+  }
+  .explorer-close:hover { background: rgba(42,33,24,.08); color: var(--ink); }
+
+  .explorer-search {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; background: rgba(42,33,24,.05);
+    border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .explorer-search input {
+    background: none; border: none; outline: none;
+    font-size: 12px; color: var(--ink); width: 100%;
+    font-family: 'Inter', sans-serif;
+  }
+  .explorer-search input::placeholder { color: var(--ink-4); }
+
+  .explorer-tabs {
+    display: flex; gap: 2px;
+  }
+  .ex-tab {
+    flex: 1; padding: 5px 4px; text-align: center;
+    font-size: 11px; font-weight: 500; cursor: pointer;
+    border: none; background: none; border-radius: 7px;
+    color: var(--ink-3); transition: all .12s;
+  }
+  .ex-tab:hover { background: rgba(42,33,24,.06); color: var(--ink-2); }
+  .ex-tab.active { background: var(--ink); color: #fff; }
+
+  .explorer-body { flex: 1; overflow-y: auto; }
+  .explorer-body::-webkit-scrollbar { width: 4px; }
+  .explorer-body::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 4px; }
+
+  .explorer-section {
+    padding: 10px 16px 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-4);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .explorer-section span { font-weight: 400; font-size: 9.5px; color: var(--ink-4); letter-spacing: 0; text-transform: none; }
+
+  .ex-result {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 9px 14px; cursor: pointer; transition: background .12s;
+    border-bottom: 1px solid var(--border);
+  }
+  .ex-result:hover { background: rgba(42,33,24,.05); }
+
+  .ex-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 700; flex-shrink: 0;
+  }
+  .ex-icon.actor  { background: var(--c-actor-bg);  color: var(--c-actor);  }
+  .ex-icon.entity { background: var(--c-entity-bg); color: var(--c-entity); }
+  .ex-icon.event  { background: var(--c-event-bg);  color: var(--c-event);  }
+  .ex-icon.doc    { background: #f3e8ff; color: #6d28d9; }
+  .ex-icon.web    { background: #fef3c7; color: #92400e; }
+
+  .ex-info { flex: 1; min-width: 0; }
+  .ex-name {
+    font-size: 12px; font-weight: 500; color: var(--ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ex-meta { font-size: 10.5px; color: var(--ink-4); margin-top: 1px; line-height: 1.4; }
+  .ex-meta b { color: var(--ink-3); font-weight: 500; }
+
+  .ex-add {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: none; border: 1px solid var(--border-md);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--ink-4); opacity: 0;
+    transition: all .12s; flex-shrink: 0; margin-top: 2px;
+  }
+  .ex-result:hover .ex-add { opacity: 1; }
+  .ex-add:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .explorer-input-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .explorer-input {
+    flex: 1; padding: 7px 10px;
+    background: rgba(42,33,24,.05);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 12px; font-family: 'Inter', sans-serif; color: var(--ink);
+    outline: none;
+  }
+  .explorer-input::placeholder { color: var(--ink-4); }
+  .explorer-input:focus { border-color: var(--ink-3); background: var(--paper); }
+  .explorer-go {
+    padding: 7px 12px; border-radius: 8px;
+    background: var(--ink); color: #fff;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    border: none; transition: background .12s; white-space: nowrap;
+  }
+  .explorer-go:hover { background: var(--ink-2); }
+
+  .explorer-empty {
+    padding: 32px 20px; text-align: center; color: var(--ink-4);
+    font-size: 12.5px; line-height: 1.6;
+  }
+  .explorer-empty svg { margin: 0 auto 10px; display: block; color: var(--ink-4); opacity: .4; }
+</style>
+</head>
+<body>
+
+<!-- ══ TOPBAR ══════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8"/>
+      <rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+      <rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+      <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".3"/>
+    </svg>
+    MY PULSE
+  </div>
+  <div class="topbar-breadcrumb">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+    <span>Codex</span>
+  </div>
+  <div class="topbar-tabs">
+    <button class="topbar-tab active">Canvas</button>
+    <button class="topbar-tab">Mapeos</button>
+    <button class="topbar-tab">Documentos</button>
+    <button class="topbar-tab">Posts</button>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-sm">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Consultar
+    </button>
+    <button class="btn-sm btn-primary" onclick="toggleAddMenu()">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      Agregar
+    </button>
+  </div>
+</header>
+
+<!-- ══ ADD MENU ════════════════════════════════════════ -->
+<div class="add-menu" id="addMenu">
+  <div class="add-menu-item" onclick="addCard('actor'); closeAddMenu()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    Actor
+  </div>
+  <div class="add-menu-item" onclick="addCard('entity'); closeAddMenu()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+    Entidad
+  </div>
+  <div class="add-menu-item" onclick="addCard('event'); closeAddMenu()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    Evento
+  </div>
+  <div style="height:1px;background:var(--border);margin:4px 6px"></div>
+  <div class="add-menu-item" onclick="addNote('yellow'); closeAddMenu()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    Nota
+  </div>
+  <div class="add-menu-item" onclick="addSnippet(); closeAddMenu()">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    Snippet / Prompt
+  </div>
+</div>
+
+<!-- ══ TOOLBAR ═════════════════════════════════════════ -->
+<div class="toolbar" id="toolbar">
+  <button class="tool-btn active" id="tool-mover" onclick="setTool('mover')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
+    Mover
+  </button>
+  <button class="tool-btn" id="tool-nota" onclick="setTool('nota')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    Nota
+  </button>
+  <div class="tool-sep"></div>
+  <button class="tool-btn" id="tool-conectar" onclick="setTool('conectar')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    Conectar
+  </button>
+  <button class="tool-btn" id="tool-dibujar" onclick="setTool('dibujar')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+    Dibujar
+  </button>
+  <div class="tool-sep"></div>
+  <button class="tool-btn" id="tool-prompt" onclick="setTool('prompt')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    Prompt
+  </button>
+  <button class="tool-btn" id="tool-post" onclick="setTool('post')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    Post
+  </button>
+  <div class="tool-sep"></div>
+  <button class="tool-btn" id="tool-explorer" onclick="setTool('explorer')">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Explorer
+  </button>
+</div>
+
+<!-- ══ DRAW SUB-TOOLBAR ════════════════════════════════ -->
+<div class="draw-sub" id="drawSub">
+  <button class="draw-sub-btn active" id="dsub-flecha" onclick="setDrawMode('flecha',this)">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="12 5 19 5 19 12"/></svg>
+    Flecha
+  </button>
+  <button class="draw-sub-btn" id="dsub-linea" onclick="setDrawMode('linea',this)">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+    Linea
+  </button>
+  <button class="draw-sub-btn" id="dsub-libre" onclick="setDrawMode('libre',this)">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 17c3-3 5-7 7-7s3 3 5 3 4-6 6-6"/></svg>
+    Libre
+  </button>
+  <div class="draw-sub-sep"></div>
+  <div class="swatch active" style="background:#2a2118" onclick="setDrawColor('#2a2118',this)" title="Negro"></div>
+  <div class="swatch" style="background:#1d4e89" onclick="setDrawColor('#1d4e89',this)" title="Azul"></div>
+  <div class="swatch" style="background:#7b2d00" onclick="setDrawColor('#7b2d00',this)" title="Rojo"></div>
+  <div class="swatch" style="background:#2d6a4f" onclick="setDrawColor('#2d6a4f',this)" title="Verde"></div>
+  <div class="swatch" style="background:#e8a020" onclick="setDrawColor('#e8a020',this)" title="Amarillo"></div>
+  <div class="draw-sub-sep"></div>
+  <button class="draw-sub-btn" onclick="clearDrawings()" style="color:var(--c-event)">
+    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+    Limpiar
+  </button>
+</div>
+
+<!-- ══ CONNECT SUB-TOOLBAR ══════════════════════════════ -->
+<div class="connect-sub" id="connectSub">
+  <span style="font-size:10.5px;font-weight:600;color:var(--ink-4);letter-spacing:.06em;text-transform:uppercase;padding:0 4px">Tipo</span>
+  <div style="width:1px;height:16px;background:var(--border-md);margin:0 2px"></div>
+  <button class="conn-type-btn active" id="ctype-relaciona" onclick="setConnType('relaciona',this)">
+    <span class="conn-type-dot" style="background:var(--ink-3)"></span> Relaciona
+  </button>
+  <button class="conn-type-btn" id="ctype-reporta" onclick="setConnType('reporta',this)">
+    <span class="conn-type-dot" style="background:var(--c-actor)"></span> Reporta a
+  </button>
+  <button class="conn-type-btn" id="ctype-financia" onclick="setConnType('financia',this)">
+    <span class="conn-type-dot" style="background:var(--c-event)"></span> Financia
+  </button>
+  <button class="conn-type-btn" id="ctype-investiga" onclick="setConnType('investiga',this)">
+    <span class="conn-type-dot" style="background:var(--c-entity)"></span> Investiga
+  </button>
+  <button class="conn-type-btn" id="ctype-participa" onclick="setConnType('participa',this)">
+    <span class="conn-type-dot" style="background:#e8a020"></span> Participa en
+  </button>
+  <div style="width:1px;height:16px;background:var(--border-md);margin:0 2px"></div>
+  <button class="conn-type-btn" style="color:var(--c-event)" onclick="removeLastConn()">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+    Borrar ultima
+  </button>
+</div>
+
+<!-- hint toast -->
+<div class="conn-hint" id="connHint">Haz click en un ancla para empezar la conexion</div>
+
+<!-- ══ CANVAS LABEL ════════════════════════════════════ -->
+<span class="canvas-label">Vista Canvas</span>
+
+<!-- ══ CANVAS ══════════════════════════════════════════ -->
+<div class="canvas-wrap" id="canvasWrap">
+  <div class="canvas" id="canvas">
+  <div id="canvasWorld">
+
+    <!-- SVG connections -->
+    <svg class="connections-svg" id="connSvg">
+      <defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#b0a89e"/>
+        </marker>
+        <marker id="arrowhead-strong" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#7a6e62"/>
+        </marker>
+        <marker id="draw-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="var(--draw-color,#2a2118)"/>
+        </marker>
+      </defs>
+      <!-- ghost line for connect tool -->
+      <path id="connGhostLine"/>
+
+      <!-- Carlos → Gabriel -->
+      <path class="conn-line strong" marker-end="url(#arrowhead-strong)"
+        d="M 268 445 C 340 445 420 410 510 430"/>
+      <!-- Carlos → BA -->
+      <path class="conn-line" marker-end="url(#arrowhead)"
+        d="M 268 430 C 380 380 560 380 720 400"/>
+      <!-- Nector → Note -->
+      <path class="conn-line" marker-end="url(#arrowhead)"
+        d="M 630 262 C 660 230 680 215 700 220"/>
+      <!-- Gabriel → Julio -->
+      <path class="conn-line" marker-end="url(#arrowhead)"
+        d="M 580 480 C 580 520 560 560 530 595"/>
+    </svg>
+
+    <!-- ── ACTOR CARDS ── -->
+    <!-- Carlos Alberto -->
+    <div class="card actor" id="card-ca" style="left:88px;top:380px">
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="conn-anchor top"></div>
+      <div class="conn-anchor bottom"></div>
+      <div class="conn-anchor left"></div>
+      <div class="conn-anchor right"></div>
+      <div class="card-name">Carlos Alberto Garcia Alvarado</div>
+      <span class="card-badge actor">Actores</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>
+    </div>
+
+    <!-- Nector Guibal -->
+    <div class="card actor" id="card-ng" style="left:535px;top:192px">
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="conn-anchor top"></div>
+      <div class="conn-anchor bottom"></div>
+      <div class="conn-anchor left"></div>
+      <div class="conn-anchor right"></div>
+      <div class="card-name">Nector Guibal Estrada</div>
+      <span class="card-badge actor">Actores</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>
+    </div>
+
+    <!-- Gabriel Estuardo -->
+    <div class="card actor" id="card-ge" style="left:468px;top:388px">
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="conn-anchor top"></div>
+      <div class="conn-anchor bottom"></div>
+      <div class="conn-anchor left"></div>
+      <div class="conn-anchor right"></div>
+      <div class="card-name">Gabriel Estuardo Garcia Luna</div>
+      <span class="card-badge actor">Actores</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>
+    </div>
+
+    <!-- Beyla Adaly -->
+    <div class="card actor" id="card-ba" style="left:734px;top:368px">
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="conn-anchor top"></div>
+      <div class="conn-anchor bottom"></div>
+      <div class="conn-anchor left"></div>
+      <div class="conn-anchor right"></div>
+      <div class="card-name">Beyla Adaly Xiomara Estrada</div>
+      <span class="card-badge actor">Actores</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>
+    </div>
+
+    <!-- Julio Cesar -->
+    <div class="card actor" id="card-jc" style="left:448px;top:558px">
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="conn-anchor top"></div>
+      <div class="conn-anchor bottom"></div>
+      <div class="conn-anchor left"></div>
+      <div class="conn-anchor right"></div>
+      <div class="card-name">Julio Cesar Rivera Claveria</div>
+      <span class="card-badge actor">Actores</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>
+    </div>
+
+    <!-- Ministerio Publico (entity) -->
+    <div class="card entity" id="card-mp" style="left:248px;top:220px">
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="conn-anchor top"></div>
+      <div class="conn-anchor bottom"></div>
+      <div class="conn-anchor left"></div>
+      <div class="conn-anchor right"></div>
+      <div class="card-name">Ministerio Publico Guatemala</div>
+      <span class="card-badge entity">Entidad</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>
+    </div>
+
+    <!-- ── POST-IT NOTES ── -->
+    <!-- Yellow note: Sospechoso -->
+    <div class="note yellow note-ruled" id="note1" style="left:710px;top:158px">
+      <div class="note-header">
+        <div class="note-dots">
+          <div class="note-dot dot-red"></div>
+          <div class="note-dot dot-yellow"></div>
+          <div class="note-dot dot-green"></div>
+        </div>
+        <button class="note-close" onclick="removeEl(this.closest('.note'))">
+          <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="note-body">
+        <textarea class="note-textarea" placeholder="Escribe aqui...">Sospechoso — verificar vinculos con IGSS-Pisa</textarea>
+      </div>
+    </div>
+
+    <!-- Green note -->
+    <div class="note green note-ruled" id="note2" style="left:198px;top:478px">
+      <div class="note-header">
+        <div class="note-dots">
+          <div class="note-dot dot-red"></div>
+          <div class="note-dot dot-yellow"></div>
+          <div class="note-dot dot-green"></div>
+        </div>
+        <button class="note-close" onclick="removeEl(this.closest('.note'))">
+          <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="note-body">
+        <textarea class="note-textarea" placeholder="Nueva nota...">Nueva nota — pendiente confirmar fecha nombramiento fiscal</textarea>
+      </div>
+    </div>
+
+    <!-- Rose note -->
+    <div class="note rose note-ruled" id="note3" style="left:668px;top:542px">
+      <div class="note-header">
+        <div class="note-dots">
+          <div class="note-dot dot-red"></div>
+          <div class="note-dot dot-yellow"></div>
+          <div class="note-dot dot-green"></div>
+        </div>
+        <button class="note-close" onclick="removeEl(this.closest('.note'))">
+          <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+        </button>
+      </div>
+      <div class="note-body">
+        <textarea class="note-textarea" placeholder="Nueva nota...">Reunion 15 abril — presencia confirmada segun fuente X</textarea>
+      </div>
+    </div>
+
+    <!-- ══ POST CARDS ══════════════════════════════════ -->
+
+    <!-- 1. Post normal (imagen fija) -->
+    <div class="post-card" id="post1" style="left:860px;top:80px">
+      <div class="post-close" onclick="removeEl(this.parentElement)">
+        <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+      </div>
+      <div class="post-header">
+        <div class="post-account-av">QU</div>
+        <div class="post-account-info">
+          <div class="post-account-name">@Quorum_GT</div>
+          <div class="post-account-handle">quorum_gt</div>
+        </div>
+        <div class="post-type-badge post">
+          <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Post
+        </div>
+      </div>
+      <div class="post-thumb">
+        <!-- Simulated warm photo with CSS -->
+        <div style="width:100%;height:100%;background:linear-gradient(160deg,#c9b99a 0%,#a08060 40%,#7a5c3c 100%);display:flex;align-items:flex-end;padding:8px">
+          <div style="color:rgba(255,255,255,.9);font-size:11px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.5);line-height:1.3">Ministerio Publico<br><span style="font-weight:400;font-size:9.5px;opacity:.8">Ciudad de Guatemala</span></div>
+        </div>
+      </div>
+      <div class="post-caption"><b>@Quorum_GT</b> Confirmado: Carlos Garcia Alvarado lidera la terna para Fiscal General segun fuentes del Congreso.</div>
+      <div class="post-footer">
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          2.4k
+        </div>
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          318
+        </div>
+        <div class="post-date">14 abr</div>
+      </div>
+    </div>
+
+    <!-- 2. Reel -->
+    <div class="post-card reel" id="post2" style="left:1080px;top:60px">
+      <div class="post-close" onclick="removeEl(this.parentElement)">
+        <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+      </div>
+      <div class="post-header">
+        <div class="post-account-av" style="background:linear-gradient(135deg,#667eea,#764ba2)">NM</div>
+        <div class="post-account-info">
+          <div class="post-account-name">@NomadaMedia</div>
+          <div class="post-account-handle">nomada_media</div>
+        </div>
+        <div class="post-type-badge reel">
+          <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Reel
+        </div>
+      </div>
+      <div class="post-thumb" style="background:linear-gradient(145deg,#0f0c29,#302b63,#24243e)">
+        <div class="post-thumb-play">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+        <!-- Reel content hint -->
+        <div style="position:absolute;bottom:28px;left:10px;right:10px;color:rgba(255,255,255,.85);font-size:11px;font-weight:600;line-height:1.4;text-shadow:0 1px 4px rgba(0,0,0,.6)">Candidatos Fiscal General — comparativa de perfiles</div>
+        <div class="post-reel-duration">0:47</div>
+        <!-- vertical reel indicator -->
+        <div style="position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:3px;opacity:.6">
+          <div style="width:3px;height:3px;border-radius:50%;background:#fff"></div>
+          <div style="width:3px;height:3px;border-radius:50%;background:#fff"></div>
+          <div style="width:3px;height:3px;border-radius:50%;background:#fff"></div>
+        </div>
+      </div>
+      <div class="post-caption"><b>@NomadaMedia</b> Analizamos los 6 candidatos a Fiscal General. Quien tiene mas respaldo?</div>
+      <div class="post-footer">
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          18.2k
+        </div>
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          5.1k
+        </div>
+        <div class="post-date">12 abr</div>
+      </div>
+    </div>
+
+    <!-- 3. Carrusel -->
+    <div class="post-card" id="post3" style="left:860px;top:340px">
+      <div class="post-close" onclick="removeEl(this.parentElement)">
+        <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+      </div>
+      <div class="post-header">
+        <div class="post-account-av" style="background:linear-gradient(135deg,#11998e,#38ef7d)">PL</div>
+        <div class="post-account-info">
+          <div class="post-account-name">@PulzosGT</div>
+          <div class="post-account-handle">pulzos_gt</div>
+        </div>
+        <div class="post-type-badge carousel">
+          <svg width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="14" height="10" rx="2"/><rect x="8" y="5" width="14" height="10" rx="2"/></svg>
+          Carrusel
+        </div>
+      </div>
+      <div class="post-thumb" style="background:linear-gradient(145deg,#f5f0e8,#e8dcc8)">
+        <!-- slide 1 content -->
+        <div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;text-align:center">
+          <div style="font-size:11px;font-weight:700;color:var(--ink);line-height:1.4;margin-bottom:4px">6 candidatos<br>Fiscal General 2026</div>
+          <div style="font-size:10px;color:var(--ink-3)">Desliza para ver cada perfil</div>
+          <div style="width:32px;height:2px;background:var(--c-post);border-radius:2px;margin-top:8px;opacity:.6"></div>
+        </div>
+        <!-- carousel navigation -->
+        <div class="post-carousel-arrow right">
+          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        <div class="post-carousel-arrow left" style="opacity:.35">
+          <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </div>
+        <!-- slide counter top right -->
+        <div style="position:absolute;top:7px;right:8px;background:rgba(0,0,0,.35);color:#fff;font-size:9.5px;font-weight:600;padding:2px 6px;border-radius:20px;backdrop-filter:blur(4px)">1 / 6</div>
+        <!-- dot indicators -->
+        <div class="post-carousel-dots">
+          <div class="carousel-dot active"></div>
+          <div class="carousel-dot"></div>
+          <div class="carousel-dot"></div>
+          <div class="carousel-dot"></div>
+          <div class="carousel-dot"></div>
+          <div class="carousel-dot"></div>
+        </div>
+      </div>
+      <div class="post-caption"><b>@PulzosGT</b> Analisis completo de los 6 candidatos a Fiscal General. Formacion, trayectoria y posicion politica.</div>
+      <div class="post-footer">
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          4.7k
+        </div>
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          892
+        </div>
+        <div class="post-stat">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          1.2k
+        </div>
+        <div class="post-date">10 abr</div>
+      </div>
+    </div>
+
+    <!-- ── SNIPPET CARD ── -->
+    <div class="snippet-card" id="snip1" style="left:88px;top:192px">
+      <div class="snippet-close" onclick="removeEl(this.parentElement)">
+        <svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+      </div>
+      <div class="snippet-label">Prompt · Fiscal</div>
+      <div class="snippet-text">Analiza los vinculos entre los actores del canvas y el IGSS. Prioriza relaciones directas.</div>
+    </div>
+
+  </div><!-- /canvasWorld -->
+
+    <!-- Draw SVG layer (overlays canvas, not transformed) -->
+    <svg class="draw-svg" id="drawSvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:20;">
+      <defs>
+        <marker id="draw-arrow-marker" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" id="drawArrowFill" fill="#2a2118"/>
+        </marker>
+      </defs>
+      <line id="drawGhost" x1="0" y1="0" x2="0" y2="0" style="display:none;stroke-dasharray:6 4;stroke-width:1.5;opacity:.6"/>
+    </svg>
+  </div><!-- /canvas -->
+</div><!-- /canvas-wrap -->
+
+<!-- ══ BANDEJA ══════════════════════════════════════════ -->
+<aside class="bandeja" id="bandeja">
+  <div class="bandeja-header">
+    <div class="bandeja-title">
+      <h3>
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Bandeja
+      </h3>
+      <span class="bandeja-count">598 items</span>
+    </div>
+    <div class="bandeja-search">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" placeholder="Buscar en bandeja...">
+    </div>
+  </div>
+
+  <div class="bandeja-filters">
+    <button class="filter-chip active" onclick="setFilter(this)">Todos</button>
+    <button class="filter-chip" onclick="setFilter(this)">Actores</button>
+    <button class="filter-chip" onclick="setFilter(this)">Entidades</button>
+    <button class="filter-chip" onclick="setFilter(this)">Eventos</button>
+    <button class="filter-chip" onclick="setFilter(this)">Posts</button>
+  </div>
+
+  <div class="bandeja-list">
+    <div class="bandeja-section">Actores recientes</div>
+
+    <div class="bandeja-item" ondblclick="addCardFromBandeja('BA','Beyla Adaly Xiomara Estrada','actor')">
+      <div class="bi-avatar actor-av" data-seed="BA" data-initials="BA" data-color="d8f3dc">BA</div>
+      <div class="bi-info">
+        <div class="bi-name">@Beyla Adaly Xiomara</div>
+        <div class="bi-meta">Actores · Fiscal</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar actor-av" data-seed="CA" data-initials="CA" data-color="d8f3dc">CA</div>
+      <div class="bi-info">
+        <div class="bi-name">@Carlos Alberto Garcia</div>
+        <div class="bi-meta">Actores · Candidato</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar actor-av" data-seed="JC" data-initials="JC" data-color="d8f3dc">JC</div>
+      <div class="bi-info">
+        <div class="bi-name">@Julio Cesar Rivera</div>
+        <div class="bi-meta">Actores · Magistrado</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-section">Entidades</div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar entity-av">MP</div>
+      <div class="bi-info">
+        <div class="bi-name">Ministerio Publico</div>
+        <div class="bi-meta">Entidad · Gobierno</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar entity-av">IG</div>
+      <div class="bi-info">
+        <div class="bi-name">IGSS-Pisa</div>
+        <div class="bi-meta">Entidad · Salud</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-section">Eventos</div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar event-av">PE</div>
+      <div class="bi-info">
+        <div class="bi-name">Proceso Electoral 2026</div>
+        <div class="bi-meta">Evento · Abril 2026</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-section">Posts</div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar post-av">@V</div>
+      <div class="bi-info">
+        <div class="bi-name">@Marjorie von Ahn S.</div>
+        <div class="bi-meta">Posts · hace 2d</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+
+    <div class="bandeja-item">
+      <div class="bi-avatar post-av">@i</div>
+      <div class="bi-info">
+        <div class="bi-name">@informeGodoy</div>
+        <div class="bi-meta">Posts · hace 3d</div>
+      </div>
+      <svg class="bi-drag" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+    </div>
+  </div>
+</aside>
+
+<!-- ══ EXPLORER PANEL ══════════════════════════════════ -->
+<aside class="explorer hidden" id="explorerPanel">
+  <div class="explorer-header">
+    <div class="explorer-title">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <h3>Explorer</h3>
+      <button class="explorer-close" onclick="closeExplorer()">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="explorer-search">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="explorerInput" placeholder="Buscar en el Codex o en la web..." oninput="explorerSearch(this.value)">
+    </div>
+    <div class="explorer-tabs">
+      <button class="ex-tab active" onclick="setExTab('codex',this)">Codex</button>
+      <button class="ex-tab" onclick="setExTab('web',this)">Web</button>
+      <button class="ex-tab" onclick="setExTab('docs',this)">Docs</button>
+    </div>
+  </div>
+
+  <div class="explorer-body" id="explorerBody">
+    <!-- Codex tab content -->
+    <div id="exTab-codex">
+      <div class="explorer-section">Actores <span>47 resultados</span></div>
+
+      <div class="ex-result" ondblclick="addCardFromBandeja('BA','Beyla Adaly Xiomara Estrada','actor')">
+        <div class="ex-icon actor">BA</div>
+        <div class="ex-info">
+          <div class="ex-name">Beyla Adaly Xiomara Estrada Barrientos</div>
+          <div class="ex-meta">Actor · <b>Fiscal General (candidata)</b> · Guatemala</div>
+        </div>
+        <button class="ex-add" title="Agregar al canvas">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      <div class="ex-result">
+        <div class="ex-icon actor">CA</div>
+        <div class="ex-info">
+          <div class="ex-name">Carlos Alberto Garcia Alvarado</div>
+          <div class="ex-meta">Actor · <b>Fiscal candidato</b> · Guatemala</div>
+        </div>
+        <button class="ex-add" title="Agregar al canvas">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      <div class="ex-result">
+        <div class="ex-icon actor">GE</div>
+        <div class="ex-info">
+          <div class="ex-name">Gabriel Estuardo Garcia Luna</div>
+          <div class="ex-meta">Actor · <b>Magistrado</b> · Corte de Constitucionalidad</div>
+        </div>
+        <button class="ex-add">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      <div class="explorer-section">Entidades <span>12 resultados</span></div>
+
+      <div class="ex-result">
+        <div class="ex-icon entity">MP</div>
+        <div class="ex-info">
+          <div class="ex-name">Ministerio Publico Guatemala</div>
+          <div class="ex-meta">Entidad · Gobierno · <b>activa</b></div>
+        </div>
+        <button class="ex-add">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      <div class="ex-result">
+        <div class="ex-icon entity">IG</div>
+        <div class="ex-info">
+          <div class="ex-name">IGSS-Pisa</div>
+          <div class="ex-meta">Entidad · Salud · <b>investigada</b></div>
+        </div>
+        <button class="ex-add">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+
+      <div class="explorer-section">Eventos <span>8 resultados</span></div>
+
+      <div class="ex-result">
+        <div class="ex-icon event">PE</div>
+        <div class="ex-info">
+          <div class="ex-name">Proceso Electoral Fiscal 2026</div>
+          <div class="ex-meta">Evento · <b>Abril 2026</b> · Guatemala</div>
+        </div>
+        <button class="ex-add">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Web tab content -->
+    <div id="exTab-web" style="display:none">
+      <div class="explorer-empty">
+        <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        Escribe una busqueda para explorar la web y traer resultados al canvas.
+      </div>
+    </div>
+
+    <!-- Docs tab content -->
+    <div id="exTab-docs" style="display:none">
+      <div class="explorer-section">Documentos recientes <span>23</span></div>
+      <div class="ex-result">
+        <div class="ex-icon doc">NF</div>
+        <div class="ex-info">
+          <div class="ex-name">Nomina Fiscal 2026.pdf</div>
+          <div class="ex-meta">Documento · <b>subido hace 2d</b> · 4.2 MB</div>
+        </div>
+        <button class="ex-add">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div class="ex-result">
+        <div class="ex-icon doc">RC</div>
+        <div class="ex-info">
+          <div class="ex-name">Reporte CICIG — Caso MP 2023</div>
+          <div class="ex-meta">Documento · <b>referenciado 14 veces</b></div>
+        </div>
+        <button class="ex-add">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="explorer-input-row">
+    <input class="explorer-input" type="text" placeholder="Preguntale al Codex sobre el canvas...">
+    <button class="explorer-go">Consultar</button>
+  </div>
+</aside>
+
+<!-- ══ TOGGLE BANDEJA ══════════════════════════════════ -->
+<button class="toggle-bandeja" id="toggleBandeja" onclick="toggleBandeja()" title="Ocultar/Mostrar bandeja">
+  <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+</button>
+
+<!-- ══ ZOOM CONTROLS ═══════════════════════════════════ -->
+<div class="zoom-controls">
+  <button class="zoom-btn" onclick="adjustZoom(0.1)">+</button>
+  <button class="zoom-btn" onclick="adjustZoom(-0.1)">−</button>
+  <div class="zoom-label" id="zoomLabel">100%</div>
+</div>
+
+<!-- ══ MINIMAP ══════════════════════════════════════════ -->
+<div class="minimap" id="minimap">
+  <div class="minimap-dot" style="left:22%;top:42%;background:var(--c-actor-bg);border:1.5px solid var(--c-actor)"></div>
+  <div class="minimap-dot" style="left:54%;top:25%;background:var(--c-actor-bg);border:1.5px solid var(--c-actor)"></div>
+  <div class="minimap-dot" style="left:48%;top:44%;background:var(--c-actor-bg);border:1.5px solid var(--c-actor)"></div>
+  <div class="minimap-dot" style="left:72%;top:41%;background:var(--c-actor-bg);border:1.5px solid var(--c-actor)"></div>
+  <div class="minimap-dot" style="left:46%;top:62%;background:var(--c-actor-bg);border:1.5px solid var(--c-actor)"></div>
+  <div class="minimap-dot" style="left:26%;top:26%;background:var(--c-entity-bg);border:1.5px solid var(--c-entity)"></div>
+  <div class="minimap-dot" style="left:71%;top:19%;background:var(--note-yellow);border:1px solid rgba(0,0,0,.15);width:8px;height:8px;border-radius:2px"></div>
+  <div class="minimap-dot" style="left:20%;top:54%;background:var(--note-green);border:1px solid rgba(0,0,0,.12);width:8px;height:8px;border-radius:2px"></div>
+  <div class="minimap-viewport" style="left:8%;top:10%;width:82%;height:78%"></div>
+  <span class="minimap-label">Minimap</span>
+</div>
+
+<script>
+  /* ═══════════════════════════════════════════════════
+     STATE  (declared at module scope so inline handlers
+     can call the functions defined inside DOMContentLoaded
+     via the window.* assignments below)
+  ═══════════════════════════════════════════════════ */
+  let currentTool  = 'mover';
+  let elCount      = 100;
+  let bandejaOpen  = true;
+  let spaceDown    = false;
+  let zoom         = 1;
+  let panX         = 0;
+  let panY         = 0;
+  let dragEl       = null, dragOX = 0, dragOY = 0;
+  let isPanning    = false, panStartX = 0, panStartY = 0, panStartMX = 0, panStartMY = 0;
+  let drawMode     = 'flecha';
+  let drawColor    = '#2a2118';
+  let isDrawing    = false;
+  let drawStartX   = 0, drawStartY = 0;
+  let freePoints   = [];
+  let actorIdx     = 0;
+  let noteColorIdx = 0;
+
+  const ACTOR_NAMES  = ['Ana Martinez','Roberto Fuentes','Lucia Estrada','Hector Veliz','Carmen Lopez','Jorge Ponce'];
+  const NOTE_COLORS  = ['yellow','green','rose','blue'];
+
+  /* ─── helpers ─── */
+  function $(id) { return document.getElementById(id); }
+
+  function applyTransform() {
+    const w = $('canvasWorld');
+    if (!w) return;
+    w.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`;
+    w.style.transformOrigin = '0 0';
+    const lbl = $('zoomLabel');
+    if (lbl) lbl.textContent = Math.round(zoom * 100) + '%';
+    updateMinimap();
+  }
+
+  function adjustZoom(delta, cx, cy) {
+    const wrap = $('canvasWrap');
+    if (!wrap) return;
+    const wr = wrap.getBoundingClientRect();
+    const ox = (cx !== undefined ? cx - wr.left : wr.width  / 2);
+    const oy = (cy !== undefined ? cy - wr.top  : wr.height / 2);
+    const prev = zoom;
+    zoom = Math.max(0.25, Math.min(3, zoom + delta));
+    panX = ox - (ox - panX) * (zoom / prev);
+    panY = oy - (oy - panY) * (zoom / prev);
+    applyTransform();
+  }
+
+  function resetZoom() { zoom = 1; panX = 0; panY = 0; applyTransform(); }
+
+  function centerPos() {
+    const wrap = $('canvasWrap');
+    const wr   = wrap ? wrap.getBoundingClientRect() : { width: 1200, height: 800 };
+    return {
+      x: Math.max(20, (wr.width  / 2 - panX) / zoom + (Math.random() - 0.5) * 120),
+      y: Math.max(20, (wr.height / 2 - panY) / zoom + (Math.random() - 0.5) * 80),
+    };
+  }
+
+  function getSvgPos(e) {
+    const svg = $('drawSvg');
+    const r   = svg ? svg.getBoundingClientRect() : { left: 0, top: 0 };
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function pointsToPath(pts) {
+    if (pts.length < 2) return '';
+    return 'M ' + pts[0].join(' ') + pts.slice(1).map(p => ' L ' + p.join(' ')).join('');
+  }
+
+  function updateMinimap() {
+    const vp   = document.querySelector('.minimap-viewport');
+    const wrap = $('canvasWrap');
+    if (!vp || !wrap) return;
+    const wr = wrap.getBoundingClientRect();
+    const ww = 3000, wh = 2000;
+    const vw = wr.width  / zoom / ww * 100;
+    const vh = wr.height / zoom / wh * 100;
+    const vl = (-panX / zoom) / ww * 100;
+    const vt = (-panY / zoom) / wh * 100;
+    vp.style.width  = Math.min(100, vw) + '%';
+    vp.style.height = Math.min(100, vh) + '%';
+    vp.style.left   = Math.max(0, Math.min(100 - vw, vl)) + '%';
+    vp.style.top    = Math.max(0, Math.min(100 - vh, vt)) + '%';
+  }
+
+  /* ─── drag ─── */
+  function startDrag(e, el) {
+    if (currentTool !== 'mover' || spaceDown) return;
+    if (e.target.closest('textarea,input,[contenteditable],button,.note-close,.card-close,.post-close,.snippet-close,.conn-anchor')) return;
+    e.preventDefault(); e.stopPropagation();
+    dragEl = el;
+    dragEl.classList.add('dragging');
+    dragEl.style.zIndex = 500;
+    const world = $('canvasWorld');
+    const wr    = world.getBoundingClientRect();
+    dragOX = (e.clientX - wr.left) / zoom - parseFloat(el.style.left || 0);
+    dragOY = (e.clientY - wr.top)  / zoom - parseFloat(el.style.top  || 0);
+  }
+
+  /* ─── tool ─── */
+  function setTool(name) {
+    currentTool = name;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    const btn = $('tool-' + name);
+    if (btn) btn.classList.add('active');
+
+    const wrap = $('canvasWrap');
+    if (wrap) {
+      let cls = 'canvas-wrap';
+      if (name === 'dibujar')  cls += ' draw-mode';
+      if (name === 'conectar') cls += ' connect-mode';
+      wrap.className = cls;
+    }
+
+    const ds = $('drawSub');
+    if (ds) ds.classList.toggle('show', name === 'dibujar');
+
+    const cs = $('connectSub');
+    if (cs) cs.classList.toggle('show', name === 'conectar');
+    if (name !== 'conectar') cancelConnect();
+
+    if (name === 'explorer') {
+      $('explorerPanel')?.classList.remove('hidden');
+      $('bandeja')?.classList.add('hidden');
+      if ($('toggleBandeja')) $('toggleBandeja').style.display = 'none';
+    } else {
+      $('explorerPanel')?.classList.add('hidden');
+      if (bandejaOpen) {
+        $('bandeja')?.classList.remove('hidden');
+        if ($('toggleBandeja')) $('toggleBandeja').style.display = 'flex';
+      }
+    }
+  }
+
+  /* ─── draw sub ─── */
+  function setDrawMode(mode, btn) {
+    drawMode = mode;
+    document.querySelectorAll('.draw-sub-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  function setDrawColor(color, swatch) {
+    drawColor = color;
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    swatch.classList.add('active');
+  }
+
+  function clearDrawings() {
+    $('drawSvg')?.querySelectorAll('path.draw-path').forEach(p => p.remove());
+  }
+
+  function drawEnd(e) {
+    if (!isDrawing) return;
+    isDrawing = false;
+    const pos  = getSvgPos(e);
+    const ghost = $('drawGhost');
+    if (ghost) ghost.style.display = 'none';
+    const live = $('drawLive');
+    if (live) live.remove();
+
+    const dist = Math.hypot(pos.x - drawStartX, pos.y - drawStartY);
+    if (dist < 6) return;
+
+    const svg  = $('drawSvg');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.classList.add('draw-path');
+
+    if (drawMode === 'libre') {
+      freePoints.push([pos.x, pos.y]);
+      path.setAttribute('d', pointsToPath(freePoints));
+    } else {
+      path.setAttribute('d', `M ${drawStartX} ${drawStartY} L ${pos.x} ${pos.y}`);
+      if (drawMode === 'flecha') path.setAttribute('marker-end', 'url(#draw-arrow-marker)');
+    }
+    path.setAttribute('stroke', drawColor);
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+  }
+
+  /* ─── add elements ─── */
+  function addCard(type) {
+    closeAddMenu();
+    const world = $('canvasWorld');
+    const el    = document.createElement('div');
+    el.className = `card ${type}`;
+    el.id = 'card-' + (++elCount);
+    const p = centerPos();
+    el.style.cssText = `left:${p.x}px;top:${p.y}px`;
+    const typeLabels = { actor:'Actor', entity:'Entidad', event:'Evento' };
+    const nameLabels = { actor: ACTOR_NAMES[actorIdx++ % ACTOR_NAMES.length], entity:'Nueva Entidad', event:'Nuevo Evento' };
+    el.innerHTML = `
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="card-name" contenteditable="true" spellcheck="false" style="outline:none">${nameLabels[type]}</div>
+      <span class="card-badge ${type}">${typeLabels[type]}</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>`;
+    addAnchorsTo(el);
+    makeDraggable(el);
+    world.appendChild(el);
+  }
+
+  function addNote(color) {
+    closeAddMenu();
+    const world = $('canvasWorld');
+    const el    = document.createElement('div');
+    const c     = color || NOTE_COLORS[noteColorIdx++ % NOTE_COLORS.length];
+    el.className = `note ${c} note-ruled`;
+    el.id = 'note-' + (++elCount);
+    const p = centerPos();
+    el.style.cssText = `left:${p.x}px;top:${p.y}px`;
+    el.innerHTML = `
+      <div class="note-header">
+        <div class="note-dots"><div class="note-dot dot-red"></div><div class="note-dot dot-yellow"></div><div class="note-dot dot-green"></div></div>
+        <button class="note-close" onclick="removeEl(this.closest('.note'))"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></button>
+      </div>
+      <div class="note-body"><textarea class="note-textarea" placeholder="Escribe aqui..." rows="5"></textarea></div>`;
+    addAnchorsTo(el);
+    makeDraggable(el);
+    el.querySelector('textarea').addEventListener('mousedown', e => e.stopPropagation());
+    world.appendChild(el);
+    setTimeout(() => el.querySelector('textarea').focus(), 50);
+  }
+
+  function addSnippet() {
+    closeAddMenu();
+    const world = $('canvasWorld');
+    const el    = document.createElement('div');
+    el.className = 'snippet-card';
+    el.id = 'snip-' + (++elCount);
+    const p = centerPos();
+    el.style.cssText = `left:${p.x}px;top:${p.y}px`;
+    el.innerHTML = `
+      <div class="snippet-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="snippet-label">Prompt</div>
+      <div class="snippet-text" contenteditable="true" spellcheck="false" style="outline:none;cursor:text;min-height:48px">Escribe tu prompt aqui...</div>`;
+    addAnchorsTo(el);
+    makeDraggable(el);
+    el.querySelector('[contenteditable]').addEventListener('mousedown', e => e.stopPropagation());
+    world.appendChild(el);
+    setTimeout(() => el.querySelector('[contenteditable]').focus(), 50);
+  }
+
+  function addCardFromBandeja(seed, name, type) {
+    const world = $('canvasWorld');
+    const el    = document.createElement('div');
+    el.className = `card ${type}`;
+    el.id = 'card-' + (++elCount);
+    const p = centerPos();
+    el.style.cssText = `left:${p.x}px;top:${p.y}px`;
+    const typeLabels = { actor:'Actores', entity:'Entidad', event:'Evento' };
+    el.innerHTML = `
+      <div class="card-close" onclick="removeEl(this.parentElement)"><svg width="8" height="8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8"/></svg></div>
+      <div class="card-name" contenteditable="true" spellcheck="false" style="outline:none">${name}</div>
+      <span class="card-badge ${type}">${typeLabels[type]}</span>
+      <div class="card-resize"><svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 10 10"><path d="M9 5v4H5M9 9 5 5"/></svg></div>`;
+    addAnchorsTo(el);
+    makeDraggable(el);
+    world.appendChild(el);
+  }
+
+  function removeEl(el) {
+    el.style.transition = 'opacity .15s, transform .15s';
+    el.style.opacity = '0';
+    el.style.transform += ' scale(0.9)';
+    setTimeout(() => el.remove(), 160);
+  }
+
+  function makeDraggable(el) {
+    el.addEventListener('mousedown', e => startDrag(e, el));
+  }
+
+  /* ═══════════════════════════════════════════════════
+     CONNECT TOOL
+  ═══════════════════════════════════════════════════ */
+  let connType      = 'relaciona';  // active relation type
+  let connSource    = null;         // { elId, side, x, y } in world coords
+  let connEdges     = [];           // array of rendered connections
+
+  const CONN_LABELS = {
+    relaciona: 'relaciona',
+    reporta:   'reporta a',
+    financia:  'financia',
+    investiga: 'investiga',
+    participa: 'participa en',
+  };
+
+  function setConnType(type, btn) {
+    connType = type;
+    document.querySelectorAll('.conn-type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  /* get center of an anchor in world coords */
+  function anchorWorldPos(elId, side) {
+    const el = $(elId);
+    if (!el) return { x: 0, y: 0 };
+    const ex = parseFloat(el.style.left) || 0;
+    const ey = parseFloat(el.style.top)  || 0;
+    const ew = el.offsetWidth  || 180;
+    const eh = el.offsetHeight || 90;
+    const map = {
+      top:    { x: ex + ew / 2,  y: ey },
+      bottom: { x: ex + ew / 2,  y: ey + eh },
+      left:   { x: ex,           y: ey + eh / 2 },
+      right:  { x: ex + ew,      y: ey + eh / 2 },
+    };
+    return map[side] || { x: ex + ew / 2, y: ey + eh / 2 };
+  }
+
+  /* handle anchor click */
+  function anchorClick(e, elId, side) {
+    if (currentTool !== 'conectar') return;
+    e.stopPropagation();
+    const pos = anchorWorldPos(elId, side);
+
+    if (!connSource) {
+      // start connection
+      connSource = { elId, side, ...pos };
+      $(elId)?.classList.add('connect-source');
+      // show ghost
+      const ghost = $('connGhostLine');
+      if (ghost) {
+        ghost.style.display = 'block';
+        ghost.setAttribute('d', `M ${pos.x} ${pos.y} C ${pos.x} ${pos.y} ${pos.x} ${pos.y} ${pos.x} ${pos.y}`);
+      }
+      updateHint('Ahora haz click en el nodo destino');
+    } else {
+      if (connSource.elId === elId) {
+        // cancel
+        cancelConnect();
+        return;
+      }
+      // complete connection
+      const targetPos = { ...pos };
+      renderConn(connSource, { elId, side, ...targetPos });
+      cancelConnect();
+    }
+  }
+
+  function cancelConnect() {
+    if (connSource) $(connSource.elId)?.classList.remove('connect-source');
+    connSource = null;
+    const ghost = $('connGhostLine');
+    if (ghost) ghost.style.display = 'none';
+    updateHint('Haz click en un ancla para empezar la conexion');
+  }
+
+  function updateHint(msg) {
+    const h = $('connHint');
+    if (h) h.textContent = msg;
+  }
+
+  /* build a smooth bezier path between two world points */
+  function connPath(x1, y1, x2, y2, side1, side2) {
+    const dx = Math.abs(x2 - x1);
+    const dy = Math.abs(y2 - y1);
+    const cp = Math.max(60, Math.max(dx, dy) * 0.5);
+
+    const offsets = {
+      top:    [0, -cp],
+      bottom: [0,  cp],
+      left:   [-cp, 0],
+      right:  [ cp, 0],
+    };
+    const [c1x, c1y] = offsets[side1] || [0, cp];
+    const [c2x, c2y] = offsets[side2] || [0, -cp];
+    return `M ${x1} ${y1} C ${x1 + c1x} ${y1 + c1y} ${x2 + c2x} ${y2 + c2y} ${x2} ${y2}`;
+  }
+
+  /* render a completed connection into the SVG */
+  function renderConn(src, tgt) {
+    const svg   = $('connSvg');
+    const type  = connType;
+    const label = CONN_LABELS[type];
+    const id    = 'conn-' + Date.now();
+
+    const { x: x1, y: y1, side: s1 } = src;
+    const { x: x2, y: y2, side: s2 } = tgt;
+    const d = connPath(x1, y1, x2, y2, s1, s2);
+
+    // marker per type
+    const markerColors = {
+      relaciona: '#7a6e62',
+      reporta:   '#2d6a4f',
+      financia:  '#7b2d00',
+      investiga: '#1d4e89',
+      participa: '#e8a020',
+    };
+    const mc = markerColors[type] || '#7a6e62';
+    const markerId = 'marker-' + id;
+
+    // midpoint for label
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.id = id;
+    g.classList.add('conn-group');
+    g.setAttribute('data-src', src.elId);
+    g.setAttribute('data-tgt', tgt.elId);
+
+    g.innerHTML = `
+      <defs>
+        <marker id="${markerId}" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="${mc}"/>
+        </marker>
+      </defs>
+      <path d="${d}" class="conn-edge rel-${type}" stroke="${mc}" marker-end="url(#${markerId})"/>
+      <rect class="conn-label-bg" x="${mx - 28}" y="${my - 9}" width="56" height="14" rx="4" ry="4"/>
+      <text class="conn-label" x="${mx}" y="${my + 1.5}" text-anchor="middle">${label}</text>
+      <circle class="conn-delete-btn" cx="${mx + 34}" cy="${my - 4}" r="7"
+        onclick="removeConnById('${id}')" title="Eliminar conexion"/>
+      <path d="M${mx + 30} ${my - 8} l8 8M${mx + 38} ${my - 8} l-8 8"
+        stroke="#fff" stroke-width="1.5" pointer-events="none" opacity="0" class="conn-delete-x"/>
+    `;
+
+    // show X on delete btn hover
+    g.querySelector('.conn-delete-btn').addEventListener('mouseenter', () => {
+      g.querySelector('.conn-delete-x').style.opacity = '1';
+    });
+    g.querySelector('.conn-delete-btn').addEventListener('mouseleave', () => {
+      g.querySelector('.conn-delete-x').style.opacity = '0';
+    });
+
+    svg.appendChild(g);
+    connEdges.push({ id, src, tgt, type });
+  }
+
+  function removeConnById(id) {
+    $(id)?.remove();
+    connEdges = connEdges.filter(e => e.id !== id);
+  }
+
+  function removeLastConn() {
+    if (!connEdges.length) return;
+    const last = connEdges.pop();
+    $(last.id)?.remove();
+  }
+
+  /* update ghost line on mousemove in connect mode */
+  function updateConnGhost(e) {
+    if (currentTool !== 'conectar' || !connSource) return;
+    const world = $('canvasWorld');
+    const wr    = world.getBoundingClientRect();
+    const mx    = (e.clientX - wr.left) / zoom;
+    const my    = (e.clientY - wr.top)  / zoom;
+    const ghost = $('connGhostLine');
+    if (!ghost) return;
+    const d = connPath(connSource.x, connSource.y, mx, my, connSource.side, 'top');
+    ghost.setAttribute('d', d);
+  }
+
+  /* inject anchors — uses mousedown (not click) so it fires before drag
+     suppresses it; visibility driven by JS mouseenter on the parent */
+  function addAnchorsTo(el) {
+    const id = el.id;
+    const anchors = [];
+    ['top','bottom','left','right'].forEach(side => {
+      const a = document.createElement('div');
+      a.className = `conn-anchor ${side}`;
+      a.addEventListener('mousedown', e => {
+        e.stopPropagation();
+        e.preventDefault();
+        anchorClick(e, id, side);
+      });
+      el.appendChild(a);
+      anchors.push(a);
+    });
+    wireAnchorHover(el, anchors);
+  }
+
+  function wireAnchorHover(el, anchors) {
+    el.addEventListener('mouseenter', () => {
+      if (currentTool !== 'conectar') return;
+      anchors.forEach(a => { a.style.opacity = '1'; });
+    });
+    el.addEventListener('mouseleave', () => {
+      anchors.forEach(a => { a.style.opacity = ''; });
+    });
+  }
+
+  /* ─── menus / panels ─── */
+  function toggleAddMenu() { $('addMenu')?.classList.toggle('show'); }
+  function closeAddMenu()  { $('addMenu')?.classList.remove('show'); }
+  function closeExplorer() {
+    $('explorerPanel')?.classList.add('hidden');
+    $('bandeja')?.classList.remove('hidden');
+    if ($('toggleBandeja')) $('toggleBandeja').style.display = 'flex';
+    setTool('mover');
+  }
+  function toggleBandeja() {
+    bandejaOpen = !bandejaOpen;
+    const b = $('bandeja');
+    const t = $('toggleBandeja');
+    if (b) b.classList.toggle('hidden', !bandejaOpen);
+    if (t) {
+      t.style.right = bandejaOpen ? '278px' : '8px';
+      t.innerHTML = bandejaOpen
+        ? `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>`
+        : `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>`;
+    }
+  }
+  function setFilter(btn) {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  function setExTab(name, btn) {
+    document.querySelectorAll('.ex-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    ['codex','web','docs'].forEach(t => {
+      const el = $('exTab-' + t);
+      if (el) el.style.display = t === name ? 'block' : 'none';
+    });
+  }
+  function explorerSearch(val) {
+    if (val.length > 2) {
+      const webEl = $('exTab-web');
+      if (webEl && webEl.style.display !== 'none')
+        webEl.innerHTML = `<div class="explorer-section">Resultados web <span>buscando...</span></div>`;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════
+     INIT — runs after DOM is ready
+  ═══════════════════════════════════════════════════ */
+  document.addEventListener('DOMContentLoaded', () => {
+    applyTransform();
+
+    /* stop textarea mousedown from bubbling to drag */
+    document.querySelectorAll('.note-textarea').forEach(ta => {
+      ta.addEventListener('mousedown', e => e.stopPropagation());
+    });
+
+    /* make all static draggable elements respond + wire anchors */
+    document.querySelectorAll('.card,.note,.snippet-card,.post-card').forEach(el => {
+      el.addEventListener('mousedown', e => startDrag(e, el));
+
+      /* remove any hardcoded onclick anchors and re-create them cleanly */
+      el.querySelectorAll('.conn-anchor').forEach(a => a.remove());
+      addAnchorsTo(el);
+    });
+
+    /* wheel zoom */
+    $('canvasWrap').addEventListener('wheel', e => {
+      e.preventDefault();
+      adjustZoom(e.deltaY < 0 ? 0.08 : -0.08, e.clientX, e.clientY);
+    }, { passive: false });
+
+    /* pan — space+drag or middle button */
+    $('canvasWrap').addEventListener('mousedown', e => {
+      if (spaceDown || e.button === 1) {
+        isPanning = true;
+        panStartX = panX; panStartY = panY;
+        panStartMX = e.clientX; panStartMY = e.clientY;
+        $('canvasWrap').style.cursor = 'grabbing';
+        e.preventDefault();
+      }
+    });
+
+    /* draw — global mousedown starts stroke in draw mode */
+    document.addEventListener('mousedown', e => {
+      if (currentTool !== 'dibujar') return;
+      if (e.target.closest('button,textarea,input,[contenteditable]')) return;
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getSvgPos(e);
+      drawStartX = pos.x; drawStartY = pos.y;
+      freePoints = [[pos.x, pos.y]];
+      const fill = $('drawArrowFill');
+      if (fill) fill.setAttribute('fill', drawColor);
+      const ghost = $('drawGhost');
+      if (ghost) {
+        ghost.setAttribute('x1', pos.x); ghost.setAttribute('y1', pos.y);
+        ghost.setAttribute('x2', pos.x); ghost.setAttribute('y2', pos.y);
+        ghost.setAttribute('stroke', drawColor);
+        ghost.style.display = drawMode === 'libre' ? 'none' : 'block';
+      }
+    });
+
+    /* global mousemove */
+    document.addEventListener('mousemove', e => {
+      if (isPanning) {
+        panX = panStartX + (e.clientX - panStartMX);
+        panY = panStartY + (e.clientY - panStartMY);
+        applyTransform();
+        return;
+      }
+      if (dragEl) {
+        const world = $('canvasWorld');
+        const wr    = world.getBoundingClientRect();
+        dragEl.style.left = Math.max(0, (e.clientX - wr.left) / zoom - dragOX) + 'px';
+        dragEl.style.top  = Math.max(0, (e.clientY - wr.top)  / zoom - dragOY) + 'px';
+      }
+      if (currentTool === 'conectar') updateConnGhost(e);
+      if (isDrawing && currentTool === 'dibujar') {
+        const pos = getSvgPos(e);
+        if (drawMode === 'libre') {
+          freePoints.push([pos.x, pos.y]);
+          let live = $('drawLive');
+          if (!live) {
+            live = document.createElementNS('http://www.w3.org/2000/svg','path');
+            live.id = 'drawLive';
+            live.setAttribute('fill','none');
+            live.setAttribute('stroke-linecap','round');
+            live.setAttribute('stroke-linejoin','round');
+            live.setAttribute('stroke-width','2');
+            live.setAttribute('opacity','.85');
+            $('drawSvg').appendChild(live);
+          }
+          live.setAttribute('stroke', drawColor);
+          live.setAttribute('d', pointsToPath(freePoints));
+        } else {
+          const ghost = $('drawGhost');
+          if (ghost) { ghost.setAttribute('x2', pos.x); ghost.setAttribute('y2', pos.y); }
+        }
+      }
+    });
+
+    /* global mouseup */
+    document.addEventListener('mouseup', e => {
+      if (isPanning) {
+        isPanning = false;
+        $('canvasWrap').style.cursor = spaceDown ? 'grab' : '';
+      }
+      if (dragEl) {
+        dragEl.classList.remove('dragging');
+        dragEl.style.zIndex = '';
+        dragEl = null;
+      }
+      if (isDrawing && currentTool === 'dibujar') drawEnd(e);
+    });
+
+    /* keyboard shortcuts */
+    document.addEventListener('keydown', e => {
+      const inInput = e.target.closest('textarea,input,[contenteditable]');
+      if (e.code === 'Space' && !inInput) {
+        e.preventDefault();
+        spaceDown = true;
+        $('canvasWrap').style.cursor = 'grab';
+      }
+      if (!inInput) {
+        if (e.key === 'Escape') { closeAddMenu(); cancelConnect(); }
+        if (e.key === '=' || e.key === '+') adjustZoom(0.1);
+        if (e.key === '-') adjustZoom(-0.1);
+        if (e.key === '0') resetZoom();
+      }
+    });
+    document.addEventListener('keyup', e => {
+      if (e.code === 'Space') {
+        spaceDown = false; isPanning = false;
+        $('canvasWrap').style.cursor = '';
+      }
+    });
+
+    /* close add menu on outside click */
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#addMenu') && !e.target.closest('[onclick="toggleAddMenu()"]')) closeAddMenu();
+    });
+
+    /* topbar tabs */
+    document.querySelectorAll('.topbar-tab').forEach(tab => {
+      tab.addEventListener('click', function () {
+        document.querySelectorAll('.topbar-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+  });
+</script>
+</body>
+</html>

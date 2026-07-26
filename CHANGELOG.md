@@ -2,6 +2,22 @@
 
 ---
 
+## Version 0.003 — Bug Fixes & UX Improvements
+
+**Release Date:** May 2026
+
+### Bug Fixes
+
+- **Fix: Posts no longer appeared in Codex (schema error)**
+  Posts in the Codex tab stopped loading after a recent backend update. The query was referencing a non-existent column (`flag`) in the `codex_universe_items` table. Fixed to use the correct `tipo` field instead.
+
+### Improvements
+
+- **Instant Post Extraction Flow**
+  When adding an Instagram post or reel, the modal now closes immediately after tapping "Extraer post". A loading indicator appears directly in the posts list while the content is being fetched and saved. Once complete, the post appears automatically — no extra steps required.
+
+---
+
 ## Version 0.002 — App Store Release Notes
 
 **Release Date:** April 2026
