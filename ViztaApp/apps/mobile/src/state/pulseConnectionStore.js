@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../utils/supabase';
+import { signInWithApple } from '../utils/appleAuth';
 
 export const usePulseConnectionStore = create(
   persist(
@@ -70,6 +71,38 @@ export const usePulseConnectionStore = create(
         });
         console.log('[pulseStore] set isConnected=true DONE');
         return true;
+      },
+
+      /**
+       * Acceso con Apple — la vía de registro para usuarios de solo móvil.
+       * Crea el perfil con `user_type: 'phone'` si es la primera vez.
+       */
+      connectWithApple: async () => {
+        console.log('[pulseStore] connectWithApple() called');
+        set({ isConnecting: true, error: null });
+        try {
+          const { usuario, perfil, esNuevo } = await signInWithApple();
+          console.log('[pulseStore] Apple OK — nuevo:', esNuevo, '| user_type:', perfil?.user_type);
+
+          if (perfil?._sinPerfil) {
+            console.warn('[pulseStore] sesión abierta pero sin fila en profiles:', perfil._motivo);
+          }
+
+          set({
+            isConnected: true,
+            isConnecting: false,
+            connectedUser: perfil || { id: usuario.id, email: usuario.email },
+            connectedAt: new Date().toISOString(),
+            error: null,
+          });
+          return true;
+        } catch (e) {
+          // Cancelar el diálogo de Apple no es un error que valga mostrar.
+          const cancelado = e?.code === 'ERR_REQUEST_CANCELED' || /cancel/i.test(e?.message || '');
+          console.log('[pulseStore] connectWithApple() error:', e?.message, '| cancelado:', cancelado);
+          set({ isConnecting: false, error: cancelado ? null : e?.message || 'No se pudo entrar con Apple' });
+          return false;
+        }
       },
 
       disconnect: async () => {

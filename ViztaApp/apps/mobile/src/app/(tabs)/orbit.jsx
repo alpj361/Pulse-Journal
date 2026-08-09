@@ -32,7 +32,6 @@ import Reanimated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { ArrowLeft, Clock, AlertCircle, Trash2, ChevronRight, Send, ChevronDown } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
@@ -2223,15 +2222,6 @@ export default function OrbitScreen() {
     });
   };
 
-  const player = useVideoPlayer(
-    require('../../../assets/videos/feed-background.mp4'),
-    (p) => {
-      p.loop = true;
-      p.muted = true;
-      p.play();
-    }
-  );
-
   // Center orb pulse
   useEffect(() => {
     Animated.loop(
@@ -2274,18 +2264,7 @@ export default function OrbitScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Video background */}
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
-      <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4, 5, 18, 0.62)' }]} />
-
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* ── Selector screen ── */}
       <KeyboardAvoidingView

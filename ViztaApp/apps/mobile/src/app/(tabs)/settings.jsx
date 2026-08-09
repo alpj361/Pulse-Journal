@@ -16,9 +16,9 @@ import {
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import GlassCard from '../../components/GlassCard';
+import { INK, ACCENT, chipStyle } from '../../components/theme';
 import {
   Eye,
   EyeOff,
@@ -39,7 +39,7 @@ import * as Notifications from 'expo-notifications';
 import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const APP_VERSION = 'V.002';
+const APP_VERSION = 'V.003';
 
 function formatDate(isoString) {
   if (!isoString) return '';
@@ -691,13 +691,7 @@ function FaqItem({ question, children }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <View style={{
-      backgroundColor: 'rgba(8,10,24,0.72)',
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)',
-      overflow: 'hidden',
-    }}>
+    <GlassCard radius={16}>
       <TouchableOpacity
         onPress={() => setOpen((v) => !v)}
         style={{
@@ -707,12 +701,12 @@ function FaqItem({ question, children }) {
         }}
         activeOpacity={0.7}
       >
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.85)', lineHeight: 20 }}>
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: INK.title, lineHeight: 20 }}>
           {question}
         </Text>
         {open
-          ? <ChevronUp size={17} color="rgba(255,255,255,0.4)" />
-          : <ChevronDown size={17} color="rgba(255,255,255,0.4)" />
+          ? <ChevronUp size={17} color={INK.meta} />
+          : <ChevronDown size={17} color={INK.meta} />
         }
       </TouchableOpacity>
 
@@ -721,12 +715,12 @@ function FaqItem({ question, children }) {
           paddingHorizontal: 18,
           paddingBottom: 18,
           borderTopWidth: 1,
-          borderColor: 'rgba(255,255,255,0.06)',
+          borderColor: 'rgba(28,43,34,0.08)',
         }}>
           {children}
         </View>
       )}
-    </View>
+    </GlassCard>
   );
 }
 
@@ -748,14 +742,6 @@ export default function SettingsScreen() {
     });
   }, []);
 
-  const player = useVideoPlayer(
-    require('../../../assets/videos/feed-background.mp4'),
-    (p) => {
-      p.loop = true;
-      p.muted = true;
-      p.play();
-    }
-  );
 
   const initials = connectedUser?.email
     ? connectedUser.email.slice(0, 2).toUpperCase()
@@ -763,17 +749,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
-      <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4, 5, 18, 0.55)' }]} />
-
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       <LoginModal
         visible={showLoginModal}
@@ -811,7 +787,7 @@ export default function SettingsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: insets.top + 20,
-          paddingBottom: insets.bottom + 40,
+          paddingBottom: insets.bottom + 72,
           paddingHorizontal: 24,
         }}
         showsVerticalScrollIndicator={false}
@@ -819,23 +795,21 @@ export default function SettingsScreen() {
         {/* ── Header + versión ── */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 }}>
           <View>
-            <Text style={{ fontSize: 32, fontWeight: '800', color: '#ffffff', letterSpacing: -0.5 }}>
+            <Text style={{ fontSize: 32, fontWeight: '800', color: INK.title, letterSpacing: -0.5 }}>
               Ajustes
             </Text>
-            <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>
+            <Text style={{ fontSize: 15, color: INK.meta, marginTop: 4 }}>
               Vizta App
             </Text>
           </View>
           <View style={{
-            backgroundColor: 'rgba(99,102,241,0.15)',
+            ...chipStyle(ACCENT.indigo.tint, 'rgba(99,102,241,0.22)'),
             borderRadius: 10,
             paddingHorizontal: 12,
             paddingVertical: 6,
-            borderWidth: 1,
-            borderColor: 'rgba(99,102,241,0.3)',
             marginTop: 6,
           }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: '#a5b4fc', letterSpacing: 0.5 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: ACCENT.indigo.ink, letterSpacing: 0.5 }}>
               {APP_VERSION}
             </Text>
           </View>
@@ -843,53 +817,29 @@ export default function SettingsScreen() {
 
         {/* ── Visión ── */}
         <View style={{ marginBottom: 24 }}>
-          <View style={{
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.1)',
-            overflow: 'hidden',
-            backgroundColor: 'rgba(8,10,24,0.72)',
-          }}>
-            <LinearGradient
-              colors={['rgba(99,102,241,0.1)', 'rgba(139,92,246,0.05)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
+          <GlassCard radius={20} accent={ACCENT.indigo.ink} wash="rgba(99,102,241,0.05)">
             <View style={{ padding: 22 }}>
               <Text style={{
                 fontSize: 13,
-                color: 'rgba(255,255,255,0.55)',
+                color: INK.body,
                 lineHeight: 22,
                 fontStyle: 'italic',
               }}>
                 "Vizta es una herramienta nacida de la conexión entre la tecnología y la comunicación, espacios para empoderar la fiscalización y co-existencia de diferentes medios de noticias. La información es pública y siempre deberá de serlo."
               </Text>
             </View>
-          </View>
+          </GlassCard>
         </View>
 
         {/* ── Portal Web: conectado o botón ── */}
         <View style={{ marginBottom: 24 }}>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, color: INK.meta, fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 }}>
             PORTAL WEB
           </Text>
 
           {isConnected ? (
             /* Estado conectado */
-            <View style={{
-              borderRadius: 20,
-              borderWidth: 1,
-              borderColor: 'rgba(74,222,128,0.2)',
-              overflow: 'hidden',
-              backgroundColor: 'rgba(8,10,24,0.72)',
-            }}>
-              <LinearGradient
-                colors={['rgba(74,222,128,0.07)', 'rgba(34,197,94,0.03)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
+            <GlassCard radius={20} accent={ACCENT.green.ink} wash="rgba(22,163,74,0.05)">
               <View style={{ padding: 20 }}>
                 {/* Avatar row */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
@@ -909,60 +859,56 @@ export default function SettingsScreen() {
                       width: 18, height: 18, borderRadius: 9,
                       backgroundColor: '#6366f1',
                       alignItems: 'center', justifyContent: 'center',
-                      borderWidth: 1.5, borderColor: '#0b0d22',
+                      borderWidth: 1.5, borderColor: '#FFFFFF',
                     }}>
                       <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800', lineHeight: 14 }}>+</Text>
                     </View>
                   </TouchableOpacity>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }} numberOfLines={1}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: INK.title }} numberOfLines={1}>
                       {connectedUser?.email}
                     </Text>
                     {connectedUser?.role === 'admin' && (
-                      <Text style={{ fontSize: 12, color: 'rgba(165,180,252,0.75)', marginTop: 2 }}>
+                      <Text style={{ fontSize: 12, color: ACCENT.indigo.ink, marginTop: 2 }}>
                         Administrador
                       </Text>
                     )}
                   </View>
                   <View style={{
-                    backgroundColor: 'rgba(74,222,128,0.15)',
-                    borderRadius: 8,
+                    ...chipStyle(ACCENT.green.tint, 'rgba(22,163,74,0.24)'),
                     paddingHorizontal: 9,
-                    paddingVertical: 4,
-                    borderWidth: 1,
-                    borderColor: 'rgba(74,222,128,0.3)',
                   }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#4ade80' }}>Activo</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: ACCENT.green.ink }}>Activo</Text>
                   </View>
                 </View>
 
                 {connectedAt && (
-                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 12, color: INK.faint, marginBottom: 16 }}>
                     Conectado desde el {formatDate(connectedAt)}
                   </Text>
                 )}
 
                 {/* Unlocked */}
                 <View style={{
-                  backgroundColor: 'rgba(255,255,255,0.04)',
+                  backgroundColor: 'rgba(28,43,34,0.04)',
                   borderRadius: 12,
                   padding: 14,
                   marginBottom: 16,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.07)',
+                  borderColor: 'rgba(28,43,34,0.07)',
                 }}>
-                  <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontWeight: '700', letterSpacing: 0.5, marginBottom: 10 }}>
+                  <Text style={{ fontSize: 11, color: INK.meta, fontWeight: '700', letterSpacing: 0.5, marginBottom: 10 }}>
                     EN LA APP TIENES ACCESO A:
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 7 }}>
-                    <CheckCircle size={14} color="#4ade80" />
-                    <BookOpen size={13} color="rgba(165,180,252,0.7)" style={{ marginLeft: 8 }} />
-                    <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginLeft: 6 }}>Wiki personal</Text>
+                    <CheckCircle size={14} color={ACCENT.green.ink} />
+                    <BookOpen size={13} color={ACCENT.indigo.ink} style={{ marginLeft: 8 }} />
+                    <Text style={{ fontSize: 13, color: INK.body, marginLeft: 6 }}>Wiki personal</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <CheckCircle size={14} color="#4ade80" />
-                    <FileText size={13} color="rgba(165,180,252,0.7)" style={{ marginLeft: 8 }} />
-                    <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginLeft: 6 }}>Codex de documentos</Text>
+                    <CheckCircle size={14} color={ACCENT.green.ink} />
+                    <FileText size={13} color={ACCENT.indigo.ink} style={{ marginLeft: 8 }} />
+                    <Text style={{ fontSize: 13, color: INK.body, marginLeft: 6 }}>Codex de documentos</Text>
                   </View>
                 </View>
 
@@ -980,20 +926,20 @@ export default function SettingsScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: 'rgba(239,68,68,0.1)',
+                    backgroundColor: ACCENT.red.tint,
                     borderRadius: 12,
                     paddingVertical: 13,
                     borderWidth: 1,
-                    borderColor: 'rgba(239,68,68,0.2)',
+                    borderColor: 'rgba(220,38,38,0.2)',
                   }}
                 >
-                  <LogOut size={15} color="#f87171" />
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#f87171', marginLeft: 7 }}>
+                  <LogOut size={15} color={ACCENT.red.ink} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: ACCENT.red.ink, marginLeft: 7 }}>
                     Cerrar sesión
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </GlassCard>
           ) : (
             /* Botón de conectar */
             <TouchableOpacity
@@ -1002,12 +948,15 @@ export default function SettingsScreen() {
               style={{
                 borderRadius: 18,
                 overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: 'rgba(99,102,241,0.4)',
+                shadowColor: '#4338CA',
+                shadowOpacity: 0.28,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 6,
               }}
             >
               <LinearGradient
-                colors={['rgba(99,102,241,0.6)', 'rgba(79,70,229,0.75)']}
+                colors={['#6366F1', '#4338CA']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 10 }}
@@ -1023,15 +972,15 @@ export default function SettingsScreen() {
 
         {/* ── FAQ ── */}
         <View style={{ marginBottom: 8 }}>
-          <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, color: INK.meta, fontWeight: '700', letterSpacing: 0.5, marginBottom: 12 }}>
             PREGUNTAS FRECUENTES
           </Text>
 
           <FaqItem question="¿Qué es el Portal Web?">
-            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22, marginTop: 12 }}>
+            <Text style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginTop: 12 }}>
               Es una herramienta en estado de prueba cerrada para periodistas y comunicadores.
             </Text>
-            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22, marginTop: 8 }}>
+            <Text style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginTop: 8 }}>
               Si deseas acceso, no dudes en contactarnos y contarnos por qué te gustaría colaborar con nuestro proyecto.
             </Text>
             <TouchableOpacity
@@ -1040,17 +989,17 @@ export default function SettingsScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 marginTop: 16,
-                backgroundColor: 'rgba(99,102,241,0.12)',
+                backgroundColor: ACCENT.indigo.tint,
                 borderRadius: 10,
                 paddingHorizontal: 14,
                 paddingVertical: 10,
                 borderWidth: 1,
-                borderColor: 'rgba(99,102,241,0.25)',
+                borderColor: 'rgba(99,102,241,0.22)',
                 alignSelf: 'flex-start',
               }}
             >
-              <Mail size={14} color="#a5b4fc" />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc', marginLeft: 7 }}>
+              <Mail size={14} color={ACCENT.indigo.ink} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: ACCENT.indigo.ink, marginLeft: 7 }}>
                 contacto@standatpd.com
               </Text>
             </TouchableOpacity>
@@ -1058,10 +1007,10 @@ export default function SettingsScreen() {
 
           <View style={{ marginTop: 10 }}>
             <FaqItem question="¿Cómo puedo crear una cuenta?">
-              <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22, marginTop: 12 }}>
+              <Text style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginTop: 12 }}>
                 Vizta es de acceso completamente gratuito y no requiere cuenta para usar la aplicación.
               </Text>
-              <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22, marginTop: 8 }}>
+              <Text style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginTop: 8 }}>
                 El Portal Web — herramienta avanzada para periodistas y comunicadores — funciona por invitación. Sin embargo, cualquier usuario puede registrarse y solicitar acceso desde nuestro sitio web.
               </Text>
               <TouchableOpacity
@@ -1070,17 +1019,17 @@ export default function SettingsScreen() {
                   flexDirection: 'row',
                   alignItems: 'center',
                   marginTop: 16,
-                  backgroundColor: 'rgba(99,102,241,0.12)',
+                  backgroundColor: ACCENT.indigo.tint,
                   borderRadius: 10,
                   paddingHorizontal: 14,
                   paddingVertical: 10,
                   borderWidth: 1,
-                  borderColor: 'rgba(99,102,241,0.25)',
+                  borderColor: 'rgba(99,102,241,0.22)',
                   alignSelf: 'flex-start',
                 }}
               >
-                <Globe size={14} color="#a5b4fc" />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc', marginLeft: 7 }}>
+                <Globe size={14} color={ACCENT.indigo.ink} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: ACCENT.indigo.ink, marginLeft: 7 }}>
                   jornal.standatpd.com
                 </Text>
               </TouchableOpacity>
@@ -1100,13 +1049,13 @@ export default function SettingsScreen() {
               justifyContent: 'center',
               paddingVertical: 14,
               borderRadius: 14,
-              backgroundColor: 'rgba(255,255,255,0.04)',
+              backgroundColor: 'rgba(255,255,255,0.55)',
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.08)',
+              borderColor: 'rgba(28,43,34,0.09)',
             }}
           >
-            <FileText size={14} color="rgba(255,255,255,0.35)" />
-            <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.4)', marginLeft: 7 }}>
+            <FileText size={14} color={INK.meta} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: INK.body, marginLeft: 7 }}>
               Términos y Condiciones
             </Text>
           </TouchableOpacity>
@@ -1121,13 +1070,13 @@ export default function SettingsScreen() {
               justifyContent: 'center',
               paddingVertical: 14,
               borderRadius: 14,
-              backgroundColor: 'rgba(255,255,255,0.04)',
+              backgroundColor: 'rgba(255,255,255,0.55)',
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.08)',
+              borderColor: 'rgba(28,43,34,0.09)',
             }}
           >
             <Text style={{ fontSize: 14 }}>🔒</Text>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.4)', marginLeft: 7 }}>
+            <Text style={{ fontSize: 12, fontWeight: '600', color: INK.body, marginLeft: 7 }}>
               Privacidad
             </Text>
           </TouchableOpacity>
@@ -1144,13 +1093,13 @@ export default function SettingsScreen() {
             marginTop: 10,
             paddingVertical: 14,
             borderRadius: 14,
-            backgroundColor: 'rgba(244,114,182,0.06)',
+            backgroundColor: ACCENT.pink.tint,
             borderWidth: 1,
-            borderColor: 'rgba(244,114,182,0.15)',
+            borderColor: 'rgba(219,39,119,0.18)',
           }}
         >
-          <Heart size={14} color="rgba(244,114,182,0.6)" />
-          <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(244,114,182,0.7)', marginLeft: 7 }}>
+          <Heart size={14} color={ACCENT.pink.ink} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: ACCENT.pink.ink, marginLeft: 7 }}>
             Apoyo
           </Text>
         </TouchableOpacity>

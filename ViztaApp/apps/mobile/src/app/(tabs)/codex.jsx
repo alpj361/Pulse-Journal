@@ -14,12 +14,23 @@ import {
   Alert,
   Animated,
 } from 'react-native';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+// `Animated` de react-native ya está tomado arriba; reanimated entra como `Rea`.
+import Rea, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { INK, GLASS, CARD_SHADOW } from '../../components/theme';
+import SpacesStack from '../../components/codex/SpacesStack';
+import SpaceView from '../../components/codex/SpaceView';
+import ItemDetailSheet from '../../components/codex/ItemDetailSheet';
+import CreateSnippetSheet from '../../components/codex/CreateSnippetSheet';
+import AgregarSheet, { SubiendoDocumento } from '../../components/codex/AgregarSheet';
+import { elegirYSubirDocumento } from '../../utils/subirDocumento';
+import SegmentedSlider from '../../components/SegmentedSlider';
+import CreateSpaceSheet from '../../components/codex/CreateSpaceSheet';
+import CodexAccessGate from '../../components/codex/CodexAccessGate';
+import { listSpaces } from '../../utils/codexSpaces';
 import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Camera, Plus, ChevronLeft, ChevronRight, ClipboardPaste, Eye, EyeOff, Pencil, Database, Table, Trash2, Lock, Globe, ChevronDown, ChevronUp, Heart, Repeat2, MessageCircle } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
@@ -126,12 +137,13 @@ function WikiItem({ item, onPress }) {
       onPress={() => onPress(item)}
       activeOpacity={0.75}
       style={{
-        backgroundColor: 'rgba(8,10,24,0.72)',
+        backgroundColor: GLASS.fill,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: GLASS.rim,
         padding: 16,
         marginBottom: 10,
+        ...CARD_SHADOW,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -139,7 +151,7 @@ function WikiItem({ item, onPress }) {
           {actorAvatar && (
             <Avatar config={actorAvatar} seed={item.name} size={40} showBorder={false} />
           )}
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff', flex: 1 }} numberOfLines={1}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title, flex: 1 }} numberOfLines={1}>
             {item.name}
           </Text>
         </View>
@@ -162,7 +174,7 @@ function WikiItem({ item, onPress }) {
       {item.description ? (
         <Text
           numberOfLines={2}
-          style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 19, marginTop: 6 }}
+          style={{ fontSize: 13, color: INK.meta, lineHeight: 19, marginTop: 6 }}
         >
           {item.description}
         </Text>
@@ -171,14 +183,14 @@ function WikiItem({ item, onPress }) {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
           {item.tags.map((tag, i) => (
             <View key={i} style={{
-              backgroundColor: 'rgba(255,255,255,0.05)',
+              backgroundColor: 'rgba(255,255,255,0.6)',
               borderRadius: 5,
               paddingHorizontal: 7,
               paddingVertical: 2,
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.08)',
+              borderColor: 'rgba(28,43,34,0.09)',
             }}>
-              <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>{tag}</Text>
+              <Text style={{ fontSize: 10, color: INK.meta, fontWeight: '600' }}>{tag}</Text>
             </View>
           ))}
         </View>
@@ -1496,7 +1508,7 @@ function FolderCard({ folder, postCount, previewThumbs = [], onPress, onLongPres
         {/* Fondo card neutro — el accent solo en borde y tab, no compite con el fondo */}
         <View style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(255,255,255,0.05)',
+          backgroundColor: 'rgba(255,255,255,0.6)',
           borderRadius: 20,
         }} />
         <LinearGradient
@@ -1574,7 +1586,7 @@ function FolderCard({ folder, postCount, previewThumbs = [], onPress, onLongPres
                     borderRadius: 8,
                     overflow: 'hidden',
                     borderWidth: 1.5,
-                    borderColor: 'rgba(255,255,255,0.22)',
+                    borderColor: 'rgba(28,43,34,0.09)',
                     shadowColor: '#000',
                     shadowOpacity: 0.45,
                     shadowRadius: 8,
@@ -1657,7 +1669,7 @@ function FolderCard({ folder, postCount, previewThumbs = [], onPress, onLongPres
         <Animated.Text
           numberOfLines={1}
           style={{
-            fontSize: 13.5, fontWeight: '700', color: '#fff',
+            fontSize: 13.5, fontWeight: '700', color: INK.title,
             textAlign: 'center', letterSpacing: -0.2,
             paddingHorizontal: 12,
             transform: [{ translateY: openAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }) }],
@@ -1759,7 +1771,7 @@ function AllPostsFolder({ count, onPress }) {
         }}
       >
         {/* Fondo */}
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 20 }} />
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 20 }} />
         <LinearGradient
           colors={['rgba(99,102,241,0.16)', 'transparent']}
           start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }}
@@ -1801,7 +1813,7 @@ function AllPostsFolder({ count, onPress }) {
                 position: 'absolute',
                 width: 34, height: 44, borderRadius: 7,
                 backgroundColor: t.color,
-                borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)',
+                borderWidth: 1.5, borderColor: 'rgba(28,43,34,0.09)',
                 zIndex: 20 + i,
                 shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
                 opacity: op,
@@ -1834,7 +1846,7 @@ function AllPostsFolder({ count, onPress }) {
         </View>
 
         <Animated.Text style={{
-          fontSize: 13.5, fontWeight: '700', color: '#fff',
+          fontSize: 13.5, fontWeight: '700', color: INK.title,
           textAlign: 'center', letterSpacing: -0.2, paddingHorizontal: 12,
           transform: [{ translateY: openAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }) }],
         }}>
@@ -1983,7 +1995,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
         <View style={{ position: 'relative' }}>
           <Image
             source={{ uri: thumbUri }}
-            style={{ width: '100%', height: 200, backgroundColor: 'rgba(255,255,255,0.04)' }}
+            style={{ width: '100%', height: 200, backgroundColor: 'rgba(255,255,255,0.6)' }}
             resizeMode="cover"
           />
           {/* Gradient overlay bottom */}
@@ -1997,7 +2009,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
             flexDirection: 'row', alignItems: 'center', gap: 5,
             backgroundColor: 'rgba(0,0,0,0.55)',
             borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5,
-            borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+            borderWidth: 1, borderColor: 'rgba(28,43,34,0.09)',
           }}>
             {isReel && (
               <>
@@ -2011,7 +2023,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
               <Text style={{ fontSize: 12, fontWeight: '900', color: '#fff' }}>𝕏</Text>
             )}
             {!isReel && !isTwitter && (
-              <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>Post</Text>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: INK.body }}>Post</Text>
             )}
           </View>
         </View>
@@ -2033,14 +2045,14 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
                 <View style={{ width: 13, height: 13, borderRadius: 3.5, backgroundColor: '#E1306C', alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff' }}>IG</Text>
                 </View>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.3 }}>Reel</Text>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: INK.title, letterSpacing: 0.3 }}>Reel</Text>
               </>
             )}
             {isTwitter && (
-              <Text style={{ fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.85)' }}>𝕏</Text>
+              <Text style={{ fontSize: 11, fontWeight: '900', color: INK.title }}>𝕏</Text>
             )}
             {!isReel && !isTwitter && (
-              <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.6)' }}>Post</Text>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: INK.body }}>Post</Text>
             )}
           </View>
         </View>
@@ -2051,7 +2063,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
 
         {/* Title + analyze button */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff', flex: 1, marginRight: 10, lineHeight: 21, letterSpacing: -0.2 }} numberOfLines={2}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title, flex: 1, marginRight: 10, lineHeight: 21, letterSpacing: -0.2 }} numberOfLines={2}>
             {post.name}
           </Text>
           <TouchableOpacity
@@ -2076,7 +2088,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
 
         {/* Description */}
         {post.description ? (
-          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.48)', lineHeight: 19, marginBottom: 10, letterSpacing: -0.1 }} numberOfLines={3}>
+          <Text style={{ fontSize: 13, color: INK.meta, lineHeight: 19, marginBottom: 10, letterSpacing: -0.1 }} numberOfLines={3}>
             {post.description}
           </Text>
         ) : null}
@@ -2110,8 +2122,8 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
             )}
             {post.details.tweet_metrics.views > 0 && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Eye size={12} color="rgba(255,255,255,0.25)" />
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontWeight: '500', fontVariant: ['tabular-nums'] }}>
+                <Eye size={12} color={INK.faint} />
+                <Text style={{ fontSize: 11, color: INK.faint, fontWeight: '500', fontVariant: ['tabular-nums'] }}>
                   {post.details.tweet_metrics.views.toLocaleString()}
                 </Text>
               </View>
@@ -2121,7 +2133,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
 
         {/* Date */}
         {date && (
-          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', marginBottom: transcription ? 10 : 0, letterSpacing: 0.1 }}>
+          <Text style={{ fontSize: 11, color: INK.faint, marginBottom: transcription ? 10 : 0, letterSpacing: 0.1 }}>
             {date}
           </Text>
         )}
@@ -2167,7 +2179,7 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
             {analysisOpen && analysisLoading && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <ActivityIndicator color="rgba(99,102,241,0.8)" />
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 8 }}>Analizando contenido…</Text>
+                <Text style={{ fontSize: 11, color: INK.faint, marginTop: 8 }}>Analizando contenido…</Text>
               </View>
             )}
 
@@ -2210,9 +2222,9 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
                         if (seg.type === 'actor')   return <Text key={i} style={{ color: 'rgba(251,191,36,1)',  fontWeight: '700' }}>{seg.text}</Text>;
                         if (seg.type === 'entidad') return <Text key={i} style={{ color: 'rgba(99,102,241,1)', fontWeight: '700' }}>{seg.text}</Text>;
                         if (seg.type === 'hecho')   return <Text key={i} style={{ color: 'rgba(52,211,153,1)', fontWeight: '700' }}>{seg.text}</Text>;
-                        return <Text key={i} style={{ color: 'rgba(255,255,255,0.58)' }}>{seg.text}</Text>;
+                        return <Text key={i} style={{ color: INK.meta }}>{seg.text}</Text>;
                       })
-                    : <Text style={{ color: 'rgba(255,255,255,0.55)' }}>{transcription}</Text>
+                    : <Text style={{ color: INK.meta }}>{transcription}</Text>
                   }
                 </Text>
               </>
@@ -2272,11 +2284,11 @@ function PostCard({ post, isReel, isTwitter, transcription, thumbUri, onLongPres
 
                 {/* Contexto */}
                 {analysisData.contexto && (
-                  <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: 'rgba(99,102,241,0.45)' }}>
+                  <View style={{ backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: 'rgba(99,102,241,0.45)' }}>
                     <Text style={{ fontSize: 10, fontWeight: '700', color: 'rgba(99,102,241,0.7)', marginBottom: 5, letterSpacing: 0.9 }}>
                       POSTURA / CONTEXTO
                     </Text>
-                    <Text style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)', lineHeight: 19 }}>
+                    <Text style={{ fontSize: 12.5, color: INK.body, lineHeight: 19 }}>
                       {analysisData.contexto}
                     </Text>
                   </View>
@@ -2303,12 +2315,13 @@ function CodexItem({ item }) {
 
   return (
     <View style={{
-      backgroundColor: 'rgba(8,10,24,0.72)',
+      backgroundColor: GLASS.fill,
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)',
+      borderColor: GLASS.rim,
       padding: 16,
       marginBottom: 10,
+      ...CARD_SHADOW,
     }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
         <View style={{
@@ -2325,19 +2338,19 @@ function CodexItem({ item }) {
           <TypeIcon size={18} color={colors.text} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff', lineHeight: 21 }} numberOfLines={2}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title, lineHeight: 21 }} numberOfLines={2}>
             {item.titulo}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
             <TypeBadge type={item.tipo} colorMap={CODEX_TYPE_COLORS} />
             {item.proyecto && (
-              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }} numberOfLines={1}>
+              <Text style={{ fontSize: 11, color: INK.faint }} numberOfLines={1}>
                 {item.proyecto}
               </Text>
             )}
           </View>
           {formattedDate && (
-            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 6 }}>
+            <Text style={{ fontSize: 11, color: INK.faint, marginTop: 6 }}>
               {formattedDate}
             </Text>
           )}
@@ -2366,12 +2379,13 @@ function DatasetListItem({ dataset, onPress, onLongPress }) {
       delayLongPress={600}
       activeOpacity={0.75}
       style={{
-        backgroundColor: 'rgba(8,10,24,0.72)',
+        backgroundColor: GLASS.fill,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: isPublic ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.1)',
+        borderColor: isPublic ? 'rgba(99,102,241,0.25)' : GLASS.rim,
         padding: 16,
         marginBottom: 10,
+        ...CARD_SHADOW,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2386,11 +2400,11 @@ function DatasetListItem({ dataset, onPress, onLongPress }) {
             <Table size={18} color={isPublic ? '#a5b4fc' : 'rgba(255,255,255,0.5)'} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }} numberOfLines={1}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }} numberOfLines={1}>
               {dataset.name}
             </Text>
             {dataset.description ? (
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 2 }} numberOfLines={1}>
+              <Text style={{ fontSize: 12, color: INK.meta, marginTop: 2 }} numberOfLines={1}>
                 {dataset.description}
               </Text>
             ) : null}
@@ -2405,7 +2419,7 @@ function DatasetListItem({ dataset, onPress, onLongPress }) {
           }}>
             {isPublic
               ? <Globe size={10} color="#a5b4fc" />
-              : <Lock size={10} color="rgba(255,255,255,0.4)" />}
+              : <Lock size={10} color={INK.meta} />}
             <Text style={{ fontSize: 10, fontWeight: '700', color: isPublic ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
               {isPublic ? 'Público' : 'Privado'}
             </Text>
@@ -2414,14 +2428,14 @@ function DatasetListItem({ dataset, onPress, onLongPress }) {
       </View>
 
       <View style={{ flexDirection: 'row', gap: 16, marginTop: 10, alignItems: 'center' }}>
-        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-          <Text style={{ fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>{rowCount}</Text> filas
+        <Text style={{ fontSize: 12, color: INK.meta }}>
+          <Text style={{ fontWeight: '700', color: INK.body }}>{rowCount}</Text> filas
         </Text>
-        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
-          <Text style={{ fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>{colCount}</Text> cols
+        <Text style={{ fontSize: 12, color: INK.meta }}>
+          <Text style={{ fontWeight: '700', color: INK.body }}>{colCount}</Text> cols
         </Text>
         {updatedAt && (
-          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginLeft: 'auto' }}>
+          <Text style={{ fontSize: 11, color: INK.faint, marginLeft: 'auto' }}>
             {updatedAt}
           </Text>
         )}
@@ -3011,7 +3025,27 @@ function CreateDatasetModal({ onClose, onSuccess, bottomInset = 0 }) {
 export default function CodexScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { isConnected } = usePulseConnectionStore();
+  const { isConnected, isConnecting, error: connError, connectWithApple, connectedUser } =
+    usePulseConnectionStore();
+
+  /**
+   * Posts es solo para admins. Las cuentas `phone` —las que nacen en el
+   * teléfono con Apple— ven Codex y nada más.
+   *
+   * Se lee del rol que el store ya trajo de `profiles` al conectar, en vez de
+   * llamar a `is_admin` otra vez: es el mismo dato y evita un viaje. Esto
+   * decide qué se MUESTRA; lo que protege de verdad es el RLS de cada tabla,
+   * que sigue aplicando aunque alguien fuerce la pestaña.
+   */
+  const esAdmin = connectedUser?.role === 'admin';
+
+  // Si la pestaña activa dejó de estar disponible —el perfil cargó tarde y no
+  // es admin, o se cerró sesión— se vuelve a Codex en vez de quedar en una
+  // pestaña que ya no se puede elegir.
+  useEffect(() => {
+    if (activeTab === 'datasets' || (activeTab === 'posts' && !esAdmin)) setActiveTab('codex');
+  }, [activeTab, esAdmin]);
+
 
   const [instagramPosts, setInstagramPosts] = useState([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
@@ -3036,9 +3070,27 @@ export default function CodexScreen() {
   const [movingPost, setMovingPost] = useState(null); // post object | null
   const [showMoveModal, setShowMoveModal] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('wiki'); // 'wiki' | 'codex'
+  const [activeTab, setActiveTab] = useState('codex'); // 'codex' | 'posts' (admin)
   const [wikiFilter, setWikiFilter] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Espacios (free_canvases) + modo de la pila
+  const [spaces, setSpaces] = useState([]);
+  const [isLoadingSpaces, setIsLoadingSpaces] = useState(false);
+  const [stackMode, setStackMode] = useState('espacios'); // 'espacios' | 'todo'
+  const [openSpace, setOpenSpace] = useState(null);
+  // Rect de la pill desde la que se abrió el espacio, en coordenadas de
+  // ventana. SpaceView crece desde ahí y vuelve ahí al cerrarse.
+  const [spaceOrigen, setSpaceOrigen] = useState(null);
+  const [detailItem, setDetailItem] = useState(null);
+  const [showCreateItem, setShowCreateItem] = useState(false);
+  // El «+» ya no abre la hoja de crear directo: primero se elige qué se agrega.
+  // `crearTipo` guarda con qué tipo arranca la ficha en modo crear.
+  const [showAgregar, setShowAgregar] = useState(false);
+  const [showCreateSnippet, setShowCreateSnippet] = useState(false);
+  const [crearTipo, setCrearTipo] = useState('Actor');
+  const [subiendoDoc, setSubiendoDoc] = useState(null); // { nombre } mientras sube
+  const [showCreateSpace, setShowCreateSpace] = useState(false);
 
   const [wikiItems, setWikiItems] = useState([]);
   const [codexItems, setCodexItems] = useState([]);
@@ -3048,7 +3100,6 @@ export default function CodexScreen() {
   const [codexError, setCodexError] = useState(null);
 
   const [selectedWikiItem, setSelectedWikiItem] = useState(null);
-  const [editingWikiItem, setEditingWikiItem] = useState(null);
 
   // ── Datasets ──────────────────────────────────────────────────────────────
   const [datasets, setDatasets] = useState([]);
@@ -3058,14 +3109,6 @@ export default function CodexScreen() {
   const [showCreateDataset, setShowCreateDataset] = useState(false);
   const [datasetSearchQuery, setDatasetSearchQuery] = useState('');
 
-  const player = useVideoPlayer(
-    require('../../../assets/videos/feed-background.mp4'),
-    (p) => {
-      p.loop = true;
-      p.muted = true;
-      p.play();
-    }
-  );
 
   const fetchInstagramPosts = async () => {
     setIsLoadingPosts(true);
@@ -3324,7 +3367,121 @@ export default function CodexScreen() {
     // Intentar fetch inmediato — si la sesión no está lista aún, onAuthStateChange lo manejará
     fetchWiki();
     fetchCodex();
+    fetchSpaces();
   }, [isConnected]);
+
+  const fetchSpaces = async () => {
+    setIsLoadingSpaces(true);
+    try {
+      setSpaces(await listSpaces());
+    } catch (e) {
+      console.warn('[fetchSpaces] falló:', e.message);
+      setSpaces([]);
+    } finally {
+      setIsLoadingSpaces(false);
+    }
+  };
+
+  const detailSheet = detailItem ? (
+    <ItemDetailSheet
+      item={detailItem}
+      onClose={() => setDetailItem(null)}
+      // La ficha se edita a sí misma; ya no abre un segundo modal. Acá solo se
+      // refleja lo guardado en las listas para que no haya que recargar.
+      onSaved={(actualizado) => {
+        setDetailItem(actualizado);
+        const mismo = (w) => (w._sourceId || w.id) === (actualizado._sourceId || actualizado.id);
+        setWikiItems((prev) => prev.map((w) => (mismo(w) ? { ...w, ...actualizado } : w)));
+        setCodexItems((prev) => prev.map((w) => (mismo(w) ? { ...w, ...actualizado } : w)));
+      }}
+      bottomInset={insets.bottom}
+    />
+  ) : null;
+
+  const spaceSheet = showCreateSpace ? (
+    <CreateSpaceSheet
+      onClose={() => setShowCreateSpace(false)}
+      onCreated={(espacio) => setSpaces((prev) => [espacio, ...prev])}
+      bottomInset={insets.bottom}
+    />
+  ) : null;
+
+  const registrarNuevo = (nuevo) =>
+    setWikiItems((prev) => [{ ...nuevo, _source: 'universe' }, ...prev]);
+
+  /**
+   * «Media» abre el selector de archivos del sistema y sube lo elegido como
+   * documento. El archivo va a `codex_items` (que es la tabla con columnas de
+   * archivo), no a `codex_universe_items`.
+   */
+  const subirDocumento = async () => {
+    try {
+      const { cancelado, item } = await elegirYSubirDocumento({
+        alEmpezarSubida: ({ nombre }) => setSubiendoDoc({ nombre }),
+      });
+      // Cerrar el selector sin elegir nada no es un error: no se dice nada.
+      if (!cancelado && item) setCodexItems((prev) => [item, ...prev]);
+    } catch (e) {
+      Alert.alert('No se pudo subir', e?.message || 'Intentá de nuevo.');
+    } finally {
+      setSubiendoDoc(null);
+    }
+  };
+
+  const createSheet = subiendoDoc ? (
+    <SubiendoDocumento nombre={subiendoDoc.nombre} />
+  ) : showAgregar ? (
+    <AgregarSheet
+      onClose={() => setShowAgregar(false)}
+      bottomInset={insets.bottom}
+      onElegir={(cual) => {
+        setShowAgregar(false);
+        if (cual === 'snippet') {
+          setShowCreateSnippet(true);
+          return;
+        }
+        if (cual === 'media') {
+          subirDocumento();
+          return;
+        }
+        setCrearTipo('Actor');
+        setShowCreateItem(true);
+      }}
+    />
+  ) : showCreateSnippet ? (
+    <CreateSnippetSheet
+      onClose={() => setShowCreateSnippet(false)}
+      onCreated={registrarNuevo}
+      topInset={insets.top}
+      bottomInset={insets.bottom}
+    />
+  ) : showCreateItem ? (
+    // Crear y ver son la misma ficha: un borrador sin id que al guardar se
+    // inserta. Tener dos pantallas distintas para el mismo objeto obligaba a
+    // mantener dos veces el catálogo, los tipos de dato y el guardado.
+    <ItemDetailSheet
+      item={{ tipo: crearTipo, name: '', description: '', details: {} }}
+      creando
+      onClose={() => setShowCreateItem(false)}
+      onSaved={(nuevo) => registrarNuevo(nuevo)}
+      bottomInset={insets.bottom}
+    />
+  ) : null;
+
+  // Índice para resolver los ids que guarda cada espacio en data.canvasItems.
+  // Apuntan a codex_universe_items y codex_items indistintamente, así que el
+  // índice mezcla ambas fuentes.
+  const itemsById = useMemo(() => {
+    const map = new Map();
+    // Los items del universo se guardan en `wikiItems` con el id prefijado
+    // (`universe_<uuid>`) y el uuid real en `_sourceId`. `data.canvasItems` de
+    // un espacio guarda el uuid crudo, así que el índice tiene que ir por el
+    // uuid — con el id prefijado no resolvía casi nada y el preview del
+    // espacio salía vacío.
+    for (const it of wikiItems) map.set(it._sourceId || it.id, it);
+    for (const it of codexItems) map.set(it._sourceId || it.id, it);
+    return map;
+  }, [wikiItems, codexItems]);
 
   // Refresca la wiki cada vez que el tab recibe foco (ej: se agregó un item desde otra pantalla)
   useFocusEffect(
@@ -3354,17 +3511,33 @@ export default function CodexScreen() {
       return;
     }
 
+    // Supabase corta en 1000 filas por defecto. El universo pasa de eso, así
+    // que se pagina: sin esto la pila y el buscador mostraban ~250 elementos
+    // de menos sin avisar.
+    const fetchAllUniverse = async () => {
+      const PAGE = 1000;
+      const acc = [];
+      for (let desde = 0; ; desde += PAGE) {
+        const { data, error } = await supabase
+          .from('codex_universe_items')
+          .select('id, name, tipo, description, tags, aliases, details, mentions, created_at')
+          .neq('tipo', 'post')
+          .order('created_at', { ascending: false })
+          .range(desde, desde + PAGE - 1);
+        if (error) return { data: acc, error };
+        acc.push(...(data || []));
+        if (!data || data.length < PAGE) break;
+      }
+      return { data: acc, error: null };
+    };
+
     // Fetch both tables in parallel
     const [wikiResult, universeResult] = await Promise.all([
       supabase
         .from('wiki_items')
         .select('id, name, subcategory, description, relevance_score, tags, metadata, created_at')
         .order('created_at', { ascending: false }),
-      supabase
-        .from('codex_universe_items')
-        .select('id, name, tipo, description, tags, aliases, details, created_at')
-        .neq('tipo', 'post')
-        .order('created_at', { ascending: false }),
+      fetchAllUniverse(),
     ]);
 
     console.log('[fetchWiki] 📊 wiki_items count:', wikiResult.data?.length ?? 'null', '| error:', wikiResult.error?.message ?? 'none');
@@ -3486,39 +3659,9 @@ export default function CodexScreen() {
     );
   };
 
-  const filteredWiki = (() => {
-    console.log('[filteredWiki] 🔎 wikiItems total:', wikiItems.length, '| wikiFilter:', wikiFilter, '| searchQuery:', searchQuery);
-    const result = wikiItems.filter((item) => {
-      const normalized = normalizeSubcategory(item.subcategory);
-      const matchesCategory =
-        wikiFilter === 'Todos' ||
-        normalized === wikiFilter;
-      const matchesSearch =
-        !searchQuery ||
-        item.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      if (!matchesCategory) {
-        console.log(`[filteredWiki]   ❌ "${item.name}" filtered out — subcategory="${item.subcategory}" normalized="${normalized}" != "${wikiFilter.toLowerCase()}"`);
-      }
-      return matchesCategory && matchesSearch;
-    });
-    console.log('[filteredWiki] ✅ filteredWiki count:', result.length);
-    return result;
-  })();
-
   return (
     <View style={{ flex: 1 }}>
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
-      <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4, 5, 18, 0.55)' }]} />
-
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Wiki detail + research modal */}
       {selectedWikiItem && (
@@ -3526,8 +3669,9 @@ export default function CodexScreen() {
           item={selectedWikiItem}
           onClose={() => setSelectedWikiItem(null)}
           onEdit={(item) => {
+            // Ya no hay modal de edición aparte: la ficha se edita a sí misma.
             setSelectedWikiItem(null);
-            setEditingWikiItem(item);
+            setDetailItem(item);
           }}
           onAvatarUpdate={(newAvatar) => {
             setWikiItems(prev => prev.map(w =>
@@ -3535,21 +3679,6 @@ export default function CodexScreen() {
                 ? { ...w, metadata: { ...w.metadata, avatar: newAvatar } }
                 : w
             ))
-          }}
-        />
-      )}
-
-      {/* Wiki edit modal */}
-      {editingWikiItem && (
-        <EditWikiModal
-          item={editingWikiItem}
-          onClose={() => setEditingWikiItem(null)}
-          bottomInset={insets.bottom}
-          onSuccess={(updatedItem) => {
-            setWikiItems(prev => prev.map(w =>
-              w.id === updatedItem.id ? updatedItem : w
-            ));
-            setEditingWikiItem(null);
           }}
         />
       )}
@@ -3580,96 +3709,76 @@ export default function CodexScreen() {
         />
       )}
 
+      {/* Espacio abierto. La ficha y el crear cuelgan de él cuando está abierto,
+          porque iOS solo presenta un Modal a la vez. */}
+      {openSpace ? (
+        <SpaceView
+          space={openSpace}
+          origen={spaceOrigen}
+          onClose={() => setOpenSpace(null)}
+          onOpenItem={(item) => setDetailItem(item)}
+          onAddItems={() => setShowAgregar(true)}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+        >
+          {detailSheet}
+          {createSheet}
+        </SpaceView>
+      ) : (
+        <>
+          {detailSheet}
+          {createSheet}
+          {spaceSheet}
+        </>
+      )}
+
       {!isConnected ? (
-        /* ── Not connected CTA ── */
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
-          <View style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            backgroundColor: 'rgba(99,102,241,0.15)',
-            borderWidth: 1,
-            borderColor: 'rgba(99,102,241,0.3)',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 20,
-          }}>
-            <BookOpen size={34} color="rgba(165,180,252,0.7)" />
-          </View>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff', textAlign: 'center', marginBottom: 10 }}>
-            Conecta Pulse Journal
-          </Text>
-          <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.5)', textAlign: 'center', lineHeight: 22, marginBottom: 28 }}>
-            Accede a tu Codex y Wiki personal desde aquí
-          </Text>
-          <TouchableOpacity
-            onPress={() => router.navigate('/(tabs)/settings')}
-            style={{
-              backgroundColor: 'rgba(99,102,241,0.75)',
-              borderRadius: 14,
-              paddingVertical: 14,
-              paddingHorizontal: 28,
-              borderWidth: 1,
-              borderColor: 'rgba(99,102,241,0.5)',
-            }}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>
-              Ir a Ajustes
-            </Text>
-          </TouchableOpacity>
-        </View>
+        /* ── Puerta de acceso ── */
+        <CodexAccessGate
+          conectando={isConnecting}
+          error={connError}
+          onApple={connectWithApple}
+          onPortal={() => router.navigate('/(tabs)/settings')}
+        />
       ) : (
         /* ── Connected content ── */
         <View style={{ flex: 1, paddingTop: insets.top + 20 }}>
-          {/* Header */}
-          <View style={{ paddingHorizontal: 24, marginBottom: 20 }}>
-            <Text style={{ fontSize: 32, fontWeight: '800', color: '#ffffff', letterSpacing: -0.5 }}>
+          {/* Header. Sin subtítulo: la palabra sola manda más, y la línea
+              explicativa se leía una vez y después solo ocupaba lugar. */}
+          <Rea.View
+            entering={FadeInDown.duration(420).springify().damping(18)}
+            style={{ paddingHorizontal: 24, marginBottom: 18 }}
+          >
+            <Text
+              style={{
+                fontSize: 44,
+                fontWeight: '800',
+                color: INK.title,
+                letterSpacing: -1.4,
+                lineHeight: 48,
+              }}
+            >
               Codex
             </Text>
-            <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', marginTop: 4 }}>
-              Tu base de conocimiento personal
-            </Text>
-          </View>
+          </Rea.View>
 
-          {/* Internal tabs */}
-          <View style={{
-            flexDirection: 'row',
-            paddingHorizontal: 24,
-            marginBottom: 16,
-            gap: 8,
-          }}>
-            {[
-              { id: 'wiki', label: 'Wiki' },
-              { id: 'codex', label: 'Codex' },
-              { id: 'datasets', label: 'Datos' },
-              { id: 'posts', label: 'Posts' },
-            ].map((tab) => (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
-                  borderRadius: 12,
-                  backgroundColor: activeTab === tab.id
-                    ? tab.id === 'posts' ? 'rgba(225,48,108,0.7)' : tab.id === 'datasets' ? 'rgba(16,185,129,0.65)' : 'rgba(99,102,241,0.7)'
-                    : 'rgba(255,255,255,0.07)',
-                  borderWidth: 1,
-                  borderColor: activeTab === tab.id
-                    ? tab.id === 'posts' ? 'rgba(225,48,108,0.5)' : tab.id === 'datasets' ? 'rgba(16,185,129,0.4)' : 'rgba(99,102,241,0.5)'
-                    : 'rgba(255,255,255,0.1)',
-                }}
-              >
-                <Text style={{
-                  fontSize: 13,
-                  fontWeight: '700',
-                  color: activeTab === tab.id ? '#fff' : 'rgba(255,255,255,0.5)',
-                }}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {/* Segmentos con indicador deslizante */}
+          <Rea.View
+            entering={FadeInDown.delay(70).duration(420).springify().damping(18)}
+            style={{ paddingHorizontal: 24, marginBottom: 16 }}
+          >
+            <SegmentedSlider
+              valor={activeTab}
+              onChange={setActiveTab}
+              tabs={[
+                { id: 'codex', label: 'Codex', accent: 'rgba(79,70,229,0.16)', ink: '#4338CA' },
+                // Datos queda fuera por ahora.
+                ...(esAdmin
+                  ? [{ id: 'posts', label: 'Posts', accent: 'rgba(225,48,108,0.15)', ink: '#BE1E56' }]
+                  : []),
+              ]}
+            />
+          </Rea.View>
 
 
           {activeTab === 'posts' ? (
@@ -3870,14 +3979,14 @@ export default function CodexScreen() {
                 <View style={{ flex: 1 }}>
                   {/* Header bar: título + botones */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, marginBottom: 8, gap: 8 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.7)', flex: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: INK.body, flex: 1 }} numberOfLines={1}>
                       {instagramPosts.length} post{instagramPosts.length !== 1 ? 's' : ''}
                     </Text>
-                    <TouchableOpacity onPress={() => setShowCreateFolderModal(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
-                      <Plus size={13} color="rgba(255,255,255,0.55)" />
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.55)' }}>Carpeta</Text>
+                    <TouchableOpacity onPress={() => setShowCreateFolderModal(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(28,43,34,0.09)' }}>
+                      <Plus size={13} color={INK.meta} />
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: INK.meta }}>Carpeta</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setShowAddPostModal(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 11, backgroundColor: 'rgba(225,48,108,0.75)', borderWidth: 1, borderColor: 'rgba(225,48,108,0.5)' }}>
+                    <TouchableOpacity onPress={() => setShowAddPostModal(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 11, backgroundColor: '#E1306C' }}>
                       <Plus size={13} color="#fff" />
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Post</Text>
                     </TouchableOpacity>
@@ -3886,8 +3995,8 @@ export default function CodexScreen() {
                   {/* Hint de gestión — visible antes de entrar a cualquier carpeta */}
                   {folders.length > 0 && instagramPosts.length > 0 && (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 24, marginBottom: 12 }}>
-                      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.2)' }} />
-                      <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.6)' }} />
+                      <Text style={{ fontSize: 11, color: INK.faint, fontStyle: 'italic' }}>
                         Entra a una carpeta y mantén presionado un post para moverlo
                       </Text>
                     </View>
@@ -3954,8 +4063,8 @@ export default function CodexScreen() {
                         {instagramPosts.length === 0 && folders.length === 0 && (
                           <View style={{ alignItems: 'center', paddingTop: 40 }}>
                             <Camera size={32} color="rgba(225,48,108,0.4)" style={{ marginBottom: 12 }} />
-                            <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>Sin posts aún</Text>
-                            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', textAlign: 'center', lineHeight: 19 }}>Agrega tu primer post o crea una carpeta para organizarlos.</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '700', color: INK.meta, marginBottom: 6 }}>Sin posts aún</Text>
+                            <Text style={{ fontSize: 13, color: INK.faint, textAlign: 'center', lineHeight: 19 }}>Agrega tu primer post o crea una carpeta para organizarlos.</Text>
                           </View>
                         )}
                       </>
@@ -3967,21 +4076,21 @@ export default function CodexScreen() {
                 <View style={{ flex: 1 }}>
                   {/* Back + título */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, marginBottom: 14, gap: 10 }}>
-                    <TouchableOpacity onPress={() => setShowFolderView(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-                      <ChevronLeft size={18} color="rgba(255,255,255,0.7)" />
+                    <TouchableOpacity onPress={() => setShowFolderView(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(28,43,34,0.09)', alignItems: 'center', justifyContent: 'center' }}>
+                      <ChevronLeft size={18} color={INK.body} />
                     </TouchableOpacity>
                     {(() => {
-                      if (selectedFolderId === null) return <Text style={{ fontSize: 17, fontWeight: '800', color: '#fff', flex: 1 }}>Todos los posts</Text>;
-                      if (selectedFolderId === '__uncategorized__') return <Text style={{ fontSize: 17, fontWeight: '800', color: '#fff', flex: 1 }}>Sin carpeta</Text>;
+                      if (selectedFolderId === null) return <Text style={{ fontSize: 17, fontWeight: '800', color: INK.title, flex: 1 }}>Todos los posts</Text>;
+                      if (selectedFolderId === '__uncategorized__') return <Text style={{ fontSize: 17, fontWeight: '800', color: INK.title, flex: 1 }}>Sin carpeta</Text>;
                       const f = folders.find(f => f.id === selectedFolderId);
                       return (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                           <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: f?.color || '#E1306C' }} />
-                          <Text style={{ fontSize: 17, fontWeight: '800', color: '#fff' }}>{f?.name || 'Carpeta'}</Text>
+                          <Text style={{ fontSize: 17, fontWeight: '800', color: INK.title }}>{f?.name || 'Carpeta'}</Text>
                         </View>
                       );
                     })()}
-                    <TouchableOpacity onPress={() => setShowAddPostModal(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: 'rgba(225,48,108,0.7)', borderWidth: 1, borderColor: 'rgba(225,48,108,0.5)' }}>
+                    <TouchableOpacity onPress={() => setShowAddPostModal(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: '#E1306C' }}>
                       <Plus size={13} color="#fff" />
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#fff' }}>Agregar</Text>
                     </TouchableOpacity>
@@ -4003,16 +4112,16 @@ export default function CodexScreen() {
                         {filtered.length === 0 ? (
                           <View style={{ alignItems: 'center', paddingTop: 48 }}>
                             <Camera size={28} color="rgba(225,48,108,0.35)" style={{ marginBottom: 10 }} />
-                            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)' }}>No hay posts en esta carpeta</Text>
-                            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', marginTop: 4, textAlign: 'center' }}>Mantén presionado cualquier post para moverlo aquí</Text>
+                            <Text style={{ fontSize: 14, color: INK.faint }}>No hay posts en esta carpeta</Text>
+                            <Text style={{ fontSize: 12, color: INK.faint, marginTop: 4, textAlign: 'center' }}>Mantén presionado cualquier post para moverlo aquí</Text>
                           </View>
                         ) : (
                           <>
                             {/* Hint sutil de mover — solo si hay carpetas disponibles */}
                             {folders.length > 0 && (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, paddingHorizontal: 4 }}>
-                                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
-                                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', fontStyle: 'italic' }}>
+                                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.6)' }} />
+                                <Text style={{ fontSize: 11, color: INK.faint, fontStyle: 'italic' }}>
                                   Mantén presionado un post para moverlo a otra carpeta
                                 </Text>
                               </View>
@@ -4042,217 +4151,22 @@ export default function CodexScreen() {
                 </View>
               )}
             </View>
-          ) : activeTab === 'wiki' ? (
-            <View style={{ flex: 1 }}>
-              {/* Search */}
-              <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginHorizontal: 24,
-                marginBottom: 12,
-                backgroundColor: 'rgba(255,255,255,0.07)',
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.1)',
-                paddingHorizontal: 12,
-                height: 44,
-              }}>
-                <Search size={16} color="rgba(255,255,255,0.4)" />
-                <TextInput
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Buscar en Wiki..."
-                  placeholderTextColor="rgba(255,255,255,0.25)"
-                  style={{ flex: 1, color: '#fff', fontSize: 14, marginLeft: 8 }}
-                />
-              </View>
-
-              {/* Category filters */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 24, gap: 8, marginBottom: 16 }}
-                style={{ flexGrow: 0, marginBottom: 12 }}
-              >
-                {WIKI_CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    onPress={() => setWikiFilter(cat)}
-                    style={{
-                      paddingHorizontal: 14,
-                      paddingVertical: 7,
-                      borderRadius: 10,
-                      backgroundColor: wikiFilter === cat
-                        ? 'rgba(99,102,241,0.6)'
-                        : 'rgba(255,255,255,0.07)',
-                      borderWidth: 1,
-                      borderColor: wikiFilter === cat
-                        ? 'rgba(99,102,241,0.5)'
-                        : 'rgba(255,255,255,0.1)',
-                    }}
-                  >
-                    <Text style={{
-                      fontSize: 13,
-                      fontWeight: '600',
-                      color: wikiFilter === cat ? '#fff' : 'rgba(255,255,255,0.5)',
-                      textTransform: 'capitalize',
-                    }}>
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              {isLoadingWiki ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator size="large" color="rgba(165,180,252,0.8)" />
-                </View>
-              ) : wikiError ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
-                  <AlertCircle size={28} color="rgba(239,68,68,0.7)" />
-                  <Text style={{ fontSize: 14, color: 'rgba(239,68,68,0.8)', textAlign: 'center', marginTop: 12 }}>
-                    {wikiError}
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 20 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {filteredWiki.length === 0 ? (
-                    <View style={{ alignItems: 'center', paddingTop: 40 }}>
-                      <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)' }}>
-                        {wikiFilter === 'Todos' ? 'No hay elementos en tu Wiki' : `No hay entradas de tipo "${wikiFilter}"`}
-                      </Text>
-                    </View>
-                  ) : (
-                    filteredWiki.map((item) => (
-                      <WikiItem key={item.id} item={item} onPress={setSelectedWikiItem} />
-                    ))
-                  )}
-                </ScrollView>
-              )}
-            </View>
-          ) : activeTab === 'datasets' ? (
-            /* ── Datasets tab ── */
-            <View style={{ flex: 1 }}>
-              {/* Toolbar: buscar + crear */}
-              <View style={{ paddingHorizontal: 24, marginBottom: 12, gap: 10 }}>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{
-                    flex: 1, flexDirection: 'row', alignItems: 'center',
-                    backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-                    paddingHorizontal: 12, height: 44,
-                  }}>
-                    <Search size={15} color="rgba(255,255,255,0.4)" />
-                    <TextInput
-                      style={{ flex: 1, color: '#fff', fontSize: 13, marginLeft: 8 }}
-                      placeholder="Buscar datasets..."
-                      placeholderTextColor="rgba(255,255,255,0.25)"
-                      value={datasetSearchQuery}
-                      onChangeText={setDatasetSearchQuery}
-                    />
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setShowCreateDataset(true)}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 6,
-                      paddingHorizontal: 14, height: 44, borderRadius: 12,
-                      backgroundColor: 'rgba(16,185,129,0.65)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.4)',
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Plus size={15} color="#fff" />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Nuevo</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {isLoadingDatasets ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator size="large" color="rgba(16,185,129,0.8)" />
-                </View>
-              ) : datasetsError ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
-                  <AlertCircle size={28} color="rgba(239,68,68,0.7)" />
-                  <Text style={{ fontSize: 14, color: 'rgba(239,68,68,0.8)', textAlign: 'center', marginTop: 12 }}>{datasetsError}</Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 20 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {(() => {
-                    const filtered = datasets.filter(d =>
-                      !datasetSearchQuery.trim() ||
-                      d.name?.toLowerCase().includes(datasetSearchQuery.toLowerCase()) ||
-                      d.description?.toLowerCase().includes(datasetSearchQuery.toLowerCase())
-                    );
-                    if (filtered.length === 0) {
-                      return (
-                        <View style={{ alignItems: 'center', paddingTop: 50 }}>
-                          <View style={{
-                            width: 64, height: 64, borderRadius: 20,
-                            backgroundColor: 'rgba(16,185,129,0.1)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.2)',
-                            alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-                          }}>
-                            <Database size={28} color="rgba(16,185,129,0.6)" />
-                          </View>
-                          <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: 6 }}>
-                            {datasetSearchQuery ? 'Sin resultados' : 'Sin datasets'}
-                          </Text>
-                          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
-                            {datasetSearchQuery ? 'Prueba con otro término' : 'Crea tu primer dataset con el botón "Nuevo"'}
-                          </Text>
-                        </View>
-                      );
-                    }
-                    return filtered.map(ds => (
-                      <DatasetListItem
-                        key={`${ds._visibility}_${ds.id}`}
-                        dataset={ds}
-                        onPress={(d) => setSelectedDataset(d)}
-                        onLongPress={handleDeleteDataset}
-                      />
-                    ));
-                  })()}
-                </ScrollView>
-              )}
-            </View>
           ) : (
-            /* ── Codex tab ── */
-            <View style={{ flex: 1 }}>
-              {isLoadingCodex ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                  <ActivityIndicator size="large" color="rgba(165,180,252,0.8)" />
-                </View>
-              ) : codexError ? (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
-                  <AlertCircle size={28} color="rgba(239,68,68,0.7)" />
-                  <Text style={{ fontSize: 14, color: 'rgba(239,68,68,0.8)', textAlign: 'center', marginTop: 12 }}>
-                    {codexError}
-                  </Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: insets.bottom + 20 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {codexItems.length === 0 ? (
-                    <View style={{ alignItems: 'center', paddingTop: 40 }}>
-                      <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)' }}>
-                        No hay elementos en tu Codex
-                      </Text>
-                    </View>
-                  ) : (
-                    codexItems.map((item) => <CodexItem key={item.id} item={item} />)
-                  )}
-                </ScrollView>
-              )}
-            </View>
+            /* ── Codex: la pila (Espacios / Todo) ── */
+            <SpacesStack
+              spaces={spaces}
+              universeItems={wikiItems}
+              loading={isLoadingWiki || isLoadingSpaces}
+              mode={stackMode}
+              onModeChange={setStackMode}
+              onOpenItem={(item) => setDetailItem(item)}
+              onOpenSpace={(space, origen) => {
+                setSpaceOrigen(origen || null);
+                setOpenSpace(space);
+              }}
+              onNewItem={() => setShowAgregar(true)}
+              onNewSpace={() => setShowCreateSpace(true)}
+            />
           )}
         </View>
       )}

@@ -12,7 +12,8 @@ import {
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { BlurView } from "expo-blur";
+import GlassCard from "../../components/GlassCard";
+import { INK, GLASS, chipStyle } from "../../components/theme";
 import {
   TrendingUp,
   Flame,
@@ -24,7 +25,6 @@ import {
   Zap,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useVideoPlayer, VideoView } from "expo-video";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
@@ -224,11 +224,33 @@ const CATEGORY_GRADIENTS = {
 };
 const DEFAULT_GRADIENT = ['#1f2937', '#111827'];
 
-function getCatGradient(cat) {
-  const key = (cat || '').toLowerCase()
+function normCat(cat) {
+  return (cat || '').toLowerCase()
     .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e')
     .replace(/[íìï]/g, 'i').replace(/[óòö]/g, 'o').replace(/[úùü]/g, 'u');
-  return CATEGORY_GRADIENTS[key] || DEFAULT_GRADIENT;
+}
+
+function getCatGradient(cat) {
+  return CATEGORY_GRADIENTS[normCat(cat)] || DEFAULT_GRADIENT;
+}
+
+// Versión clara de CATEGORY_GRADIENTS: el color de categoría deja de teñir toda
+// la card y pasa a vivir en el chip y en el filete lateral.
+const CATEGORY_ACCENTS = {
+  politica: { tint: 'rgba(76,29,149,0.10)', ink: '#4C1D95' },
+  deportes: { tint: 'rgba(6,95,70,0.10)', ink: '#065F46' },
+  economia: { tint: 'rgba(120,53,15,0.10)', ink: '#78350F' },
+  internacional: { tint: 'rgba(91,33,182,0.10)', ink: '#5B21B6' },
+  social: { tint: 'rgba(107,33,168,0.10)', ink: '#6B21A8' },
+  tecnologia: { tint: 'rgba(7,89,133,0.10)', ink: '#075985' },
+  justicia: { tint: 'rgba(41,37,36,0.09)', ink: '#3F3A38' },
+  entretenimiento: { tint: 'rgba(136,19,55,0.10)', ink: '#881337' },
+  otros: { tint: 'rgba(55,65,81,0.09)', ink: '#374151' },
+};
+const DEFAULT_ACCENT = { tint: 'rgba(55,65,81,0.09)', ink: '#374151' };
+
+function getCatAccent(cat) {
+  return CATEGORY_ACCENTS[normCat(cat)] || DEFAULT_ACCENT;
 }
 
 
@@ -266,13 +288,6 @@ function PressCard({ children, style, onPress }) {
   );
 }
 
-const cardBase = {
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: 'rgba(255, 255, 255, 0.14)',
-  overflow: 'hidden',
-  backgroundColor: 'rgba(8, 10, 24, 0.72)',
-};
 
 // ─── Modal de detalle de news card ───────────────────────────────────────────
 function NewsCardModal({ card, onClose }) {
@@ -574,15 +589,6 @@ export default function Index() {
     };
   }, [queryClient]);
 
-  const player = useVideoPlayer(
-    require("../../../assets/videos/feed-background.mp4"),
-    (p) => {
-      p.loop = true;
-      p.muted = true;
-      p.play();
-    }
-  );
-
   const { data: trendsData } = useQuery({
     queryKey: ['pulse-trends'],
     queryFn: async () => {
@@ -655,25 +661,7 @@ export default function Index() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Video background */}
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
-      {/* Blur + dark overlay */}
-      <BlurView
-        intensity={55}
-        tint="dark"
-        style={StyleSheet.absoluteFill}
-      />
-      <View
-        style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(4, 5, 18, 0.55)" }]}
-      />
-
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* Modal de detalle */}
       <NewsCardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
@@ -683,8 +671,8 @@ export default function Index() {
 
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={{ color: 'rgba(255,255,255,0.6)', marginTop: 12, fontSize: 15 }}>
+          <ActivityIndicator size="large" color={INK.meta} />
+          <Text style={{ color: INK.meta, marginTop: 12, fontSize: 15 }}>
             Cargando tendencias...
           </Text>
         </View>
@@ -693,16 +681,16 @@ export default function Index() {
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingTop: insets.top + 20,
-            paddingBottom: insets.bottom + 40,
+            paddingBottom: insets.bottom + 72,
           }}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
           <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
-            <Text style={{ fontSize: 48, fontWeight: "800", color: "#ffffff", letterSpacing: -1 }}>
+            <Text style={{ fontSize: 48, fontWeight: "800", color: INK.title, letterSpacing: -1 }}>
               Vizta
             </Text>
-            <Text style={{ fontSize: 16, color: "rgba(255,255,255,0.6)", marginTop: 4, fontWeight: "500" }}>
+            <Text style={{ fontSize: 16, color: INK.meta, marginTop: 4, fontWeight: "500" }}>
               Noticias de Guatemala
             </Text>
           </View>
@@ -710,32 +698,25 @@ export default function Index() {
           {/* Narrativa del Día */}
           {narrativaData && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
-              <SectionHeader icon={<BookOpen size={22} color="#ffffff" />} title="Narrativa del Día" />
-              <View style={[cardBase, { borderRadius: 24 }]}>
+              <SectionHeader icon={<BookOpen size={22} color={INK.title} />} title="Narrativa del Día" />
+              <GlassCard radius={24} accent="#6366F1">
                 <LinearGradient
-                  colors={["rgba(99,102,241,0.18)", "rgba(139,92,246,0.10)"]}
+                  colors={["rgba(99,102,241,0.10)", "rgba(139,92,246,0.03)"]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
                 <View style={{ padding: 24 }}>
-                  <Text style={{ fontSize: 22, fontWeight: '800', color: '#fff', lineHeight: 30, marginBottom: 12, letterSpacing: -0.5 }}>
+                  <Text style={{ fontSize: 22, fontWeight: '800', color: INK.title, lineHeight: 30, marginBottom: 12, letterSpacing: -0.5 }}>
                     {narrativaData.titulo}
                   </Text>
-                  <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.75)', lineHeight: 22, marginBottom: 16 }}>
+                  <Text style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginBottom: 16 }}>
                     {narrativaData.narrativa}
                   </Text>
                   {narrativaData.temas_subiendo?.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                       {narrativaData.temas_subiendo.slice(0, 3).map((t, i) => (
-                        <View key={i} style={{
-                          backgroundColor: 'rgba(99,102,241,0.18)',
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: 'rgba(99,102,241,0.3)',
-                        }}>
-                          <Text style={{ fontSize: 12, color: 'rgba(165,180,252,0.9)', fontWeight: '600' }}>
+                        <View key={i} style={chipStyle('rgba(99,102,241,0.10)', 'rgba(99,102,241,0.20)')}>
+                          <Text style={{ fontSize: 12, color: '#4B4FA6', fontWeight: '600' }}>
                             {t.nombre}
                           </Text>
                         </View>
@@ -744,28 +725,23 @@ export default function Index() {
                   )}
 
                 </View>
-              </View>
+              </GlassCard>
             </View>
           )}
 
           {/* Insight del Día */}
           {narrativaData && (narrativaData.intencion_predominante || narrativaData.actores_clave?.length > 0) && (
             <View style={{ paddingHorizontal: 24, marginTop: -16, marginBottom: 32 }}>
-              <View style={[cardBase, { borderRadius: 20 }]}>
-                <LinearGradient
-                  colors={["rgba(245,158,11,0.12)", "rgba(120,53,15,0.08)"]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
+              <GlassCard radius={20} accent="#D97706" wash="rgba(245,158,11,0.05)">
                 <View style={{ padding: 18 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                    <Zap size={13} color="#f59e0b" />
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#f59e0b', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                    <Zap size={13} color="#B45309" />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#B45309', letterSpacing: 0.8, textTransform: 'uppercase' }}>
                       Insight del Día
                     </Text>
                   </View>
                   {narrativaData.intencion_predominante && (
-                    <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)', lineHeight: 21, fontWeight: '500', marginBottom: 14, fontStyle: 'italic' }}>
+                    <Text style={{ fontSize: 14, color: INK.title, lineHeight: 21, fontWeight: '500', marginBottom: 14, fontStyle: 'italic' }}>
                       "{narrativaData.intencion_predominante}"
                     </Text>
                   )}
@@ -774,51 +750,45 @@ export default function Index() {
                       {narrativaData.actores_clave.slice(0, 5).map((actor, i) => {
                         const nombre = typeof actor === 'string' ? actor : actor.nombre || actor.name || '';
                         return nombre ? (
-                          <View key={i} style={{
-                            backgroundColor: 'rgba(245,158,11,0.10)', paddingHorizontal: 10, paddingVertical: 4,
-                            borderRadius: 8, borderWidth: 1, borderColor: 'rgba(245,158,11,0.22)',
-                          }}>
-                            <Text style={{ fontSize: 12, color: 'rgba(253,230,138,0.9)', fontWeight: '600' }}>{nombre}</Text>
+                          <View key={i} style={chipStyle('rgba(245,158,11,0.10)', 'rgba(245,158,11,0.24)')}>
+                            <Text style={{ fontSize: 12, color: '#92400E', fontWeight: '600' }}>{nombre}</Text>
                           </View>
                         ) : null;
                       })}
                     </View>
                   )}
                 </View>
-              </View>
+              </GlassCard>
             </View>
           )}
 
           {/* Trending Ahora */}
           {(trendingTopics.length > 0 || topKeywords.length > 0) && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
-              <SectionHeader icon={<TrendingUp size={22} color="#ffffff" />} title="Trending Ahora" />
+              <SectionHeader icon={<TrendingUp size={22} color={INK.title} />} title="Trending Ahora" />
 
               {hasRealAbout ? (
-                trendingTopics.map((item, index) => (
-                  <PressCard key={index} style={{ marginBottom: 14 }}>
-                    <View style={cardBase}>
-                      <LinearGradient
-                        colors={[...getCatGradient(item.categoria), 'transparent']}
-                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                        style={[StyleSheet.absoluteFill, { opacity: 0.35 }]}
-                      />
+                trendingTopics.map((item, index) => {
+                  const acc = getCatAccent(item.categoria);
+                  return (
+                  <PressCard key={index} style={{ marginBottom: 16 }}>
+                    <GlassCard accent={acc.ink} wash={acc.tint}>
                       <View style={{ padding: 20 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
                           <View style={{
-                            backgroundColor: "rgba(255,255,255,0.15)",
+                            backgroundColor: acc.tint,
                             paddingHorizontal: 11,
                             paddingVertical: 5,
                             borderRadius: 10,
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.2)",
+                            borderColor: acc.tint,
                           }}>
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#ffffff", letterSpacing: 0.3 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: acc.ink, letterSpacing: 0.3 }}>
                               {item.categoria || 'Tendencia'}
                             </Text>
                           </View>
                           {item.estadisticas?.tweet_volume ? (
-                            <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginLeft: 10 }}>
+                            <Text style={{ fontSize: 12, color: INK.meta, marginLeft: 10 }}>
                               {item.estadisticas.tweet_volume} tweets
                             </Text>
                           ) : null}
@@ -827,7 +797,7 @@ export default function Index() {
                         <Text style={{
                           fontSize: 20,
                           fontWeight: "800",
-                          color: "#ffffff",
+                          color: INK.title,
                           lineHeight: 27,
                           marginBottom: item.razon_tendencia ? 10 : 0,
                         }}>
@@ -835,26 +805,27 @@ export default function Index() {
                         </Text>
 
                         {item.razon_tendencia ? (
-                          <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.68)", lineHeight: 20 }}>
+                          <Text style={{ fontSize: 13, color: INK.body, lineHeight: 20 }}>
                             {item.razon_tendencia}
                           </Text>
                         ) : null}
                       </View>
-                    </View>
+                    </GlassCard>
                   </PressCard>
-                ))
+                  );
+                })
               ) : (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {(trendingTopics.length > 0 ? trendingTopics.map(t => t.nombre) : topKeywords.map(kw => typeof kw === 'string' ? kw : kw.word || kw.keyword || kw.nombre || String(kw))).map((label, i) => (
                     <View key={i} style={{
-                      backgroundColor: 'rgba(255,255,255,0.09)',
+                      backgroundColor: GLASS.fill,
                       paddingHorizontal: 14,
                       paddingVertical: 8,
                       borderRadius: 20,
                       borderWidth: 1,
-                      borderColor: 'rgba(255,255,255,0.15)',
+                      borderColor: GLASS.rim,
                     }}>
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>{label}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>{label}</Text>
                     </View>
                   ))}
                 </View>
@@ -864,63 +835,53 @@ export default function Index() {
 
           {/* Hot Topics */}
           <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
-            <SectionHeader icon={<Flame size={22} color="#ffffff" />} title="Hot Topics" />
+            <SectionHeader icon={<Flame size={22} color={INK.title} />} title="Hot Topics" />
 
             {hotTopics.length === 0 ? (
-              <View style={[cardBase, { borderRadius: 20 }]}>
-                <LinearGradient
-                  colors={["rgba(251,191,36,0.10)", "rgba(245,158,11,0.06)"]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
+              <GlassCard radius={20}>
                 <View style={{ padding: 28, alignItems: "center" }}>
-                  <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />
-                  <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginTop: 10 }}>
+                  <ActivityIndicator size="small" color={INK.faint} />
+                  <Text style={{ fontSize: 13, color: INK.meta, marginTop: 10 }}>
                     Cargando noticias...
                   </Text>
                 </View>
-              </View>
+              </GlassCard>
             ) : (
               hotTopics.map((card, index) => {
-                const catGradient = getCatGradient(card.categoria);
+                const acc = getCatAccent(card.categoria);
 
                 return (
                   <PressCard
                     key={card.id || index}
-                    style={{ marginBottom: 14 }}
+                    style={{ marginBottom: 16 }}
                     onPress={() => setSelectedCard(card)}
                   >
-                    <View style={cardBase}>
-                      <LinearGradient
-                        colors={[...catGradient, 'transparent']}
-                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                        style={[StyleSheet.absoluteFill, { opacity: 0.3 }]}
-                      />
+                    <GlassCard accent={acc.ink} wash={acc.tint}>
                       <View style={{ padding: 20 }}>
                         {/* Fila superior: categoría + sentimiento negativo + flecha */}
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                             <View style={{
-                              backgroundColor: 'rgba(255,255,255,0.14)',
+                              backgroundColor: acc.tint,
                               paddingHorizontal: 10,
                               paddingVertical: 4,
                               borderRadius: 8,
                               borderWidth: 1,
-                              borderColor: 'rgba(255,255,255,0.18)',
+                              borderColor: acc.tint,
                             }}>
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#fff', letterSpacing: 0.3 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: acc.ink, letterSpacing: 0.3 }}>
                                 {card.categoria || 'Otros'}
                               </Text>
                             </View>
                           </View>
-                          <ChevronRight size={16} color="rgba(255,255,255,0.35)" />
+                          <ChevronRight size={16} color={INK.faint} />
                         </View>
 
                         {/* Título */}
                         <Text style={{
                           fontSize: 17,
                           fontWeight: '800',
-                          color: '#fff',
+                          color: INK.title,
                           lineHeight: 24,
                           marginBottom: 8,
                         }}>
@@ -930,7 +891,7 @@ export default function Index() {
                         {/* Resumen truncado */}
                         <Text
                           numberOfLines={2}
-                          style={{ fontSize: 13, color: 'rgba(255,255,255,0.62)', lineHeight: 19 }}
+                          style={{ fontSize: 13, color: INK.body, lineHeight: 19 }}
                         >
                           {card.resumen}
                         </Text>
@@ -944,21 +905,21 @@ export default function Index() {
                                 onPress={(ev) => { ev.stopPropagation(); setEntityModal(e); }}
                                 activeOpacity={0.7}
                                 style={{
-                                  backgroundColor: 'rgba(99,102,241,0.12)',
+                                  backgroundColor: 'rgba(99,102,241,0.10)',
                                   paddingHorizontal: 8,
                                   paddingVertical: 3,
                                   borderRadius: 6,
                                   borderWidth: 1,
-                                  borderColor: 'rgba(99,102,241,0.25)',
+                                  borderColor: 'rgba(99,102,241,0.20)',
                                 }}
                               >
-                                <Text style={{ fontSize: 11, color: 'rgba(165,180,252,0.8)' }}>{e}</Text>
+                                <Text style={{ fontSize: 11, color: '#4B4FA6', fontWeight: '600' }}>{e}</Text>
                               </TouchableOpacity>
                             ))}
                           </View>
                         )}
                       </View>
-                    </View>
+                    </GlassCard>
                   </PressCard>
                 );
               })
@@ -968,26 +929,26 @@ export default function Index() {
           {/* Últimas Noticias */}
           {tweets.length > 0 && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
-              <SectionHeader icon={<MessageCircle size={22} color="#ffffff" />} title="Últimas Noticias" />
+              <SectionHeader icon={<MessageCircle size={22} color={INK.title} />} title="Últimas Noticias" />
 
               {tweets.map((tweet, index) => (
-                <PressCard key={index} style={{ marginBottom: 10 }}>
-                  <View style={[cardBase, { borderRadius: 16 }]}>
+                <PressCard key={index} style={{ marginBottom: 12 }}>
+                  <GlassCard radius={16}>
                     <View style={{ padding: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 7 }}>
-                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#ffffff" }}>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: INK.title }}>
                           @{tweet.usuario}
                         </Text>
                         {tweet.verified && (
-                          <Text style={{ fontSize: 12, color: '#60a5fa', marginLeft: 4 }}>✓</Text>
+                          <Text style={{ fontSize: 12, color: '#2563EB', marginLeft: 4 }}>✓</Text>
                         )}
                       </View>
-                      <Text style={{ fontSize: 14, color: "rgba(255,255,255,0.82)", lineHeight: 20, marginBottom: 10 }}
+                      <Text style={{ fontSize: 14, color: INK.body, lineHeight: 20, marginBottom: 10 }}
                         numberOfLines={3}>
                         {tweet.texto}
                       </Text>
                     </View>
-                  </View>
+                  </GlassCard>
                 </PressCard>
               ))}
             </View>
@@ -1003,7 +964,7 @@ function SectionHeader({ icon, title }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
       {icon}
-      <Text style={{ fontSize: 19, fontWeight: "700", color: "#ffffff", marginLeft: 8 }}>
+      <Text style={{ fontSize: 19, fontWeight: "700", color: INK.title, marginLeft: 8 }}>
         {title}
       </Text>
     </View>

@@ -13,9 +13,11 @@
       "buildNumber": "21",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIRequiresFullScreen": true,
-        "UIBackgroundModes": [
-          "remote-notification"
+        "UIRequiresFullScreen": true
+      },
+      "entitlements": {
+        "com.apple.developer.applesignin": [
+          "Default"
         ]
       }
     },
@@ -68,8 +70,14 @@
         }
       ],
       "expo-font",
-      "expo-secure-store",
-      "expo-web-browser"
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      "expo-web-browser",
+      "expo-apple-authentication"
     ],
     "web": {
       "bundler": "metro",
