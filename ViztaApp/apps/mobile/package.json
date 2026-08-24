@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "main": "index",
-  "version": "0.0.3",
+  "version": "0.0.6",
   "scripts": {
     "postinstall": "patch-package",
     "android": "expo run:android",
@@ -59,6 +59,7 @@
     "lucide-react-native": "0.525.0",
     "moti": "0.30.0",
     "papaparse": "5.5.3",
+    "posthog-react-native": "^4.63.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.4",

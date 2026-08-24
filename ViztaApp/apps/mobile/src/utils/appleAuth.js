@@ -84,7 +84,7 @@ export async function signInWithApple() {
 async function asegurarPerfil(usuario, nombre) {
   const { data: existente, error: errorLectura } = await supabase
     .from('profiles')
-    .select('id, email, user_type, role, credits')
+    .select('id, email, user_type, role, roles, credits')
     .eq('id', usuario.id)
     .maybeSingle();
 
@@ -102,7 +102,7 @@ async function asegurarPerfil(usuario, nombre) {
       role: 'user',
       ...(nombre ? { phone: null } : {}),
     })
-    .select('id, email, user_type, role, credits')
+    .select('id, email, user_type, role, roles, credits')
     .single();
 
   if (errorAlta) {

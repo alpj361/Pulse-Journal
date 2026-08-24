@@ -17,6 +17,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import appConfig from '../../../app.json';
 import GlassCard from '../../components/GlassCard';
 import { INK, ACCENT, chipStyle } from '../../components/theme';
 import {
@@ -34,12 +35,25 @@ import {
   Mail,
   Heart,
 } from 'lucide-react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
+import { appleDisponible } from '../../utils/appleAuth';
 import * as Notifications from 'expo-notifications';
 import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const APP_VERSION = 'V.003';
+/**
+ * La versión, leída de `app.json` en vez de escrita a mano acá.
+ *
+ * Estaba fija como `'V.005'` — un string suelto sin relación con el
+ * `app.json` real, que para cuando se encontró este archivo ya iba tres
+ * versiones adelante (0.0.3 en el proyecto nativo, 0.0.5 en `app.json`, y esto
+ * en pantalla diciendo la cuarta cosa). Cada subida de versión iba a requerir
+ * acordarse de este archivo también, y ese acordarse es justo lo que fallaba.
+ * Leyéndola de `Constants.expoConfig`, hay un solo lugar que declara la
+ * versión y todos los demás la reflejan.
+ */
+const APP_VERSION = `V.${String(appConfig.expo.version.split('.').pop()).padStart(3, '0')}`;
 
 function formatDate(isoString) {
   if (!isoString) return '';
@@ -727,7 +741,22 @@ function FaqItem({ question, children }) {
 // ─── Pantalla principal ───────────────────────────────────────────────────────
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { isConnected, connectedUser, connectedAt, disconnect } = usePulseConnectionStore();
+  const { isConnected, connectedUser, connectedAt, disconnect, connectWithApple } =
+    usePulseConnectionStore();
+
+  // El botón de Apple solo existe si el dispositivo puede mostrarlo. En un
+  // iPad viejo o en Android no aparece nada, en vez de un botón que al tocarlo
+  // falla.
+  const [hayApple, setHayApple] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    appleDisponible()
+      .then((ok) => vivo && setHayApple(ok))
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -941,8 +970,23 @@ export default function SettingsScreen() {
               </View>
             </GlassCard>
           ) : (
-            /* Botón de conectar */
-            <TouchableOpacity
+            /* Entrar. Dos puertas a lo mismo: Apple crea una cuenta de solo
+               móvil (`user_type: 'phone'`), el Portal es para quien ya tiene
+               cuenta en la web. */
+            <View style={{ gap: 12 }}>
+              {hayApple ? (
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={18}
+                  style={{ width: '100%', height: 54 }}
+                  onPress={() => {
+                    connectWithApple();
+                  }}
+                />
+              ) : null}
+
+              <TouchableOpacity
               onPress={() => setShowLoginModal(true)}
               activeOpacity={0.85}
               style={{
@@ -966,7 +1010,8 @@ export default function SettingsScreen() {
                   Conectar con Portal Web
                 </Text>
               </LinearGradient>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 

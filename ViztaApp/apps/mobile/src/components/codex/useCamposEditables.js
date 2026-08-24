@@ -164,7 +164,7 @@ export default function useCamposEditables(item, tipo) {
    * `codex_items` por otro camino (la subida de documentos).
    */
   const guardar = useCallback(
-    async ({ name, description, tags, tipo: tipoNuevo } = {}) => {
+    async ({ name, description, tags, aliases, geo, tipo: tipoNuevo } = {}) => {
       setGuardando(true);
       setError(null);
       try {
@@ -189,6 +189,17 @@ export default function useCamposEditables(item, tipo) {
         const descFinal = (description ?? item?.description ?? item?.descripcion ?? '').trim() || null;
         const tagsFinal = tags ?? (Array.isArray(item?.tags) ? item.tags : []);
 
+        // Los alias son los otros nombres por los que se reconoce a un item, y
+        // son los que alimentan el resaltado dentro de las notas. Solo existen
+        // en el universo: `wiki_items` no tiene la columna, así que escribirla
+        // ahí sería un error de Postgres, no un campo vacío.
+        const aliasFinal = aliases ?? (Array.isArray(item?.aliases) ? item.aliases : []);
+
+        // `geo` solo se escribe si la pantalla lo mandó. Mandar el valor actual
+        // por defecto haría que guardar un cambio de nombre reescriba la
+        // geometría —normalizada, con otra forma— sin que nadie lo pidiera.
+        const escribeGeo = geo !== undefined;
+
         // ── Crear ──
         if (!dbId) {
           const { data: sesion } = await supabase.auth.getSession();
@@ -204,9 +215,11 @@ export default function useCamposEditables(item, tipo) {
               name: nombreFinal,
               description: descFinal,
               ...(tagsFinal?.length ? { tags: tagsFinal } : {}),
+              ...(aliasFinal?.length ? { aliases: aliasFinal } : {}),
+              ...(escribeGeo && geo ? { geo } : {}),
               details: editados,
             })
-            .select('id, name, tipo, description, tags, aliases, details, created_at')
+            .select('id, name, tipo, description, tags, aliases, details, geo, created_at')
             .single();
 
           if (errIns) throw errIns;
@@ -222,6 +235,8 @@ export default function useCamposEditables(item, tipo) {
               name: nombreFinal,
               description: descFinal,
               tags: tagsFinal,
+              aliases: aliasFinal,
+              ...(escribeGeo ? { geo } : {}),
               details: detalles,
               updated_at: new Date().toISOString(),
             })
@@ -246,7 +261,8 @@ export default function useCamposEditables(item, tipo) {
           name: nombreFinal,
           description: descFinal,
           tags: tagsFinal,
-          ...(isUniverse ? { details: detalles } : { metadata: detalles }),
+          ...(escribeGeo ? { geo } : {}),
+          ...(isUniverse ? { aliases: aliasFinal, details: detalles } : { metadata: detalles }),
         };
       } catch (e) {
         setError(e.message || 'No se pudo guardar');

@@ -182,6 +182,18 @@ export function formatValue(value, type) {
 export const INTERNAL_KEYS = new Set([
   'id', 'user_id', 'created_at', 'updated_at', 'avatar', 'research',
   'research_last_updated', 'thumbnail_url', 'embedding', '_source',
+
+  // Legacy del contrato geográfico. El nivel de un territorio vive en
+  // `geo.hierarchy.level` y la ficha ya lo muestra —«Departamento» con su
+  // cheque— en la sección del mapa. Dejarlo acá lo escribía por segunda vez en
+  // la misma pantalla, y encima en minúsculas y con nombre de columna.
+  'boundary_type',
+
+  // Plomería de la importación, no datos del item. `datasets` y `dataset_id`
+  // son uuids crudos y `source` dice «dataset», que describe de dónde salió la
+  // fila y no qué es el territorio. Ocupaban un renglón cada uno en la ficha
+  // para no decirle nada a nadie.
+  'dataset_id', 'datasets', 'source',
 ]);
 
 /**

@@ -1,4 +1,5 @@
 
+import { useFonts } from 'expo-font';
 import { useAuth } from '@/utils/auth/useAuth';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -22,6 +23,13 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const { initiate, isReady } = useAuth();
+
+  // La serif editorial, desde el bundle. Si por lo que sea no carga, `fontError`
+  // deja seguir igual: la app cae a la fuente del sistema y se ve peor, pero se
+  // ve. Bloquear el arranque por una tipografía sería desproporcionado.
+  const [fuentesListas, fuentesError] = useFonts({
+    InstrumentSerif: require('../../assets/fonts/InstrumentSerif-Regular.ttf'),
+  });
   const { initSessionSync } = usePulseConnectionStore();
   useNotifications();
 
@@ -39,11 +47,13 @@ export default function RootLayout() {
   }, [initiate]);
 
   useEffect(() => {
-    if (isReady) {
+    if (isReady && (fuentesListas || fuentesError)) {
       console.log('[RootLayout] isReady=true → hiding splash');
       SplashScreen.hideAsync();
     }
-  }, [isReady]);
+    // Sin las fuentes en las dependencias, el splash se quedaría puesto: el
+    // efecto corre antes de que carguen y no volvería a correr al terminar.
+  }, [isReady, fuentesListas, fuentesError]);
 
   if (!isReady) {
     console.log('[RootLayout] not ready, returning null');

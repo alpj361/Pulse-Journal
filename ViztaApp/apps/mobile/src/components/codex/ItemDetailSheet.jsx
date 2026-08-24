@@ -24,6 +24,9 @@ import useCamposEditables from './useCamposEditables';
 import useVinculos from './useVinculos';
 import FieldInput, { inputStyle } from './FieldInput';
 import { normalizeTipo, TYPE_ACCENT, TYPE_ORDER } from './tipos';
+import { esReconocible, PISO } from './menciones';
+import GeoTerritorio from './GeoTerritorio';
+import { normalizarGeo, etiquetaNivel } from './geo';
 import PortadaEspacio from './PortadaEspacio';
 import { supabase } from '../../utils/supabase';
 
@@ -331,12 +334,27 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
   const [nuevoCampo, setNuevoCampo] = useState('');
   const [nombreEd, setNombreEd] = useState(item?.name || item?.titulo || '');
   const [descEd, setDescEd] = useState(item?.description || item?.descripcion || '');
+  // Los alias se editan como una línea separada por comas y no como una lista de
+  // chips: son dos o tres, se escriben de corrido, y una lista con su botón de
+  // agregar convierte treinta segundos de tipeo en cinco toques.
+  // `undefined` mientras nadie lo toque, para que guardar un cambio de nombre no
+  // reescriba la geometría. Ver `useCamposEditables.guardar`.
+  const [geoEd, setGeoEd] = useState(undefined);
+  const [aliasEd, setAliasEd] = useState(
+    (Array.isArray(item?.aliases) ? item.aliases.filter(Boolean) : []).join(', ')
+  );
 
   const [tipoNuevo, setTipoNuevo] = useState(normalizeTipo(item?.tipo || item?.subcategory));
   const [tipoMenu, setTipoMenu] = useState(false);
   // Al crear, el tipo se elige acá; después queda fijo — cambiarlo con datos ya
   // cargados movería el item a otro catálogo y dejaría campos sin significado.
   const tipo = creando ? tipoNuevo : normalizeTipo(item?.tipo || item?.subcategory);
+  // `wiki_items` no tiene columna de alias. Mostrar el campo ahí sería ofrecer
+  // algo que al guardar se pierde sin decir nada.
+  const admiteAlias = creando || item?._source === 'universe' || !!item?._sourceId;
+  // Lo geográfico solo tiene sentido para Territorios: es el único tipo que se
+  // dibuja en el mapa.
+  const esTerritorio = tipo === 'Territorio';
   const accent = TYPE_ACCENT[tipo] || INK.body;
 
   const ed = useCamposEditables(item, tipo);
@@ -375,10 +393,30 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
   // o es extra. Se replica.
   const conDatos = [...conDato, ...extra];
 
-  const descripcion = item?.description || item?.descripcion;
+  /**
+   * La descripción, salvo que sea el relleno de la importación.
+   *
+   * Los 22 departamentos —no los 336 municipios— llegaron con
+   * `description: "Departamento de {nombre}"` puesto por el importador, no
+   * escrito por nadie. No dice nada que el título y la etiqueta de nivel de
+   * abajo («Departamento» + el cheque) no digan ya: es plantilla, no contenido.
+   *
+   * La comparación es exacta a propósito — contra el nivel y la primera parte
+   * del nombre de este item puntual, no una palabra suelta — para no esconder
+   * por error una descripción real que alguien haya escrito y que empiece
+   * igual, como «Departamento de alto riesgo por…».
+   */
+  const descripcionCruda = item?.description || item?.descripcion;
   const tags = Array.isArray(item?.tags) ? item.tags.filter(Boolean) : [];
   const aliases = Array.isArray(item?.aliases) ? item.aliases.filter(Boolean) : [];
   const nombre = item?.name || item?.titulo || 'Sin nombre';
+
+  const geoResumen = esTerritorio ? normalizarGeo(geoEd ?? item?.geo) : null;
+  const nivelResumen = geoResumen ? etiquetaNivel(geoResumen) : null;
+  const esRellenoImportacion =
+    nivelResumen &&
+    descripcionCruda?.trim() === `${nivelResumen} de ${nombre.split(',')[0].trim()}`;
+  const descripcion = esRellenoImportacion ? null : descripcionCruda;
 
   // Un item que todavía no existe no puede tener vínculos: sus pestañas
   // consultarían por un id que no hay.
@@ -412,7 +450,12 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: bottomInset + (editando ? 104 : 34) }}
             showsVerticalScrollIndicator={false}
-            stickyHeaderIndices={[2]}
+            // [0] portada, [1] pestañas, [2] contenido. El índice tiene que ser
+            // estable: `React.Children.toArray` descarta los hijos que rinden
+            // null, así que cualquier bloque condicional acá arriba corre la
+            // numeración y termina fijando el elemento equivocado — que fue justo
+            // lo que dejó el contenido clavado y sin scroll.
+            stickyHeaderIndices={[1]}
           >
             {/* ── Portada ── */}
             <View style={{ height: ALTO_PORTADA, width: W }}>
@@ -493,45 +536,23 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                   {creando ? nombreEd.trim() || 'Nuevo elemento' : nombre}
                 </Text>
 
+                {/* Los otros nombres van pegados al nombre y no abajo con los
+                    datos: son parte de quién es esto —el «también llamado» de
+                    una enciclopedia— y no un campo más.
+
+                    Dos renglones y no uno: con tres alias, uno solo cortaba el
+                    último a la mitad. Y a 0.82 en vez de 0.66 porque la portada
+                    puede ser una foto clara, y ahí el blanco tenue desaparecía. */}
                 {aliases.length > 0 ? (
-                  <Text numberOfLines={1} style={{ fontSize: 12, color: 'rgba(255,255,255,0.66)', marginTop: 5 }}>
+                  <Text
+                    numberOfLines={2}
+                    style={{ fontSize: 12.5, lineHeight: 17, color: 'rgba(255,255,255,0.82)', marginTop: 5 }}
+                  >
                     también: {aliases.join(', ')}
                   </Text>
                 ) : null}
               </View>
             </View>
-
-            {/* Elegir el tipo al crear. Snippet no está: se escribe, no se
-                llena, y tiene su propia superficie desde «Añadir». */}
-            {creando && tipoMenu ? (
-              <Animated.View
-                entering={FadeInDown.duration(220).springify().damping(20)}
-                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingHorizontal: 20, paddingTop: 16 }}
-              >
-                {TYPE_ORDER.filter((t) => t !== 'Snippet' && t !== 'Post').map((t) => {
-                  const on = t === tipo;
-                  return (
-                    <TouchableOpacity
-                      key={t}
-                      onPress={() => {
-                        roce();
-                        setTipoNuevo(t);
-                        setTipoMenu(false);
-                      }}
-                      activeOpacity={0.75}
-                      style={{
-                        paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.pill,
-                        backgroundColor: on ? TYPE_ACCENT[t] : 'rgba(28,43,34,0.05)',
-                      }}
-                    >
-                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: on ? '#FFFFFF' : INK.body }}>
-                        {t}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </Animated.View>
-            ) : null}
 
             {/* ── Pestañas (pegajosas) ── */}
             <View style={{ backgroundColor: '#F7F8F5', paddingTop: 10 }}>
@@ -572,6 +593,38 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
             </View>
 
             <View style={{ paddingHorizontal: 20 }}>
+              {/* Elegir el tipo al crear. Snippet no está: se escribe, no se
+                  llena, y tiene su propia superficie desde «Añadir». */}
+              {creando && tipoMenu ? (
+                <Animated.View
+                  entering={FadeInDown.duration(220).springify().damping(20)}
+                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingHorizontal: 20, paddingTop: 16 }}
+                >
+                  {TYPE_ORDER.filter((t) => t !== 'Snippet' && t !== 'Post').map((t) => {
+                    const on = t === tipo;
+                    return (
+                      <TouchableOpacity
+                        key={t}
+                        onPress={() => {
+                          roce();
+                          setTipoNuevo(t);
+                          setTipoMenu(false);
+                        }}
+                        activeOpacity={0.75}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 8, borderRadius: RADIUS.pill,
+                          backgroundColor: on ? TYPE_ACCENT[t] : 'rgba(28,43,34,0.05)',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12.5, fontWeight: '700', color: on ? '#FFFFFF' : INK.body }}>
+                          {t}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </Animated.View>
+              ) : null}
+
               {/* ── Detalle ── */}
               {tab === 'detalle' ? (
                 !schema ? (
@@ -595,11 +648,46 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                           multiline
                           style={[inputStyle, { minHeight: 88, textAlignVertical: 'top', paddingTop: 11 }]}
                         />
+
+                        {admiteAlias ? (
+                          <View>
+                            <TextInput
+                              value={aliasEd}
+                              onChangeText={setAliasEd}
+                              placeholder="Otros nombres, separados por coma"
+                              placeholderTextColor={INK.faint}
+                              // Sin autocapitalizar: con «words» el teclado
+                              // convertía «presidente de la república» en
+                              // «Presidente De La República». El resaltado no
+                              // distingue mayúsculas, pero el alias se muestra
+                              // tal cual se guardó.
+                              autoCapitalize="none"
+                              style={inputStyle}
+                            />
+                            <Text style={{ fontSize: 11.5, color: INK.meta, lineHeight: 17, marginTop: 6, marginLeft: 2 }}>
+                              {avisoAlias(aliasEd)}
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
                     ) : descripcion ? (
                       <Text style={{ fontSize: 14.5, color: INK.body, lineHeight: 22, marginTop: 18 }}>
                         {descripcion}
                       </Text>
+                    ) : null}
+
+                    {/* Lo geográfico va acá arriba y no al final de los campos:
+                        para un Territorio, si aparece o no en el mapa es lo
+                        primero que se quiere saber, y los tres que hoy no tienen
+                        geometría no lo dicen en ningún lado. */}
+                    {esTerritorio ? (
+                      <GeoTerritorio
+                        item={item}
+                        nombre={editando ? nombreEd : nombre}
+                        editando={editando}
+                        geoEd={geoEd}
+                        onCambiar={setGeoEd}
+                      />
                     ) : null}
 
                     {/* En edición se ocultan: repiten lo de abajo y corren el resto
@@ -620,33 +708,6 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                       </View>
                     ) : null}
 
-                    {/* De un vistazo: los primeros campos con dato, en columnas.
-                        Es lo que la referencia de CREME pone bajo el título — lo
-                        que se quiere saber sin leer la ficha entera. */}
-                    {!editando && conDatos.length >= 2 ? (
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          gap: 18,
-                          marginTop: 20,
-                          paddingVertical: 14,
-                          borderTopWidth: StyleSheet.hairlineWidth,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                          borderColor: 'rgba(28,43,34,0.10)',
-                        }}
-                      >
-                        {conDatos.slice(0, 3).map((f, i) => (
-                          <View key={i} style={{ flex: 1 }}>
-                            <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '700', color: INK.faint, letterSpacing: 0.5 }}>
-                              {f.label.toUpperCase()}
-                            </Text>
-                            <Text numberOfLines={2} style={{ fontSize: 13.5, fontWeight: '700', color: INK.title, marginTop: 4, lineHeight: 18 }}>
-                              {f.value}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
 
                     {!canon ? (
                       <Text style={{ fontSize: 12, color: INK.faint, marginTop: 16, fontStyle: 'italic' }}>
@@ -1155,6 +1216,8 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                   const guardado = await ed.guardar({
                     name: nombreEd,
                     description: descEd,
+                    ...(admiteAlias ? { aliases: partirAlias(aliasEd) } : {}),
+                    ...(geoEd !== undefined ? { geo: geoEd } : {}),
                     ...(creando ? { tipo } : {}),
                   });
                   if (!guardado) return;
@@ -1171,6 +1234,7 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                   if (!vinculosOk) return;
                   setEditando(false);
                   setTipoAbierto(null);
+                  setGeoEd(undefined);
                   onSaved?.(guardado);
                 }}
                 disabled={ed.guardando || !nombreEd.trim()}
@@ -1195,4 +1259,48 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
       </View>
     </Modal>
   );
+}
+
+// ─── Alias ────────────────────────────────────────────────────────────────────
+
+/** La línea de comas a lista limpia, sin repetidos ni espacios sueltos. */
+function partirAlias(texto) {
+  const vistos = new Set();
+  const salida = [];
+  for (const parte of String(texto || '').split(',')) {
+    const a = parte.trim();
+    if (!a) continue;
+    const clave = a.toLowerCase();
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    salida.push(a);
+  }
+  return salida;
+}
+
+/**
+ * Qué va a pasar de verdad con lo que se escribió.
+ *
+ * El resaltado de las notas ignora los términos de menos de cuatro caracteres —
+ * si no, un alias como «CC» pintaría cada «cc» de cualquier oración. Esa regla
+ * es invisible: sin este aviso se escribe un alias corto, no se pinta nunca, y
+ * no hay forma de darse cuenta de por qué. Se pregunta a la misma función que
+ * usa el índice, así que no pueden decir cosas distintas.
+ */
+function avisoAlias(texto) {
+  const lista = partirAlias(texto);
+  if (!lista.length) return 'Otros nombres por los que se lo reconoce al escribir una nota.';
+
+  const cortos = lista.filter((a) => !esReconocible(a));
+  if (!cortos.length) {
+    return lista.length === 1
+      ? 'Se resalta en tus notas, igual que el nombre.'
+      : `Los ${lista.length} se resaltan en tus notas, igual que el nombre.`;
+  }
+  if (cortos.length === lista.length) {
+    return cortos.length === 1
+      ? `«${cortos[0]}» es muy corto para reconocerse: hacen falta ${PISO} letras.`
+      : `Ninguno se va a reconocer: hacen falta ${PISO} letras.`;
+  }
+  return `${cortos.map((a) => `«${a}»`).join(', ')} no se va a reconocer: hacen falta ${PISO} letras.`;
 }

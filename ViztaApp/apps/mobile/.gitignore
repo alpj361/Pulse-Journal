@@ -46,3 +46,8 @@ yarn-error.*
 # Build
 android/
 ios/
+
+# Metro bundler cache — se regenera solo, y versionarlo solo produce ruido
+# de miles de archivos "eliminados" cada vez que el caché local cambia.
+caches/.metro-cache/
+.metro-virtual/

@@ -3127,6 +3127,9 @@ export default function CodexScreen() {
     const { data, error } = await supabase
       .from('post_folders')
       .select('id, name, color, icon, position, created_at')
+      // `post_folders` la comparten los Posts y las notas del historial. Sin el
+      // scope, una carpeta de notas aparecería en esta grilla siempre vacía.
+      .eq('scope', 'post')
       .order('position', { ascending: true });
     setIsLoadingFolders(false);
     if (!error) setFolders(data || []);
@@ -3141,6 +3144,7 @@ export default function CodexScreen() {
       name: newFolderName.trim(),
       color: newFolderColor,
       icon: 'folder',
+      scope: 'post',
       position: folders.length,
       ...(userId ? { user_id: userId } : {}),
     });

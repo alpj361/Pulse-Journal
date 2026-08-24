@@ -81,3 +81,21 @@ export const chipStyle = (tint, border) => ({
   borderWidth: 1,
   borderColor: border,
 });
+
+/**
+ * La serif editorial.
+ *
+ * Instrument Serif, empaquetada en `assets/fonts/`. Va bajada del CDN y metida
+ * en el bundle a propósito: `@expo-google-fonts/dev` —que el proyecto tiene
+ * instalado— resuelve las fuentes contra `fonts.gstatic.com` **en tiempo de
+ * ejecución**. Eso está bien para probar, pero en producción significa que la
+ * portada del día no tiene tipografía hasta que responda una CDN ajena, y nada
+ * si el teléfono está sin señal. Son 69 KB.
+ *
+ * Viene solo en Regular e Itálica, y es una ventaja: obliga a construir la
+ * jerarquía con tamaño y color en vez de tirar negritas a todo.
+ *
+ * Se usa **solo para lo editorial** — titulares y portada. La interfaz sigue en
+ * la sans del sistema: una serif en botones y etiquetas se lee como disfraz.
+ */
+export const SERIF = 'InstrumentSerif';

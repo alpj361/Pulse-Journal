@@ -9,7 +9,10 @@ export const usePulseConnectionStore = create(
     (set, get) => ({
       isConnected: false,
       isConnecting: false,
-      connectedUser: null, // { id, email, user_type, role }
+      // `role` es el rol principal (espejo de `roles`, con admin arriba de todo);
+      // `roles` es la lista completa. Los mantiene sincronizados un trigger en
+      // la base, así que leer cualquiera de los dos da lo mismo para «es admin».
+      connectedUser: null, // { id, email, user_type, role, roles }
       connectedAt: null,
       error: null,
 
@@ -32,7 +35,7 @@ export const usePulseConnectionStore = create(
               console.log('[pulseStore] 🔄 Sincronizando usuario desde sesión Supabase:', session.user.email);
               const { data: profile } = await supabase
                 .from('profiles')
-                .select('id, email, user_type, role, credits')
+                .select('id, email, user_type, role, roles, credits')
                 .eq('id', session.user.id)
                 .single();
               set({
@@ -58,7 +61,7 @@ export const usePulseConnectionStore = create(
         console.log('[pulseStore] connect() success, fetching profile...');
         const { data: profile } = await supabase
           .from('profiles')
-          .select('id, email, user_type, role, credits')
+          .select('id, email, user_type, role, roles, credits')
           .eq('id', data.user.id)
           .single();
         console.log('[pulseStore] profile:', profile?.email);
