@@ -35,22 +35,25 @@ import { latAY, lngAX } from './proyeccion';
  * **medido en píxeles de la pantalla actual**, así que la costa mantiene su
  * forma y un municipio lejano se reduce solo.
  *
- * **Se recorta lo que no se ve.** A zoom de calle, 357 de los 358 polígonos
- * están fuera de la pantalla; cada uno guarda su caja envolvente y solo entran
- * los que tocan la ventana alrededor del ancla.
+ * **La ruta persiste durante el paneo.** La lista de formas se prepara al
+ * cambiar de escala, no al cruzar una frontera de bloques. Así los límites y
+ * selecciones viajan con el dedo en vez de desaparecer un frame.
  */
 
 /** Ni un punto más cerca que esto del anterior, en píxeles de pantalla. */
 const PELO = 1.6;
 
-/** Cuánto alrededor del ancla se considera «cerca». */
-const VENTANA = 3;
-
-const RELLENO = 'rgba(58,96,73,0.10)';
-const RELLENO_ELEGIDO = 'rgba(58,96,73,0.26)';
-const BORDE = 'rgba(40,70,52,0.78)';
+const RELLENO_DEPARTAMENTO = 'rgba(39,104,210,0.055)';
+const RELLENO_ELEGIDO = 'rgba(20,103,232,0.24)';
+const BORDE = 'rgba(48,107,204,0.60)';
 const PIN = '#B45309';
 const PIN_ARO = '#FFFDF8';
+const RUTA = '#315E9E';
+const RUTA_ARO = 'rgba(255,253,248,0.92)';
+const BORRADOR = '#6941C6';
+const CALOR_FRIO = 'rgba(33,102,172,0.16)';
+const CALOR_MEDIO = 'rgba(245,158,11,0.17)';
+const CALOR_ALTO = 'rgba(220,38,38,0.22)';
 
 /** Lo que tarda el país en dibujarse solo al aparecer. */
 const ENTRADA = 1100;
@@ -64,36 +67,20 @@ export default function MapaCapas({
   lng, // shared
   areas,
   pines,
+  recorridos = [],
   mostrarAreas,
   mostrarPines,
+  mostrarCalor = false,
+  borrador = null,
   /** Qué nivel administrativo se está mostrando. Solo se usa para re-entintar. */
   nivel,
   elegido,
 }) {
-  const { rutas, puntos } = useMemo(() => {
+  const { rutas, lineas, puntos, dibujo } = useMemo(() => {
     const z = ancla.z;
-    const margenX = ancho * VENTANA;
-    const margenY = alto * VENTANA;
-
-    const cerca = (c) => {
-      if (!c) return true;
-      const x0 = lngAX(c.lngMin, z);
-      const x1 = lngAX(c.lngMax, z);
-      // La latitud se invierte al proyectar: el norte es el píxel más chico.
-      const y0 = latAY(c.latMax, z);
-      const y1 = latAY(c.latMin, z);
-      return (
-        x1 >= ancla.x - margenX &&
-        x0 <= ancla.x + margenX &&
-        y1 >= ancla.y - margenY &&
-        y0 <= ancla.y + margenY
-      );
-    };
-
     const rutas = [];
     if (mostrarAreas) {
       for (const a of areas) {
-        if (!cerca(a.caja)) continue;
         const d = geometriaAPath(a.geometry, z, ancla);
         if (!d) continue;
         const path = Skia.Path.MakeFromSVGString(d);
@@ -101,7 +88,15 @@ export default function MapaCapas({
       }
     }
 
-    const puntos = mostrarPines
+    const lineas = recorridos
+      .map((r) => {
+        const d = geometriaLinealAPath(r.geometry, z, ancla);
+        const path = d ? Skia.Path.MakeFromSVGString(d) : null;
+        return path ? { id: r.id, path } : null;
+      })
+      .filter(Boolean);
+
+    const puntos = mostrarPines || mostrarCalor
       ? pines.map((p) => ({
           id: p.id,
           x: lngAX(p.coordinates.lng, z) - ancla.x,
@@ -109,8 +104,20 @@ export default function MapaCapas({
         }))
       : [];
 
-    return { rutas, puntos };
-  }, [areas, pines, mostrarAreas, mostrarPines, ancla, ancho, alto]);
+    const coordenadas = Array.isArray(borrador?.coordinates) ? borrador.coordinates : [];
+    const vertices = coordenadas.map(([ln, la]) => ({
+      x: lngAX(Number(ln), z) - ancla.x,
+      y: latAY(Number(la), z) - ancla.y,
+    }));
+    const dBorrador = lineaAPath(coordenadas, z, ancla, borrador?.tipo === 'area');
+    const dibujo = {
+      tipo: borrador?.tipo || null,
+      vertices,
+      path: dBorrador ? Skia.Path.MakeFromSVGString(dBorrador) : null,
+    };
+
+    return { rutas, lineas, puntos, dibujo };
+  }, [areas, pines, recorridos, mostrarAreas, mostrarPines, mostrarCalor, borrador, ancla]);
 
   // ─── Vida ───────────────────────────────────────────────────────────────────
 
@@ -202,10 +209,17 @@ export default function MapaCapas({
   const radioAro = useDerivedValue(() => 2 * escalaInv.value);
   const radioLatido = useDerivedValue(() => (7 + latido.value * 6) * escalaInv.value);
   const opacidadLatido = useDerivedValue(() => 0.32 * (1 - latido.value));
+  const radioCalorFrio = useDerivedValue(() => 34 * escalaInv.value);
+  const radioCalorMedio = useDerivedValue(() => 21 * escalaInv.value);
+  const radioCalorAlto = useDerivedValue(() => 9 * escalaInv.value);
+  const grosorRutaAro = useDerivedValue(() => 5.5 * escalaInv.value);
+  const grosorRuta = useDerivedValue(() => 2.8 * escalaInv.value);
+  const grosorBorrador = useDerivedValue(() => 2.4 * escalaInv.value);
+  const radioVertice = useDerivedValue(() => 4.5 * escalaInv.value);
   // El relleno entra después del trazo: primero la línea, después el color.
   const opacidadRelleno = useDerivedValue(() => Math.max(0, (entrada.value - 0.45) / 0.55));
 
-  if (!rutas.length && !puntos.length) return null;
+  if (!rutas.length && !lineas.length && !puntos.length && !dibujo.path && !dibujo.vertices.length) return null;
 
   return (
     <Canvas
@@ -213,18 +227,30 @@ export default function MapaCapas({
       style={{ position: 'absolute', left: 0, top: 0, width: ancho, height: alto }}
     >
       <Group transform={transformacion}>
+        {mostrarCalor
+          ? puntos.map((p) => (
+              <Group key={`calor-${p.id}`}>
+                <Circle cx={p.x} cy={p.y} r={radioCalorFrio} color={CALOR_FRIO} />
+                <Circle cx={p.x} cy={p.y} r={radioCalorMedio} color={CALOR_MEDIO} />
+                <Circle cx={p.x} cy={p.y} r={radioCalorAlto} color={CALOR_ALTO} />
+              </Group>
+            ))
+          : null}
+
         {rutas.map((r) => (
           <Group key={r.id}>
             <Path
               path={r.path}
               style="fill"
-              color={elegido === r.id ? RELLENO_ELEGIDO : RELLENO}
-              opacity={opacidadRelleno}
+              color={elegido === r.id ? RELLENO_ELEGIDO : RELLENO_DEPARTAMENTO}
+              // Un municipio es información de precisión: su relleno no debe
+              // velar calles, etiquetas ni el relieve de Mapbox.
+              opacity={nivel === 'municipio' && elegido !== r.id ? 0 : opacidadRelleno}
             />
             <Path
               path={r.path}
               style="stroke"
-              strokeWidth={elegido === r.id ? grosorElegido : grosor}
+              strokeWidth={elegido === r.id ? grosorElegido : nivel === 'municipio' ? grosor : grosor}
               strokeJoin="round"
               color={BORDE}
               end={entrada}
@@ -232,7 +258,21 @@ export default function MapaCapas({
           </Group>
         ))}
 
-        {puntos.map((p) => (
+        {lineas.map((r) => (
+          <Group key={r.id}>
+            <Path path={r.path} style="stroke" strokeWidth={grosorRutaAro} strokeJoin="round" strokeCap="round" color={RUTA_ARO} />
+            <Path
+              path={r.path}
+              style="stroke"
+              strokeWidth={elegido === r.id ? grosorElegido : grosorRuta}
+              strokeJoin="round"
+              strokeCap="round"
+              color={RUTA}
+            />
+          </Group>
+        ))}
+
+        {mostrarPines ? puntos.map((p) => (
           <Group key={p.id}>
             {elegido === p.id ? (
               <Circle cx={p.x} cy={p.y} r={radioLatido} color={PIN} opacity={opacidadLatido} />
@@ -240,6 +280,28 @@ export default function MapaCapas({
             <Circle cx={p.x} cy={p.y} r={radioPin} color={PIN_ARO} />
             <Circle cx={p.x} cy={p.y} r={radioPin} color={PIN} style="stroke" strokeWidth={radioAro} />
             <Circle cx={p.x} cy={p.y} r={radioPin} color={PIN} opacity={0.9} />
+          </Group>
+        )) : null}
+
+        {dibujo.path ? (
+          <Group>
+            {dibujo.tipo === 'area' && dibujo.vertices.length >= 3 ? (
+              <Path path={dibujo.path} style="fill" color="rgba(105,65,198,0.14)" />
+            ) : null}
+            <Path
+              path={dibujo.path}
+              style="stroke"
+              strokeWidth={grosorBorrador}
+              strokeJoin="round"
+              strokeCap="round"
+              color={BORRADOR}
+            />
+          </Group>
+        ) : null}
+        {dibujo.vertices.map((p, i) => (
+          <Group key={`vertice-${i}`}>
+            <Circle cx={p.x} cy={p.y} r={radioVertice} color={PIN_ARO} />
+            <Circle cx={p.x} cy={p.y} r={radioVertice} color={BORRADOR} style="stroke" strokeWidth={radioAro} />
           </Group>
         ))}
       </Group>
@@ -291,6 +353,28 @@ function geometriaAPath(geometry, z, ancla) {
       .flatMap((poli) => poli.map((a) => anilloAPath(a, z, ancla)))
       .filter(Boolean)
       .join(' ');
+  }
+  return '';
+}
+
+function lineaAPath(coordinates, z, ancla, cerrar = false) {
+  if (!Array.isArray(coordinates) || coordinates.length === 0) return '';
+  const partes = coordinates
+    .map((p, i) => {
+      const x = lngAX(Number(p?.[0]), z) - ancla.x;
+      const y = latAY(Number(p?.[1]), z) - ancla.y;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .filter(Boolean);
+  if (!partes.length) return '';
+  return partes.join(' ') + (cerrar && partes.length >= 3 ? ' Z' : '');
+}
+
+function geometriaLinealAPath(geometry, z, ancla) {
+  if (geometry?.type === 'LineString') return lineaAPath(geometry.coordinates, z, ancla);
+  if (geometry?.type === 'MultiLineString') {
+    return geometry.coordinates.map((linea) => lineaAPath(linea, z, ancla)).filter(Boolean).join(' ');
   }
   return '';
 }

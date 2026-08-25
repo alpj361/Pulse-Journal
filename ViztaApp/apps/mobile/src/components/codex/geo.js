@@ -256,6 +256,84 @@ export function geoDePunto({ lat, lng, base }) {
   };
 }
 
+/** Un área dibujada a mano sobre el mapa. */
+export function geoDeArea({ coordinates, base }) {
+  const previo = normalizarGeo(base);
+  const anillo = cerrarAnillo(coordinates);
+  return {
+    ...previo,
+    spatial_role: 'area',
+    frontier: false,
+    geometry: { type: 'Polygon', coordinates: [anillo] },
+    anchor: centroDe(anillo),
+    source: { ...previo.source, kind: 'manual', catalog_id: null },
+    curation: {
+      status: 'user_defined',
+      canonical_boundary_id: null,
+      geometry_mode: 'original',
+      matched_at: null,
+    },
+    hierarchy: null,
+    postal_codes: [],
+    boundary_type: null,
+  };
+}
+
+/** Un recorrido manual. El trazado representa los vértices, no una ruta vial calculada. */
+export function geoDeRecorrido({ coordinates, base }) {
+  const previo = normalizarGeo(base);
+  const linea = limpiarCoordenadas(coordinates);
+  return {
+    ...previo,
+    spatial_role: 'route',
+    frontier: false,
+    geometry: { type: 'LineString', coordinates: linea },
+    anchor: centroDe(linea),
+    source: { ...previo.source, kind: 'manual', catalog_id: null },
+    curation: {
+      status: 'user_defined',
+      canonical_boundary_id: null,
+      geometry_mode: 'original',
+      matched_at: null,
+    },
+    hierarchy: null,
+    postal_codes: [],
+    boundary_type: null,
+  };
+}
+
+function limpiarCoordenadas(coordinates) {
+  return (Array.isArray(coordinates) ? coordinates : [])
+    .map((p) => [Number(p?.[0]), Number(p?.[1])])
+    .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+}
+
+function cerrarAnillo(coordinates) {
+  const anillo = limpiarCoordenadas(coordinates);
+  if (anillo.length === 0) return anillo;
+  const primero = anillo[0];
+  const ultimo = anillo[anillo.length - 1];
+  if (primero[0] !== ultimo[0] || primero[1] !== ultimo[1]) anillo.push([...primero]);
+  return anillo;
+}
+
+function centroDe(coordinates) {
+  const puntos = limpiarCoordenadas(coordinates);
+  if (!puntos.length) return null;
+  // Si el polígono está cerrado, no se cuenta dos veces el primer vértice.
+  const ultimo = puntos[puntos.length - 1];
+  const primero = puntos[0];
+  const utiles =
+    puntos.length > 1 && primero[0] === ultimo[0] && primero[1] === ultimo[1]
+      ? puntos.slice(0, -1)
+      : puntos;
+  const suma = utiles.reduce(
+    (acc, [lng, lat]) => ({ lat: acc.lat + lat, lng: acc.lng + lng }),
+    { lat: 0, lng: 0 }
+  );
+  return { lat: suma.lat / utiles.length, lng: suma.lng / utiles.length };
+}
+
 /** Copiado de un límite oficial: la geometría canónica pasa a ser la del item. */
 export function geoDeLimite({ limite, base }) {
   const previo = normalizarGeo(base);

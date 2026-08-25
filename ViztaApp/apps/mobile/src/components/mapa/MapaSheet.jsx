@@ -1,16 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Crosshair, X } from 'lucide-react-native';
+import {
+  ArrowUpRight,
+  Check,
+  Crosshair,
+  Flame,
+  Hand,
+  MapPinPlus,
+  Pentagon,
+  Route,
+  ScanSearch,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { MONO } from '../codex/mono';
 import { PAPEL } from '../codex/Papel';
 import MapaVizta, { CENTRO_INICIAL } from './MapaVizta';
 import SelectorNiveles from './SelectorNiveles';
+import ItemDetailSheet from '../codex/ItemDetailSheet';
 import { supabase } from '../../utils/supabase';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { roce } from '../../utils/haptics';
+import { geoDeArea, geoDePunto, geoDeRecorrido } from '../codex/geo';
 
 const CABEZAL = 46;
 const TENUE = 'rgba(28,43,34,0.3)';
@@ -71,6 +86,7 @@ function nivelDe(item, geo) {
 function repartir(items) {
   const areas = [];
   const pines = [];
+  const recorridos = [];
 
   for (const item of items || []) {
     const geo = item?.geo || {};
@@ -80,6 +96,16 @@ function repartir(items) {
       name: item.name || 'Sin nombre',
       tipo: geo.boundary_type || item?.details?.boundary_type || 'territorio',
       description: item.description || null,
+      // El item entero, sin aplastar. La ficha solo necesita cuatro campos
+      // para dibujarse, pero el botón que abre el detalle necesita el item tal
+      // como vino del Codex. Sin esta referencia, tocar un punto era un
+      // callejón: se leía el resumen y no había a dónde ir.
+      //
+      // `_source` no es decoración: al guardar, el detalle elige entre
+      // `codex_universe_items` y `wiki_items` mirando esta marca. Estos items
+      // salen de la primera, pero sin decirlo se los toma por wiki y el UPDATE
+      // se va a la tabla equivocada.
+      original: { ...item, _source: 'universe' },
     };
 
     if (g?.type === 'Polygon' || g?.type === 'MultiPolygon') {
@@ -87,15 +113,28 @@ function repartir(items) {
       continue;
     }
 
+    if (g?.type === 'LineString' || g?.type === 'MultiLineString') {
+      recorridos.push({ ...base, geometry: g, clase: 'ruta', caja: cajaDe(g) });
+      continue;
+    }
+
     const coordinates = coordenadasDe(geo);
     if (coordinates) pines.push({ ...base, coordinates, clase: 'pin' });
   }
 
-  return { areas, pines };
+  return { areas, pines, recorridos };
 }
 
 const anillosDe = (g) =>
   g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates.flat() : [];
+
+const trazosDe = (g) => {
+  if (g?.type === 'Polygon') return g.coordinates;
+  if (g?.type === 'MultiPolygon') return g.coordinates.flat();
+  if (g?.type === 'LineString') return [g.coordinates];
+  if (g?.type === 'MultiLineString') return g.coordinates;
+  return [];
+};
 
 /** Caja envolvente en grados. Se calcula una vez por territorio y no cambia. */
 function cajaDe(g) {
@@ -103,7 +142,7 @@ function cajaDe(g) {
   let lngMax = -Infinity;
   let latMin = Infinity;
   let latMax = -Infinity;
-  for (const anillo of anillosDe(g)) {
+  for (const anillo of trazosDe(g)) {
     for (const [ln, la] of anillo) {
       if (ln < lngMin) lngMin = ln;
       if (ln > lngMax) lngMax = ln;
@@ -152,7 +191,7 @@ function adentro(g, lat, lng) {
  * lista, y entonces no se dibuja ni se toca. Con una bandera aparte, las dos
  * cosas podían discrepar y se terminaba seleccionando un municipio invisible.
  */
-function loQueSeToco({ lat, lng, zoom }, areas, pines, verPines) {
+function loQueSeToco({ lat, lng, zoom }, areas, pines, recorridos, verPines, verRecorridos) {
   if (verPines) {
     const grados = 24 / Math.pow(2, zoom) / 1.1; // ~24 px de tolerancia
     let mejor = null;
@@ -164,6 +203,36 @@ function loQueSeToco({ lat, lng, zoom }, areas, pines, verPines) {
       if (d < corta && d < grados * grados) {
         corta = d;
         mejor = p;
+      }
+    }
+    if (mejor) return mejor;
+  }
+
+  if (verRecorridos) {
+    const tolerancia = 20 / Math.pow(2, zoom) / 1.1;
+    const coseno = Math.cos((lat * Math.PI) / 180);
+    let mejor = null;
+    let corta = tolerancia * tolerancia;
+    for (const r of recorridos) {
+      const c = r.caja;
+      if (
+        lng < c.lngMin - tolerancia ||
+        lng > c.lngMax + tolerancia ||
+        lat < c.latMin - tolerancia ||
+        lat > c.latMax + tolerancia
+      ) continue;
+      for (const linea of trazosDe(r.geometry)) {
+        for (let i = 1; i < linea.length; i++) {
+          const d = distanciaSegmento(
+            { x: lng * coseno, y: lat },
+            { x: Number(linea[i - 1][0]) * coseno, y: Number(linea[i - 1][1]) },
+            { x: Number(linea[i][0]) * coseno, y: Number(linea[i][1]) }
+          );
+          if (d < corta) {
+            corta = d;
+            mejor = r;
+          }
+        }
       }
     }
     if (mejor) return mejor;
@@ -188,6 +257,16 @@ function loQueSeToco({ lat, lng, zoom }, areas, pines, verPines) {
   return null;
 }
 
+function distanciaSegmento(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const largo2 = dx * dx + dy * dy;
+  const t = largo2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / largo2));
+  const x = a.x + t * dx;
+  const y = a.y + t * dy;
+  return (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+}
+
 /**
  * La pantalla del mapa.
  *
@@ -199,11 +278,26 @@ function loQueSeToco({ lat, lng, zoom }, areas, pines, verPines) {
 export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const { width: W, height: H } = useWindowDimensions();
   const [reinicio, setReinicio] = useState(0);
-  // Arranca sin límites: el mapa se ve entero y las fronteras se piden. Ver
-  // `SelectorNiveles` para por qué es un nivel a la vez y no dos interruptores.
-  const [nivel, setNivel] = useState(null);
+  // El mapa se orienta por escala: departamentos para descubrir el país,
+  // municipios al bajar al detalle. La persona puede fijar un nivel desde el
+  // selector o apagar la capa por completo.
+  const [mostrarLimites, setMostrarLimites] = useState(true);
+  const [nivelPreferido, setNivelPreferido] = useState(null);
+  const [vista, setVista] = useState(CENTRO_INICIAL);
   const [verPines, setVerPines] = useState(true);
+  const [verRecorridos, setVerRecorridos] = useState(true);
+  const [mostrarCalor, setMostrarCalor] = useState(false);
+  const [modo, setModo] = useState('navegar');
+  const [borrador, setBorrador] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [nombreBorrador, setNombreBorrador] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [errorEditor, setErrorEditor] = useState(null);
   const [elegido, setElegido] = useState(null);
+  // El item cuyo detalle está abierto. Separado de `elegido` a propósito: al
+  // cerrar el detalle se vuelve a la ficha sobre el mapa, no al mapa pelado.
+  // Cerrar una capa debería devolverte a la anterior, no al principio.
+  const [detalle, setDetalle] = useState(null);
 
   // El usuario sale de la conexión con Pulse, que es la sesión que usa el resto
   // de la app. La otra —`utils/auth`, con su JWT en SecureStore— es el login web
@@ -221,9 +315,21 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       // Sin `.eq('user_id', …)`: la política de RLS ya devuelve solo lo tuyo, y
       // repetir el filtro del lado del cliente solo agrega una forma de que los
       // dos no coincidan.
+      // La proyección tiene que ser completa, no la mínima para dibujar.
+      //
+      // El mapa solo necesita `name` y `geo` para pintar un polígono, pero
+      // desde la ficha se abre el detalle, y el detalle **escribe de vuelta**:
+      // al guardar hace UPDATE de name, description, tags, aliases, geo y
+      // details. Un campo que no se trajo llega como `undefined`, y del otro
+      // lado `tags ?? []` lo convierte en un array vacío: guardar un cambio de
+      // nombre borraría las etiquetas y los alias sin decir nada.
+      //
+      // `tipo` va por otra razón: acá se filtra por él, así que todos son
+      // Territorio, pero si no viaja el detalle lo resuelve como «Otros» y no
+      // encuentra su preset de campos.
       const { data, error } = await supabase
         .from('codex_universe_items')
-        .select('id, name, description, details, geo')
+        .select('id, name, tipo, description, tags, aliases, details, geo')
         .eq('tipo', 'Territorio')
         .not('geo', 'is', null);
       if (error) throw error;
@@ -252,7 +358,22 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     return () => supabase.removeChannel(canal);
   }, [queryClient, userId]);
 
-  const { areas, pines } = useMemo(() => repartir(territorios), [territorios]);
+  const { areas, pines, recorridos } = useMemo(() => repartir(territorios), [territorios]);
+
+  const nivelAutomatico = vista.zoom < 9.75 ? 'departamento' : 'municipio';
+  const nivel = mostrarLimites ? nivelPreferido || nivelAutomatico : null;
+
+  // Los controles son overlays sobre el GestureDetector. La zona es algo más
+  // amplia que cada control para incluir el hitSlop y evitar selecciones al
+  // rozar sus bordes.
+  const zonasSinToque = useMemo(
+    () => [
+      { x: 0, y: alto / 2 - 100, ancho: 190, alto: 160 },
+      { x: W - 78, y: 0, ancho: 78, alto: 340 },
+      { x: 0, y: alto - bottomInset - 142, ancho: W, alto: 142 },
+    ],
+    [W, alto, bottomInset]
+  );
 
   // Cuántos hay de cada nivel: la leyenda solo muestra los niveles que existen,
   // así que un mapa sin municipios no ofrece un interruptor que no hace nada.
@@ -263,7 +384,9 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   }, [areas]);
 
   const areasVisibles = useMemo(
-    () => (nivel ? areas.filter((a) => a.nivel === nivel) : []),
+    // Las áreas dibujadas por la persona no son un nivel administrativo y se
+    // conservan visibles aunque se cambie de departamentos a municipios.
+    () => areas.filter((a) => a.nivel === 'otro' || (nivel && a.nivel === nivel)),
     [areas, nivel]
   );
 
@@ -285,9 +408,80 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       ? 'trayendo tus territorios…'
       : isError
         ? 'no se pudieron cargar tus territorios.'
-        : areas.length === 0 && pines.length === 0
+        : areas.length === 0 && pines.length === 0 && recorridos.length === 0
           ? 'los territorios de tu Codex aparecen acá.'
           : null;
+
+  const seleccionar = (punto) =>
+    setElegido(loQueSeToco(punto, areasVisibles, pines, recorridos, verPines, verRecorridos));
+
+  const tocarMapa = (punto) => {
+    if (modo === 'navegar' || modo === 'explorar') {
+      seleccionar(punto);
+      return;
+    }
+
+    const tipo = modo;
+    const coordenada = [punto.lng, punto.lat];
+    setErrorEditor(null);
+    setConfirmando(false);
+    setBorrador((actual) => {
+      if (tipo === 'punto') return { tipo, coordinates: [coordenada] };
+      if (!actual || actual.tipo !== tipo) return { tipo, coordinates: [coordenada] };
+      return { ...actual, coordinates: [...actual.coordinates, coordenada] };
+    });
+    roce();
+  };
+
+  const cambiarModo = (siguiente) => {
+    roce();
+    setModo(siguiente);
+    setElegido(null);
+    setConfirmando(false);
+    setErrorEditor(null);
+    if (!['punto', 'area', 'ruta'].includes(siguiente)) setBorrador(null);
+    else if (borrador?.tipo !== siguiente) setBorrador({ tipo: siguiente, coordinates: [] });
+  };
+
+  const minimoBorrador = borrador?.tipo === 'area' ? 3 : borrador?.tipo === 'ruta' ? 2 : 1;
+  const puedeGuardar = Boolean(borrador && borrador.coordinates.length >= minimoBorrador);
+
+  const guardarBorrador = async () => {
+    const nombre = nombreBorrador.trim();
+    if (!nombre || !puedeGuardar || !userId) return;
+    setGuardando(true);
+    setErrorEditor(null);
+    try {
+      const coordinates = borrador.coordinates;
+      const geo =
+        borrador.tipo === 'punto'
+          ? geoDePunto({ lat: coordinates[0][1], lng: coordinates[0][0] })
+          : borrador.tipo === 'area'
+            ? geoDeArea({ coordinates })
+            : geoDeRecorrido({ coordinates });
+      const { error } = await supabase.from('codex_universe_items').insert({
+        user_id: userId,
+        name: nombre,
+        tipo: 'Territorio',
+        description: '',
+        tags: [],
+        aliases: [],
+        details: { created_from: 'map_editor' },
+        geo,
+      });
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ['mapa-territorios', userId] });
+      setBorrador(null);
+      setConfirmando(false);
+      setNombreBorrador('');
+      setModo('navegar');
+      roce();
+    } catch (error) {
+      setErrorEditor(error?.message || 'no se pudo guardar la geometría.');
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -332,14 +526,33 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           alto={alto}
           inicial={CENTRO_INICIAL}
           reinicio={reinicio}
+          onMover={setVista}
           areas={areasVisibles}
           pines={pines}
+          recorridos={verRecorridos ? recorridos : []}
           mostrarAreas={areasVisibles.length > 0}
           mostrarPines={verPines}
+          mostrarCalor={mostrarCalor}
+          borrador={borrador}
           nivel={nivel}
           elegido={elegido?.id}
-          onTocar={(punto) => setElegido(loQueSeToco(punto, areasVisibles, pines, verPines))}
+          modo={modo}
+          zonasSinToque={zonasSinToque}
+          onTocar={tocarMapa}
+          onExplorar={modo === 'explorar' ? seleccionar : null}
         >
+          <View style={{ position: 'absolute', right: 12, top: 12 }}>
+            <HerramientasMapa
+              modo={modo}
+              calor={mostrarCalor}
+              onModo={cambiarModo}
+              onCalor={() => {
+                roce();
+                setMostrarCalor((v) => !v);
+              }}
+            />
+          </View>
+
           {/* El interruptor de límites, a media altura del borde izquierdo: la
               ficha de lo que se toca sale de abajo, y ahí se taparían. */}
           {nivelesDisponibles.length ? (
@@ -348,7 +561,13 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                 niveles={nivelesDisponibles}
                 nivel={nivel}
                 onCambiar={(siguiente) => {
-                  setNivel(siguiente);
+                  if (!siguiente) {
+                    setMostrarLimites(false);
+                    setNivelPreferido(null);
+                  } else {
+                    setMostrarLimites(true);
+                    setNivelPreferido(siguiente);
+                  }
                   // Lo elegido puede pertenecer al nivel que se acaba de apagar;
                   // dejar la ficha abierta mostraría un municipio que ya no está
                   // dibujado y que no se puede volver a tocar para cerrarla.
@@ -358,7 +577,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             </View>
           ) : null}
 
-          {pines.length ? (
+          {pines.length && !['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
             <View style={{ position: 'absolute', left: 14, bottom: bottomInset + 14 }}>
               <Leyenda>
                 <Fila
@@ -370,6 +589,57 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                 />
               </Leyenda>
             </View>
+          ) : null}
+
+          {recorridos.length && !['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
+            <View style={{ position: 'absolute', left: 14, bottom: bottomInset + (pines.length ? 62 : 14) }}>
+              <Leyenda>
+                <Fila
+                  simbolo={<View style={{ width: 13, height: 3, borderRadius: 2, backgroundColor: '#315E9E' }} />}
+                  texto="rutas"
+                  cuantos={recorridos.length}
+                  activo={verRecorridos}
+                  onPress={() => setVerRecorridos((v) => !v)}
+                />
+              </Leyenda>
+            </View>
+          ) : null}
+
+          {modo === 'explorar' && !elegido ? (
+            <AyudaModo bottomInset={bottomInset} texto="deslizá el dedo para identificar territorios" />
+          ) : null}
+
+          {['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
+            <EditorBorrador
+              tipo={modo}
+              cuantos={borrador?.coordinates.length || 0}
+              puedeGuardar={puedeGuardar}
+              bottomInset={bottomInset}
+              onDeshacer={() =>
+                setBorrador((actual) =>
+                  actual ? { ...actual, coordinates: actual.coordinates.slice(0, -1) } : actual
+                )
+              }
+              onBorrar={() => setBorrador({ tipo: modo, coordinates: [] })}
+              onFinalizar={() => {
+                setNombreBorrador('');
+                setConfirmando(true);
+                roce();
+              }}
+            />
+          ) : null}
+
+          {confirmando ? (
+            <GuardarGeometria
+              tipo={borrador?.tipo}
+              nombre={nombreBorrador}
+              onNombre={setNombreBorrador}
+              guardando={guardando}
+              error={errorEditor}
+              bottomInset={bottomInset}
+              onCancelar={() => setConfirmando(false)}
+              onGuardar={guardarBorrador}
+            />
           ) : null}
 
           {aviso ? (
@@ -398,14 +668,269 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             </View>
           ) : null}
 
-          {elegido ? <Ficha item={elegido} bottomInset={bottomInset} onClose={() => setElegido(null)} /> : null}
+          {elegido && !confirmando ? (
+            <Ficha
+              item={elegido}
+              bottomInset={bottomInset}
+              onClose={() => setElegido(null)}
+              onAbrir={
+                elegido.original
+                  ? () => {
+                      roce();
+                      setDetalle(elegido.original);
+                    }
+                  : null
+              }
+            />
+          ) : null}
         </MapaVizta>
+
+        {/* El detalle va fuera de `MapaVizta` y último en el árbol: cubre el
+          * mapa entero, y montarlo adentro lo dejaría bajo los controles y
+          * atrapado por los gestos del mapa. */}
+        {detalle ? (
+          <ItemDetailSheet
+            item={detalle}
+            bottomInset={bottomInset}
+            onClose={() => setDetalle(null)}
+            onSaved={() => {
+              // Lo editado en el detalle cambia lo que el mapa dibuja —nombre,
+              // geo, tipo—, así que la consulta de items tiene que volver a
+              // correr. Sin esto, se guarda y el pin sigue con el nombre viejo.
+              queryClient.invalidateQueries({ queryKey: ['mapa-territorios', userId] });
+            }}
+          />
+        ) : null}
       </GestureHandlerRootView>
     </Modal>
   );
 }
 
 // ─── Piezas ───────────────────────────────────────────────────────────────────
+
+const MODOS_MAPA = [
+  { clave: 'navegar', etiqueta: 'Navegar', Icono: Hand },
+  { clave: 'explorar', etiqueta: 'Explorar territorios', Icono: ScanSearch },
+  { clave: 'punto', etiqueta: 'Crear punto', Icono: MapPinPlus },
+  { clave: 'area', etiqueta: 'Crear área', Icono: Pentagon },
+  { clave: 'ruta', etiqueta: 'Crear ruta manual', Icono: Route },
+];
+
+function HerramientasMapa({ modo, calor, onModo, onCalor }) {
+  return (
+    <View
+      style={{
+        gap: 5,
+        padding: 5,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,253,248,0.94)',
+        borderWidth: 1,
+        borderColor: 'rgba(28,43,34,0.12)',
+      }}
+    >
+      {MODOS_MAPA.map(({ clave, etiqueta, Icono }) => {
+        const activo = modo === clave;
+        return (
+          <Pressable
+            key={clave}
+            onPress={() => onModo(clave)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: activo }}
+            accessibilityLabel={etiqueta}
+            style={({ pressed }) => ({
+              width: 39,
+              height: 39,
+              borderRadius: 20,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: activo ? '#1F5EA8' : pressed ? 'rgba(28,43,34,0.08)' : 'transparent',
+            })}
+          >
+            <Icono size={18} color={activo ? PAPEL : INK.body} strokeWidth={activo ? 2.4 : 1.8} />
+          </Pressable>
+        );
+      })}
+      <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 7 }} />
+      <Pressable
+        onPress={onCalor}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: calor }}
+        accessibilityLabel="Mapa de calor"
+        style={({ pressed }) => ({
+          width: 39,
+          height: 39,
+          borderRadius: 20,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: calor ? '#C2410C' : pressed ? 'rgba(28,43,34,0.08)' : 'transparent',
+        })}
+      >
+        <Flame size={18} color={calor ? PAPEL : INK.body} strokeWidth={calor ? 2.4 : 1.8} />
+      </Pressable>
+    </View>
+  );
+}
+
+function AyudaModo({ texto, bottomInset }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 36, right: 80, bottom: bottomInset + 18, alignItems: 'center' }}>
+      <Text
+        style={{
+          fontFamily: MONO,
+          fontSize: 10.5,
+          color: INK.body,
+          backgroundColor: 'rgba(255,253,248,0.94)',
+          borderWidth: 1,
+          borderColor: 'rgba(28,43,34,0.10)',
+          borderRadius: 18,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          overflow: 'hidden',
+        }}
+      >
+        {texto}
+      </Text>
+    </View>
+  );
+}
+
+function EditorBorrador({ tipo, cuantos, puedeGuardar, bottomInset, onDeshacer, onBorrar, onFinalizar }) {
+  const instruccion =
+    tipo === 'punto'
+      ? 'tocá el lugar del punto'
+      : tipo === 'area'
+        ? 'tocá al menos 3 vértices del área'
+        : 'tocá al menos 2 puntos del recorrido';
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: 14,
+        right: 72,
+        bottom: bottomInset + 14,
+        minHeight: 62,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 9,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(28,43,34,0.12)',
+        backgroundColor: 'rgba(255,253,248,0.96)',
+      }}
+    >
+      <View style={{ flex: 1, paddingRight: 8 }}>
+        <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.title }}>{instruccion}</Text>
+        <Text style={{ fontFamily: MONO, fontSize: 9.5, color: TENUE, marginTop: 4 }}>
+          {cuantos} {cuantos === 1 ? 'punto' : 'puntos'}
+        </Text>
+      </View>
+      <BotonEditor etiqueta="Deshacer" onPress={onDeshacer} disabled={cuantos === 0}>
+        <Undo2 size={16} color={INK.body} />
+      </BotonEditor>
+      <BotonEditor etiqueta="Borrar borrador" onPress={onBorrar} disabled={cuantos === 0}>
+        <Trash2 size={16} color={INK.body} />
+      </BotonEditor>
+      <BotonEditor etiqueta="Finalizar geometría" onPress={onFinalizar} disabled={!puedeGuardar} primario>
+        <Check size={17} color={PAPEL} />
+      </BotonEditor>
+    </View>
+  );
+}
+
+function BotonEditor({ etiqueta, onPress, disabled, primario, children }) {
+  return (
+    <Pressable
+      onPress={() => {
+        if (disabled) return;
+        roce();
+        onPress();
+      }}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={etiqueta}
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      style={({ pressed }) => ({
+        width: 36,
+        height: 36,
+        marginLeft: 5,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: primario ? '#6941C6' : 'rgba(28,43,34,0.06)',
+        opacity: disabled ? 0.28 : pressed ? 0.55 : 1,
+      })}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+function GuardarGeometria({ tipo, nombre, onNombre, guardando, error, bottomInset, onCancelar, onGuardar }) {
+  const etiqueta = tipo === 'area' ? 'área' : tipo === 'ruta' ? 'ruta' : 'punto';
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: 14,
+        right: 14,
+        bottom: bottomInset + 14,
+        padding: 14,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: 'rgba(28,43,34,0.14)',
+        backgroundColor: PAPEL,
+      }}
+    >
+      <Text style={{ fontFamily: MONO, fontSize: 10.5, color: TENUE }}>guardar {etiqueta} en el Codex</Text>
+      <TextInput
+        autoFocus
+        value={nombre}
+        onChangeText={onNombre}
+        onSubmitEditing={onGuardar}
+        placeholder={`Nombre de ${etiqueta}`}
+        placeholderTextColor="rgba(28,43,34,0.28)"
+        returnKeyType="done"
+        style={{
+          height: 42,
+          marginTop: 9,
+          paddingHorizontal: 11,
+          borderWidth: 1,
+          borderColor: 'rgba(28,43,34,0.14)',
+          borderRadius: 6,
+          fontFamily: MONO,
+          fontSize: 12,
+          color: INK.title,
+          backgroundColor: 'rgba(255,255,255,0.42)',
+        }}
+      />
+      {error ? <Text style={{ fontFamily: MONO, fontSize: 9.5, color: '#B42318', marginTop: 7 }}>{error}</Text> : null}
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+        <Pressable onPress={onCancelar} disabled={guardando} style={{ paddingHorizontal: 12, paddingVertical: 9 }}>
+          <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.body }}>volver</Text>
+        </Pressable>
+        <Pressable
+          onPress={onGuardar}
+          disabled={guardando || !nombre.trim()}
+          accessibilityRole="button"
+          accessibilityLabel={`Guardar ${etiqueta}`}
+          style={({ pressed }) => ({
+            minWidth: 92,
+            minHeight: 36,
+            paddingHorizontal: 13,
+            borderRadius: 18,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#1F5EA8',
+            opacity: guardando || !nombre.trim() ? 0.3 : pressed ? 0.6 : 1,
+          })}
+        >
+          {guardando ? <ActivityIndicator size="small" color={PAPEL} /> : <Text style={{ fontFamily: MONO, fontSize: 10.5, color: PAPEL }}>guardar</Text>}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 /**
  * La leyenda es el interruptor.
@@ -460,7 +985,7 @@ function Fila({ simbolo, texto, cuantos, activo, onPress }) {
 }
 
 /** La ficha de lo que tocaste. Papel sobre el mapa, con el nombre en serif. */
-function Ficha({ item, bottomInset, onClose }) {
+function Ficha({ item, bottomInset, onClose, onAbrir }) {
   return (
     <View
       style={{
@@ -504,6 +1029,41 @@ function Ficha({ item, bottomInset, onClose }) {
             {item.description}
           </Text>
         </>
+      ) : null}
+
+      {/* La salida de la ficha.
+        *
+        * Sin esto el mapa era un callejón: se tocaba un punto, se leían tres
+        * líneas y no había a dónde ir. El resumen es una promesa de que hay
+        * más —tipo, nombre, un recorte de la descripción— y esta es la puerta
+        * que la cumple.
+        *
+        * Solo aparece si el item trae su original: los territorios dibujados a
+        * mano que todavía no son un item del Codex no tienen detalle que
+        * abrir, y un botón que no lleva a ningún lado es peor que ninguno. */}
+      {onAbrir ? (
+        <Pressable
+          onPress={onAbrir}
+          accessibilityRole="button"
+          accessibilityLabel={`Abrir ${item.name}`}
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginTop: 14,
+            paddingVertical: 10,
+            borderRadius: 5,
+            borderWidth: 1,
+            borderColor: 'rgba(28,43,34,0.14)',
+            // El press se siente sin animación: el fondo se hunde un tono.
+            backgroundColor: pressed ? 'rgba(28,43,34,0.06)' : 'transparent',
+          })}
+        >
+          <Text style={{ fontFamily: MONO, fontSize: 11, color: INK.body, letterSpacing: 0.3 }}>
+            abrir ficha
+          </Text>
+          <ArrowUpRight size={13} color={INK.body} style={{ marginLeft: 6 }} />
+        </Pressable>
       ) : null}
     </View>
   );

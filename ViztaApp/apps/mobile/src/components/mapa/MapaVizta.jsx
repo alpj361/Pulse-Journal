@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { MONO } from '../codex/mono';
@@ -51,14 +53,32 @@ import MapaCapas from './MapaCapas';
  * antes de volver a estar nítido.
  */
 
-/** Cada cuántos píxeles de mundo se vuelve a anclar las capas. */
-const PASO_ANCLA = 2048;
-
 const Z_MIN = 3;
 const Z_MAX = 19;
 
+/**
+ * Cuánto se deja pasar el zoom más allá de sus límites mientras se pellizca.
+ *
+ * Sin esto, tocar el fondo del zoom se siente como tocar una pared: el gesto
+ * sigue pero el número no se mueve, y no hay forma de saber si el mapa se
+ * congeló o si de verdad no hay más para acercar. Con un margen que cede un
+ * poco y después vuelve con un resorte —como el fondo de una lista en
+ * iOS— el límite se siente, no se choca.
+ */
+const Z_ELASTICO = 0.6;
+
+/** El overshoot se aplana a medida que crece: los primeros grados de exceso
+ *  ceden casi entero, los siguientes casi nada. Así el tope sigue sintiéndose
+ *  como un tope, no como zoom infinito con freno de mano. */
+function conElasticidad(exceso) {
+  const signo = Math.sign(exceso);
+  return signo * Z_ELASTICO * (1 - Math.exp(-Math.abs(exceso) / Z_ELASTICO));
+}
+
 /** Ciudad de Guatemala. */
-export const CENTRO_INICIAL = { lat: 14.6349, lng: -90.5069, zoom: 12 };
+// Una vista de país da contexto antes de bajar al detalle. El mapa cambia a
+// municipios al acercarse, así que no hace falta empezar encerrado en la capital.
+export const CENTRO_INICIAL = { lat: 15.15, lng: -90.25, zoom: 7.6 };
 
 /**
  * La fuente de teselas.
@@ -115,11 +135,20 @@ export default function MapaVizta({
   onMover,
   areas = [],
   pines = [],
+  recorridos = [],
   mostrarAreas = true,
   mostrarPines = true,
+  mostrarCalor = false,
+  borrador = null,
   nivel,
   elegido,
   onTocar,
+  onExplorar,
+  modo = 'navegar',
+  // Controles superpuestos: RNGH puede reconocer su toque aunque sean
+  // hermanos visuales del lienzo, así que sus rectángulos se excluyen del
+  // acierto geográfico.
+  zonasSinToque = [],
   children,
 }) {
   const lat = useSharedValue(inicial.lat);
@@ -139,11 +168,14 @@ export default function MapaVizta({
    * Las teselas se recolocan con `origen`, que cambia cada vez que el rango
    * visible se corre —varias veces por arrastre—. Los polígonos no pueden
    * colgar de eso: reproyectarlos con esa frecuencia es trabajo del hilo de JS
-   * en medio del gesto. El ancla está cuantizada a bloques de `PASO_ANCLA`, así
-   * que se mueve una vez cada varias pantallas y entre medio arrastrar no le
-   * cuesta nada a nadie.
+   * en medio del gesto. El ancla se fija mientras se conserva la misma escala:
+   * así Skia transforma las rutas existentes junto al dedo, sin vaciarlas para
+   * volverlas a crear a mitad de un paneo.
    */
-  const [ancla, setAncla] = useState({ x: 0, y: 0, z: Math.round(inicial.zoom) });
+  const [ancla, setAncla] = useState(() => {
+    const z = Math.round(inicial.zoom);
+    return { x: lngAX(inicial.lng, z), y: latAY(inicial.lat, z), z };
+  });
 
   const claveVista = useRef('');
 
@@ -163,6 +195,7 @@ export default function MapaVizta({
    */
 
   const pellizcoPrevio = useSharedValue(1);
+  const ultimaExploracion = useSharedValue(0);
 
   /** Recalcula el juego de teselas. Solo se llama cuando el rango cambió. */
   const recomputar = useCallback(
@@ -177,18 +210,19 @@ export default function MapaVizta({
       claveVista.current = clave;
 
       setZInt(z);
-      const crudas = teselasVisibles({ cx, cy, z, ancho, alto, escala, margen: 1 });
+      // Dos anillos por delante cubren una inercia corta y permiten que
+      // expo-image resuelva desde memoria/disco antes de que la tesela entre a
+      // la pantalla. Es preferible a mostrar el fondo mientras llega la red.
+      const crudas = teselasVisibles({ cx, cy, z, ancho, alto, escala, margen: 2 });
       const ox = crudas.length ? Math.min(...crudas.map((t) => t.px)) : 0;
       const oy = crudas.length ? Math.min(...crudas.map((t) => t.py)) : 0;
       setOrigen({ x: ox, y: oy });
       const locales = crudas.map((t) => ({ ...t, lx: t.px - ox, ly: t.py - oy }));
       setTeselas(locales);
 
-      const ax = Math.floor(cx / PASO_ANCLA) * PASO_ANCLA;
-      const ay = Math.floor(cy / PASO_ANCLA) * PASO_ANCLA;
-      // Se devuelve el objeto anterior cuando no cambió: así los `useMemo` que
-      // dependen del ancla no se invalidan por una identidad nueva.
-      setAncla((prev) => (prev.x === ax && prev.y === ay && prev.z === z ? prev : { x: ax, y: ay, z }));
+      // El cambio de ancla recrea paths Skia. Durante un arrastre eso dejaba un
+      // frame vacío; por eso solo se reemplaza al cambiar de zoom entero.
+      setAncla((prev) => (prev.z === z ? prev : { x: cx, y: cy, z }));
       setBloque({
         w: locales.length ? Math.max(...locales.map((t) => t.lx)) + TESELA : 0,
         h: locales.length ? Math.max(...locales.map((t) => t.ly)) + TESELA : 0,
@@ -251,6 +285,10 @@ export default function MapaVizta({
    */
   const arrastre = Gesture.Pan()
     .minDistance(2)
+    // Un dedo, nunca dos. Sin este límite, un toque de dos dedos puede quedar
+    // reclamado por el arrastre antes de que el pellizco llegue a activarse: es
+    // una carrera entre los dos reconocedores nativos, y Pan la gana seguido.
+    .maxPointers(1)
     // `onChange` y no `onUpdate`: el delta por frame —`changeX`, `changeY`—
     // solo viene poblado en `onChange`. En `onUpdate` llega `undefined`, la
     // resta da `NaN`, y el centro del mapa se vuelve `NaN` para siempre: la
@@ -278,7 +316,19 @@ export default function MapaVizta({
       pellizcoPrevio.value = e.scale;
 
       const z0 = zoom.value;
-      const z1 = Math.max(Z_MIN, Math.min(Z_MAX, z0 + Math.log2(factor)));
+      // El destino sin recortar. Si cae dentro del rango, se usa tal cual; si se
+      // pasa, el exceso se amortigua en vez de cortarse en seco — ver
+      // `conElasticidad`. `zoom.value` puede quedar un poco afuera de
+      // [Z_MIN, Z_MAX] mientras el dedo sigue en pantalla; `recomputar` ya
+      // redondea y recorta antes de pedir teselas, así que un 19.3 pasajero
+      // nunca pide una tesela de un nivel que no existe.
+      const crudo = z0 + Math.log2(factor);
+      const z1 =
+        crudo < Z_MIN
+          ? Z_MIN + conElasticidad(crudo - Z_MIN)
+          : crudo > Z_MAX
+            ? Z_MAX + conElasticidad(crudo - Z_MAX)
+            : crudo;
       if (z1 === z0) return;
 
       // El punto del mundo que está bajo los dedos tiene que seguir ahí después
@@ -293,6 +343,15 @@ export default function MapaVizta({
       lng.value = xALng(lngAX(anclaLng, z1) - dx, z1);
       lat.value = Math.max(-LAT_MAX, Math.min(LAT_MAX, yALat(latAY(anclaLat, z1) - dy, z1)));
       zoom.value = z1;
+    })
+    .onEnd(() => {
+      // Al soltar, lo que quedó afuera del rango vuelve con un resorte. Si
+      // nunca se pasó del límite, esto no hace nada — `withSpring` hacia el
+      // mismo valor no anima.
+      const acotado = Math.max(Z_MIN, Math.min(Z_MAX, zoom.value));
+      if (acotado !== zoom.value) {
+        zoom.value = withSpring(acotado, { damping: 14, stiffness: 180 });
+      }
     });
 
   /** Doble toque: un nivel más, anclado donde se tocó. */
@@ -328,16 +387,59 @@ export default function MapaVizta({
    */
   const simple = Gesture.Tap()
     .maxDuration(260)
+    // Un arrastre real debe hacer fallar el toque antes de levantar el dedo.
+    // Sin un límite explícito, algunos eventos sintéticos de iOS llegan como
+    // un toque en el punto final y abren una ficha en vez de mover el mapa.
+    .maxDistance(8)
     .onEnd((e) => {
+      for (const zona of zonasSinToque) {
+        if (e.x >= zona.x && e.x <= zona.x + zona.ancho && e.y >= zona.y && e.y <= zona.y + zona.alto) {
+          return;
+        }
+      }
       const z = zoom.value;
       const px = lngAX(lng.value, z) + (e.x - ancho / 2);
       const py = latAY(lat.value, z) + (e.y - alto / 2);
       if (onTocar) runOnJS(onTocar)({ lat: yALat(py, z), lng: xALng(px, z), zoom: z });
     });
 
-  // El doble toque tiene prioridad: el simple espera a que aquel falle, si no
-  // acercar dos veces también abriría una ficha.
-  const gesto = Gesture.Simultaneous(Gesture.Exclusive(doble, simple, arrastre), pellizco);
+  /**
+   * Explorar territorios con el dedo, sin mover la cámara.
+   *
+   * La consulta cruza a JS como máximo cada 72 ms (~14 veces por segundo). Es
+   * suficiente para que el resaltado siga al dedo y evita recorrer cientos de
+   * cajas geográficas sesenta veces por segundo.
+   */
+  const exploracion = Gesture.Pan()
+    .minDistance(0)
+    .maxPointers(1)
+    .onBegin((e) => {
+      if (!onExplorar) return;
+      const z = zoom.value;
+      const px = lngAX(lng.value, z) + (e.x - ancho / 2);
+      const py = latAY(lat.value, z) + (e.y - alto / 2);
+      ultimaExploracion.value = Date.now();
+      runOnJS(onExplorar)({ lat: yALat(py, z), lng: xALng(px, z), zoom: z });
+    })
+    .onChange((e) => {
+      if (!onExplorar) return;
+      const ahora = Date.now();
+      if (ahora - ultimaExploracion.value < 72) return;
+      ultimaExploracion.value = ahora;
+      const z = zoom.value;
+      const px = lngAX(lng.value, z) + (e.x - ancho / 2);
+      const py = latAY(lat.value, z) + (e.y - alto / 2);
+      runOnJS(onExplorar)({ lat: yALat(py, z), lng: xALng(px, z), zoom: z });
+    });
+
+  // El arrastre compite directamente con el toque y gana apenas se superan
+  // tres píxeles. El doble toque conserva prioridad sobre ambos.
+  const navegacion = Gesture.Simultaneous(
+    Gesture.Exclusive(doble, Gesture.Race(arrastre, simple)),
+    pellizco
+  );
+  const edicion = Gesture.Simultaneous(Gesture.Exclusive(doble, simple), pellizco);
+  const gesto = modo === 'explorar' ? Gesture.Simultaneous(exploracion, pellizco) : modo === 'navegar' ? navegacion : edicion;
 
   /**
    * La transformación.
@@ -371,8 +473,12 @@ export default function MapaVizta({
   }, [ancho, alto, zInt, origen]);
 
   return (
-    <GestureDetector gesture={gesto}>
-      <View style={{ width: ancho, height: alto, overflow: 'hidden', backgroundColor: '#EDEBE3' }}>
+    <View style={{ width: ancho, height: alto, overflow: 'hidden', backgroundColor: '#EDEBE3' }}>
+      {/* Los gestos solo pertenecen al lienzo. Los controles del Codex son
+          hermanos, no hijos: de ese modo elegir “municipios” no toca también
+          el polígono que quedó debajo del botón. */}
+      <GestureDetector gesture={gesto}>
+        <View style={{ position: 'absolute', left: 0, top: 0, width: ancho, height: alto }}>
         <Animated.View
           style={[
             {
@@ -407,13 +513,14 @@ export default function MapaVizta({
           lng={lng}
           areas={areas}
           pines={pines}
+          recorridos={recorridos}
           mostrarAreas={mostrarAreas}
           mostrarPines={mostrarPines}
+          mostrarCalor={mostrarCalor}
+          borrador={borrador}
           nivel={nivel}
           elegido={elegido}
         />
-
-        {children}
 
         {/* OpenStreetMap pide crédito visible. No es decoración legal: es la
             condición de uso de las teselas. */}
@@ -422,10 +529,16 @@ export default function MapaVizta({
             {FUENTE.atribucion}
           </Text>
         </View>
-      </View>
-    </GestureDetector>
+        </View>
+      </GestureDetector>
+
+      {children}
+    </View>
   );
 }
+
+/** El color detrás de una tesela mientras no llegó ninguna imagen todavía. */
+const TESELA_VACIA = MAPBOX ? '#EFEFEA' : '#E9E7DE';
 
 /**
  * Una tesela.
@@ -433,29 +546,43 @@ export default function MapaVizta({
  * Se monta ya con su posición del plano del mundo; la transformación de arriba
  * la lleva a pantalla. Aparece con un fundido corto porque llegan desordenadas
  * por la red, y verlas caer de golpe una por una parece un error de carga.
+ *
+ * **`expo-image` y no el `Image` del núcleo.** El resto de la app ya lo usa por
+ * su caché en disco y su decodificado fuera del hilo principal; acá importaba
+ * más, porque el mapa vuelve a pedir teselas que ya se vieron cada vez que se
+ * arrastra de un lado a otro y de vuelta. Con el `Image` del núcleo, cada
+ * regreso era una descarga nueva —y en una red de teléfono, cada descarga es
+ * un salto en la pantalla—; con caché en disco, la segunda vez sale de ahí.
+ *
+ * **El fondo de la tesela no es blanco mientras carga.** Un blanco puro sobre
+ * el mapa de por sí calmo se lee como un hueco roto; un tono cercano al de la
+ * tierra hace que la tesela que falta se note menos mientras llega.
  */
 function Tesela({ t, nivel }) {
-  const opacidad = useSharedValue(0);
-  const estilo = useAnimatedStyle(() => ({ opacity: opacidad.value }));
-
   // Un nivel distinto al que se está dibujando es una tesela que quedó de un
   // zoom anterior: no se monta, pero tampoco se rompe si aparece.
   if (t.z !== nivel) return null;
 
   return (
-    <Animated.View
-      style={[{ position: 'absolute', left: t.lx, top: t.ly, width: TESELA, height: TESELA }, estilo]}
+    <View
+      style={{
+        position: 'absolute',
+        left: t.lx,
+        top: t.ly,
+        width: TESELA,
+        height: TESELA,
+        backgroundColor: TESELA_VACIA,
+      }}
     >
       <Image
         source={FUENTE.headers ? { uri: FUENTE.url(t.z, t.x, t.y), headers: FUENTE.headers } : { uri: FUENTE.url(t.z, t.x, t.y) }}
-        onLoad={() => {
-          opacidad.value = withTiming(1, { duration: 180 });
-        }}
+        cachePolicy="memory-disk"
+        recyclingKey={t.clave}
         // `+1` mata la costura: con teselas de ancho exacto, el redondeo a
         // píxeles físicos deja una hilacha del fondo entre columna y columna.
         style={{ width: TESELA + 1, height: TESELA + 1 }}
-        fadeDuration={0}
+        transition={null}
       />
-    </Animated.View>
+    </View>
   );
 }
