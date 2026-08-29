@@ -1,0 +1,325 @@
+diff --git a/server/services/codexContractV4.js b/server/services/codexContractV4.js
+--- a/server/services/codexContractV4.js
++++ b/server/services/codexContractV4.js
+@@ -1,7 +1,10 @@
+ const {
+   SCHEMA_VERSION,
+   CODEX_FIELD_TYPES,
+   CODEX_PRESETS,
++  CODEX_SPECIAL_PRESETS,
++  getFieldsForTipo,
+   PRESET_TIPO_ALIAS,
+   TIPOS_VALIDOS,
+   UNIVERSE_ITEM_TYPES,
+@@ -43,10 +46,10 @@ function fieldConfig(field) {
+ }
+ 
+ function getSystemFields(tipo) {
+   const entries = tipo
+-    ? [[canonicalItemType(tipo), CODEX_PRESETS[canonicalItemType(tipo)] || []]]
+-    : Object.entries(CODEX_PRESETS);
++    ? [[canonicalItemType(tipo), getFieldsForTipo(canonicalItemType(tipo))]]
++    : Object.keys(CODEX_PRESETS).map((itemType) => [itemType, getFieldsForTipo(itemType)]);
+   return entries.flatMap(([itemType, fields]) => fields.map((field) => ({
+     field_key: field.field_key || systemFieldKey(itemType, field.label),
+     label: field.label,
+@@ -60,11 +63,12 @@ function getSystemFields(tipo) {
+ }
+ 
+ function getSystemPresets() {
+-  return Object.entries(CODEX_PRESETS).map(([tipo, fields]) => ({
++  const bases = Object.entries(CODEX_PRESETS).map(([tipo, fields]) => ({
+     preset_key: `sys_base_${slugFieldPart(tipo)}`,
+     label: `${tipo} · Base`,
+     description: `Campos base sugeridos para ${tipo}`,
+     item_types: [tipo],
+     field_keys: fields.map((field) => field.field_key || systemFieldKey(tipo, field.label)),
+     origin: 'system',
+   }));
++  return [...bases, ...CODEX_SPECIAL_PRESETS.map((preset) => ({ ...preset, origin: 'system' }))];
+ }
+ 
+-async function loadUserFields(supabase, userId) {
++async function loadUserFields(supabase, userId, options = {}) {
+   if (!userId) return [];
+-  const { data, error } = await supabase
++  let query = supabase
+     .from('codex_user_fields')
+     .select('id, field_key, label, field_type, config, item_types, reason, created_by, active, created_at, updated_at')
+     .eq('user_id', userId)
+-    .eq('active', true)
+     .order('label');
++  if (!options.includeInactive) query = query.eq('active', true);
++  const { data, error } = await query;
+   if (error) throw new CodexContractError('CATALOG_READ_FAILED', error.message, {}, 500);
+   return (data || []).map((field) => ({
+     ...field,
+@@ -84,17 +88,18 @@ async function loadUserFields(supabase, userId) {
+     item_types: field.item_types || [],
+     origin: 'user',
+     readonly: false,
+-    storage_key: field.label,
++    storage_key: field.field_key,
+   }));
+ }
+ 
+-async function loadUserPresets(supabase, userId) {
++async function loadUserPresets(supabase, userId, options = {}) {
+   if (!userId) return [];
+-  const { data, error } = await supabase
++  let query = supabase
+     .from('codex_user_presets')
+     .select('id, preset_key, label, description, item_types, field_keys, active, created_at, updated_at')
+     .eq('user_id', userId)
+-    .eq('active', true)
+     .order('label');
++  if (!options.includeInactive) query = query.eq('active', true);
++  const { data, error } = await query;
+   if (error) throw new CodexContractError('PRESET_READ_FAILED', error.message, {}, 500);
+   return (data || []).map((preset) => ({ ...preset, origin: 'user' }));
+ }
+@@ -116,7 +121,8 @@ async function getMergedSchema(supabase, userId = null, tipo = null) {
+   const systemPresets = getSystemPresets().filter((preset) => applies(preset.item_types));
+   const visibleUserFields = userFields.filter((field) => applies(field.item_types));
+   const visibleUserPresets = userPresets.filter((preset) => applies(preset.item_types));
+-  const base = canon ? systemPresets.find((preset) => preset.item_types.includes(canon)) : null;
++  const baseKey = canon ? `sys_base_${slugFieldPart(canon)}` : null;
++  const base = canon ? systemPresets.find((preset) => preset.preset_key === baseKey) : null;
+   return {
+     version: SCHEMA_VERSION,
+     itemTypes: [...UNIVERSE_ITEM_TYPES],
+@@ -193,6 +199,39 @@ function canonicalUserKey(raw, prefix = 'usr') {
+   return key;
+ }
+ 
++function normalizeFieldConfig(fieldType, raw = {}) {
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
++    throw new CodexContractError('INVALID_FIELD_CONFIG', 'config debe ser un objeto');
++  }
++  const allowedByType = {
++    dropdown: ['options'],
++    eje: ['poles'],
++    repetible: ['cols'],
++    formula: ['formula'],
++  };
++  const allowed = allowedByType[fieldType] || [];
++  const unknown = Object.keys(raw).filter((key) => !allowed.includes(key));
++  if (unknown.length) {
++    throw new CodexContractError('INVALID_FIELD_CONFIG', `config contiene propiedades no válidas para ${fieldType}.`, { unknown, allowed });
++  }
++  if (fieldType === 'dropdown') {
++    const options = Array.isArray(raw.options) ? [...new Set(raw.options.map((value) => String(value).trim()).filter(Boolean))] : [];
++    if (!options.length) throw new CodexContractError('FIELD_OPTIONS_REQUIRED', 'dropdown requiere config.options');
++    return { options };
++  }
++  if (fieldType === 'eje') {
++    const poles = Array.isArray(raw.poles) ? raw.poles.map((value) => String(value).trim()) : [];
++    if (poles.length !== 2 || poles.some((value) => !value)) throw new CodexContractError('FIELD_POLES_REQUIRED', 'eje requiere exactamente dos config.poles');
++    return { poles };
++  }
++  if (fieldType === 'repetible') {
++    const cols = Array.isArray(raw.cols) ? raw.cols.map((value) => String(value).trim()).filter(Boolean) : [];
++    if (!cols.length) throw new CodexContractError('FIELD_COLS_REQUIRED', 'repetible requiere config.cols');
++    return { cols };
++  }
++  if (fieldType === 'formula') {
++    const formula = String(raw.formula || '').trim();
++    if (!formula) throw new CodexContractError('FIELD_FORMULA_REQUIRED', 'formula requiere config.formula');
++    return { formula };
++  }
++  return {};
++}
++
+ async function createUserField(supabase, userId, input = {}, createdBy = 'user') {
+@@ -209,7 +248,7 @@ async function createUserField(supabase, userId, input = {}, createdBy = 'user') {
+     throw new CodexContractError('FIELD_ALREADY_EXISTS', 'Ya existe un campo equivalente; reutiliza su field_key.', { field: resolution.exact }, 409);
+   }
+   const fieldKey = canonicalUserKey(input.field_key || label);
+-  const config = input.config && typeof input.config === 'object' && !Array.isArray(input.config) ? input.config : {};
++  const config = normalizeFieldConfig(fieldType, input.config || {});
+   const { data, error } = await supabase
+@@ -229,8 +268,83 @@ async function createUserField(supabase, userId, input = {}, createdBy = 'user') {
+   }
+   if (error) throw new CodexContractError('FIELD_CREATE_FAILED', error.message, {}, 500);
+-  return { ...data, origin: 'user', readonly: false, storage_key: data.label };
++  return { ...data, origin: 'user', readonly: false, storage_key: data.field_key };
+ }
++
++async function updateUserField(supabase, userId, fieldKey, input = {}) {
++  if (!userId) throw new CodexContractError('UNAUTHENTICATED', 'Usuario no autenticado', {}, 401);
++  const { data: current, error: readError } = await supabase
++    .from('codex_user_fields')
++    .select('id, field_key, label, field_type, config, item_types, reason, created_by, active')
++    .eq('user_id', userId)
++    .eq('field_key', fieldKey)
++    .maybeSingle();
++  if (readError) throw new CodexContractError('FIELD_READ_FAILED', readError.message, {}, 500);
++  if (!current) throw new CodexContractError('FIELD_NOT_FOUND', 'Campo personal no encontrado.', { field_key: fieldKey }, 404);
++  if (input.field_key && input.field_key !== fieldKey) throw new CodexContractError('FIELD_KEY_IMMUTABLE', 'field_key no se puede cambiar.', {}, 409);
++  if (input.field_type && input.field_type !== current.field_type) {
++    throw new CodexContractError('FIELD_TYPE_IMMUTABLE', 'El tipo de un campo existente no cambia: crea un campo nuevo y migra sus valores.', { current: current.field_type, requested: input.field_type }, 409);
++  }
++  const label = input.label !== undefined || input.field_label !== undefined
++    ? String(input.label || input.field_label || '').trim()
++    : current.label;
++  if (!label) throw new CodexContractError('FIELD_LABEL_REQUIRED', 'label es requerido');
++  const itemTypes = input.item_types !== undefined
++    ? validateItemTypes(input.item_types)
++    : current.item_types;
++  const config = input.config !== undefined
++    ? normalizeFieldConfig(current.field_type, input.config)
++    : current.config;
++  const reason = input.reason !== undefined || input.field_reason !== undefined
++    ? String(input.reason || input.field_reason || '').trim()
++    : current.reason;
++  if (!reason) throw new CodexContractError('FIELD_REASON_REQUIRED', 'reason no puede quedar vacío');
++  const schema = await getMergedSchema(supabase, userId);
++  const conflict = schema.fields.find((field) => field.field_key !== fieldKey && normalizeToken(field.label) === normalizeToken(label));
++  if (conflict) throw new CodexContractError('FIELD_ALREADY_EXISTS', 'Ya existe un campo con ese label; reutiliza su field_key.', { field: conflict }, 409);
++  const patch = {
++    label,
++    item_types: itemTypes,
++    config,
++    reason,
++    active: input.active === undefined ? current.active : Boolean(input.active),
++    updated_at: new Date().toISOString(),
++  };
++  const { data, error } = await supabase
++    .from('codex_user_fields')
++    .update(patch)
++    .eq('user_id', userId)
++    .eq('field_key', fieldKey)
++    .select('id, field_key, label, field_type, config, item_types, reason, created_by, active, created_at, updated_at')
++    .single();
++  if (error) throw new CodexContractError('FIELD_UPDATE_FAILED', error.message, {}, 500);
++  return { ...data, origin: 'user', readonly: false, storage_key: data.field_key };
++}
++
++async function deactivateUserField(supabase, userId, fieldKey) {
++  return updateUserField(supabase, userId, fieldKey, { active: false });
++}
++
++async function validatePresetDefinition(supabase, userId, itemTypes, fieldKeys) {
++  if (!fieldKeys.length) throw new CodexContractError('PRESET_FIELDS_REQUIRED', 'field_keys debe incluir al menos un campo');
++  const schema = await getMergedSchema(supabase, userId);
++  const known = new Map(schema.fields.map((field) => [field.field_key, field]));
++  const unknown = fieldKeys.filter((key) => !known.has(key));
++  if (unknown.length) throw new CodexContractError('UNKNOWN_FIELD_KEYS', 'El preset contiene claves desconocidas.', { unknown });
++  const wrongScope = fieldKeys.filter((key) => {
++    const applies = known.get(key)?.item_types || [];
++    return applies.length && !itemTypes.some((tipo) => applies.includes(tipo));
++  });
++  if (wrongScope.length) throw new CodexContractError('FIELD_SCOPE_MISMATCH', 'Hay campos que no aplican a los tipos del preset.', { field_keys: wrongScope });
++}
+ 
+ async function createUserPreset(supabase, userId, input = {}) {
+@@ -239,17 +353,7 @@ async function createUserPreset(supabase, userId, input = {}) {
+   const itemTypes = validateItemTypes(input.item_types || (input.tipo ? [input.tipo] : []));
+   const fieldKeys = [...new Set(Array.isArray(input.field_keys) ? input.field_keys : [])];
+-  if (!fieldKeys.length) throw new CodexContractError('PRESET_FIELDS_REQUIRED', 'field_keys debe incluir al menos un campo');
+-  const schema = await getMergedSchema(supabase, userId);
+-  const known = new Map(schema.fields.map((field) => [field.field_key, field]));
+-  const unknown = fieldKeys.filter((key) => !known.has(key));
+-  if (unknown.length) throw new CodexContractError('UNKNOWN_FIELD_KEYS', 'El preset contiene claves desconocidas.', { unknown });
+-  const wrongScope = fieldKeys.filter((key) => {
+-    const applies = known.get(key)?.item_types || [];
+-    return applies.length && !itemTypes.some((tipo) => applies.includes(tipo));
+-  });
+-  if (wrongScope.length) throw new CodexContractError('FIELD_SCOPE_MISMATCH', 'Hay campos que no aplican a los tipos del preset.', { field_keys: wrongScope });
++  await validatePresetDefinition(supabase, userId, itemTypes, fieldKeys);
+   const presetKey = canonicalUserKey(input.preset_key || label, 'usr_preset');
+@@ -268,6 +372,57 @@ async function createUserPreset(supabase, userId, input = {}) {
+   return { ...data, origin: 'user' };
+ }
++
++async function updateUserPreset(supabase, userId, presetKey, input = {}) {
++  if (!userId) throw new CodexContractError('UNAUTHENTICATED', 'Usuario no autenticado', {}, 401);
++  const { data: current, error: readError } = await supabase
++    .from('codex_user_presets')
++    .select('id, preset_key, label, description, item_types, field_keys, active')
++    .eq('user_id', userId)
++    .eq('preset_key', presetKey)
++    .maybeSingle();
++  if (readError) throw new CodexContractError('PRESET_READ_FAILED', readError.message, {}, 500);
++  if (!current) throw new CodexContractError('PRESET_NOT_FOUND', 'Preset personal no encontrado.', { preset_key: presetKey }, 404);
++  if (input.preset_key && input.preset_key !== presetKey) throw new CodexContractError('PRESET_KEY_IMMUTABLE', 'preset_key no se puede cambiar.', {}, 409);
++  const label = input.label !== undefined || input.preset_label !== undefined
++    ? String(input.label || input.preset_label || '').trim()
++    : current.label;
++  if (!label) throw new CodexContractError('PRESET_LABEL_REQUIRED', 'label es requerido');
++  const itemTypes = input.item_types !== undefined ? validateItemTypes(input.item_types) : current.item_types;
++  const fieldKeys = input.field_keys !== undefined
++    ? [...new Set(Array.isArray(input.field_keys) ? input.field_keys : [])]
++    : current.field_keys;
++  await validatePresetDefinition(supabase, userId, itemTypes, fieldKeys);
++  const { data, error } = await supabase
++    .from('codex_user_presets')
++    .update({
++      label,
++      description: input.description === undefined ? current.description : String(input.description || '').trim() || null,
++      item_types: itemTypes,
++      field_keys: fieldKeys,
++      active: input.active === undefined ? current.active : Boolean(input.active),
++      updated_at: new Date().toISOString(),
++    })
++    .eq('user_id', userId)
++    .eq('preset_key', presetKey)
++    .select('id, preset_key, label, description, item_types, field_keys, active, created_at, updated_at')
++    .single();
++  if (error) throw new CodexContractError('PRESET_UPDATE_FAILED', error.message, {}, 500);
++  return { ...data, origin: 'user' };
++}
++
++async function deactivateUserPreset(supabase, userId, presetKey) {
++  return updateUserPreset(supabase, userId, presetKey, { active: false });
++}
+ 
+ function invalid(field, expected, received, correction) {
+@@ -458,13 +613,25 @@ async function resolveItemFields(supabase, userId, item) {
+   const schema = await getMergedSchema(supabase, userId, item.tipo);
+   const byKey = new Map(schema.fields.map((field) => [field.field_key, field]));
+   const inferred = fieldKeysFromDetails(item.details || {}, item.tipo, schema.fields.filter((field) => field.origin === 'user'));
+-  const keys = [...new Set([...(item.field_keys || []), ...inferred])];
++  const presetByKey = new Map(schema.presetDefinitions.map((preset) => [preset.preset_key, preset]));
++  const currentPresetFieldKeys = [...new Set((item.preset_keys || [])
++    .flatMap((presetKey) => presetByKey.get(presetKey)?.field_keys || []))];
++  const newPresetFieldKeys = currentPresetFieldKeys.filter((fieldKey) => !(item.field_keys || []).includes(fieldKey));
++  const stalePresetKeys = (item.preset_keys || []).filter((presetKey) => !presetByKey.has(presetKey));
++  const keys = [...new Set([...(item.field_keys || []), ...inferred, ...currentPresetFieldKeys])];
+   const fields = keys.map((fieldKey) => {
+     const field = byKey.get(fieldKey);
+     if (!field) return null;
+     const storageKey = field.storage_key || field.label || field.field_key;
+-    const stored = item.details?.[storageKey] ?? item.details?.[field.field_key];
++    const stored = item.details?.[storageKey] ?? item.details?.[field.field_key] ?? item.details?.[field.label];
+     let status = 'valid';
+     if (stored !== undefined) {
+       try { validateFieldValue(field, canonicalReadValue(field, stored)); } catch (_) { status = 'legacy_invalid'; }
+     }
+-    return { ...field, value: canonicalReadValue(field, stored), has_value: stored !== undefined && stored !== null && stored !== '', status };
++    return {
++      ...field,
++      value: canonicalReadValue(field, stored),
++      has_value: stored !== undefined && stored !== null && stored !== '',
++      new_from_preset: newPresetFieldKeys.includes(fieldKey),
++      status,
++    };
+   }).filter(Boolean);
+-  return { fields, schema };
++  return { fields, schema, newPresetFieldKeys, stalePresetKeys };
+ }
+@@ -477,10 +644,15 @@ module.exports = {
+   resolveField,
+   createUserField,
++  updateUserField,
++  deactivateUserField,
+   createUserPreset,
++  updateUserPreset,
++  deactivateUserPreset,
+   validateFieldValue,
++  normalizeFieldConfig,
+   prepareFieldPatch,
+   applyPresetKeys,
+   fieldKeysFromDetails,
+   resolveItemFields,
+ };

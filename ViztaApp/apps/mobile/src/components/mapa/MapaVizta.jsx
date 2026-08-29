@@ -132,6 +132,7 @@ export default function MapaVizta({
   alto,
   inicial = CENTRO_INICIAL,
   reinicio = 0,
+  destino = null,
   onMover,
   areas = [],
   pines = [],
@@ -140,6 +141,8 @@ export default function MapaVizta({
   mostrarPines = true,
   mostrarCalor = false,
   borrador = null,
+  onMoverVertice = null,
+  niebla = null,
   nivel,
   elegido,
   onTocar,
@@ -254,6 +257,24 @@ export default function MapaVizta({
     zoom.value = withTiming(inicial.zoom, t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reinicio]);
+
+  /**
+   * Volar a un punto concreto.
+   *
+   * Distinto de `reinicio`, que siempre vuelve al centro de apertura. Este es
+   * para «llevame acá»: marcar un lugar buscado, saltar a un resultado. Se
+   * dispara por `destino.n` y no por la identidad del objeto porque un objeto
+   * nuevo con las mismas coordenadas —un re-render cualquiera— reanimaría el
+   * mapa sin que nadie lo pidiera.
+   */
+  useEffect(() => {
+    if (!destino) return;
+    const t = { duration: 620 };
+    lat.value = withTiming(destino.lat, t);
+    lng.value = withTiming(destino.lng, t);
+    zoom.value = withTiming(destino.zoom, t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destino?.n]);
 
   // El vigía del rango. Corre en el hilo de UI y solo cruza a JS cuando de
   // verdad hay teselas nuevas que traer.
@@ -432,14 +453,150 @@ export default function MapaVizta({
       runOnJS(onExplorar)({ lat: yALat(py, z), lng: xALng(px, z), zoom: z });
     });
 
+  /**
+   * Los vértices del borrador, en el hilo de UI.
+   *
+   * El gesto tiene que decidir —antes de moverse— si el dedo cayó sobre un
+   * vértice o sobre el mapa, y esa decisión no puede esperar un viaje a JS: el
+   * arrastre ya habría empezado. Por eso las coordenadas se copian a un shared
+   * value cada vez que el borrador cambia, que es cuando alguien toca, no
+   * sesenta veces por segundo.
+   */
+  const verticesUI = useSharedValue([]);
+  useEffect(() => {
+    const c = borrador?.coordinates;
+    verticesUI.value = Array.isArray(c) ? c : [];
+  }, [borrador, verticesUI]);
+
+  /** Qué vértice se está arrastrando, o -1. */
+  const verticeActivo = useSharedValue(-1);
+
+  /**
+   * Ajustar un vértice arrastrándolo.
+   *
+   * **Corre antes que el arrastre del mapa y le gana solo si acertó.** Si el
+   * dedo no cayó sobre ningún vértice, este gesto no activa y el mapa se mueve
+   * como siempre; así ajustar y desplazarse conviven en el mismo dedo sin un
+   * modo aparte que haya que recordar prender.
+   *
+   * La tolerancia es generosa —24 px— porque un vértice dibujado mide 5 y nadie
+   * acierta a un blanco de cinco píxeles con el pulgar. Se elige el más cercano
+   * y no el primero que entre en el radio: con vértices juntos, «el primero»
+   * depende del orden en que se dibujaron, que para quien mira es azar.
+   */
+  const arrastreVertice = Gesture.Pan()
+    .minDistance(0)
+    .maxPointers(1)
+    .onBegin((e) => {
+      verticeActivo.value = -1;
+      if (!onMoverVertice) return;
+      const puntos = verticesUI.value;
+      if (!puntos.length) return;
+
+      const z = zoom.value;
+      const cx = lngAX(lng.value, z);
+      const cy = latAY(lat.value, z);
+      let mejor = -1;
+      let corta = 24 * 24;
+
+      for (let i = 0; i < puntos.length; i += 1) {
+        const px = lngAX(puntos[i][0], z) - cx + ancho / 2;
+        const py = latAY(puntos[i][1], z) - cy + alto / 2;
+        const dx = px - e.x;
+        const dy = py - e.y;
+        const d = dx * dx + dy * dy;
+        if (d < corta) {
+          corta = d;
+          mejor = i;
+        }
+      }
+      verticeActivo.value = mejor;
+    })
+    .onChange((e) => {
+      const i = verticeActivo.value;
+      if (i < 0 || !onMoverVertice) return;
+      const z = zoom.value;
+      const px = lngAX(lng.value, z) + (e.x - ancho / 2);
+      const py = latAY(lat.value, z) + (e.y - alto / 2);
+      const nLng = xALng(px, z);
+      const nLat = yALat(py, z);
+      if (!Number.isFinite(nLng) || !Number.isFinite(nLat)) return;
+      runOnJS(onMoverVertice)(i, nLng, nLat);
+    })
+    .onFinalize(() => {
+      verticeActivo.value = -1;
+    });
+
+  /**
+   * Mover con dos dedos.
+   *
+   * En los modos donde un dedo hace otra cosa —descubrir, explorar— tiene que
+   * quedar alguna forma de mover la cámara, o el mapa se vuelve una ventana
+   * fija: se raspa lo que está en pantalla y no hay manera de llegar a lo de al
+   * lado. El pellizco ya traslada un poco al mover el punto focal, pero
+   * depender de eso obliga a hacer zoom para desplazarse.
+   *
+   * Es el mismo cálculo que el arrastre de un dedo; lo único que cambia es
+   * cuántos dedos lo activan.
+   */
+  const arrastreDosDedos = Gesture.Pan()
+    .minPointers(2)
+    .onChange((e) => {
+      const z = zoom.value;
+      const x = lngAX(lng.value, z) - e.changeX;
+      const y = latAY(lat.value, z) - e.changeY;
+      const nLng = xALng(x, z);
+      const nLat = yALat(y, z);
+      if (!Number.isFinite(nLng) || !Number.isFinite(nLat)) return;
+      lng.value = nLng;
+      lat.value = Math.max(-LAT_MAX, Math.min(LAT_MAX, nLat));
+    });
+
   // El arrastre compite directamente con el toque y gana apenas se superan
   // tres píxeles. El doble toque conserva prioridad sobre ambos.
   const navegacion = Gesture.Simultaneous(
     Gesture.Exclusive(doble, Gesture.Race(arrastre, simple)),
     pellizco
   );
-  const edicion = Gesture.Simultaneous(Gesture.Exclusive(doble, simple), pellizco);
-  const gesto = modo === 'explorar' ? Gesture.Simultaneous(exploracion, pellizco) : modo === 'navegar' ? navegacion : edicion;
+  /**
+   * Dibujar.
+   *
+   * Dos diferencias con navegar, y las dos importan.
+   *
+   * **El arrastre entra.** Antes no estaba: en punto/área/ruta el mapa quedaba
+   * clavado, y un polígono más grande que la pantalla era imposible de cerrar
+   * sin alejarse primero. Dibujar es justamente cuando más falta hace mover la
+   * cámara —se sigue una calle, se bordea un municipio—, así que corre igual
+   * que en navegar: compite con el toque y gana pasados los dos píxeles.
+   *
+   * **El doble toque sale.** Mientras se dibuja, cada toque es un vértice, y
+   * con `Exclusive(doble, simple)` todos esperaban 280 ms a que el doble toque
+   * fallara antes de registrarse: marcar se sentía pegajoso, y dos vértices
+   * puestos rápido y cerca se interpretaban como un acercamiento en vez de dos
+   * puntos. Acá el toque manda de inmediato; para acercar está el pellizco.
+   */
+  const edicion = Gesture.Simultaneous(
+    // El orden importa: `arrastreVertice` no activa si el dedo no cayó sobre un
+    // vértice, así que ponerlo primero le da la oportunidad de reclamar el
+    // gesto sin quitarle nada al arrastre del mapa cuando no acierta.
+    Gesture.Race(arrastreVertice, arrastre, simple),
+    pellizco
+  );
+  /**
+   * Un dedo hace lo suyo; dos mueven la cámara.
+   *
+   * Vale igual para explorar —donde el dedo interroga territorios— y para
+   * raspar —donde descubre—: en ambos el dedo está ocupado, y el
+   * desplazamiento pasa a los dos dedos junto con el zoom.
+   */
+  const dedoOcupado = Gesture.Simultaneous(exploracion, arrastreDosDedos, pellizco);
+
+  const gesto =
+    modo === 'explorar' || modo === 'raspar'
+      ? dedoOcupado
+      : modo === 'navegar'
+        ? navegacion
+        : edicion;
 
   /**
    * La transformación.
@@ -518,6 +675,7 @@ export default function MapaVizta({
           mostrarPines={mostrarPines}
           mostrarCalor={mostrarCalor}
           borrador={borrador}
+          niebla={niebla}
           nivel={nivel}
           elegido={elegido}
         />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Link2, MapPin, BadgeCheck, Landmark, Spline, Shapes, MapPinOff } from 'lucide-react-native';
@@ -7,6 +7,7 @@ import { MONO } from './mono';
 import { inputStyle } from './FieldInput';
 import { roce } from '../../utils/haptics';
 import BuscarLimite from './BuscarLimite';
+import MiniMapa from './campos/MiniMapa';
 import {
   ROLES,
   etiquetaNivel,
@@ -114,11 +115,17 @@ function Resumen({ geo, punto, dibujo }) {
   }
 
   if (geo.spatial_role === 'location') {
+    // Un punto se muestra en un mapa, no en dos números.
+    //
+    // «14.7901, −90.3593» es exacto y no dice nada: nadie ubica un lugar
+    // leyendo grados. El mapa contesta la pregunta que se hace de verdad
+    // —dónde queda esto— y las coordenadas quedan abajo en gris, para quien
+    // necesite la respuesta precisa.
+    if (punto) return <MiniMapa lat={punto.lat} lng={punto.lng} />;
+
     return (
       <Linea Icono={MapPin} color={INK.meta}>
-        <Text style={{ fontSize: 13, color: INK.body, lineHeight: 19 }}>
-          {punto ? `${punto.lat.toFixed(4)}, ${punto.lng.toFixed(4)}` : 'Punto'}
-        </Text>
+        <Text style={{ fontSize: 13, color: INK.body, lineHeight: 19 }}>Punto sin coordenadas</Text>
       </Linea>
     );
   }
@@ -165,6 +172,23 @@ export default function GeoTerritorio({ item, nombre, editando, geoEd, onCambiar
 
   const [latEd, setLatEd] = useState(punto ? String(punto.lat) : '');
   const [lngEd, setLngEd] = useState(punto ? String(punto.lng) : '');
+
+  /**
+   * El punto que se está escribiendo, si ya es válido.
+   *
+   * Se deriva de los dos campos de texto y no del `geo` guardado: mientras se
+   * teclea, `geo` todavía tiene el valor anterior —`aplicarPunto` solo escribe
+   * cuando las dos coordenadas pasan— y el mapa se quedaría mostrando el punto
+   * viejo, que es peor que no mostrar ninguno.
+   */
+  const puntoEditado = useMemo(() => {
+    const a = Number(latEd);
+    const o = Number(lngEd);
+    if (latEd === '' || lngEd === '') return null;
+    if (!Number.isFinite(a) || !Number.isFinite(o)) return null;
+    if (Math.abs(a) > 90 || Math.abs(o) > 180) return null;
+    return { lat: a, lng: o };
+  }, [latEd, lngEd]);
 
   const aplicarPunto = (lat, lng) => {
     const a = Number(lat);
@@ -322,6 +346,23 @@ export default function GeoTerritorio({ item, nombre, editando, geoEd, onCambiar
                 elemento simplemente no aparece. */}
             Guatemala está cerca de 14.6 y −90.5. La longitud va con signo menos.
           </Text>
+
+          {/* El mapa mientras se escribe.
+            *
+            * Es la única forma de notar un error de coordenadas en el momento.
+            * Un signo comido o dos dígitos cambiados dan un número que se ve
+            * perfectamente razonable, y el error recién aparece al abrir el
+            * mapa —o nunca, si nadie vuelve a mirar—. Acá el punto se mueve
+            * mientras se teclea: si aterriza en el mar, se ve en el acto.
+            *
+            * Solo cuando las dos coordenadas son válidas. Dibujar un mapa a
+            * medio escribir haría saltar el pin por medio mundo entre tecla y
+            * tecla. */}
+          {puntoEditado ? (
+            <View style={{ marginTop: 12 }}>
+              <MiniMapa lat={puntoEditado.lat} lng={puntoEditado.lng} />
+            </View>
+          ) : null}
         </View>
       ) : null}
 

@@ -1,19 +1,32 @@
 /**
  * Catálogo de campos del Codex para móvil.
  *
- * La fuente de verdad es el backend (`GET /api/codex/schema`, cacheado 5 min
- * server-side, sin auth) — el mismo que consume ThePulse. Acá se cachea a nivel
- * de módulo: una sola request por sesión, compartida por todos los modales.
+ * La fuente de verdad es el backend: `GET /api/codex/schema`, contrato 4.1.
  *
- * Los presets son GUÍAS, no reglas. Sirven para que el modelo no invente
- * nombres distintos para lo mismo y para que el humano llene rápido. Un preset
- * nunca dicta cómo se interpreta un dato real: manda la forma del dato.
+ * **Va con token, y eso cambia lo que devuelve.** Sin autenticación el endpoint
+ * contesta el catálogo del sistema y nada más; con token agrega los campos y
+ * presets que creó esta persona. Sin el header la app parece funcionar —hay
+ * campos, hay presets— y simplemente nunca muestra lo propio, que es el peor
+ * modo de fallar: silencioso y verosímil.
  *
- * El fallback local es una red de seguridad para que la app no rompa sin red.
- * No pretende estar sincronizado con el backend.
+ * **La caché lleva el id de la persona en la clave.** Con campos personales en
+ * la respuesta, una caché global significa que cambiar de cuenta en el mismo
+ * proceso muestra los campos de la anterior.
+ *
+ * **No hay presets escritos a mano acá.** La red de seguridad para trabajar sin
+ * señal es el último schema que sí llegó, guardado en disco — no una copia
+ * hardcodeada que envejece en silencio hasta contradecir al backend.
+ *
+ * Los presets son GUÍAS, no reglas: sirven para que no se inventen nombres
+ * distintos para lo mismo. Nunca dictan cómo se interpreta un dato real.
  */
 
-const SCHEMA_URL = 'https://server.standatpd.com/api/codex/schema';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabase';
+import { EXTRACTORW_URL } from './servicios';
+
+const SCHEMA_URL = `${EXTRACTORW_URL}/api/codex/schema`;
+const DISCO = 'codex-schema';
 
 export const FIELD_TYPES = [
   'texto', 'parrafo', 'numero', 'moneda', 'porcentaje',
@@ -24,110 +37,224 @@ export const FIELD_TYPES = [
 ];
 
 // Núcleo mínimo por tipo — solo para no arrancar en blanco si el backend falla.
-const FALLBACK_PRESETS = {
-  Actor: [
-    { label: 'Rol / función', type: 'texto' },
-    { label: 'Cargo', type: 'texto' },
-    { label: 'Afiliación', type: 'ref' },
-    { label: 'Estado', type: 'dropdown', options: ['Activo', 'Inactivo', 'Retirado', 'Fallecido'] },
-    { label: 'Situación legal', type: 'parrafo' },
-  ],
-  Entidad: [
-    { label: 'Tipo', type: 'dropdown', options: ['Pública', 'Privada', 'Mixta', 'Internacional', 'Informal'] },
-    { label: 'Representante', type: 'ref' },
-    { label: 'Estado', type: 'dropdown', options: ['Vigente', 'Disuelta', 'Intervenida', 'Suspendida'] },
-  ],
-  Territorio: [
-    { label: 'Tipo / escala', type: 'dropdown', options: ['País', 'Departamento', 'Municipio', 'Zona', 'Lugar'] },
-    { label: 'Departamento', type: 'texto' },
-    { label: 'Municipio', type: 'texto' },
-  ],
-  Evento: [
-    { label: 'Periodo', type: 'rango' },
-    { label: 'Lugar', type: 'ref' },
-    { label: 'Resultado / desenlace', type: 'parrafo' },
-  ],
-  Historia: [
-    { label: 'Tipo de marco', type: 'dropdown', options: ['Ley', 'Sistema', 'Antecedente', 'Narrativa', 'Concepto'] },
-    { label: 'Resumen', type: 'parrafo' },
-  ],
-  Objeto: [
-    { label: 'Tipo', type: 'dropdown', options: ['Documento', 'Audio', 'Video', 'Foto', 'Dato', 'Objeto físico'] },
-    { label: 'Estado de verificación', type: 'dropdown', options: ['Verificado', 'Sin verificar', 'Desmentido'] },
-  ],
-  Artefacto: [
-    { label: 'Tipo', type: 'dropdown', options: ['Sistema', 'Herramienta', 'Software', 'Método', 'Estrategia', 'Infraestructura'] },
-    { label: 'Propósito / función', type: 'parrafo' },
-  ],
-  Snippet: [
-    { label: 'Contenido', type: 'parrafo' },
-    { label: 'Fuente', type: 'link' },
-  ],
-  Post: [
-    { label: 'Título del post', type: 'texto', readonly: true },
-    { label: 'Autor', type: 'texto', readonly: true },
-    { label: 'Transcripción', type: 'parrafo', readonly: true },
-  ],
-};
+/**
+ * Normaliza la respuesta 4.1 a algo indexado.
+ *
+ * El backend manda listas —167 campos, 11 presets— y la interfaz siempre
+ * pregunta por clave o por tipo. Indexar una vez al recibir evita recorrer 167
+ * elementos cada vez que un modal quiere saber cómo se llama un campo.
+ *
+ * `presets` se conserva tal como viene porque el backend mantiene esa forma por
+ * compatibilidad y **ya trae `field_key` en cada entrada**; es la que consumen
+ * hoy los modales. Se le suma `porKey` para poder ir de la clave al campo sin
+ * buscar.
+ */
+function indexar(json) {
+  const campos = Array.isArray(json.fields) ? json.fields : [];
 
-const FALLBACK_ALIAS = { Evidencia: 'Objeto', Biblioteca: 'Historia', Fuente: 'Objeto' };
+  const porKey = new Map();
+  // `storage_key` es dónde vivía el valor cuando los campos se guardaban por
+  // label. El backend lo publica, así que la correspondencia legacy→canónica no
+  // hay que adivinarla ni esperar a un backfill para poder leer datos viejos.
+  const porStorage = new Map();
 
-const FALLBACK_SCHEMA = {
-  version: 'fallback',
-  fieldTypes: FIELD_TYPES,
-  presets: FALLBACK_PRESETS,
-  tipoAlias: FALLBACK_ALIAS,
-};
+  for (const c of campos) {
+    if (!c?.field_key) continue;
+    porKey.set(c.field_key, c);
+    if (c.storage_key) porStorage.set(String(c.storage_key).toLowerCase(), c);
+  }
 
-let cached = null;
-let inflight = null;
+  const presetsPorTipo = new Map();
+  for (const p of Array.isArray(json.presetDefinitions) ? json.presetDefinitions : []) {
+    for (const t of p.item_types || []) {
+      if (!presetsPorTipo.has(t)) presetsPorTipo.set(t, []);
+      presetsPorTipo.get(t).push(p);
+    }
+  }
 
-export async function getCodexSchema() {
-  if (cached) return cached;
-  if (inflight) return inflight;
+  const presentacion = new Map();
+  for (const t of Array.isArray(json.typeDefinitions) ? json.typeDefinitions : []) {
+    if (t?.tipo) presentacion.set(t.tipo, t);
+  }
 
-  inflight = (async () => {
+  return {
+    version: json.version || '4.1',
+    itemTypes: json.itemTypes || [],
+    auxiliaryTypes: json.auxiliaryTypes || [],
+    resourceTypes: json.resourceTypes || [],
+    fieldTypes: json.fieldTypes?.length ? json.fieldTypes : FIELD_TYPES,
+    tipoAlias: json.tipoAlias || {},
+    presets: json.presets || {},
+    campos,
+    porKey,
+    porStorage,
+    presetsPorTipo,
+    presentacion,
+  };
+}
+
+/** Una caché por persona: `${userId}:${version}` no se puede armar antes de
+ *  saber la versión, así que en memoria se indexa por usuario y la versión se
+ *  usa para la copia en disco. */
+const enMemoria = new Map();
+const enVuelo = new Map();
+
+async function token() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCodexSchema(userId = 'anon') {
+  if (enMemoria.has(userId)) return enMemoria.get(userId);
+  if (enVuelo.has(userId)) return enVuelo.get(userId);
+
+  const promesa = (async () => {
+    const jwt = await token();
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(SCHEMA_URL, { signal: controller.signal });
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(SCHEMA_URL, {
+        signal: controller.signal,
+        headers: jwt ? { Authorization: `Bearer ${jwt}` } : undefined,
+      });
       clearTimeout(timer);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       const json = await res.json();
-      cached = {
-        version: json.version || 'remoto',
-        fieldTypes: json.fieldTypes?.length ? json.fieldTypes : FIELD_TYPES,
-        presets: json.presets || FALLBACK_PRESETS,
-        tipoAlias: json.tipoAlias || FALLBACK_ALIAS,
-      };
+      const schema = indexar(json);
+      enMemoria.set(userId, schema);
+      // La copia en disco es para la próxima vez que no haya red. Se guarda el
+      // JSON crudo y no el indexado: los Map no sobreviven a JSON.stringify.
+      AsyncStorage.setItem(`${DISCO}:${userId}:${schema.version}`, JSON.stringify(json)).catch(() => {});
+      AsyncStorage.setItem(`${DISCO}:${userId}:ultima`, schema.version).catch(() => {});
+      return schema;
     } catch (e) {
-      console.warn('[codexSchema] backend no disponible, usando fallback:', e.message);
-      cached = FALLBACK_SCHEMA;
+      console.warn('[codexSchema] backend no disponible:', e.message);
+      const guardado = await ultimoEnDisco(userId);
+      if (guardado) return guardado;
+      // Sin red y sin copia previa: se devuelve un schema vacío en vez de uno
+      // inventado. Un modal sin campos sugeridos es honesto; uno con campos que
+      // el backend no conoce escribe datos que después nadie encuentra.
+      const vacio = indexar({ version: 'sin-conexión' });
+      enMemoria.set(userId, vacio);
+      return vacio;
     } finally {
-      inflight = null;
+      enVuelo.delete(userId);
     }
-    return cached;
   })();
 
-  return inflight;
+  enVuelo.set(userId, promesa);
+  return promesa;
 }
+
+async function ultimoEnDisco(userId) {
+  try {
+    const version = await AsyncStorage.getItem(`${DISCO}:${userId}:ultima`);
+    if (!version) return null;
+    const crudo = await AsyncStorage.getItem(`${DISCO}:${userId}:${version}`);
+    if (!crudo) return null;
+    const schema = indexar(JSON.parse(crudo));
+    enMemoria.set(userId, schema);
+    return schema;
+  } catch {
+    return null;
+  }
+}
+
+/** Al cerrar sesión hay que soltar el schema: lleva campos de esa persona. */
+export function olvidarSchema(userId) {
+  if (userId) enMemoria.delete(userId);
+  else enMemoria.clear();
+}
+
+/** La definición de un campo por su clave. */
+export const campoPorKey = (key, schema) => schema?.porKey?.get(key) || null;
+
+/** Los presets que aplican a un tipo, desde `presetDefinitions`. */
+export const presetsDe = (tipo, schema) => schema?.presetsPorTipo?.get(tipo) || [];
+
+/** Cómo se presenta un tipo: `item`, `source`, `post`… Viene de
+ *  `typeDefinitions` y es lo que después distingue a Source de un Actor. */
+export const presentacionDe = (tipo, schema) =>
+  schema?.presentacion?.get(tipo)?.presentation || { card: 'item', createModal: 'item', detailModal: 'item' };
 
 /** Tipo canónico del catálogo a partir del tipo que trae el item. */
 export function canonicalTipo(tipo, schema) {
   if (!tipo) return null;
-  const alias = schema?.tipoAlias || FALLBACK_ALIAS;
-  const presets = schema?.presets || FALLBACK_PRESETS;
   const t = String(tipo).trim();
-  const exact = Object.keys(presets).find((k) => k.toLowerCase() === t.toLowerCase());
-  if (exact) return exact;
-  const aliased = Object.entries(alias).find(([k]) => k.toLowerCase() === t.toLowerCase());
-  return aliased ? aliased[1] : null;
+
+  // Los tipos que el contrato reconoce: oficiales y auxiliares. `Post` y
+  // `Snippet` se resuelven igual que los demás —guardan su valor en `tipo`—
+  // aunque después se presenten distinto.
+  const conocidos = [...(schema?.itemTypes || []), ...(schema?.auxiliaryTypes || [])];
+  const exacto = conocidos.find((k) => k.toLowerCase() === t.toLowerCase());
+  if (exacto) return exacto;
+
+  // `tipoAlias` traduce el vocabulario viejo: «Evidencia» era «Objeto»,
+  // «Fuente» era «Source». Sin esto, los items importados antes del cambio de
+  // nombre pierden su catálogo de campos.
+  const alias = Object.entries(schema?.tipoAlias || {}).find(
+    ([k]) => k.toLowerCase() === t.toLowerCase()
+  );
+  return alias ? alias[1] : null;
 }
 
+/**
+ * Los campos sugeridos para un tipo.
+ *
+ * Devuelve las definiciones completas —con `field_key` y `storage_key`—, no
+ * solo label y tipo. La versión anterior conservaba la clave que mandaba el
+ * backend y la descartaba una función después, en `collectFields`, que después
+ * emparejaba por label. La clave siempre estuvo ahí; solo faltaba no tirarla.
+ */
 export function presetFor(tipo, schema) {
   const canon = canonicalTipo(tipo, schema);
   if (!canon) return [];
-  return (schema?.presets || FALLBACK_PRESETS)[canon] || [];
+
+  // Se prefiere el índice armado desde `fields` + `presetDefinitions`, que es
+  // el contrato 4.1. `presets` es la forma de compatibilidad y queda de red por
+  // si el backend todavía no publica los presets de este tipo.
+  const desdeDefiniciones = [];
+  const vistas = new Set();
+  for (const preset of presetsDe(canon, schema)) {
+    for (const key of preset.field_keys || []) {
+      if (vistas.has(key)) continue;
+      const campo = campoPorKey(key, schema);
+      if (!campo) continue;
+      vistas.add(key);
+      desdeDefiniciones.push(normalizarCampo(campo));
+    }
+  }
+  if (desdeDefiniciones.length) return desdeDefiniciones;
+
+  const compat = schema?.presets?.[canon] || [];
+  return compat.map(normalizarCampo);
+}
+
+/**
+ * La forma que consumen los modales.
+ *
+ * `config` en el contrato 4.1 anida `options`, `poles` y `cols`; los editores
+ * de `FieldInput` los esperan sueltos. Se aplanan acá, en el borde, para no
+ * repartir el conocimiento del contrato por toda la interfaz.
+ */
+function normalizarCampo(c) {
+  const config = c.config || {};
+  return {
+    field_key: c.field_key || null,
+    storage_key: c.storage_key || c.label || null,
+    label: c.label,
+    type: c.field_type || c.type,
+    readonly: Boolean(c.readonly),
+    origin: c.origin || 'system',
+    options: config.options || c.options,
+    poles: config.poles || c.poles,
+    cols: config.cols || c.cols,
+  };
 }
 
 // ─── Lectura de valores ───────────────────────────────────────────────────────
@@ -207,6 +334,28 @@ export function collectFields(item, schema, tipoCanonico) {
     ...(item?.metadata || {}),
   };
 
+  /**
+   * Dónde está guardado el valor de un campo.
+   *
+   * Se busca por `field_key` primero y por `storage_key` —el label con el que
+   * se guardaba antes— después. Las dos claves las publica el backend en la
+   * misma definición, así que la correspondencia no se adivina.
+   *
+   * El orden importa y no es simétrico: si el backfill del backend ya corrió,
+   * el valor está bajo la clave canónica y se encuentra en el primer intento;
+   * si no corrió, se cae al label. Al revés, un item ya migrado que conservara
+   * basura vieja bajo el label mostraría el dato viejo como si fuera el bueno.
+   */
+  const leer = (campo) => {
+    if (campo.field_key && campo.field_key in raw) {
+      return { clave: campo.field_key, valor: raw[campo.field_key] };
+    }
+    const legacy = campo.storage_key || campo.label;
+    if (!legacy) return null;
+    const hallada = Object.keys(raw).find((k) => k.toLowerCase() === String(legacy).toLowerCase());
+    return hallada ? { clave: hallada, valor: raw[hallada] } : null;
+  };
+
   // El tipo llega ya normalizado desde la pantalla: los items de wiki_items
   // guardan `subcategory: 'person'`, que el catálogo no conoce — quien llama
   // resuelve primero el alias a 'Actor'.
@@ -216,10 +365,26 @@ export function collectFields(item, schema, tipoCanonico) {
   const sinDato = [];
 
   for (const f of preset) {
-    const key = Object.keys(raw).find((k) => k.toLowerCase() === f.label.toLowerCase());
-    if (key) usadas.add(key);
-    const shown = key ? formatValue(raw[key], f.type) : null;
-    (shown ? conDato : sinDato).push({ label: f.label, type: f.type, value: shown, readonly: f.readonly });
+    const hallado = leer(f);
+    if (hallado) usadas.add(hallado.clave);
+    const shown = hallado ? formatValue(hallado.valor, f.type) : null;
+    // `field_key` viaja hasta el consumidor: es lo que después permite escribir
+    // por clave canónica sin volver a resolver nada.
+    (shown ? conDato : sinDato).push({
+      field_key: f.field_key,
+      storage_key: f.storage_key,
+      label: f.label,
+      type: f.type,
+      value: shown,
+      // El valor sin formatear. Los viewers del registro lo necesitan crudo: un
+      // porcentaje dibuja una barra con el número, y recibir «25%» lo obligaría
+      // a volver a parsear lo que alguien ya había parseado.
+      crudo: hallado ? hallado.valor : null,
+      readonly: f.readonly,
+      options: f.options,
+      poles: f.poles,
+      cols: f.cols,
+    });
   }
 
   // Campos que el item trae pero el preset no contempla — se muestran igual.
@@ -227,7 +392,7 @@ export function collectFields(item, schema, tipoCanonico) {
   for (const [k, v] of Object.entries(raw)) {
     if (usadas.has(k) || INTERNAL_KEYS.has(k.toLowerCase())) continue;
     const shown = formatValue(v);
-    if (shown) extra.push({ label: k, type: 'texto', value: shown, extra: true });
+    if (shown) extra.push({ label: k, type: 'texto', value: shown, crudo: v, extra: true });
   }
 
   return { conDato, sinDato, extra };

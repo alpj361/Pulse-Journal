@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Canvas, Circle, Group, Path, Skia } from '@shopify/react-native-skia';
+import { BlurMask, Canvas, Circle, FillType, Group, Path, Skia } from '@shopify/react-native-skia';
 import {
   Easing,
   cancelAnimation,
@@ -11,6 +11,7 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import { latAY, lngAX } from './proyeccion';
+import { CELDA } from './niebla';
 
 /**
  * Las capas del Codex sobre las teselas: territorios y pines.
@@ -43,14 +44,66 @@ import { latAY, lngAX } from './proyeccion';
 /** Ni un punto más cerca que esto del anterior, en píxeles de pantalla. */
 const PELO = 1.6;
 
-const RELLENO_DEPARTAMENTO = 'rgba(39,104,210,0.055)';
-const RELLENO_ELEGIDO = 'rgba(20,103,232,0.24)';
-const BORDE = 'rgba(48,107,204,0.60)';
+/**
+ * Los colores del mapa, uno por rol.
+ *
+ * El criterio es que **la interfaz es tinta y los datos tienen color**. Antes
+ * había cuatro azules distintos —uno para el borde, otro para el relleno, otro
+ * para las rutas, otro para la herramienta activa— y un morado para el
+ * borrador, y ninguno de los cinco salía de `theme.js`. Nada los relacionaba
+ * entre sí, así que el mapa no se leía como una familia sino como cinco
+ * decisiones tomadas en momentos distintos.
+ *
+ * Ahora cada color dice algo:
+ *
+ * - **verde** — territorio: fronteras y recorridos, lo que divide y conecta.
+ * - **ámbar** — punto: lo que está en un lugar exacto.
+ * - **índigo** — vos: tu ubicación y lo que estás trazando en este momento.
+ *   Es el único acento que no describe datos guardados sino a la persona.
+ *
+ * Todos salen de `ACCENT` y de la paleta del papel; el heatmap conserva su
+ * rampa frío→cálido porque ahí el color sí es la escala.
+ */
+const VERDE = '58,96,73';
+
+/**
+ * El velo.
+ *
+ * Papel, no gris ni negro: lo que no se descubrió está **pendiente**, no es de
+ * noche. Un velo oscuro convertiría el mapa en un juego de sigilo; uno del
+ * color del papel lo deja pareciendo una hoja que todavía no se terminó de
+ * revelar, que es lo que efectivamente es.
+ *
+ * **Niebla, no pintura.** La primera versión tapaba al 93% con un canto duro, y
+ * el resultado era que no había mapa: una lámina blanca con unos agujeros
+ * recortados a tijera. Niebla de verdad es translúcida y no tiene borde — se
+ * adivina la forma del terreno debajo, y lo descubierto se funde con lo que
+ * falta en vez de encajar como una pieza.
+ *
+ * Dos perillas independientes, y conviene no confundirlas:
+ *
+ * - **`VELO`** decide cuánto tapa. Es lo que evita que la niebla se lea como
+ *   pintura blanca: al 80% se adivina el terreno y descubrirlo sigue valiendo.
+ * - **`VELO_DIFUSO`** decide cuánto se le come el filo a los agujeros. Con
+ *   mucho desenfoque el raspado queda como una mancha de aliento sobre vidrio
+ *   y se pierde de dónde salió; con poco se lee la cuadrícula —cada pasada
+ *   descubre celdas, y verlas es parte de entender que el mapa se descubre a
+ *   pedazos, no a brochazos.
+ *
+ * Va bajo, no en cero: un par de píxeles alcanzan para matar el borde dentado
+ * sin disolver la tesela.
+ */
+const VELO = 'rgba(255,253,248,0.80)';
+const VELO_DIFUSO = 3;
+
+const RELLENO_DEPARTAMENTO = `rgba(${VERDE},0.055)`;
+const RELLENO_ELEGIDO = `rgba(${VERDE},0.20)`;
+const BORDE = `rgba(${VERDE},0.72)`;
 const PIN = '#B45309';
 const PIN_ARO = '#FFFDF8';
-const RUTA = '#315E9E';
+const RUTA = '#15803D';
 const RUTA_ARO = 'rgba(255,253,248,0.92)';
-const BORRADOR = '#6941C6';
+const BORRADOR = '#4B4FA6';
 const CALOR_FRIO = 'rgba(33,102,172,0.16)';
 const CALOR_MEDIO = 'rgba(245,158,11,0.17)';
 const CALOR_ALTO = 'rgba(220,38,38,0.22)';
@@ -72,10 +125,57 @@ export default function MapaCapas({
   mostrarPines,
   mostrarCalor = false,
   borrador = null,
+  /** Celdas descubiertas visibles, ya recortadas al viewport por quien llama. */
+  niebla = null,
   /** Qué nivel administrativo se está mostrando. Solo se usa para re-entintar. */
   nivel,
   elegido,
 }) {
+  /**
+   * El velo, como un solo path con relleno par-impar.
+   *
+   * El rectángulo exterior cubre; cada celda descubierta es un subpath que,
+   * por la regla par-impar, se convierte en agujero. Todo el efecto es **un
+   * draw call**, sin máscaras, sin capas intermedias y sin un nodo por celda:
+   * con unos miles de celdas descubiertas eso último sería impracticable.
+   *
+   * El rectángulo se dibuja en coordenadas del ancla y se hace deliberadamente
+   * enorme. El ancla se recoloca cada 2048 px de mundo y solo cambia de nivel
+   * con el zoom entero, así que el desplazamiento respecto de ella está
+   * acotado; ±6000 cubre cualquier pantalla en cualquier punto del recorrido
+   * sin tener que recalcular el path mientras el dedo se mueve.
+   */
+  const velo = useMemo(() => {
+    const celdas = niebla?.celdas;
+    if (!niebla?.activa) return null;
+
+    const z = ancla.z;
+    const path = Skia.Path.Make();
+    path.addRect(Skia.XYWHRect(-6000, -6000, 12000, 12000));
+
+    if (celdas?.length) {
+      for (const { cx, cy } of celdas) {
+        // La celda va de su esquina suroeste a la siguiente. En pantalla la
+        // latitud crece hacia arriba y la Y hacia abajo, así que el borde
+        // superior sale de `cy + 1`.
+        const x0 = lngAX(cx * CELDA, z) - ancla.x;
+        const x1 = lngAX((cx + 1) * CELDA, z) - ancla.x;
+        const y0 = latAY((cy + 1) * CELDA, z) - ancla.y;
+        const y1 = latAY(cy * CELDA, z) - ancla.y;
+        if (!Number.isFinite(x0) || !Number.isFinite(y0)) continue;
+        // Un pelo de solape entre celdas vecinas: sin él, el redondeo a píxeles
+        // físicos deja una rejilla de hilos de velo entre celda y celda, y lo
+        // descubierto se ve cuadriculado en vez de continuo. El solape no rompe
+        // la regla par-impar porque las celdas se dibujan como un solo
+        // rectángulo cada una, nunca anidadas.
+        path.addRect(Skia.XYWHRect(x0, y0, x1 - x0 + 0.5, y1 - y0 + 0.5));
+      }
+    }
+
+    path.setFillType(FillType.EvenOdd);
+    return path;
+  }, [niebla, ancla]);
+
   const { rutas, lineas, puntos, dibujo } = useMemo(() => {
     const z = ancla.z;
     const rutas = [];
@@ -105,11 +205,17 @@ export default function MapaCapas({
       : [];
 
     const coordenadas = Array.isArray(borrador?.coordinates) ? borrador.coordinates : [];
+    // Los tiradores van donde se tocó, siempre. En una ruta por calles el trazo
+    // pasa por decenas de puntos que nadie eligió, y poner un tirador en cada
+    // uno volvería imposible saber cuáles se pueden mover.
     const vertices = coordenadas.map(([ln, la]) => ({
       x: lngAX(Number(ln), z) - ancla.x,
       y: latAY(Number(la), z) - ancla.y,
     }));
-    const dBorrador = lineaAPath(coordenadas, z, ancla, borrador?.tipo === 'area');
+    // La línea, en cambio, sigue el trazo cuando existe: es el camino real
+    // entre esos puntos y no la cuerda recta que los une.
+    const linea = Array.isArray(borrador?.trazo) && borrador.trazo.length > 1 ? borrador.trazo : coordenadas;
+    const dBorrador = lineaAPath(linea, z, ancla, borrador?.tipo === 'area');
     const dibujo = {
       tipo: borrador?.tipo || null,
       vertices,
@@ -184,6 +290,33 @@ export default function MapaCapas({
     return () => cancelAnimation(latido);
   }, [elegido, latido]);
 
+  /**
+   * El halo del pin elegido.
+   *
+   * El latido de arriba engrosa el trazo de un área, que es lo que un área
+   * tiene. Un pin no tiene trazo: mide cinco píxeles y engordarlo no se nota.
+   * Así que la confirmación de «tocaste esto» es una onda que sale del punto y
+   * se apaga.
+   *
+   * **Corre una vez y termina**, no en bucle. La onda contesta al toque; una
+   * onda perpetua deja de ser respuesta y pasa a ser decoración que compite con
+   * el mapa. Lo que sí queda mientras haya algo elegido es el latido del área,
+   * porque ahí la forma es la que hay que poder seguir viendo.
+   */
+  const onda = useSharedValue(0);
+  useEffect(() => {
+    const punto = puntos.find((p) => p.id === elegido);
+    if (!punto) {
+      onda.value = 0;
+      return undefined;
+    }
+    onda.value = 0;
+    onda.value = withTiming(1, { duration: 520, easing: Easing.out(Easing.cubic) });
+    return undefined;
+  }, [elegido, puntos, onda]);
+
+  const puntoElegido = useMemo(() => puntos.find((p) => p.id === elegido) || null, [puntos, elegido]);
+
   // ─── Transformación ─────────────────────────────────────────────────────────
 
   const transformacion = useDerivedValue(() => {
@@ -204,6 +337,12 @@ export default function MapaCapas({
    */
   const escalaInv = useDerivedValue(() => 1 / Math.pow(2, zoom.value - ancla.z), [ancla]);
   const grosor = useDerivedValue(() => 1.1 * escalaInv.value);
+  const difusoVelo = useDerivedValue(() => VELO_DIFUSO * escalaInv.value);
+  // La onda: el radio crece y la opacidad cae, así se expande y se disuelve en
+  // vez de desaparecer de golpe. Va dividida por la escala como todo lo que
+  // debe medir lo mismo en pantalla a cualquier zoom.
+  const radioOnda = useDerivedValue(() => (6 + onda.value * 26) * escalaInv.value);
+  const opacidadOnda = useDerivedValue(() => (1 - onda.value) * 0.5);
   const grosorElegido = useDerivedValue(() => (2 + latido.value * 1.4) * escalaInv.value);
   const radioPin = useDerivedValue(() => 5.5 * pin.value * escalaInv.value);
   const radioAro = useDerivedValue(() => 2 * escalaInv.value);
@@ -219,7 +358,9 @@ export default function MapaCapas({
   // El relleno entra después del trazo: primero la línea, después el color.
   const opacidadRelleno = useDerivedValue(() => Math.max(0, (entrada.value - 0.45) / 0.55));
 
-  if (!rutas.length && !lineas.length && !puntos.length && !dibujo.path && !dibujo.vertices.length) return null;
+  // El velo se dibuja aunque no haya ni un territorio ni un pin: la niebla es
+  // el estado inicial del mapa, no un adorno sobre los datos.
+  if (!velo && !rutas.length && !lineas.length && !puntos.length && !dibujo.path && !dibujo.vertices.length) return null;
 
   return (
     <Canvas
@@ -227,6 +368,20 @@ export default function MapaCapas({
       style={{ position: 'absolute', left: 0, top: 0, width: ancho, height: alto }}
     >
       <Group transform={transformacion}>
+        {/* El velo va primero: tapa las teselas, pero los territorios, los
+            pines y lo que se está trazando se dibujan encima. Enterrar los
+            propios datos bajo la niebla sería perder el mapa para ganar un
+            efecto. */}
+        {velo ? (
+          <Path path={velo} style="fill" color={VELO}>
+            {/* El difuminado se mide en píxeles de mundo, no de pantalla, así
+                que se divide por la escala del grupo: sin eso, acercar el mapa
+                convertiría la orilla de la niebla en un degradado de cien
+                píxeles y alejar la volvería un canto duro otra vez. */}
+            <BlurMask blur={difusoVelo} style="normal" />
+          </Path>
+        ) : null}
+
         {mostrarCalor
           ? puntos.map((p) => (
               <Group key={`calor-${p.id}`}>
@@ -283,10 +438,22 @@ export default function MapaCapas({
           </Group>
         )) : null}
 
+        {/* La onda del pin elegido. Va después de los pines para salir por
+            encima, y como un solo círculo: solo hay un elegido a la vez. */}
+        {puntoElegido ? (
+          <Circle
+            cx={puntoElegido.x}
+            cy={puntoElegido.y}
+            r={radioOnda}
+            color={PIN}
+            opacity={opacidadOnda}
+          />
+        ) : null}
+
         {dibujo.path ? (
           <Group>
             {dibujo.tipo === 'area' && dibujo.vertices.length >= 3 ? (
-              <Path path={dibujo.path} style="fill" color="rgba(105,65,198,0.14)" />
+              <Path path={dibujo.path} style="fill" color="rgba(75,79,166,0.14)" />
             ) : null}
             <Path
               path={dibujo.path}

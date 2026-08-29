@@ -1,0 +1,134 @@
+diff --git a/server/services/codexSchema.js b/server/services/codexSchema.js
+--- a/server/services/codexSchema.js
++++ b/server/services/codexSchema.js
+@@ -234,7 +234,27 @@ const CODEX_PRESETS = {
+     { label: 'Importancia', type: 'escala' },
+     { label: 'Documento fuente', type: 'archivo' },
+     { label: 'Enlace oficial', type: 'link' },
+   ],
++  Source: [
++    { field_key: 'sys_source_kind', label: 'Tipo de fuente', type: 'dropdown', options: ['Persona', 'Web', 'Archivo', 'Libro', 'Documento', 'Dataset', 'Entrevista', 'Publicación', 'Otra'] },
++    { field_key: 'sys_source_represented_item', label: 'Item representado', type: 'ref' },
++    { field_key: 'sys_source_authors', label: 'Autores', type: 'refs' },
++    { field_key: 'sys_source_publisher', label: 'Editorial / medio', type: 'ref' },
++    { field_key: 'sys_source_published_at', label: 'Fecha de publicación', type: 'fecha' },
++    { field_key: 'sys_source_accessed_at', label: 'Fecha de consulta', type: 'fecha' },
++    { field_key: 'sys_source_url', label: 'URL de la fuente', type: 'link' },
++    { field_key: 'sys_source_file', label: 'Archivo del Codex', type: 'archivo' },
++    { field_key: 'sys_source_identifier', label: 'ISBN / DOI / identificador', type: 'id' },
++    { field_key: 'sys_source_languages', label: 'Idiomas de la fuente', type: 'tags' },
++    { field_key: 'sys_source_citation', label: 'Cita sugerida', type: 'parrafo' },
++    { field_key: 'sys_source_citation_style', label: 'Estilo de cita', type: 'dropdown', options: ['APA', 'MLA', 'Chicago', 'Institucional', 'Personalizado'] },
++    { field_key: 'sys_source_locator', label: 'Página / sección / localizador', type: 'texto' },
++    { field_key: 'sys_source_excerpt', label: 'Fragmento relevante', type: 'parrafo' },
++    { field_key: 'sys_source_verification_status', label: 'Estado de verificación', type: 'dropdown', options: ['Verificada', 'Parcial', 'Pendiente', 'Descartada'] },
++    { field_key: 'sys_source_reliability', label: 'Confiabilidad', type: 'escala' },
++    { field_key: 'sys_source_confidentiality', label: 'Confidencialidad de la fuente', type: 'dropdown', options: ['Pública', 'Reservada', 'Confidencial', 'Anónima'] },
++    { field_key: 'sys_source_notes', label: 'Notas de la fuente', type: 'parrafo' },
++  ],
+   // ── Informales ────────────────────────────────────────────────────────────
+   // Snippet: párrafo libre + clasificación; el resto son campos opt-in.
+   Snippet: [
+@@ -252,6 +272,29 @@ const CODEX_PRESETS = {
+     { label: 'Transcripción', type: 'parrafo', readonly: true },
+   ],
+ };
++
++// Campos oficiales que pertenecen a una modalidad del item, no al preset base.
++// Perfil sigue siendo Actor en almacenamiento; estos campos solo aparecen al
++// aplicar sys_profile_actor o consultar un Actor con is_profile=true.
++const CODEX_EXTRA_FIELDS = {
++  Actor: [
++    { field_key: 'sys_actor_profile_target', label: '¿A quién representa?', type: 'texto' },
++    { field_key: 'sys_actor_profile_goal', label: '¿Qué quieres entender?', type: 'parrafo' },
++    { field_key: 'sys_actor_profile_known', label: '¿Qué sabes de este perfil?', type: 'parrafo' },
++    { field_key: 'sys_actor_profile_age_min', label: 'Edad mínima aproximada', type: 'numero' },
++    { field_key: 'sys_actor_profile_age_max', label: 'Edad máxima aproximada', type: 'numero' },
++    { field_key: 'sys_actor_profile_territories', label: 'Territorios relacionados', type: 'refs' },
++    { field_key: 'sys_actor_profile_motivations', label: 'Motivaciones', type: 'tags' },
++    { field_key: 'sys_actor_profile_concerns', label: 'Preocupaciones', type: 'tags' },
++    { field_key: 'sys_actor_profile_habits', label: 'Hábitos', type: 'tags' },
++    { field_key: 'sys_actor_profile_needs', label: 'Necesidades', type: 'tags' },
++    { field_key: 'sys_actor_profile_sources', label: 'Fuentes que sustentan el perfil', type: 'refs' },
++    { field_key: 'sys_actor_profile_assumptions', label: 'Supuestos', type: 'repetible', cols: ['Supuesto', 'Base', 'Confianza'] },
++    { field_key: 'sys_actor_profile_uncertainties', label: 'Incertidumbres', type: 'repetible', cols: ['Incertidumbre', 'Impacto'] },
++    { field_key: 'sys_actor_profile_reviewed_at', label: 'Fecha de revisión', type: 'fecha' },
++  ],
++};
+ 
+ // Identidad normativa de campos v4. El label sigue siendo presentación y puede
+ // localizarse; field_key es la clave estable que usan API, MCP y migraciones.
+@@ -274,8 +317,31 @@ for (const [tipo, fields] of Object.entries(CODEX_PRESETS)) {
+     field.field_key = field.field_key || systemFieldKey(tipo, field.label);
+   }
+ }
++for (const [tipo, fields] of Object.entries(CODEX_EXTRA_FIELDS)) {
++  for (const field of fields) {
++    field.field_key = field.field_key || systemFieldKey(tipo, field.label);
++  }
++}
++
++const CODEX_SPECIAL_PRESETS = Object.freeze([
++  Object.freeze({
++    preset_key: 'sys_profile_actor',
++    label: 'Actor · Perfil',
++    description: 'Representa un tipo de persona o grupo; no corresponde a una persona real.',
++    item_types: ['Actor'],
++    field_keys: CODEX_EXTRA_FIELDS.Actor.map((field) => field.field_key),
++    applies_when: Object.freeze({ is_profile: true }),
++  }),
++]);
+ 
+ // Tipos legacy → tipo canónico del catálogo
+ const PRESET_TIPO_ALIAS = { Evidencia: 'Objeto', Biblioteca: 'Historia', Fuente: 'Source' };
+ const resolvePresetTipo = (tipo) => PRESET_TIPO_ALIAS[tipo] || tipo;
++
++function getFieldsForTipo(tipo) {
++  const canon = resolvePresetTipo(tipo);
++  return [...(CODEX_PRESETS[canon] || []), ...(CODEX_EXTRA_FIELDS[canon] || [])];
++}
+ 
+ // ─── Normalización de tipo al escribir ──────────────────────────────────────
+ // La DB tiene CHECK constraints estrictos:
+@@ -341,7 +407,7 @@ function getPresetMap(tipo) {
+   const canon = resolvePresetTipo(tipo);
+   if (_presetMapCache[canon]) return _presetMapCache[canon];
+   const map = new Map();
+-  for (const f of CODEX_PRESETS[canon] || []) {
++  for (const f of getFieldsForTipo(canon)) {
+     map.set(f.label, f);
+     map.set(f.field_key, f);
+   }
+@@ -551,7 +617,7 @@ const TIPO_ORDER = UNIVERSE_ITEM_TYPES;
+ // Campos del catálogo que usan un tipo dado (dedup por label, primer match gana).
+ function fieldsUsingType(type) {
+   const seen = new Map();
+-  for (const fields of Object.values(CODEX_PRESETS)) {
++  for (const fields of [...Object.values(CODEX_PRESETS), ...Object.values(CODEX_EXTRA_FIELDS)]) {
+     for (const f of fields) {
+       if (f.type === type && !seen.has(f.label)) seen.set(f.label, f);
+     }
+@@ -584,7 +650,7 @@ function buildCanonicalLabels() {
+   return TIPO_ORDER
+     .filter((t) => CODEX_PRESETS[t])
+-    .map((t) => `- ${t}: ${CODEX_PRESETS[t].map((f) => `${f.field_key}="${f.label}"`).join(' | ')}`)
++    .map((t) => `- ${t}: ${getFieldsForTipo(t).map((f) => `${f.field_key}="${f.label}"`).join(' | ')}`)
+     .join('\n');
+ }
+@@ -683,7 +749,9 @@ module.exports = {
+   SCHEMA_VERSION,
+   CODEX_FIELD_TYPES,
+   CODEX_PRESETS,
++  CODEX_EXTRA_FIELDS,
++  CODEX_SPECIAL_PRESETS,
+   PRESET_TIPO_ALIAS,
+   UNIVERSE_ITEM_TYPES,
+   AUXILIARY_CONTENT_TYPES,
+@@ -694,6 +762,7 @@ module.exports = {
+   resolvePresetTipo,
+   slugFieldPart,
+   systemFieldKey,
++  getFieldsForTipo,
+   getPresetMap,
+   normalizeDetails,
+   normalizeTipo,

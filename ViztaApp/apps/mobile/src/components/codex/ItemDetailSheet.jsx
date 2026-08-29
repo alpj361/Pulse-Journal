@@ -19,7 +19,9 @@ import { X, Pencil, ExternalLink, Plus, Trash2, ChevronDown } from 'lucide-react
 import { INK, GLASS, CARD_SHADOW, RADIUS } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
 import { roce } from '../../utils/haptics';
-import { getCodexSchema, collectFields, canonicalTipo, presetFor, FIELD_TYPES } from '../../utils/codexSchema';
+import { collectFields, canonicalTipo, presetFor, FIELD_TYPES } from '../../utils/codexSchema';
+import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
+import { componenteDe } from './campos/registro';
 import useCamposEditables from './useCamposEditables';
 import useVinculos from './useVinculos';
 import FieldInput, { inputStyle } from './FieldInput';
@@ -96,8 +98,16 @@ function Insignia({ children }) {
   );
 }
 
-function FilaCampo({ label, value, type, accent, onPress }) {
-  const esLink = type === 'link' && value;
+/**
+ * Una fila de campo, en lectura.
+ *
+ * Delega el cuerpo al registro: cada tipo sabe cómo se muestra. Antes esto era
+ * un `Text` con el valor ya convertido a string y un caso especial cosido a
+ * mano para `link` — que es la forma en que un archivo termina con quince casos
+ * especiales, uno por cada vez que alguien notó que un tipo se veía mal.
+ */
+function FilaCampo({ label, value, crudo, type, accent, onPress, ...resto }) {
+  const { Viewer } = componenteDe(type);
 
   return (
     <Pressable
@@ -111,20 +121,7 @@ function FilaCampo({ label, value, type, accent, onPress }) {
       {/* Sin insignia de tipo: leyendo, «texto» o «dropdown» no dice nada sobre
           el dato — es información del esquema, y solo importa al editarlo. */}
       <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta, marginBottom: 5 }}>{label}</Text>
-      {esLink ? (
-        <TouchableOpacity
-          onPress={() => Linking.openURL(value).catch(() => {})}
-          activeOpacity={0.7}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
-        >
-          <Text numberOfLines={2} style={{ flex: 1, fontSize: 14, color: accent, fontWeight: '600' }}>
-            {value}
-          </Text>
-          <ExternalLink size={13} color={accent} />
-        </TouchableOpacity>
-      ) : (
-        <Text style={{ fontSize: 14.5, color: INK.title, lineHeight: 21 }}>{value}</Text>
-      )}
+      <Viewer value={crudo !== undefined && crudo !== null ? crudo : value} type={type} field={resto} accent={accent} />
     </Pressable>
   );
 }
@@ -325,7 +322,7 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
   const dbId = item?._sourceId || item?.id;
   const { width: W } = useWindowDimensions();
 
-  const [schema, setSchema] = useState(null);
+  const schema = useSchemaDelUsuario();
   const [tab, setTab] = useState('detalle');
 
   const [editando, setEditando] = useState(creando);
@@ -362,11 +359,6 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
   const { progresiones, relaciones, menciones } = vinc;
   const soportaProgresion = tipo !== 'Post' && tipo !== 'Snippet';
 
-  useEffect(() => {
-    let vivo = true;
-    getCodexSchema().then((s) => vivo && setSchema(s));
-    return () => { vivo = false; };
-  }, []);
 
   // Relaciones y progresiones se cargan al abrir su pestaña, no antes.
   useEffect(() => {

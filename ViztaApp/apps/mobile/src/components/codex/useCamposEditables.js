@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getCodexSchema, presetFor, INTERNAL_KEYS } from '../../utils/codexSchema';
+import { presetFor, INTERNAL_KEYS } from '../../utils/codexSchema';
+import { EXTRACTORW_URL } from '../../utils/servicios';
+import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
 import { supabase } from '../../utils/supabase';
 
 /**
@@ -22,6 +24,58 @@ import { supabase } from '../../utils/supabase';
 let contador = 0;
 const conKey = (f) => ({ ...f, _k: f._k ?? `f${++contador}` });
 
+/**
+ * Manda los campos del catálogo por su endpoint.
+ *
+ * Devuelve `null` si salió bien, o un objeto de error listo para mostrar. El
+ * caso que importa es `INVALID_FIELD_SHAPE`: el backend dice qué clave falló,
+ * qué forma esperaba y cuál recibió, y eso se traduce a un error atado al campo
+ * en vez de un «no se pudo guardar» que no le sirve a nadie.
+ */
+async function guardarCampos(id, fields) {
+  const { data: sesion } = await supabase.auth.getSession();
+  const token = sesion?.session?.access_token;
+  if (!token) return { mensaje: 'Sin sesión activa' };
+
+  try {
+    const res = await fetch(`${EXTRACTORW_URL}/api/codex/universe-items/${id}/fields`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ fields }),
+    });
+    if (res.ok) return null;
+
+    const cuerpo = await res.json().catch(() => null);
+    const d = cuerpo?.details;
+    if (d?.field_key) {
+      return {
+        field_key: d.field_key,
+        mensaje: d.correction || `«${d.field_key}» esperaba ${d.expected} y recibió ${d.received}.`,
+      };
+    }
+    return { mensaje: cuerpo?.error || `No se pudieron guardar los campos (HTTP ${res.status}).` };
+  } catch (e) {
+    // Sin red el resto del item igual debería poder guardarse, pero decirle a
+    // alguien «guardado» cuando sus campos no salieron es peor que el error.
+    return { mensaje: e?.message || 'Sin conexión al guardar los campos.' };
+  }
+}
+
+/**
+ * Lo que todavía va a `details` por Supabase.
+ *
+ * Todo lo que tiene `field_key` ya lo escribió el endpoint. Reenviarlo acá
+ * pisaría el valor validado con el crudo, y encima bajo otra clave.
+ */
+function soloFueraDelCatalogo(detalles, campos) {
+  const delCatalogo = new Set(
+    campos.filter((c) => c.field_key).map((c) => String(c.storage_key || c.label).toLowerCase())
+  );
+  return Object.fromEntries(
+    Object.entries(detalles).filter(([k]) => !delCatalogo.has(k.toLowerCase()))
+  );
+}
+
 // Formas compatibles entre sí. Cambiar de texto a párrafo no pierde nada;
 // cambiar de texto a geo dejaría un string donde el editor espera un objeto.
 const PLANOS = new Set(['texto', 'parrafo', 'link', 'email', 'telefono', 'id', 'color', 'formula']);
@@ -36,6 +90,9 @@ export default function useCamposEditables(item, tipo) {
   const [values, setValues] = useState({});
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
+  // Qué campo causó el error, cuando el backend lo dice. Deja marcarlo en su
+  // fila en vez de mostrar solo un mensaje arriba.
+  const [errorCampo, setErrorCampo] = useState(null);
 
   // Valores crudos guardados, sin claves internas ni las estructuras anidadas
   // que este editor no toca (esas se preservan al guardar).
@@ -48,29 +105,47 @@ export default function useCamposEditables(item, tipo) {
     );
   }, [item, isUniverse]);
 
+  const schemaUsuario = useSchemaDelUsuario();
+
   useEffect(() => {
     let vivo = true;
-    getCodexSchema().then((s) => {
-      if (!vivo) return;
+    (async () => {
+      const s = schemaUsuario;
+      if (!s || !vivo) return;
       setSchema(s);
 
       const preset = presetFor(tipo, s);
-      const porLabel = new Map(preset.map((f) => [f.label.toLowerCase(), f]));
+
+      // Dos índices, y se consulta el canónico primero. Un valor puede estar
+      // guardado bajo `field_key` —si el backfill ya corrió— o bajo el label
+      // que usaba el contrato viejo; el schema publica las dos claves en la
+      // misma definición, así que no hay que adivinar cuál es cuál.
+      const porKey = new Map(preset.filter((f) => f.field_key).map((f) => [f.field_key, f]));
+      const porLabel = new Map(
+        preset.map((f) => [String(f.storage_key || f.label).toLowerCase(), f])
+      );
 
       // Arranca con los campos que ya tienen dato: los del preset conservan su
       // tipo; los que no están en el catálogo entran como texto.
       const iniciales = [];
       const vals = {};
       for (const [k, v] of Object.entries(raw)) {
-        const def = porLabel.get(k.toLowerCase());
+        const def = porKey.get(k) || porLabel.get(k.toLowerCase());
         iniciales.push(conKey(def ? { ...def } : { label: k, type: 'texto', extra: true }));
-        vals[def ? def.label : k] = v;
+        // Los valores se siguen indexando como llegaron: `guardar` todavía
+        // escribe `details` directo a Supabase. Cambiar esta clave antes de
+        // mover la escritura al endpoint dejaría los datos en un lugar que el
+        // guardado actual no sabe encontrar.
+        vals[def ? def.storage_key || def.label : k] = v;
       }
       setCampos(iniciales);
       setValues(vals);
-    });
+    })();
     return () => { vivo = false; };
-  }, [tipo, raw]);
+    // `schemaUsuario` entra en las dependencias: el schema llega asíncrono y sin
+    // él este efecto correría una sola vez, con `null`, y los campos nunca se
+    // poblarían.
+  }, [tipo, raw, schemaUsuario]);
 
   const preset = useMemo(() => (schema ? presetFor(tipo, schema) : []), [tipo, schema]);
 
@@ -167,6 +242,7 @@ export default function useCamposEditables(item, tipo) {
     async ({ name, description, tags, aliases, geo, tipo: tipoNuevo } = {}) => {
       setGuardando(true);
       setError(null);
+      setErrorCampo(null);
       try {
         // Solo los campos con dato y con etiqueta se escriben.
         const editados = Object.fromEntries(
@@ -229,6 +305,47 @@ export default function useCamposEditables(item, tipo) {
 
         let err;
         if (isUniverse) {
+          /**
+           * Los campos van por el endpoint; el resto del item, directo.
+           *
+           * **Por qué separar la escritura en dos.** `PATCH …/fields` valida la
+           * forma de cada valor contra el catálogo y devuelve
+           * `INVALID_FIELD_SHAPE` con qué esperaba y qué recibió — eso es lo
+           * que permite marcar el campo culpable en vez de fallar entero.
+           * Nombre, descripción, tags, alias y geo no son campos del catálogo y
+           * no tienen ese endpoint, así que siguen yendo por Supabase.
+           *
+           * **El PATCH mezcla, no reemplaza.** Verificado contra el servidor:
+           * mandar una clave sola deja intactas las demás. Por eso acá se
+           * envían únicamente los campos que el editor conoce, sin tener que
+           * reenviar el resto para no perderlo.
+           *
+           * El servidor guarda en `details` bajo `storage_key` —el label— y
+           * traduce él mismo desde `field_key`. Esa traducción es justamente lo
+           * que no hay que replicar en el cliente.
+           */
+          const porClave = {};
+          for (const c of campos) {
+            if (!c.field_key || c.readonly || c.type === 'formula') continue;
+            const v = values[c.storage_key || c.label];
+            if (v === undefined) continue;
+            porClave[c.field_key] = v;
+          }
+
+          if (Object.keys(porClave).length) {
+            const problema = await guardarCampos(dbId, porClave);
+            if (problema) {
+              // La convención del hook es devolver algo falso cuando falla —el
+              // llamador hace `if (!guardado) return`— y dejar el detalle en
+              // `error`. Devolver el objeto del problema se leería como éxito y
+              // la ficha se cerraría dando por guardado lo que no se guardó.
+              setError(problema.mensaje);
+              setErrorCampo(problema.field_key || null);
+              setGuardando(false);
+              return null;
+            }
+          }
+
           ({ error: err } = await supabase
             .from('codex_universe_items')
             .update({
@@ -237,7 +354,12 @@ export default function useCamposEditables(item, tipo) {
               tags: tagsFinal,
               aliases: aliasFinal,
               ...(escribeGeo ? { geo } : {}),
-              details: detalles,
+              // `details` sigue escribiéndose acá solo con lo que el endpoint no
+              // cubre: estructuras que este editor no muestra y campos sueltos
+              // sin `field_key` en el catálogo. Los que sí tienen clave ya los
+              // escribió el PATCH, y volver a mandarlos por Supabase pisaría su
+              // validación con el valor crudo.
+              details: soloFueraDelCatalogo(detalles, campos),
               updated_at: new Date().toISOString(),
             })
             .eq('id', dbId));
@@ -287,5 +409,6 @@ export default function useCamposEditables(item, tipo) {
     guardar,
     guardando,
     error,
+    errorCampo,
   };
 }
