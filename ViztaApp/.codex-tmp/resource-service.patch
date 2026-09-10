@@ -1,0 +1,346 @@
+diff --git a/server/services/codexResourceService.js b/server/services/codexResourceService.js
+new file mode 100644
+--- /dev/null
++++ b/server/services/codexResourceService.js
+@@ -0,0 +1,360 @@
++const {
++  CodexContractError,
++  prepareFieldPatch,
++  applyPresetKeys,
++  resolveItemFields,
++} = require('./codexContractV4');
++
++const SOURCE_PRESET = 'sys_base_source';
++const PROFILE_PRESET = 'sys_profile_actor';
++const SOURCE_KIND = 'sys_source_kind';
++const SOURCE_REPRESENTED = 'sys_source_represented_item';
++const SOURCE_AUTHORS = 'sys_source_authors';
++const SOURCE_PUBLISHER = 'sys_source_publisher';
++const SOURCE_URL = 'sys_source_url';
++const SOURCE_FILE = 'sys_source_file';
++const SOURCE_IDENTIFIER = 'sys_source_identifier';
++const PROFILE_TARGET = 'sys_actor_profile_target';
++const PROFILE_GOAL = 'sys_actor_profile_goal';
++const PROFILE_KNOWN = 'sys_actor_profile_known';
++const PROFILE_AGE_MIN = 'sys_actor_profile_age_min';
++const PROFILE_AGE_MAX = 'sys_actor_profile_age_max';
++const PROFILE_TERRITORIES = 'sys_actor_profile_territories';
++const PROFILE_SOURCES = 'sys_actor_profile_sources';
++
++const ITEM_COLUMNS = 'id, user_id, tipo, is_profile, name, description, tags, aliases, details, field_keys, preset_keys, geo, created_at, updated_at';
++
++function requireUser(userId) {
++  if (!userId) throw new CodexContractError('UNAUTHENTICATED', 'Usuario no autenticado', {}, 401);
++}
++
++function cleanText(value) {
++  return value === null || value === undefined ? null : String(value).trim() || null;
++}
++
++function normalizeTags(value, field) {
++  if (value === undefined) return undefined;
++  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
++    throw new CodexContractError('INVALID_ITEM_ARRAY', `${field} debe ser string[]`);
++  }
++  return [...new Set(value.map((entry) => entry.trim()).filter(Boolean))];
++}
++
++async function readOwnedItem(supabase, userId, itemId, expected = {}) {
++  requireUser(userId);
++  const { data, error } = await supabase
++    .from('codex_universe_items')
++    .select(ITEM_COLUMNS)
++    .eq('user_id', userId)
++    .eq('id', itemId)
++    .maybeSingle();
++  if (error) throw new CodexContractError('ITEM_READ_FAILED', error.message, {}, 500);
++  if (!data) throw new CodexContractError('ITEM_NOT_FOUND', 'Item no encontrado o ajeno al usuario.', { item_id: itemId }, 404);
++  if (expected.tipo && data.tipo !== expected.tipo) {
++    throw new CodexContractError('ITEM_TYPE_MISMATCH', `El item debe ser ${expected.tipo}.`, { actual: data.tipo }, 409);
++  }
++  if (expected.isProfile !== undefined && data.is_profile !== expected.isProfile) {
++    throw new CodexContractError('ITEM_PROFILE_MISMATCH', expected.isProfile ? 'El Actor no es un Perfil.' : 'El item no admite Perfil.', {}, 409);
++  }
++  return data;
++}
++
++async function presentItem(supabase, userId, item) {
++  const resolved = await resolveItemFields(supabase, userId, item);
++  return {
++    ...item,
++    resolved_fields: resolved.fields,
++    new_preset_field_keys: resolved.newPresetFieldKeys,
++    stale_preset_keys: resolved.stalePresetKeys,
++  };
++}
++
++async function canonicalValues(supabase, userId, item) {
++  const resolved = await resolveItemFields(supabase, userId, item);
++  return Object.fromEntries(resolved.fields
++    .filter((field) => field.has_value)
++    .map((field) => [field.field_key, field.value]));
++}
++
++async function referenceItems(supabase, userId, ids) {
++  const unique = [...new Set(ids.filter(Boolean))];
++  if (!unique.length) return new Map();
++  const { data, error } = await supabase
++    .from('codex_universe_items')
++    .select('id, name, tipo, is_profile')
++    .eq('user_id', userId)
++    .in('id', unique);
++  if (error) throw new CodexContractError('REF_LOOKUP_FAILED', error.message, {}, 500);
++  return new Map((data || []).map((item) => [item.id, item]));
++}
++
++function refId(value) {
++  return value && typeof value === 'object' ? value.id : null;
++}
++
++function refIds(value) {
++  return Array.isArray(value) ? value.map(refId).filter(Boolean) : [];
++}
++
++async function validateSourceSemantics(supabase, userId, values, description) {
++  const kind = values[SOURCE_KIND];
++  if (!kind) throw new CodexContractError('SOURCE_KIND_REQUIRED', 'La fuente requiere sys_source_kind.');
++  const representedId = refId(values[SOURCE_REPRESENTED]);
++  const authorIds = refIds(values[SOURCE_AUTHORS]);
++  const publisherId = refId(values[SOURCE_PUBLISHER]);
++  const fileId = refId(values[SOURCE_FILE]);
++  const refs = await referenceItems(supabase, userId, [representedId, ...authorIds, publisherId, fileId]);
++  const represented = representedId ? refs.get(representedId) : null;
++  if (authorIds.some((id) => refs.get(id)?.tipo !== 'Actor')) {
++    throw new CodexContractError('SOURCE_AUTHOR_TYPE', 'Los autores de una Source deben referenciar Actor.');
++  }
++  if (publisherId && refs.get(publisherId)?.tipo !== 'Entidad') {
++    throw new CodexContractError('SOURCE_PUBLISHER_TYPE', 'Editorial / medio debe referenciar Entidad.');
++  }
++  const hasUrl = Boolean(values[SOURCE_URL]);
++  const hasFile = Boolean(fileId);
++  if (kind === 'Persona' && represented?.tipo !== 'Actor') {
++    throw new CodexContractError('SOURCE_PERSON_ACTOR_REQUIRED', 'Una Source de tipo Persona debe representar un Actor.');
++  }
++  if (kind === 'Web' && !hasUrl) throw new CodexContractError('SOURCE_URL_REQUIRED', 'Una Source Web requiere URL.');
++  if (kind === 'Archivo' && !hasFile) throw new CodexContractError('SOURCE_FILE_REQUIRED', 'Una Source Archivo requiere una referencia de archivo del Codex.');
++  if (kind === 'Libro' && !values[SOURCE_IDENTIFIER] && !authorIds.length) {
++    throw new CodexContractError('SOURCE_BOOK_IDENTITY_REQUIRED', 'Un Libro requiere autores o ISBN/identificador.');
++  }
++  if (kind === 'Documento' && !hasFile && !hasUrl) {
++    throw new CodexContractError('SOURCE_DOCUMENT_LOCATION_REQUIRED', 'Un Documento requiere archivo del Codex o URL.');
++  }
++  if (kind === 'Dataset' && !represented && !hasFile && !hasUrl) {
++    throw new CodexContractError('SOURCE_DATASET_LOCATION_REQUIRED', 'Un Dataset requiere item representado, archivo o URL.');
++  }
++  if (kind === 'Entrevista' && represented?.tipo !== 'Actor') {
++    throw new CodexContractError('SOURCE_INTERVIEW_ACTOR_REQUIRED', 'Una Entrevista debe representar el Actor entrevistado.');
++  }
++  if (kind === 'Publicación' && represented?.tipo !== 'Post' && !hasUrl) {
++    throw new CodexContractError('SOURCE_PUBLICATION_REQUIRED', 'Una Publicación requiere un Post representado o URL.');
++  }
++  if (kind === 'Otra' && !cleanText(description)) {
++    throw new CodexContractError('SOURCE_DESCRIPTION_REQUIRED', 'Una fuente de tipo Otra requiere descripción.');
++  }
++}
++
++async function validateProfileSemantics(supabase, userId, values) {
++  if (!cleanText(values[PROFILE_TARGET])) throw new CodexContractError('PROFILE_TARGET_REQUIRED', 'El Perfil requiere indicar a quién representa.');
++  if (!cleanText(values[PROFILE_GOAL])) throw new CodexContractError('PROFILE_GOAL_REQUIRED', 'El Perfil requiere indicar qué se quiere entender.');
++  const min = values[PROFILE_AGE_MIN];
++  const max = values[PROFILE_AGE_MAX];
++  if (min !== undefined && max !== undefined && min > max) {
++    throw new CodexContractError('PROFILE_AGE_RANGE_INVALID', 'Edad mínima no puede superar edad máxima.');
++  }
++  const territoryIds = refIds(values[PROFILE_TERRITORIES]);
++  const sourceIds = refIds(values[PROFILE_SOURCES]);
++  const refs = await referenceItems(supabase, userId, [...territoryIds, ...sourceIds]);
++  if (territoryIds.some((id) => refs.get(id)?.tipo !== 'Territorio')) {
++    throw new CodexContractError('PROFILE_TERRITORY_TYPE', 'Territorios relacionados solo admite Territorio.');
++  }
++  if (sourceIds.some((id) => refs.get(id)?.tipo !== 'Source')) {
++    throw new CodexContractError('PROFILE_SOURCE_TYPE', 'Fuentes del Perfil solo admite Source.');
++  }
++}
++
++async function createStructuredItem(supabase, userId, input, options) {
++  requireUser(userId);
++  const name = cleanText(input.name);
++  if (!name) throw new CodexContractError('ITEM_NAME_REQUIRED', 'name es requerido');
++  const fields = { ...(input.fields || {}) };
++  const presetKeys = [...new Set([options.presetKey, ...(input.preset_keys || [])])];
++  const prepared = await prepareFieldPatch(supabase, userId, options.tipo, fields);
++  const presetResult = await applyPresetKeys(supabase, userId, options.tipo, presetKeys);
++  await options.validate(prepared.canonicalValues, input.description);
++  const { data, error } = await supabase
++    .from('codex_universe_items')
++    .insert({
++      user_id: userId,
++      tipo: options.tipo,
++      is_profile: options.isProfile,
++      name,
++      description: cleanText(input.description),
++      tags: normalizeTags(input.tags, 'tags') || [],
++      aliases: normalizeTags(input.aliases, 'aliases') || [],
++      details: prepared.storageDelta,
++      field_keys: [...new Set([...prepared.fieldKeys, ...presetResult.fieldKeys])],
++      preset_keys: presetResult.presetKeys,
++      mentions: [],
++    })
++    .select(ITEM_COLUMNS)
++    .single();
++  if (error) throw new CodexContractError('ITEM_CREATE_FAILED', error.message, {}, 500);
++  return presentItem(supabase, userId, data);
++}
++
++async function updateStructuredItem(supabase, userId, itemId, input, options) {
++  const current = await readOwnedItem(supabase, userId, itemId, { tipo: options.tipo, isProfile: options.isProfile });
++  const prepared = await prepareFieldPatch(supabase, userId, options.tipo, input.fields || {});
++  const currentValues = await canonicalValues(supabase, userId, current);
++  const mergedValues = { ...currentValues, ...prepared.canonicalValues };
++  const description = input.description === undefined ? current.description : cleanText(input.description);
++  await options.validate(mergedValues, description);
++  const requestedPresets = input.preset_keys === undefined
++    ? [...new Set([options.presetKey, ...(current.preset_keys || [])])]
++    : [...new Set([options.presetKey, ...input.preset_keys])];
++  const presetResult = await applyPresetKeys(supabase, userId, options.tipo, requestedPresets);
++  const patch = {
++    details: { ...(current.details || {}), ...prepared.storageDelta },
++    field_keys: [...new Set([...(current.field_keys || []), ...prepared.fieldKeys, ...presetResult.fieldKeys])],
++    preset_keys: presetResult.presetKeys,
++    updated_at: new Date().toISOString(),
++  };
++  delete patch.details.flag;
++  if (input.name !== undefined) {
++    patch.name = cleanText(input.name);
++    if (!patch.name) throw new CodexContractError('ITEM_NAME_REQUIRED', 'name no puede quedar vacío');
++  }
++  if (input.description !== undefined) patch.description = description;
++  if (input.tags !== undefined) patch.tags = normalizeTags(input.tags, 'tags');
++  if (input.aliases !== undefined) patch.aliases = normalizeTags(input.aliases, 'aliases');
++  const { data, error } = await supabase
++    .from('codex_universe_items')
++    .update(patch)
++    .eq('user_id', userId)
++    .eq('id', itemId)
++    .select(ITEM_COLUMNS)
++    .single();
++  if (error) throw new CodexContractError('ITEM_UPDATE_FAILED', error.message, {}, 500);
++  return presentItem(supabase, userId, data);
++}
++
++async function listStructuredItems(supabase, userId, input, options) {
++  requireUser(userId);
++  const limit = Math.max(1, Math.min(Number(input.limit) || 50, 100));
++  const offset = Math.max(0, Number(input.offset) || 0);
++  let query = supabase
++    .from('codex_universe_items')
++    .select(ITEM_COLUMNS, { count: 'exact' })
++    .eq('user_id', userId)
++    .eq('tipo', options.tipo)
++    .order('updated_at', { ascending: false })
++    .range(offset, offset + limit - 1);
++  if (options.isProfile !== undefined) query = query.eq('is_profile', options.isProfile);
++  const search = String(input.query || '').replace(/[,%()]/g, ' ').trim();
++  if (search) query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
++  const { data, error, count } = await query;
++  if (error) throw new CodexContractError('ITEM_LIST_FAILED', error.message, {}, 500);
++  return { items: data || [], count: count || 0, limit, offset };
++}
++
++function sourceOptions(supabase, userId) {
++  return {
++    tipo: 'Source',
++    isProfile: false,
++    presetKey: SOURCE_PRESET,
++    validate: (values, description) => validateSourceSemantics(supabase, userId, values, description),
++  };
++}
++
++function profileOptions(supabase, userId) {
++  return {
++    tipo: 'Actor',
++    isProfile: true,
++    presetKey: PROFILE_PRESET,
++    validate: (values) => validateProfileSemantics(supabase, userId, values),
++  };
++}
++
++function profileInput(input = {}) {
++  const fields = { ...(input.fields || {}) };
++  if (input.target !== undefined) fields[PROFILE_TARGET] = input.target;
++  if (input.goal !== undefined) fields[PROFILE_GOAL] = input.goal;
++  if (input.known !== undefined) fields[PROFILE_KNOWN] = input.known;
++  return { ...input, fields };
++}
++
++async function getSource(supabase, userId, itemId) {
++  return presentItem(supabase, userId, await readOwnedItem(supabase, userId, itemId, { tipo: 'Source', isProfile: false }));
++}
++
++async function createSource(supabase, userId, input = {}) {
++  return createStructuredItem(supabase, userId, input, sourceOptions(supabase, userId));
++}
++
++async function updateSource(supabase, userId, itemId, input = {}) {
++  return updateStructuredItem(supabase, userId, itemId, input, sourceOptions(supabase, userId));
++}
++
++async function listSources(supabase, userId, input = {}) {
++  return listStructuredItems(supabase, userId, input, { tipo: 'Source', isProfile: false });
++}
++
++async function citeSource(supabase, userId, sourceId, input = {}) {
++  const source = await readOwnedItem(supabase, userId, sourceId, { tipo: 'Source', isProfile: false });
++  const subjectId = input.subject_id || input.item_id;
++  if (!subjectId) throw new CodexContractError('CITATION_SUBJECT_REQUIRED', 'subject_id es requerido');
++  const subject = await readOwnedItem(supabase, userId, subjectId);
++  if (subject.id === source.id) throw new CodexContractError('CITATION_SELF_REFERENCE', 'Una Source no puede citarse a sí misma.');
++  const { data, error } = await supabase
++    .from('codex_relations')
++    .insert({
++      user_id: userId,
++      subject_id: subject.id,
++      verb: 'cita',
++      object_id: source.id,
++      note: cleanText(input.note),
++      date: cleanText(input.date),
++    })
++    .select()
++    .single();
++  if (error) throw new CodexContractError('CITATION_CREATE_FAILED', error.message, {}, 500);
++  return { relation: data, subject: { id: subject.id, name: subject.name, tipo: subject.tipo }, source: { id: source.id, name: source.name } };
++}
++
++async function getProfile(supabase, userId, itemId) {
++  return presentItem(supabase, userId, await readOwnedItem(supabase, userId, itemId, { tipo: 'Actor', isProfile: true }));
++}
++
++async function createProfile(supabase, userId, input = {}) {
++  const normalized = profileInput(input);
++  return createStructuredItem(supabase, userId, normalized, profileOptions(supabase, userId));
++}
++
++async function updateProfile(supabase, userId, itemId, input = {}) {
++  const normalized = profileInput(input);
++  return updateStructuredItem(supabase, userId, itemId, normalized, profileOptions(supabase, userId));
++}
++
++async function listProfiles(supabase, userId, input = {}) {
++  return listStructuredItems(supabase, userId, input, { tipo: 'Actor', isProfile: true });
++}
++
++module.exports = {
++  SOURCE_PRESET,
++  PROFILE_PRESET,
++  readOwnedItem,
++  presentItem,
++  listSources,
++  getSource,
++  createSource,
++  updateSource,
++  citeSource,
++  listProfiles,
++  getProfile,
++  createProfile,
++  updateProfile,
++};

@@ -1,0 +1,60 @@
+diff --git a/server/services/mcp.js b/server/services/mcp.js
+--- a/server/services/mcp.js
++++ b/server/services/mcp.js
+@@ -625,12 +625,15 @@ const AVAILABLE_TOOLS = {
+   // ===================================================================
+   simular: {
+     name: 'simular',
+-    description: 'Simula cómo reaccionarían muchas personas a un escenario (una noticia, una decisión política, una crisis) y qué narrativa termina dominando. Las personas pueden salir del Codex (actores reales, con su cargo/partido/postura) y/o ser sintéticas (multitud con personalidades variadas) — se pueden mezclar. FUNCIONA POR TURNOS ENCADENADOS: el servidor lleva el estado y TÚ actúas como cada persona. Cada respuesta te dice a quién te toca interpretar y cuántos turnos faltan; seguí llamando "actuar" hasta completarlos todos y recién ahí pedí el "reporte". Úsalo para preguntas del tipo "¿qué pasaría si…?", "¿cómo reaccionarían X e Y?", "¿qué versión se impondría?".',
++    description: 'Simulación multiagente persistente y reproducible. Puede usar Actores, Perfiles (Actor con is_profile=true), Sources y personas sintéticas. El servidor congela snapshots, genera una cola determinista por seed y avanza cada lote de forma atómica e idempotente. En cada respuesta interpreta SOLO las personas de turno; usa el turn_token devuelto al llamar actuar. Al completar, pide reporte y guarda el análisis.',
+     parameters: {
+       operation: {
+         type: 'string', required: true,
+-        enum: ['crear', 'actuar', 'reporte', 'estado'],
+-        description: 'crear = arranca la simulación y devuelve el primer turno. actuar = envía lo que hizo la persona del turno actual y recibe el siguiente. reporte = métricas + línea de tiempo al terminar. estado = en qué va.'
++        enum: ['crear', 'actuar', 'reporte', 'estado', 'listar', 'obtener', 'guardar_analisis', 'archivar', 'cancelar'],
++        description: 'crear/actuar/reporte/estado operan el motor. listar/obtener permiten consultar ejecuciones persistidas. guardar_analisis conserva la interpretación final. archivar/cancelar cambian su estado.'
+       },
+       // ── crear ──
++      titulo: { type: 'string', required: false, description: 'Título legible de la simulación. Si se omite, se deriva del escenario.' },
+       escenario: { type: 'string', required: false, description: 'El hecho o situación al que reaccionan las personas. Concreto y con contexto, ej: "El Congreso aprueba en tercera lectura un presupuesto que recorta 40% la inversión en el interior". Requerido para operation=crear.' },
+       personas: {
+         type: 'array', required: false,
+@@ -640,16 +643,24 @@ const AVAILABLE_TOOLS = {
+       },
+       turnos: { type: 'integer', required: false, default: 20, min: 1, max: 200, description: 'Cuántos turnos totales tendrá la simulación (= cuántas veces vas a llamar "actuar" si batch=1). Default 20.' },
+       batch: { type: 'integer', required: false, default: 1, min: 1, max: 10, description: 'Cuántas personas interpretás por llamada. 1 = una por vez (más fiel). Subilo a 5 si necesitás menos llamadas encadenadas. Default 1.' },
++      seed: { type: 'string', required: false, description: 'Semilla reproducible. Con los mismos snapshots, config y seed se obtiene la misma cola.' },
++      source_ids: { type: 'array', required: false, items: { type: 'string' }, description: 'Sources oficiales del usuario que fundamentan la simulación. También se incorporan automáticamente las Sources vinculadas a Perfiles participantes.' },
++      context_item_ids: { type: 'array', required: false, items: { type: 'string' }, description: 'Items adicionales del Codex usados como contexto trazable.' },
++      parent_simulation_id: { type: 'string', required: false, description: 'UUID de una simulación propia anterior para representar una variante o nueva corrida.' },
+       // ── actuar ──
+-      sim_id: { type: 'string', required: false, description: 'Id de la simulación (te lo devuelve "crear"). Requerido para actuar/reporte/estado.' },
++      sim_id: { type: 'string', required: false, description: 'UUID de la simulación. Requerido para actuar/reporte/estado/obtener/guardar_analisis/archivar/cancelar.' },
++      turn_token: { type: 'string', required: false, description: 'Token del lote pendiente devuelto por crear/actuar/estado. Requerido conceptualmente para actuar y permite reintentos sin duplicar eventos.' },
+       acciones: {
+         type: 'array', required: false,
+-        description: 'Lo que hace cada persona del turno actual: [{"persona_id":"p3","tipo":"publicar","texto":"..."}]. tipo ∈ publicar (dice algo nuevo) | responder (requiere "a": id de la acción a la que responde, más "texto") | amplificar (requiere "a"; repite/respalda sin agregar) | callar (decide no participar) | otra (algo fuera de lo mediático: requiere "descripcion", ej. "Renuncia a la comisión"). Escribí el texto EN LA VOZ de esa persona, no en la tuya.',
++        description: 'Exactamente una acción por persona del lote: [{"persona_id":"p3","tipo":"publicar","texto":"..."}]. tipo ∈ publicar | responder | amplificar | callar | otra. Para responder/amplificar, "a" usa el id lógico evt_N visible en el contexto.',
+         items: { type: 'object' }
+-      }
++      },
++      analisis: { type: 'string', required: false, description: 'Interpretación final a persistir con operation=guardar_analisis. Debe separar evidencia simulada e inferencia.' },
++      status: { type: 'string', required: false, enum: ['active', 'completed', 'failed', 'cancelled', 'archived'], description: 'Filtro para operation=listar.' },
++      limit: { type: 'integer', required: false, default: 50, min: 1, max: 100, description: 'Límite para operation=listar.' }
+     },
+     service_endpoint: 'internal',
+     service_url: 'internal',
+@@ -658,10 +669,12 @@ const AVAILABLE_TOOLS = {
+     usage_credits: 1,
+     features: [
+       'Personas del Codex, sintéticas, o mezcla',
++      'Perfiles y Sources con snapshots inmutables por ejecución',
+       'Red por relaciones reales del Codex; si no hay, por afinidad',
+-      'Turnos encadenados: la inteligencia la pone quien llama (costo de API cero)',
+-      'Métricas reales de propagación, no solo una línea de tiempo'
++      'Cola reproducible por seed y avance atómico con turn_token',
++      'Persistencia consultable para la futura página de Simulaciones',
++      'Métricas estructuradas de propagación y silencios'
+     ]
+   },

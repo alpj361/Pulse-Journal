@@ -2,29 +2,32 @@
   "expo": {
     "name": "Vizta",
     "slug": "vibecode",
-    "version": "0.0.1",
+    "version": "0.0.8",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "13",
+      "buildNumber": "24",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true
+      },
+      "entitlements": {
+        "com.apple.developer.applesignin": [
+          "Default"
+        ]
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#EDE7DA"
       },
       "package": "com.standatpd.vizta",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
-      ]
+      "permissions": []
     },
     "plugins": [
       [
@@ -37,11 +40,11 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain"
+          "imageWidth": 240,
+          "resizeMode": "contain",
+          "backgroundColor": "#EDE7DA"
         }
       ],
-      "expo-audio",
       [
         "expo-build-properties",
         {
@@ -54,13 +57,10 @@
       [
         "expo-video",
         {
-          "supportsBackgroundPlayback": true,
-          "supportsPictureInPicture": true
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
         }
       ],
-      "expo-font",
-      "expo-secure-store",
-      "expo-web-browser",
       [
         "expo-notifications",
         {
@@ -68,7 +68,16 @@
           "color": "#6366f1",
           "sounds": []
         }
-      ]
+      ],
+      "expo-font",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      "expo-web-browser",
+      "expo-apple-authentication"
     ],
     "web": {
       "bundler": "metro",

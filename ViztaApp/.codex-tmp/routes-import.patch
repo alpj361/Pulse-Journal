@@ -1,0 +1,30 @@
+diff --git a/server/routes/codex.js b/server/routes/codex.js
+--- a/server/routes/codex.js
++++ b/server/routes/codex.js
+@@ -874,11 +874,26 @@
+ const {
+   CodexContractError,
+   getMergedSchema,
+   resolveField,
+   createUserField,
++  updateUserField,
++  deactivateUserField,
+   createUserPreset,
++  updateUserPreset,
++  deactivateUserPreset,
+   prepareFieldPatch,
+   applyPresetKeys,
+   resolveItemFields,
+ } = require('../services/codexContractV4');
+ 
++const {
++  listSources,
++  getSource,
++  createSource,
++  updateSource,
++  citeSource,
++  listProfiles,
++  getProfile,
++  createProfile,
++  updateProfile,
++} = require('../services/codexResourceService');

@@ -8,12 +8,17 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  Modal,
+  ActivityIndicator,
   useWindowDimensions,
   TextInput,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
+  Linking,
+  FlatList,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { useRef, useState, useEffect, useCallback, Component } from 'react';
 import Reanimated, {
@@ -21,17 +26,17 @@ import Reanimated, {
   useAnimatedStyle,
   withDelay,
   withSpring,
+  withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BlurView } from 'expo-blur';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import { ArrowLeft, Trash2, Clock, ChevronRight, AlertCircle, Send } from 'lucide-react-native';
+import { ArrowLeft, Clock, AlertCircle, Trash2, ChevronRight, Send, ChevronDown } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 
-// ── Chat constants ─────────────────────────────────────────────────────────────
-
+// ── Chat constants ────────────────────────────────────────────────────────────
 const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
 const CHAT_ENDPOINT_AUTH  = `${EXTRACTORW_URL}/api/vizta-chat/query`;
 const CHAT_ENDPOINT_GUEST = `${EXTRACTORW_URL}/api/vizta-chat/query-guest`;
@@ -301,6 +306,146 @@ function TimelineItem({ t, i, total, config }) {
   );
 }
 
+// ── Legal tab helper components ───────────────────────────────────────────────
+
+function EstadoBadge({ estado }) {
+  const cfg = {
+    aprobada:     { fg: '#34d399', bg: 'rgba(52,211,153,0.12)' },
+    en_debate:    { fg: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
+    rechazada:    { fg: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+    presentada:   { fg: 'rgba(148,163,184,0.85)', bg: 'rgba(148,163,184,0.1)' },
+    'en_comisión':{ fg: '#c084fc', bg: 'rgba(192,132,252,0.12)' },
+  };
+  const c = cfg[(estado || '').toLowerCase()] || { fg: 'rgba(148,163,184,0.8)', bg: 'rgba(148,163,184,0.1)' };
+  return (
+    <View style={{
+      alignSelf: 'flex-start',
+      backgroundColor: c.bg,
+      paddingHorizontal: 8, paddingVertical: 3,
+      borderRadius: 6, borderWidth: 1, borderColor: c.fg + '50',
+      marginBottom: 6,
+    }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: c.fg, letterSpacing: 0.5 }}>
+        {(estado || 'pendiente').replace(/_/g, ' ').toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function TipoBadge({ tipo }) {
+  const colors = {
+    'aprobación':  '#34d399',
+    'debate':      '#fbbf24',
+    'sesión':      '#818cf8',
+    'comisión':    '#a78bfa',
+    'rechazo':     '#f87171',
+    'lectura':     '#38bdf8',
+    'presentación':'#94a3b8',
+    'votación':    '#fb923c',
+    'declaración': '#e879f9',
+  };
+  const color = colors[(tipo || '').toLowerCase()] || 'rgba(148,163,184,0.8)';
+  return (
+    <View style={{
+      alignSelf: 'flex-start',
+      backgroundColor: color + '18',
+      paddingHorizontal: 8, paddingVertical: 3,
+      borderRadius: 6, borderWidth: 1, borderColor: color + '50',
+      marginRight: 8,
+      flexShrink: 0,
+    }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color, letterSpacing: 0.5 }}>
+        {(tipo || '').toUpperCase()}
+      </Text>
+    </View>
+  );
+}
+
+function FuenteLink({ fuente }) {
+  if (!fuente?.enlace) return null;
+  return (
+    <TouchableOpacity
+      onPress={() => Linking.openURL(fuente.enlace).catch(() => {})}
+      style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, alignSelf: 'flex-start' }}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+    >
+      <Text style={{ fontSize: 11, color: 'rgba(124,58,237,0.65)', fontStyle: 'italic' }}>
+        {fuente.usuario ? `@${fuente.usuario}` : 'Ver fuente'}
+      </Text>
+      <Text style={{ fontSize: 11, color: 'rgba(124,58,237,0.45)', marginLeft: 3 }}>↗</Text>
+    </TouchableOpacity>
+  );
+}
+
+function IniciativaCard({ item, index }) {
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    opacity.value = withDelay(index * 50, withSpring(1, { damping: 18 }));
+  }, []);
+  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Reanimated.View style={[{ marginBottom: 12 }, animStyle]}>
+      <DetailCard style={{ marginBottom: 0 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <EstadoBadge estado={item.estado} />
+          {item.numero && (
+            <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+              No. {item.numero}
+            </Text>
+          )}
+        </View>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.92)', lineHeight: 20, marginBottom: item.descripcion ? 6 : 0 }}>
+          {item.titulo}
+        </Text>
+        {item.descripcion && (
+          <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 19, marginBottom: 6 }} numberOfLines={3}>
+            {item.descripcion}
+          </Text>
+        )}
+        {item.diputados_involucrados?.length > 0 && (
+          <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', lineHeight: 16 }} numberOfLines={2}>
+            {item.diputados_involucrados.join(' · ')}
+          </Text>
+        )}
+        <FuenteLink fuente={item.fuente} />
+      </DetailCard>
+    </Reanimated.View>
+  );
+}
+
+function LegalTimeline({ items, config }) {
+  if (!items?.length) return null;
+  return (
+    <DetailCard style={{ marginBottom: 12 }}>
+      <SectionLabel title="Timeline de Sesión" />
+      {items.map((t, i) => (
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < items.length - 1 ? 14 : 0 }}>
+          <View style={{ alignItems: 'center', width: 6, marginRight: 12, marginTop: 6 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: config.color }} />
+            {i < items.length - 1 && (
+              <View style={{ width: 1, height: 24, backgroundColor: config.color + '28', marginTop: 3 }} />
+            )}
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3, gap: 6 }}>
+              {t.tipo && <TipoBadge tipo={t.tipo} />}
+              {t.hora && (
+                <Text style={{ fontSize: 11, color: config.color + 'bb' }}>
+                  {t.hora}
+                </Text>
+              )}
+            </View>
+            <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 19 }}>
+              {typeof t === 'string' ? t : (t.texto || '')}
+            </Text>
+            <FuenteLink fuente={t.fuente} />
+          </View>
+        </View>
+      ))}
+    </DetailCard>
+  );
+}
+
 // ── Category Detail screen ────────────────────────────────────────────────────
 
 function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, insets, feedData, onSwipeLeft, onSwipeRight, categoryIndex, totalCategories }) {
@@ -316,6 +461,26 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
       },
     })
   ).current;
+
+  const [activeTab, setActiveTab] = useState('pulso');
+  const tabFadeOpacity = useSharedValue(1);
+  const tabScale0 = useSharedValue(1);
+  const tabScale1 = useSharedValue(1);
+
+  const leyEntry = (feedData || []).find(f => f.categoria === 'ley');
+  const leyData = leyEntry?.data || null;
+
+  const handleTabSwitch = (tab) => {
+    if (tab === activeTab) return;
+    tabFadeOpacity.value = withTiming(0, { duration: 80 }, () => {
+      runOnJS(setActiveTab)(tab);
+      tabFadeOpacity.value = withTiming(1, { duration: 120 });
+    });
+  };
+
+  const tabFadeStyle = useAnimatedStyle(() => ({ opacity: tabFadeOpacity.value }));
+  const tabPillStyle0 = useAnimatedStyle(() => ({ transform: [{ scale: tabScale0.value }] }));
+  const tabPillStyle1 = useAnimatedStyle(() => ({ transform: [{ scale: tabScale1.value }] }));
 
   const cards = (allCards || [])
     .filter(c => matchesCategory(c, category))
@@ -436,10 +601,61 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
           </View>
         ) : (
           <>
+            {/* ── Tab switcher (only for Política) ── */}
+            {category === 'Política' && (
+              <View style={{
+                flexDirection: 'row',
+                alignSelf: 'center',
+                marginBottom: 20,
+                backgroundColor: 'rgba(255,255,255,0.06)',
+                borderRadius: 12,
+                padding: 3,
+                gap: 2,
+              }}>
+                <Pressable
+                  onPress={() => handleTabSwitch('pulso')}
+                  onPressIn={() => { tabScale0.value = withSpring(0.96, { stiffness: 400, damping: 20 }); }}
+                  onPressOut={() => { tabScale0.value = withSpring(1, { stiffness: 300, damping: 18 }); }}
+                >
+                  <Reanimated.View style={[{
+                    paddingVertical: 8,
+                    paddingHorizontal: 24,
+                    borderRadius: 9,
+                    backgroundColor: activeTab === 'pulso' ? config.color + '22' : 'transparent',
+                    borderWidth: 1,
+                    borderColor: activeTab === 'pulso' ? config.color + '55' : 'transparent',
+                  }, tabPillStyle0]}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: activeTab === 'pulso' ? config.color : 'rgba(255,255,255,0.35)' }}>
+                      Pulso
+                    </Text>
+                  </Reanimated.View>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleTabSwitch('legal')}
+                  onPressIn={() => { tabScale1.value = withSpring(0.96, { stiffness: 400, damping: 20 }); }}
+                  onPressOut={() => { tabScale1.value = withSpring(1, { stiffness: 300, damping: 18 }); }}
+                >
+                  <Reanimated.View style={[{
+                    paddingVertical: 8,
+                    paddingHorizontal: 24,
+                    borderRadius: 9,
+                    backgroundColor: activeTab === 'legal' ? config.color + '22' : 'transparent',
+                    borderWidth: 1,
+                    borderColor: activeTab === 'legal' ? config.color + '55' : 'transparent',
+                  }, tabPillStyle1]}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: activeTab === 'legal' ? config.color : 'rgba(255,255,255,0.35)' }}>
+                      Legal
+                    </Text>
+                  </Reanimated.View>
+                </Pressable>
+              </View>
+            )}
+
+            <Reanimated.View style={tabFadeStyle}>
             {/* ── Feed Pulso section ── */}
-            {d && (
+            {d && (activeTab === 'pulso' || category !== 'Política') && (
               <View style={{ marginBottom: 24 }}>
-                <SectionLabel title="Pulso" />
+                {category !== 'Política' && <SectionLabel title="Pulso" />}
 
                 {category === 'Deportes' && (
                   <>
@@ -597,7 +813,7 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
                   </>
                 )}
 
-                {category === 'Política' && (
+                {category === 'Política' && activeTab === 'pulso' && (
                   <>
                     {/* ── Narrativas ── */}
                     {d.narrativas?.length > 0 && (
@@ -686,39 +902,234 @@ function CategoryDetail({ category, allCards, isLoading, generatedAt, onBack, in
               </View>
             )}
 
-            {/* Hot Topics */}
-            {cards.length > 0 ? (
-              <>
-                <Text style={{
-                  fontSize: 10, fontWeight: '600',
-                  color: 'rgba(255,255,255,0.25)',
-                  letterSpacing: 1.4, textTransform: 'uppercase',
-                  marginBottom: 12,
-                }}>
-                  Noticias
-                </Text>
-                {cards.map((card, i) => (
-                  <NewsCard key={card.id || i} card={card} index={i} />
-                ))}
-              </>
-            ) : !d ? (
-              <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
-                <View style={{
-                  width: 56, height: 56, borderRadius: 28,
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-                }}>
-                  <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+            {/* ── Legal tab content ── */}
+            {category === 'Política' && activeTab === 'legal' && (
+              leyData ? (
+                <View style={{ marginBottom: 24 }}>
+                  {/* Header: tipo_dia + lastUpdated + intensidad */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      {leyData.tipo_dia && (
+                        <View style={{
+                          backgroundColor: leyData.tipo_dia === 'sesion_activa'
+                            ? 'rgba(52,211,153,0.12)'
+                            : 'rgba(148,163,184,0.08)',
+                          paddingHorizontal: 10, paddingVertical: 4,
+                          borderRadius: 8, borderWidth: 1,
+                          borderColor: leyData.tipo_dia === 'sesion_activa'
+                            ? '#34d39950'
+                            : 'rgba(148,163,184,0.2)',
+                        }}>
+                          <Text style={{
+                            fontSize: 11, fontWeight: '700', letterSpacing: 0.6,
+                            color: leyData.tipo_dia === 'sesion_activa'
+                              ? '#34d399'
+                              : 'rgba(148,163,184,0.7)',
+                          }}>
+                            {leyData.tipo_dia === 'sesion_activa' ? 'SESIÓN ACTIVA' : 'PUBLICACIONES'}
+                          </Text>
+                        </View>
+                      )}
+                      {leyData.lastUpdated && (
+                        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                          {leyData.lastUpdated}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Timeline — solo en sesion_activa, posición prominente */}
+                  {leyData.tipo_dia === 'sesion_activa' && leyData.timeline?.length > 0 && (
+                    <LegalTimeline items={leyData.timeline} config={config} />
+                  )}
+
+                  {/* Avances */}
+                  {leyData.avances?.length > 0 && (
+                    <DetailCard style={{ marginBottom: 12 }}>
+                      <SectionLabel title="Avances Legislativos" />
+                      {leyData.avances.map((av, i) => (
+                        <View key={i} style={{ marginBottom: i < leyData.avances.length - 1 ? 12 : 0 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4, gap: 6 }}>
+                            <TipoBadge tipo={av.tipo} />
+                            {av.fecha && (
+                              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                                {av.fecha}
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.88)', lineHeight: 19, marginBottom: av.descripcion ? 4 : 0 }}>
+                            {av.titulo}
+                          </Text>
+                          {av.descripcion && (
+                            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 18 }}>
+                              {av.descripcion}
+                            </Text>
+                          )}
+                          <FuenteLink fuente={av.fuente} />
+                          {i < leyData.avances.length - 1 && (
+                            <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginTop: 10 }} />
+                          )}
+                        </View>
+                      ))}
+                    </DetailCard>
+                  )}
+
+                  {/* Iniciativas */}
+                  {leyData.iniciativas?.length > 0 && (
+                    <>
+                      <SectionLabel title="Iniciativas" />
+                      {leyData.iniciativas.map((item, i) => (
+                        <IniciativaCard key={item.id || i} item={item} index={i} />
+                      ))}
+                    </>
+                  )}
+
+                  {/* Diputados */}
+                  {leyData.diputados?.length > 0 && (
+                    <DetailCard style={{ marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.25)', letterSpacing: 1.4, textTransform: 'uppercase' }}>
+                          Diputados
+                        </Text>
+                        <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
+                          {leyData.diputados.length}
+                        </Text>
+                      </View>
+                      {leyData.diputados.map((dp, i) => {
+                        const posColors = {
+                          'ponente':   '#a5b4fc',
+                          'moderador': '#6ee7b7',
+                          'a favor':   '#34d399',
+                          'en contra': '#f87171',
+                        };
+                        const posColor = posColors[dp.posicion] || 'rgba(148,163,184,0.8)';
+                        return (
+                          <View key={i} style={{
+                            paddingVertical: 10, paddingHorizontal: 4,
+                            borderTopWidth: i > 0 ? 1 : 0,
+                            borderTopColor: 'rgba(255,255,255,0.04)',
+                          }}>
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.9)', lineHeight: 19 }}>
+                              {dp.nombre}
+                            </Text>
+                            {dp.partido && (
+                              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
+                                {dp.partido}
+                              </Text>
+                            )}
+                            <View style={{
+                              alignSelf: 'flex-start',
+                              backgroundColor: posColor + '18',
+                              paddingHorizontal: 7, paddingVertical: 2,
+                              borderRadius: 4, marginTop: 5,
+                            }}>
+                              <Text style={{ fontSize: 9, fontWeight: '700', color: posColor, letterSpacing: 0.6 }}>
+                                {(dp.posicion || '—').replace(/_/g, ' ').toUpperCase()}
+                              </Text>
+                            </View>
+                            {dp.temas?.length > 0 && (
+                              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 17, marginTop: 5 }}>
+                                {dp.temas.join(' · ')}
+                              </Text>
+                            )}
+                            <FuenteLink fuente={dp.fuente} />
+                          </View>
+                        );
+                      })}
+                    </DetailCard>
+                  )}
+
+                  {/* Discusiones */}
+                  {leyData.discusiones?.length > 0 && (
+                    <DetailCard style={{ marginBottom: 12 }}>
+                      <SectionLabel title="Discusiones" />
+                      {leyData.discusiones.map((disc, i) => (
+                        <View key={i} style={{ marginBottom: i < leyData.discusiones.length - 1 ? 14 : 0 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.88)', lineHeight: 19, marginBottom: 4 }}>
+                            {disc.tema}
+                          </Text>
+                          {disc.descripcion && (
+                            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 18, marginBottom: disc.posiciones?.length ? 6 : 0 }}>
+                              {disc.descripcion}
+                            </Text>
+                          )}
+                          {disc.posiciones?.length > 0 && (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 2 }}>
+                              {disc.posiciones.map((pos, j) => (
+                                <View key={j} style={{
+                                  backgroundColor: 'rgba(124,58,237,0.12)',
+                                  paddingHorizontal: 8, paddingVertical: 3,
+                                  borderRadius: 6, borderWidth: 1, borderColor: 'rgba(124,58,237,0.3)',
+                                }}>
+                                  <Text style={{ fontSize: 11, color: '#a78bfa' }}>
+                                    {typeof pos === 'string' ? pos : (pos.texto || '')}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                          <FuenteLink fuente={disc.fuente} />
+                        </View>
+                      ))}
+                    </DetailCard>
+                  )}
                 </View>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
-                  Sin noticias recientes
-                </Text>
-                <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
-                  No hay datos de {category.toLowerCase()} en el último ciclo de análisis.
-                </Text>
-              </View>
-            ) : null}
+              ) : (
+                <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
+                  <View style={{
+                    width: 56, height: 56, borderRadius: 28,
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    alignItems: 'center', justifyContent: 'center',
+                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                  }}>
+                    <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                    Sin datos legislativos
+                  </Text>
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
+                    No hay actividad legislativa reciente disponible.
+                  </Text>
+                </View>
+              )
+            )}
+
+            {/* Hot Topics — hidden on Legal tab */}
+            {(category !== 'Política' || activeTab === 'pulso') && (
+              cards.length > 0 ? (
+                <>
+                  <Text style={{
+                    fontSize: 10, fontWeight: '600',
+                    color: 'rgba(255,255,255,0.25)',
+                    letterSpacing: 1.4, textTransform: 'uppercase',
+                    marginBottom: 12,
+                  }}>
+                    Noticias
+                  </Text>
+                  {cards.map((card, i) => (
+                    <NewsCard key={card.id || i} card={card} index={i} />
+                  ))}
+                </>
+              ) : !d ? (
+                <View style={{ alignItems: 'center', paddingTop: 40, gap: 14 }}>
+                  <View style={{
+                    width: 56, height: 56, borderRadius: 28,
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    alignItems: 'center', justifyContent: 'center',
+                    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+                  }}>
+                    <AlertCircle size={24} color="rgba(255,255,255,0.25)" />
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+                    Sin noticias recientes
+                  </Text>
+                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center', lineHeight: 19, paddingHorizontal: 20 }}>
+                    No hay datos de {category.toLowerCase()} en el último ciclo de análisis.
+                  </Text>
+                </View>
+              ) : null
+            )}
+            </Reanimated.View>
           </>
         )}
       </ScrollView>
@@ -817,9 +1228,9 @@ function ParticleSphere({ cx, cy, paused }) {
   );
 }
 
-// ── Category orb ──────────────────────────────────────────────────────────────
+// ── Category orb ─────────────────────────────────────────────────────────────
 
-function CategoryOrb({ name, config, onPress, isSelected }) {
+function CategoryOrb({ name, config, onPress, isSelected, labelAbove = false }) {
   const scale = useRef(new Animated.Value(1)).current;
 
   const handlePress = () => {
@@ -840,8 +1251,21 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
     onPress(name);
   };
 
+  const label = (
+    <Text style={{
+      fontSize: 11,
+      fontWeight: '700',
+      color: isSelected ? config.color : 'rgba(255,255,255,0.75)',
+      textAlign: 'center',
+      letterSpacing: 0.8,
+    }}>
+      {name.toUpperCase()}
+    </Text>
+  );
+
   return (
     <TouchableOpacity onPress={handlePress} activeOpacity={0.9}>
+      {labelAbove && <View style={{ marginBottom: 8 }}>{label}</View>}
       <Animated.View style={{
         width: ORB_SIZE,
         height: ORB_SIZE,
@@ -862,16 +1286,307 @@ function CategoryOrb({ name, config, onPress, isSelected }) {
           resizeMode="cover"
         />
       </Animated.View>
-      <Text style={{
-        marginTop: 8,
-        fontSize: 11,
-        fontWeight: '700',
-        color: isSelected ? config.color : 'rgba(255,255,255,0.75)',
-        textAlign: 'center',
-        letterSpacing: 0.8,
-      }}>
-        {name.toUpperCase()}
+      {!labelAbove && <View style={{ marginTop: 8 }}>{label}</View>}
+    </TouchableOpacity>
+  );
+}
+
+// ── Tool call card (collapsible) ─────────────────────────────────────────────
+
+// ── Simple Markdown renderer ─────────────────────────────────────────────────
+function MarkdownText({ text, isUser }) {
+  if (!text) return null;
+  const baseColor = isUser ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.82)';
+  const lines = String(text).split('\n');
+
+  return (
+    <View style={{ gap: 2 }}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <View key={idx} style={{ height: 4 }} />;
+
+        // Heading: ## or ###
+        if (trimmed.startsWith('### ')) {
+          return (
+            <Text key={idx} style={{ fontSize: 13, fontWeight: '700', color: 'rgba(100,149,237,0.95)', marginTop: 6, marginBottom: 2 }}>
+              {trimmed.slice(4)}
+            </Text>
+          );
+        }
+        if (trimmed.startsWith('## ')) {
+          return (
+            <Text key={idx} style={{ fontSize: 14, fontWeight: '700', color: 'rgba(100,149,237,1)', marginTop: 8, marginBottom: 2 }}>
+              {trimmed.slice(3)}
+            </Text>
+          );
+        }
+
+        // Bullet list: - or *
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const bulletText = trimmed.slice(2);
+          return (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginVertical: 1 }}>
+              <Text style={{ fontSize: 12, color: 'rgba(100,149,237,0.7)', marginTop: 3 }}>•</Text>
+              <InlineText text={bulletText} baseColor={baseColor} style={{ flex: 1 }} />
+            </View>
+          );
+        }
+
+        // Numbered list: 1. 2. etc
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.+)/);
+        if (numMatch) {
+          return (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginVertical: 1 }}>
+              <Text style={{ fontSize: 12, color: 'rgba(100,149,237,0.6)', minWidth: 16, marginTop: 3 }}>{numMatch[1]}.</Text>
+              <InlineText text={numMatch[2]} baseColor={baseColor} style={{ flex: 1 }} />
+            </View>
+          );
+        }
+
+        // Normal paragraph
+        return <InlineText key={idx} text={trimmed} baseColor={baseColor} style={{ marginVertical: 1 }} />;
+      })}
+    </View>
+  );
+}
+
+// Renders a line with inline **bold** and *italic* support
+function InlineText({ text, baseColor, style }) {
+  // Split by **bold** or *italic*
+  const parts = [];
+  const regex = /\*\*(.+?)\*\*|\*(.+?)\*/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ text: text.slice(lastIndex, match.index), bold: false, italic: false });
+    }
+    if (match[1] !== undefined) {
+      parts.push({ text: match[1], bold: true, italic: false });
+    } else if (match[2] !== undefined) {
+      parts.push({ text: match[2], bold: false, italic: true });
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), bold: false, italic: false });
+  }
+
+  if (parts.length === 0 || (parts.length === 1 && !parts[0].bold && !parts[0].italic)) {
+    return (
+      <Text style={[{ fontSize: 14, color: baseColor, lineHeight: 20 }, style]}>
+        {text}
       </Text>
+    );
+  }
+
+  return (
+    <Text style={[{ fontSize: 14, lineHeight: 20 }, style]}>
+      {parts.map((p, i) => (
+        <Text
+          key={i}
+          style={{
+            color: p.bold ? '#fff' : baseColor,
+            fontWeight: p.bold ? '700' : '400',
+            fontStyle: p.italic ? 'italic' : 'normal',
+          }}
+        >
+          {p.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
+// ── Tool call map (icon + label per tool name) ────────────────────────────────
+const TOOL_META = {
+  codex:                { icon: '📖', label: 'buscando en el Codex', color: '#818cf8' },
+  codex_search:         { icon: '📖', label: 'buscando en el Codex', color: '#818cf8' },
+  codex_lookup:         { icon: '📖', label: 'consultando el Codex', color: '#818cf8' },
+  nitter:               { icon: '🐦', label: 'revisando redes sociales', color: '#38bdf8' },
+  nitter_search:        { icon: '🐦', label: 'revisando redes sociales', color: '#38bdf8' },
+  nitter_context:       { icon: '🐦', label: 'contexto de redes', color: '#38bdf8' },
+  perplexity:           { icon: '🔮', label: 'buscando en la web', color: '#a78bfa' },
+  perplexity_search:    { icon: '🔮', label: 'buscando en la web', color: '#a78bfa' },
+  search:               { icon: '🌐', label: 'buscando en la web', color: '#a78bfa' },
+  web_search:           { icon: '🌐', label: 'buscando en la web', color: '#a78bfa' },
+  news:                 { icon: '📰', label: 'consultando noticias', color: '#34d399' },
+  fetch_news:           { icon: '📰', label: 'consultando noticias', color: '#34d399' },
+  news_search:          { icon: '📰', label: 'consultando noticias', color: '#34d399' },
+  tendencias:           { icon: '📈', label: 'consultando tendencias', color: '#f59e0b' },
+  tendencias_query:     { icon: '📈', label: 'consultando tendencias', color: '#f59e0b' },
+  political_context:    { icon: '📈', label: 'contexto político', color: '#f59e0b' },
+  get_trends:           { icon: '📈', label: 'consultando tendencias', color: '#f59e0b' },
+  create_universe_item: { icon: '✨', label: 'creando en el Universo', color: '#e879f9' },
+  update_universe_item: { icon: '✨', label: 'actualizando el Universo', color: '#e879f9' },
+  resolve_entity:       { icon: '✨', label: 'resolviendo entidad', color: '#e879f9' },
+};
+
+function resolveMeta(toolName) {
+  const key = (toolName || '').toLowerCase().replace(/[\s-]/g, '_');
+  return TOOL_META[key] || { icon: '🔧', label: toolName || 'herramienta', color: '#94a3b8' };
+}
+
+// ── Glassmorphism Tool Call Card ──────────────────────────────────────────────
+function ToolCallCard({ tool }) {
+  const [expanded, setExpanded] = useState(false);
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  const toolName = tool.name || tool.tool || 'herramienta';
+  const query = tool.query || tool.parameters?.query || tool.input?.query || null;
+  const resultCount = tool.result_count ?? tool.results?.length ?? null;
+  const isCompleted = resultCount !== null || tool.status === 'completed';
+
+  const { icon, label, color } = resolveMeta(toolName);
+
+  // Shimmer animation while running (not completed)
+  useEffect(() => {
+    if (isCompleted) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0, duration: 1400, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isCompleted]);
+
+  const shimmerOpacity = shimmerAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.04, 0.10, 0.04],
+  });
+
+  return (
+    <TouchableOpacity
+      onPress={() => setExpanded(e => !e)}
+      activeOpacity={0.80}
+      style={{
+        marginBottom: 6,
+        marginLeft: 16,
+        maxWidth: '85%',
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: isCompleted
+          ? color + '30'
+          : color + '45',
+      }}
+    >
+      <BlurView intensity={22} tint="dark" style={{ borderRadius: 12 }}>
+        <View style={{
+          backgroundColor: isCompleted
+            ? 'rgba(8,10,24,0.68)'
+            : 'rgba(8,10,24,0.72)',
+          borderRadius: 12,
+          padding: 10,
+        }}>
+          {/* Shimmer overlay while running */}
+          {!isCompleted && (
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                borderRadius: 12,
+                backgroundColor: color,
+                opacity: shimmerOpacity,
+              }}
+            />
+          )}
+
+          {/* Main row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* Icon circle */}
+            <View style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: color + '1A',
+              borderWidth: 1,
+              borderColor: color + '40',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Text style={{ fontSize: 13 }}>{icon}</Text>
+            </View>
+
+            {/* Label + status */}
+            <View style={{ flex: 1 }}>
+              <Text style={{
+                fontSize: 12,
+                fontWeight: '600',
+                color: isCompleted ? 'rgba(255,255,255,0.75)' : color,
+                letterSpacing: 0.2,
+              }} numberOfLines={1}>
+                {isCompleted ? `✓ ${label}` : label + '…'}
+              </Text>
+              {query && (
+                <Text style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.38)',
+                  marginTop: 1,
+                }} numberOfLines={1}>
+                  "{query}"
+                </Text>
+              )}
+            </View>
+
+            {/* Result count badge */}
+            {resultCount !== null && (
+              <View style={{
+                backgroundColor: color + '20',
+                borderRadius: 6,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderWidth: 1,
+                borderColor: color + '35',
+              }}>
+                <Text style={{
+                  fontSize: 10,
+                  color: color,
+                  fontWeight: '700',
+                }}>
+                  {resultCount}
+                </Text>
+              </View>
+            )}
+
+            {/* Expand chevron */}
+            {(query || tool.status || tool.error) && (
+              <Text style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)' }}>
+                {expanded ? '▲' : '▼'}
+              </Text>
+            )}
+          </View>
+
+          {/* Expanded detail */}
+          {expanded && (query || tool.status || tool.error) && (
+            <View style={{
+              marginTop: 8,
+              paddingTop: 8,
+              borderTopWidth: 1,
+              borderTopColor: 'rgba(255,255,255,0.08)',
+              gap: 3,
+            }}>
+              {query && (
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                  🔍 {query}
+                </Text>
+              )}
+              {tool.status && (
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+                  Estado: {tool.status}
+                </Text>
+              )}
+              {tool.error && (
+                <Text style={{ fontSize: 10, color: 'rgba(239,68,68,0.7)' }}>
+                  Error: {tool.error}
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+      </BlurView>
     </TouchableOpacity>
   );
 }
@@ -920,8 +1635,17 @@ function ChatBubble({ message }) {
     <View style={{
       alignItems: isUser ? 'flex-end' : 'flex-start',
       marginBottom: 10,
-      paddingHorizontal: 16,
+      paddingHorizontal: isUser ? 16 : 0,
     }}>
+      {/* Tool calls — shown before assistant text */}
+      {!isUser && message.toolsUsed?.length > 0 && (
+        <View style={{ marginBottom: 4 }}>
+          {message.toolsUsed.map((tool, i) => (
+            <ToolCallCard key={i} tool={tool} />
+          ))}
+        </View>
+      )}
+
       {!isUser && (
         <Text style={{
           fontSize: 10,
@@ -929,13 +1653,14 @@ function ChatBubble({ message }) {
           color: 'rgba(100,149,237,0.6)',
           letterSpacing: 0.5,
           marginBottom: 4,
-          marginLeft: 2,
+          marginLeft: 18,
         }}>
           VIZTA
         </Text>
       )}
       <View style={{
         maxWidth: '82%',
+        marginLeft: isUser ? 0 : 16,
         backgroundColor: isUser
           ? 'rgba(124,58,237,0.25)'
           : 'rgba(100,149,237,0.1)',
@@ -949,13 +1674,7 @@ function ChatBubble({ message }) {
           ? 'rgba(124,58,237,0.35)'
           : 'rgba(100,149,237,0.18)',
       }}>
-        <Text style={{
-          fontSize: 14,
-          color: isUser ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.82)',
-          lineHeight: 20,
-        }}>
-          {message.text}
-        </Text>
+        <MarkdownText text={message.text} isUser={isUser} />
       </View>
     </View>
   );
@@ -968,20 +1687,183 @@ export default function OrbitScreen() {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
-  // ── Chat state ──────────────────────────────────────────────────────────────
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatFocused, setChatFocused] = useState(false);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const chatSessionId = useRef(`orbit-${Math.random().toString(36).slice(2)}`);
   const chatScrollRef = useRef(null);
-
-  // focusAnim: 0 = orbit visible, 1 = chat focused (native driver — opacity/transform only)
-  // orbitMaxHeight: collapses orbit height (JS driver — layout only)
   const focusAnim = useRef(new Animated.Value(0)).current;
-  const orbitMaxHeight = useRef(new Animated.Value(380)).current;
-  // Track if user deliberately entered chat (suppress blur-on-send collapse)
+  const orbitMaxHeight = useRef(new Animated.Value(500)).current;
   const chatEnteredRef = useRef(false);
+
+  // @mention state
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionPosition, setMentionPosition] = useState(0);
+  const [codexItems, setCodexItems] = useState([]);
+  const [filteredCodexItems, setFilteredCodexItems] = useState([]);
+
+  // Load Codex items for @mention (wiki_items + codex_universe_items)
+  useEffect(() => {
+    const loadCodexItems = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: universeData } = await supabase
+          .from('codex_universe_items')
+          .select('id, name, tipo, description')
+          .neq('tipo', 'post')
+          .limit(400);
+
+        const universeItems = (universeData || []).map(i => ({
+          id: `univ-${i.id}`,
+          title: i.name,
+          subtitle: i.tipo || 'Universo',
+          type: 'universe',
+          description: i.description,
+        })).sort((a, b) => a.title.localeCompare(b.title));
+
+        setCodexItems(universeItems);
+      } catch (err) {
+        console.log('[Mentions] Error loading codex items:', err?.message);
+      }
+    };
+    loadCodexItems();
+  }, []);
+
+  // Filter codex items based on mentionQuery
+  useEffect(() => {
+    if (!mentionQuery.trim()) {
+      setFilteredCodexItems(codexItems.slice(0, 6));
+    } else {
+      const q = mentionQuery.toLowerCase();
+      const filtered = codexItems
+        .filter(item =>
+          item.title?.toLowerCase().includes(q) ||
+          item.subtitle?.toLowerCase().includes(q)
+        )
+        .slice(0, 8);
+      setFilteredCodexItems(filtered);
+    }
+  }, [mentionQuery, codexItems]);
+
+  // Handle text change with @mention detection
+  const handleChatInputChange = useCallback((text) => {
+    setChatInput(text);
+
+    // Find last @ in the text
+    const lastAt = text.lastIndexOf('@');
+    if (lastAt !== -1) {
+      const textAfterAt = text.slice(lastAt + 1);
+      // Show mentions if no space after @
+      if (!textAfterAt.includes(' ')) {
+        setMentionPosition(lastAt);
+        setMentionQuery(textAfterAt);
+        setShowMentions(true);
+        return;
+      }
+    }
+    setShowMentions(false);
+  }, []);
+
+  // Select a mention from the dropdown
+  // We store mentions as «Name» (guillemets) internally so they're easy to parse
+  const selectMention = useCallback((item) => {
+    const before = chatInput.slice(0, mentionPosition);
+    const after = chatInput.slice(mentionPosition + 1 + mentionQuery.length);
+    // No @ prefix — guillemets wrap the full name as a token
+    const newText = `${before}«${item.title}» ${after}`;
+    setChatInput(newText);
+    setShowMentions(false);
+    setMentionQuery('');
+  }, [chatInput, mentionPosition, mentionQuery]);
+
+  // Parse text into segments: plain text vs «mention» tokens
+  const parseMentionSegments = useCallback((text) => {
+    const segments = [];
+    // Match «...» guillemet-wrapped tokens
+    const regex = /«([^»]+)»/g;
+    let last = 0;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      if (m.index > last) segments.push({ type: 'text', value: text.slice(last, m.index) });
+      segments.push({ type: 'mention', value: m[1] });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) segments.push({ type: 'text', value: text.slice(last) });
+    return segments;
+  }, []);
+
+  const mentionSegments = parseMentionSegments(chatInput);
+  const hasMentions = mentionSegments.some(s => s.type === 'mention');
+
+  // Detect auth state for UI gating (guest vs authenticated)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsAuthenticated(!!data?.session?.access_token);
+    }).catch(() => {});
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setIsAuthenticated(!!session?.access_token);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load history: local AsyncStorage + Supabase sync
+  useEffect(() => {
+    // 1. Load local cache immediately
+    AsyncStorage.getItem('orbit_chat_history').then(raw => {
+      if (raw) {
+        try { setChatHistory(JSON.parse(raw)); } catch (_) {}
+      }
+    }).catch(() => {});
+
+    // 2. Sync from Supabase if user is logged in
+    const syncFromSupabase = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: convs, error } = await supabase
+          .from('vizta_conversations')
+          .select('id, title, snippet, created_at, updated_at, message_count, session_id')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(50);
+
+        if (error || !convs || convs.length === 0) return;
+
+        // Convert to local format
+        const remoteHistory = convs.map(c => ({
+          id: c.id,
+          snippet: c.snippet || c.title || 'Conversación',
+          timestamp: c.updated_at || c.created_at,
+          messages: [], // lazy-load on restore
+          messageCount: c.message_count || 0,
+          sessionId: c.session_id,
+          fromSupabase: true,
+        }));
+
+        setChatHistory(prev => {
+          // Merge: remote entries take precedence over local by id
+          const localIds = new Set(prev.filter(e => !e.fromSupabase).map(e => e.id));
+          const localOnly = prev.filter(e => localIds.has(e.id));
+          const merged = [...remoteHistory, ...localOnly]
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          return merged;
+        });
+      } catch (err) {
+        console.log('Supabase history sync error:', err?.message);
+      }
+    };
+
+    syncFromSupabase();
+  }, []);
 
   const focusChat = useCallback(() => {
     chatEnteredRef.current = true;
@@ -1026,7 +1908,7 @@ export default function OrbitScreen() {
     }).start();
 
     Animated.timing(orbitMaxHeight, {
-      toValue: 380,
+      toValue: 500,
       duration: 240,
       easing: easeOut,
       useNativeDriver: false,
@@ -1039,10 +1921,96 @@ export default function OrbitScreen() {
     collapseOrbit();
   }, [collapseOrbit]);
 
+  const saveToHistory = useCallback((messages) => {
+    if (!messages || messages.length < 2) return; // need at least 1 user + 1 assistant
+    const realMessages = messages.filter(m => !m.loading);
+    if (realMessages.length < 2) return;
+
+    // Build a snippet from the first user message
+    const firstUser = realMessages.find(m => m.role === 'user');
+    const snippet = firstUser?.text?.slice(0, 60) || 'Conversación';
+
+    const entry = {
+      id: chatSessionId.current,
+      snippet,
+      timestamp: new Date().toISOString(),
+      messages: realMessages,
+    };
+
+    setChatHistory(prev => {
+      const updated = [entry, ...prev.filter(h => h.id !== entry.id)].slice(0, 20);
+      AsyncStorage.setItem('orbit_chat_history', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
+
   const clearChat = useCallback(() => {
-    setChatMessages([]);
+    // Save current conversation before clearing
+    setChatMessages(prev => {
+      saveToHistory(prev);
+      return [];
+    });
     setChatInput('');
     chatSessionId.current = `orbit-${Math.random().toString(36).slice(2)}`;
+  }, [saveToHistory]);
+
+  const restoreConversation = useCallback(async (entry) => {
+    setHistoryVisible(false);
+    chatSessionId.current = entry.id;
+
+    // If entry has messages already (local), restore directly
+    if (entry.messages && entry.messages.length > 0) {
+      setChatMessages(entry.messages);
+      focusChat();
+      return;
+    }
+
+    // Lazy-load from Supabase if fromSupabase flag
+    if (entry.fromSupabase) {
+      setChatLoading(true);
+      focusChat();
+      try {
+        const { data: msgs, error } = await supabase
+          .from('vizta_messages')
+          .select('id, role, content, tool_used, created_at')
+          .eq('conversation_id', entry.id)
+          .order('created_at', { ascending: true });
+
+        if (!error && msgs && msgs.length > 0) {
+          const restored = msgs.map(m => {
+            // Normalize tool_used (string from DB) to toolsUsed array format
+            const toolsUsed = m.tool_used && m.tool_used !== 'quick_response' && m.tool_used !== 'chat_response'
+              ? [{ name: m.tool_used, tool: m.tool_used }]
+              : [];
+            return {
+              id: m.id,
+              role: m.role,
+              text: m.content || '',
+              toolsUsed,
+            };
+          });
+          setChatMessages(restored);
+        } else {
+          setChatMessages([]);
+        }
+      } catch (err) {
+        console.log('Error loading Supabase messages:', err?.message);
+        setChatMessages([]);
+      } finally {
+        setChatLoading(false);
+      }
+    } else {
+      setChatMessages([]);
+      focusChat();
+    }
+  }, [focusChat]);
+
+  const deleteHistoryEntry = useCallback((entryId) => {
+    setChatHistory(prev => {
+      const updated = prev.filter(h => h.id !== entryId);
+      AsyncStorage.setItem('orbit_chat_history', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
   }, []);
 
   const sendMessage = useCallback(async () => {
@@ -1076,13 +2044,27 @@ export default function OrbitScreen() {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      console.log('[Chat] Fetching:', endpoint, '| authenticated:', !!token);
+      // Extract @mention items from the message text («name» tokens)
+      const mentionMatches = [...text.matchAll(/«([^»]+)»/g)].map(m => m[1]);
+      const mentionedItems = mentionMatches.length > 0
+        ? codexItems
+            .filter(item => mentionMatches.includes(item.title))
+            .map(item => ({
+              id: item.id,
+              title: item.title,
+              type: item.type || item.subtitle || 'universe',
+              description: item.description || '',
+            }))
+        : [];
+
+      console.log('[Chat] Fetching:', endpoint, '| authenticated:', !!token, '| mentions:', mentionedItems.length);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           message: text,
           sessionId: chatSessionId.current,
+          ...(mentionedItems.length > 0 && { mentioned_items: mentionedItems }),
         }),
       });
 
@@ -1134,12 +2116,26 @@ export default function OrbitScreen() {
         data.content ||
         'Sin respuesta del servidor.';
 
+      // Extract tools used from server response (ViztaAgent format)
+      const toolsUsed =
+        data.metadata?.toolsUsed ||
+        data.toolsUsed ||
+        data.tools_used ||
+        data.response?.toolsUsed ||
+        [];
+
       console.log('[Chat] Response text resolved (first 100):', String(responseText).slice(0, 100));
+      console.log('[Chat] Tools used:', toolsUsed?.length ?? 0);
 
       setChatMessages(prev =>
         prev
           .filter(m => !m.loading)
-          .concat({ id: `ai-${Date.now()}`, role: 'assistant', text: responseText })
+          .concat({
+            id: `ai-${Date.now()}`,
+            role: 'assistant',
+            text: responseText,
+            toolsUsed: Array.isArray(toolsUsed) ? toolsUsed : [],
+          })
       );
     } catch (err) {
       console.error('[Chat] CAUGHT ERROR:', err?.message, err?.stack);
@@ -1226,15 +2222,6 @@ export default function OrbitScreen() {
     });
   };
 
-  const player = useVideoPlayer(
-    require('../../../assets/videos/feed-background.mp4'),
-    (p) => {
-      p.loop = true;
-      p.muted = true;
-      p.play();
-    }
-  );
-
   // Center orb pulse
   useEffect(() => {
     Animated.loop(
@@ -1265,7 +2252,7 @@ export default function OrbitScreen() {
 
   // Orbit layout geometry
   const cX = screenWidth / 2;
-  const containerHeight = 360;
+  const containerHeight = 500;
   const cY = containerHeight / 2;
 
   // Clamp horizontal radius so orbs don't go off screen
@@ -1277,24 +2264,12 @@ export default function OrbitScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Video background */}
-      <VideoView
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
-      <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(4, 5, 18, 0.62)' }]} />
-
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
 
       {/* ── Selector screen ── */}
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={insets.bottom}
+        style={{ flex: 1 }}
       >
       <View style={{ flex: 1, paddingTop: insets.top }}>
         {/* Header */}
@@ -1316,52 +2291,26 @@ export default function OrbitScreen() {
             VIZTA
           </Text>
 
-          <TouchableOpacity
-            onPress={clearChat}
-            style={{
-              width: 36, height: 36, borderRadius: 18,
-              backgroundColor: chatMessages.length > 0
-                ? 'rgba(239,68,68,0.15)'
-                : 'rgba(255,255,255,0.08)',
-              alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <Trash2
-              size={16}
-              color={chatMessages.length > 0 ? 'rgba(239,68,68,0.8)' : 'rgba(255,255,255,0.45)'}
-            />
-          </TouchableOpacity>
+          <View style={{ width: 36, height: 36 }} />
         </View>
 
         {/* Subtitle */}
-        <Animated.Text style={{
+        <Text style={{
           textAlign: 'center',
           fontSize: 15,
           color: 'rgba(255,255,255,0.50)',
           fontWeight: '500',
           marginBottom: 20,
           letterSpacing: 0.2,
-          opacity: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
         }}>
           Selecciona un tema
-        </Animated.Text>
+        </Text>
 
-        {/* Outer wrapper: collapses height (JS driver) */}
-        <Animated.View style={{
-          maxHeight: orbitMaxHeight,
-          overflow: 'hidden',
-        }}>
-        {/* Inner wrapper: opacity + scale (native driver) */}
-        <Animated.View style={{
+        {/* Orbit wrapper */}
+        <Animated.View style={{ maxHeight: orbitMaxHeight, overflow: 'hidden' }}>
+        <View style={{
           height: containerHeight,
           position: 'relative',
-          opacity: focusAnim.interpolate({ inputRange: [0, 0.6], outputRange: [1, 0], extrapolate: 'clamp' }),
-          transform: [{
-            translateY: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -40] }),
-          }, {
-            scale: focusAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] }),
-          }],
-          pointerEvents: chatFocused ? 'none' : 'auto',
         }}>
           {/* ── Connecting lines ── */}
 
@@ -1425,7 +2374,7 @@ export default function OrbitScreen() {
           }} />
 
           {/* ── Particle sphere (3D, Skia) ── */}
-          <ParticleSphere cx={cX} cy={cY} paused={chatFocused} />
+          <ParticleSphere cx={cX} cy={cY} paused={false} />
 
           {/* ── Category orbs ── */}
 
@@ -1482,156 +2431,475 @@ export default function OrbitScreen() {
               config={CATEGORIES['Movilidad']}
               onPress={handleSelectCategory}
               isSelected={selectedCategory === 'Movilidad'}
+              labelAbove={true}
             />
           </View>
-        </Animated.View>
+        </View>
         </Animated.View>
 
-        {/* ── Vizta Chat ── */}
-        <View style={{ flex: 1, marginTop: 12 }}>
-
-          {/* Divider with label + back button when chat is focused */}
+        {/* ── Back button header — visible when chat is open ── */}
+        {chatFocused && (
           <View style={{
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 20,
-            marginBottom: 8,
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(100,149,237,0.08)',
           }}>
-            {chatFocused ? (
-              <TouchableOpacity
-                onPress={collapseOrbit}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 5,
-                  paddingVertical: 2,
-                  paddingRight: 10,
-                }}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <ArrowLeft size={13} color='rgba(100,149,237,0.65)' />
-                <Text style={{
-                  fontSize: 10,
-                  fontWeight: '700',
-                  color: 'rgba(100,149,237,0.65)',
-                  letterSpacing: 0.8,
-                }}>
-                  ORBE
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(100,149,237,0.15)' }} />
-            )}
-            <Text style={{
-              fontSize: 10,
-              fontWeight: '700',
-              color: 'rgba(100,149,237,0.45)',
-              letterSpacing: 1.2,
-              marginHorizontal: chatFocused ? 0 : 10,
-              flex: chatFocused ? 1 : 0,
-              textAlign: chatFocused ? 'right' : 'center',
-            }}>
-              VIZTA CHAT
-            </Text>
-            {!chatFocused && (
-              <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(100,149,237,0.15)' }} />
-            )}
+            <TouchableOpacity
+              onPress={collapseOrbit}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingVertical: 4,
+                paddingHorizontal: 2,
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ChevronDown size={16} color="rgba(100,149,237,0.80)" />
+              <Text style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: 'rgba(100,149,237,0.80)',
+                letterSpacing: 0.2,
+              }}>
+                Ver categorías
+              </Text>
+            </TouchableOpacity>
           </View>
+        )}
 
-          {/* Messages scroll */}
+        {/* ── Chat messages area ── */}
+        <Animated.View style={{ flex: 1, opacity: focusAnim }}>
           <ScrollView
             ref={chatScrollRef}
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: 4 }}
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode="interactive"
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
           >
             {chatMessages.length === 0 && (
-              <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
-                <Text style={{
-                  fontSize: 12,
-                  color: 'rgba(255,255,255,0.2)',
-                  textAlign: 'center',
-                  lineHeight: 18,
-                }}>
-                  Pregunta a Vizta sobre Guatemala{'\n'}política, seguridad, deportes...
-                </Text>
-              </View>
+              <Text style={{
+                textAlign: 'center',
+                color: 'rgba(255,255,255,0.22)',
+                fontSize: 13,
+                marginTop: 28,
+              }}>
+                Hazme una pregunta
+              </Text>
             )}
             {chatMessages.map(msg => (
               <ChatBubble key={msg.id} message={msg} />
             ))}
           </ScrollView>
+        </Animated.View>
 
-          {/* Input bar */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'flex-end',
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            paddingBottom: insets.bottom + 10,
-            gap: 8,
-            borderTopWidth: 1,
-            borderTopColor: 'rgba(100,149,237,0.12)',
-          }}>
+        {/* ── Chat input row ── */}
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          paddingBottom: Math.max(10, insets.bottom),
+          gap: 8,
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(100,149,237,0.10)',
+          backgroundColor: 'rgba(0,0,0,0.25)',
+        }}>
+          <TouchableOpacity
+            onPress={clearChat}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Trash2 size={16} color="rgba(255,255,255,0.30)" />
+          </TouchableOpacity>
+
+          {isAuthenticated && (
+            <TouchableOpacity
+              onPress={() => setHistoryVisible(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Clock size={16} color={chatHistory.length > 0 ? 'rgba(100,149,237,0.65)' : 'rgba(255,255,255,0.25)'} />
+            </TouchableOpacity>
+          )}
+
+          <View style={{ flex: 1, position: 'relative' }}>
+            {/* @mention autocomplete dropdown */}
+            {showMentions && filteredCodexItems.length > 0 && (
+              <View style={{
+                position: 'absolute',
+                bottom: 50,
+                left: 0,
+                right: 0,
+                maxHeight: 240,
+                borderRadius: 16,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.08)',
+                zIndex: 999,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: -4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 16,
+                elevation: 20,
+              }}>
+                <BlurView intensity={60} tint="dark" style={{ flex: 1 }}>
+                  <View style={{ backgroundColor: 'rgba(6,7,20,0.80)', flex: 1 }}>
+                    {/* Header strip */}
+                    <View style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderBottomWidth: 1,
+                      borderBottomColor: 'rgba(255,255,255,0.05)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <Text style={{
+                        fontSize: 9,
+                        color: 'rgba(255,255,255,0.30)',
+                        fontWeight: '700',
+                        letterSpacing: 1.4,
+                        textTransform: 'uppercase',
+                      }}>
+                        Codex
+                      </Text>
+                      {mentionQuery.length > 0 && (
+                        <Text style={{
+                          fontSize: 9,
+                          color: 'rgba(100,149,237,0.50)',
+                          letterSpacing: 0.3,
+                        }}>
+                          {mentionQuery}
+                        </Text>
+                      )}
+                    </View>
+
+                    <FlatList
+                      data={filteredCodexItems}
+                      keyExtractor={item => item.id}
+                      keyboardShouldPersistTaps="always"
+                      showsVerticalScrollIndicator={false}
+                      renderItem={({ item, index }) => {
+                        const typeStyle = item.type === 'wiki'
+                          ? { dot: '#a78bfa', label: item.subtitle || 'concepto' }
+                          : { dot: '#6495ED', label: item.subtitle || 'universo' };
+
+                        return (
+                          <TouchableOpacity
+                            onPress={() => selectMention(item)}
+                            activeOpacity={0.65}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 14,
+                              paddingVertical: 11,
+                              borderBottomWidth: index < filteredCodexItems.length - 1 ? 1 : 0,
+                              borderBottomColor: 'rgba(255,255,255,0.04)',
+                              gap: 12,
+                            }}
+                          >
+                            {/* Color dot */}
+                            <View style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: typeStyle.dot,
+                              flexShrink: 0,
+                              opacity: 0.85,
+                            }} />
+
+                            {/* Name */}
+                            <Text style={{
+                              flex: 1,
+                              fontSize: 13,
+                              fontWeight: '500',
+                              color: 'rgba(255,255,255,0.88)',
+                              letterSpacing: 0.1,
+                            }} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+
+                            {/* Type pill */}
+                            <View style={{
+                              paddingHorizontal: 7,
+                              paddingVertical: 2,
+                              borderRadius: 5,
+                              backgroundColor: typeStyle.dot + '15',
+                            }}>
+                              <Text style={{
+                                fontSize: 9,
+                                color: typeStyle.dot,
+                                fontWeight: '600',
+                                letterSpacing: 0.5,
+                                textTransform: 'uppercase',
+                              }}>
+                                {typeStyle.label}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  </View>
+                </BlurView>
+              </View>
+            )}
+
+            {/* Empty state for @mention with no results */}
+            {showMentions && filteredCodexItems.length === 0 && codexItems.length === 0 && (
+              <View style={{
+                position: 'absolute',
+                bottom: 50,
+                left: 0,
+                right: 0,
+                borderRadius: 14,
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.07)',
+                zIndex: 999,
+              }}>
+                <BlurView intensity={55} tint="dark">
+                  <View style={{
+                    backgroundColor: 'rgba(6,7,20,0.80)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                  }}>
+                    <Text style={{
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,0.30)',
+                      letterSpacing: 0.2,
+                    }}>
+                      Tu Codex está vacío
+                    </Text>
+                  </View>
+                </BlurView>
+              </View>
+            )}
+
+            {/* Rich text input container with glowing @mention display */}
             <View style={{
-              flex: 1,
-              backgroundColor: 'rgba(255,255,255,0.07)',
+              backgroundColor: 'rgba(100,149,237,0.08)',
               borderRadius: 22,
               borderWidth: 1,
-              borderColor: 'rgba(100,149,237,0.25)',
-              paddingHorizontal: 16,
-              paddingVertical: 10,
+              borderColor: chatFocused
+                ? 'rgba(100,149,237,0.40)'
+                : 'rgba(255,255,255,0.10)',
               minHeight: 42,
               justifyContent: 'center',
+              overflow: 'hidden',
             }}>
+              {/* Glow overlay when mentions present */}
+              {hasMentions && (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    ...StyleSheet.absoluteFillObject,
+                    borderRadius: 22,
+                    backgroundColor: 'rgba(100,149,237,0.04)',
+                    shadowColor: '#6495ED',
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 10,
+                  }}
+                />
+              )}
+
+              {/* Rich display layer — visible when there are @mentions */}
+              {hasMentions ? (
+                <Text
+                  style={{
+                    fontSize: 14,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    lineHeight: 20,
+                  }}
+                  numberOfLines={1}
+                >
+                  {mentionSegments.map((seg, i) => {
+                    if (seg.type === 'mention') {
+                      return (
+                        <Text
+                          key={i}
+                          style={{
+                            color: 'rgba(180,210,255,0.95)',
+                            fontWeight: '600',
+                            letterSpacing: 0.1,
+                            textShadowColor: 'rgba(100,149,237,0.8)',
+                            textShadowOffset: { width: 0, height: 0 },
+                            textShadowRadius: 8,
+                          }}
+                        >
+                          {seg.value}
+                        </Text>
+                      );
+                    }
+                    return (
+                      <Text
+                        key={i}
+                        style={{
+                          color: 'rgba(255,255,255,0.55)',
+                          fontWeight: '400',
+                        }}
+                      >
+                        {seg.value}
+                      </Text>
+                    );
+                  })}
+                </Text>
+              ) : null}
+
+              {/* Actual TextInput — transparent when mentions displayed, normal otherwise */}
               <TextInput
                 value={chatInput}
-                onChangeText={setChatInput}
-                placeholder="Pregunta a Vizta..."
-                placeholderTextColor="rgba(255,255,255,0.25)"
-                multiline
-                maxLength={500}
-                style={{
-                  color: '#fff',
-                  fontSize: 14,
-                  lineHeight: 20,
-                  maxHeight: 80,
-                }}
+                onChangeText={handleChatInputChange}
+                onFocus={focusChat}
+                onBlur={blurChat}
+                placeholder={hasMentions ? '' : 'Pregúntale a Vizta… (@ para mencionar)'}
+                placeholderTextColor="rgba(255,255,255,0.30)"
                 returnKeyType="send"
                 onSubmitEditing={sendMessage}
                 blurOnSubmit={false}
-                editable={!chatLoading}
-                onFocus={focusChat}
-                onBlur={blurChat}
+                multiline={false}
+                style={{
+                  color: hasMentions ? 'transparent' : '#fff',
+                  fontSize: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  ...(hasMentions ? {
+                    ...StyleSheet.absoluteFillObject,
+                    borderRadius: 22,
+                  } : {}),
+                }}
               />
             </View>
-
-            <TouchableOpacity
-              onPress={sendMessage}
-              disabled={!chatInput.trim() || chatLoading}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                backgroundColor: chatInput.trim() && !chatLoading
-                  ? 'rgba(100,149,237,0.85)'
-                  : 'rgba(255,255,255,0.08)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Send
-                size={18}
-                color={chatInput.trim() && !chatLoading
-                  ? '#fff'
-                  : 'rgba(255,255,255,0.25)'}
-              />
-            </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            onPress={sendMessage}
+            disabled={chatLoading || !chatInput.trim()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Send
+              size={18}
+              color={chatLoading || !chatInput.trim()
+                ? 'rgba(100,149,237,0.30)'
+                : 'rgba(100,149,237,0.90)'}
+            />
+          </TouchableOpacity>
         </View>
+
       </View>
       </KeyboardAvoidingView>
+
+      {/* ── History Modal ── */}
+      <Modal
+        visible={historyVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setHistoryVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'flex-end',
+          backgroundColor: 'rgba(0,0,0,0.55)',
+        }}>
+          <View style={{
+            backgroundColor: 'rgba(8,10,30,0.98)',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            height: '85%',
+            borderTopWidth: 1,
+            borderColor: 'rgba(100,149,237,0.18)',
+          }}>
+            {/* Modal header */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 12,
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(100,149,237,0.10)',
+            }}>
+              <Text style={{
+                fontSize: 15,
+                fontWeight: '700',
+                color: '#fff',
+                letterSpacing: 0.3,
+              }}>
+                Historial de Chats
+              </Text>
+              <TouchableOpacity onPress={() => setHistoryVisible(false)}>
+                <Text style={{ fontSize: 13, color: 'rgba(100,149,237,0.7)' }}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* List */}
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+            >
+              {chatHistory.length === 0 ? (
+                <Text style={{
+                  color: 'rgba(255,255,255,0.30)',
+                  fontSize: 13,
+                  textAlign: 'center',
+                  marginTop: 32,
+                }}>
+                  Sin conversaciones guardadas
+                </Text>
+              ) : (
+                chatHistory.map((entry) => {
+                  const date = new Date(entry.timestamp);
+                  const label = date.toLocaleDateString('es-GT', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                  });
+                  return (
+                    <TouchableOpacity
+                      key={entry.id}
+                      onPress={() => restoreConversation(entry)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(100,149,237,0.07)',
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: 'rgba(100,149,237,0.14)',
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        marginBottom: 10,
+                        gap: 10,
+                      }}
+                    >
+                      <Clock size={14} color="rgba(100,149,237,0.55)" />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          numberOfLines={1}
+                          style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '500' }}
+                        >
+                          {entry.snippet}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)', marginTop: 3 }}>
+                          {label} · {entry.messageCount || entry.messages?.length || 0} mensajes
+                          {entry.fromSupabase ? ' · WEB' : ''}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation(); deleteHistoryEntry(entry.id); }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2 size={13} color="rgba(255,255,255,0.22)" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Detail view (slides up from bottom) ── */}
       <Animated.View

@@ -1,0 +1,855 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Keyboard,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import {
+  ChevronLeft,
+  Folder,
+  FolderInput,
+  FolderMinus,
+  FolderPlus,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react-native';
+import { INK, MOTION, RADIUS } from '../theme';
+import { PAPEL } from '../codex/Papel';
+import { MONO } from '../codex/mono';
+import { Nombrador, Opcion, TENUE, etiquetaConteo } from '../codex/piezasCarpeta';
+import PostDetailSheet from './PostDetailSheet';
+import agregarPost, { enlaceDePost } from './agregarPost';
+import * as Clipboard from 'expo-clipboard';
+import MorphingInfinity from '../MorphingInfinity';
+import { supabase } from '../../utils/supabase';
+import {
+  POST,
+  crearCarpeta,
+  eliminarCarpeta,
+  listarCarpetas,
+  moverItem,
+  renombrarCarpeta,
+} from '../../utils/carpetas';
+import { roce, toque, agarre, falla } from '../../utils/haptics';
+import { EV, evento } from '../../utils/analitica';
+
+const MENU_ANCHO = 190;
+
+/**
+ * Posts — la página que aparece al empujar el orbe hacia arriba.
+ *
+ * Existía ya una vista de posts dentro de `codex.jsx`, pero está escrita sobre
+ * fondo oscuro y arrastra medio archivo consigo. Así que esta es una vista nueva
+ * y corta: la galería, en papel. Lo que un post tiene para mostrar de un vistazo
+ * es su miniatura, quién lo publicó y su primera línea; todo lo demás vive en su
+ * ficha, que se abre al tocarlo.
+ *
+ * Sobre el tema claro: las miniaturas de Instagram son imágenes ajenas, casi
+ * siempre oscuras y saturadas. Sobre papel eso se ve como manchas, así que cada
+ * una va con una esquina redondeada y un borde de un pelo — suficiente para que
+ * la imagen termine en algún lado en vez de sangrar contra el fondo.
+ *
+ * **La biblioteca** son las carpetas, y no se ven como los posts a propósito:
+ * una carpeta en forma de tarjeta grande compite con el contenido y encima
+ * miente, porque no tiene una imagen propia que mostrar. Van como renglones
+ * finos arriba de la galería — un estante sobre la pila.
+ *
+ * **El buscador está plegado** detrás de la lupa. Una galería se mira, no se
+ * consulta: el caso normal es entrar y recorrer, y un campo de texto siempre
+ * abierto ocupa una línea permanente para algo que se usa de vez en cuando.
+ */
+export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
+  const { width: W, height: H } = useWindowDimensions();
+
+  const [posts, setPosts] = useState(null); // null = cargando
+  const [carpetas, setCarpetas] = useState([]);
+  const [error, setError] = useState(null);
+
+  const [buscando, setBuscando] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [abierta, setAbierta] = useState(null); // carpeta abierta
+  const [abierto, setAbierto] = useState(null); // post abierto
+
+  const [agregando, setAgregando] = useState(false); // caja de enlace abierta
+  const [enlace, setEnlace] = useState('');
+  const [trayendo, setTrayendo] = useState(false);
+  const [errorAlta, setErrorAlta] = useState(null);
+  // Si al abrir la caja hay que enfocar el campo. Ver `abrirAlta`.
+  const [enfocarEnlace, setEnfocarEnlace] = useState(true);
+
+  const [menu, setMenu] = useState(null); // { clase, item, x, y, vista }
+  const [nombrando, setNombrando] = useState(null); // { modo, carpeta?, post? }
+
+  /**
+   * Abrir la caja del enlace, ya con el enlace puesto.
+   *
+   * Agregar un post siempre empieza igual: se copia el enlace en Instagram o en
+   * X y se vuelve a Vizta. Cuando se llega acá el enlace ya está en el
+   * portapapeles, así que pedir que lo peguen a mano es pedir dos toques —
+   * mantener presionado, «Pegar»— para poner algo que la app ya podía saber.
+   *
+   * Solo se pega si es de una plataforma conocida; `enlaceDePost` explica por
+   * qué. Si no lo es, la caja se abre como antes, vacía y con el teclado
+   * arriba, porque ahí sí hay algo que escribir.
+   *
+   * Y por eso el foco es condicional: con el enlace ya puesto lo único que
+   * queda es tocar «traer», y abrir el teclado para nada sería taparle media
+   * pantalla a quien no va a escribir.
+   *
+   * El portapapeles se lee antes de abrir la caja, no después: `autoFocus` se
+   * evalúa cuando el campo se monta, así que decidirlo más tarde no llegaría a
+   * tiempo. La lectura es local y tarda milésimas.
+   */
+  const abrirAlta = async () => {
+    roce();
+    setErrorAlta(null);
+    if (agregando) {
+      setAgregando(false);
+      return;
+    }
+
+    let url = null;
+    try {
+      url = enlaceDePost(await Clipboard.getStringAsync());
+    } catch {
+      // Sin portapapeles —o negado— la caja se abre igual, a mano.
+    }
+
+    if (url) setEnlace(url);
+    setEnfocarEnlace(!url);
+    setAgregando(true);
+  };
+
+  const traer = async () => {
+    if (trayendo || !enlace.trim()) return;
+    setTrayendo(true);
+    setErrorAlta(null);
+    try {
+      const nuevo = await agregarPost(enlace);
+      // La plataforma sale del propio enlace; el enlace no se manda.
+      evento(EV.POST_AGREGADO, {
+        plataforma: /x\.com|twitter\.com/.test(enlace) ? 'x' : 'instagram',
+        es_reel: enlace.includes('/reel/'),
+      });
+
+      // Si se agregó estando dentro de una carpeta, va adentro. Traer un post
+      // parado en una carpeta y que aparezca en cualquier otro lado se lee como
+      // que no se guardó.
+      let fila = nuevo;
+      if (abierta) {
+        await moverItem(nuevo.id, abierta.id);
+        fila = { ...nuevo, folder_id: abierta.id };
+      }
+
+      toque();
+      setPosts((prev) => [fila, ...(prev || [])]);
+      setEnlace('');
+      setAgregando(false);
+    } catch (e) {
+      falla();
+      // Al panel va la categoría y el status, nunca el texto del servicio: ese
+      // puede traer detalles de infraestructura, y ya no se muestra ni en
+      // pantalla, así que menos todavía tiene por qué salir de la app.
+      evento(EV.POST_AGREGADO_FALLO, { categoria: e.categoria || 'desconocido', status: e.status || 0 });
+      setErrorAlta(e.message || 'No se pudo agregar');
+    } finally {
+      setTrayendo(false);
+    }
+  };
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const [{ data, error: e }, cs] = await Promise.all([
+          supabase
+            .from('codex_universe_items')
+            .select('id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id')
+            .eq('tipo', 'post')
+            .order('created_at', { ascending: false })
+            .limit(200),
+          listarCarpetas(POST),
+        ]);
+        if (e) throw e;
+        if (!vivo) return;
+        setPosts(data || []);
+        setCarpetas(cs);
+      } catch (e) {
+        if (vivo) {
+          setError(e.message || 'No se pudieron cargar');
+          setPosts([]);
+        }
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const conteo = useMemo(() => {
+    const m = new Map();
+    for (const p of posts || []) {
+      if (p.folder_id) m.set(p.folder_id, (m.get(p.folder_id) || 0) + 1);
+    }
+    return m;
+  }, [posts]);
+
+  /**
+   * Lo que se ve en la grilla: dentro de una carpeta, sus posts; afuera, los
+   * que no están en ninguna. Guardar un post en una carpeta lo saca de la
+   * galería suelta — si no, archivar no ordenaría nada y las carpetas serían
+   * decoración.
+   */
+  const filtrados = useMemo(() => {
+    if (!posts) return [];
+    const base = abierta ? posts.filter((p) => p.folder_id === abierta.id) : posts.filter((p) => !p.folder_id);
+
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((p) => {
+      const campos = [p.name, p.description, p.details?.author, ...(p.tags || [])];
+      return campos.some((c) => String(c || '').toLowerCase().includes(q));
+    });
+  }, [posts, busqueda, abierta]);
+
+  // ─── Acciones de carpeta ────────────────────────────────────────────────────
+
+  const abrirMenu = (clase, item, ev) => {
+    agarre();
+    const { pageX = 0, pageY = 0 } = ev?.nativeEvent || {};
+    setMenu({
+      clase,
+      item,
+      vista: 'acciones',
+      x: Math.min(Math.max(pageX - MENU_ANCHO / 2, 14), W - MENU_ANCHO - 14),
+      y: Math.min(pageY + 8, H - 300),
+    });
+  };
+
+  const mover = async (post, carpetaId) => {
+    setMenu(null);
+    const antes = posts;
+    setPosts((ps) => (ps || []).map((x) => (x.id === post.id ? { ...x, folder_id: carpetaId } : x)));
+
+    try {
+      await moverItem(post.id, carpetaId);
+      toque();
+    } catch {
+      falla();
+      setPosts(antes);
+      setError('No se pudo mover el post.');
+    }
+  };
+
+  const borrarCarpeta = (carpeta) => {
+    setMenu(null);
+    const cuantos = conteo.get(carpeta.id) || 0;
+
+    Alert.alert(
+      `Eliminar "${carpeta.name}"`,
+      cuantos > 0
+        ? `Los ${cuantos} posts que tiene adentro vuelven a la galería. No se borra ninguno.`
+        : 'La carpeta está vacía.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            const antesC = carpetas;
+            const antesP = posts;
+            setCarpetas((c) => c.filter((x) => x.id !== carpeta.id));
+            // La foreign key es ON DELETE SET NULL: en la base los posts quedan
+            // sueltos solos. Acá se espeja para no tener que recargar.
+            setPosts((ps) => (ps || []).map((x) => (x.folder_id === carpeta.id ? { ...x, folder_id: null } : x)));
+            if (abierta?.id === carpeta.id) setAbierta(null);
+
+            try {
+              await eliminarCarpeta(carpeta.id);
+              toque();
+            } catch {
+              falla();
+              setCarpetas(antesC);
+              setPosts(antesP);
+              setError('No se pudo eliminar la carpeta.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const confirmarNombre = async (texto) => {
+    const destino = nombrando;
+    setNombrando(null);
+    Keyboard.dismiss();
+
+    try {
+      if (destino.modo === 'renombrar') {
+        const r = await renombrarCarpeta(destino.carpeta.id, texto);
+        setCarpetas((c) => c.map((x) => (x.id === r.id ? { ...x, name: r.name } : x)));
+        if (abierta?.id === r.id) setAbierta((a) => ({ ...a, name: r.name }));
+      } else {
+        const nueva = await crearCarpeta(texto, carpetas, POST);
+        setCarpetas((c) => [...c, nueva]);
+        if (destino.post) await mover(destino.post, nueva.id);
+      }
+      toque();
+    } catch (e) {
+      falla();
+      setError(e.message === 'sin permiso' ? 'No tenés permiso para eso.' : 'No se pudo guardar la carpeta.');
+    }
+  };
+
+  const alternarBusqueda = () => {
+    roce();
+    setBuscando((b) => {
+      // Al plegarse se limpia: una galería filtrada sin el campo a la vista deja
+      // posts escondidos sin nada que explique por qué faltan.
+      if (b) {
+        setBusqueda('');
+        Keyboard.dismiss();
+      }
+      return !b;
+    });
+    setAgregando(false);
+  };
+
+  // Dos columnas. El ancho se calcula acá y no con flex para que la miniatura
+  // pueda tener una relación de aspecto exacta: los reels son 9:16 y cualquier
+  // redondeo distinto por columna se nota como un escalón entre las dos.
+  const COL = (W - 30 * 2 - 12) / 2;
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: PAPEL }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingTop: topInset + 12,
+            paddingHorizontal: 18,
+            paddingBottom: 4,
+          }}
+        >
+          <Pressable onPress={onClose} hitSlop={12} style={{ padding: 6 }}>
+            <X size={19} color={INK.faint} />
+          </Pressable>
+
+          <View style={{ flex: 1 }} />
+
+          {posts?.length ? (
+            <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, paddingRight: 4 }}>
+              {filtrados.length}
+            </Text>
+          ) : null}
+
+          <Pressable
+            onPress={alternarBusqueda}
+            hitSlop={12}
+            style={{ padding: 6 }}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: buscando }}
+            accessibilityLabel={buscando ? 'Cerrar la búsqueda' : 'Buscar'}
+          >
+            <Search size={18} color={buscando ? INK.title : INK.faint} />
+          </Pressable>
+
+          <Pressable
+            onPress={abrirAlta}
+            hitSlop={12}
+            style={{ padding: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel="Agregar un post"
+          >
+            <Plus size={19} color={INK.title} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 30, paddingTop: 20, paddingBottom: bottomInset + 40 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          scrollEnabled={!menu && !nombrando}
+        >
+          {abierta ? (
+            <Pressable
+              onPress={() => {
+                roce();
+                setAbierta(null);
+              }}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 18,
+                opacity: pressed ? 0.5 : 1,
+              })}
+              accessibilityRole="button"
+              accessibilityLabel={`Volver a la galería desde ${abierta.name}`}
+            >
+              <ChevronLeft size={15} color="rgba(28,43,34,0.4)" />
+              <Cuadro color={abierta.color} tamano={22} />
+              <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 11.5, color: INK.title, flex: 1 }}>
+                {abierta.name}
+              </Text>
+              <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.26)' }}>
+                {etiquetaConteo(conteo.get(abierta.id) || 0, 'post', 'posts')}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 18 }}>posts</Text>
+          )}
+
+          {agregando ? (
+            <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(140)} style={{ marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TextInput
+                  value={enlace}
+                  onChangeText={setEnlace}
+                  placeholder="pegá el enlace del post o del reel"
+                  placeholderTextColor="rgba(28,43,34,0.22)"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  autoFocus={enfocarEnlace}
+                  onSubmitEditing={traer}
+                  returnKeyType="go"
+                  style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title, padding: 0 }}
+                />
+                {trayendo ? (
+                  <MorphingInfinity size={16} color={INK.title} />
+                ) : enlace.trim() ? (
+                  <Pressable onPress={traer} hitSlop={10}>
+                    <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>traer</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <View style={{ height: 1, marginTop: 9, backgroundColor: 'rgba(28,43,34,0.14)' }} />
+
+              {/* Traer un reel puede tardar: baja el video y lo transcribe. Sin
+                  decirlo, la espera se lee como que se colgó. */}
+              <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginTop: 9, lineHeight: 17 }}>
+                {errorAlta ||
+                  (trayendo
+                    ? 'bajando y transcribiendo… puede tardar'
+                    : abierta
+                      ? `se guarda en ${abierta.name}`
+                      : 'instagram, reels y X')}
+              </Text>
+            </Animated.View>
+          ) : null}
+
+          {buscando ? (
+            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={{ marginBottom: 4 }}>
+              <Buscador value={busqueda} onChangeText={setBusqueda} onCerrar={alternarBusqueda} />
+            </Animated.View>
+          ) : null}
+
+          {/* La biblioteca solo existe en la raíz: dentro de una carpeta no hay
+              carpetas, y repetir el estante adentro del estante confunde. */}
+          {!abierta ? (
+            <Biblioteca
+              carpetas={carpetas}
+              conteo={conteo}
+              menu={menu}
+              onAbrir={(c) => {
+                roce();
+                setBusqueda('');
+                setAbierta(c);
+              }}
+              onMenu={(c, ev) => abrirMenu('carpeta', c, ev)}
+              onNueva={() => {
+                roce();
+                setNombrando({ modo: 'crear' });
+              }}
+            />
+          ) : null}
+
+          {posts === null ? (
+            <ActivityIndicator size="small" color={INK.faint} style={{ marginTop: 40 }} />
+          ) : filtrados.length === 0 ? (
+            <Text style={{ fontFamily: MONO, fontSize: 12.5, color: TENUE, lineHeight: 20, marginTop: 24 }}>
+              {error || vacio(abierta, busqueda)}
+            </Text>
+          ) : (
+            <Animated.View
+              layout={LinearTransition.springify().damping(22)}
+              style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 22 }}
+            >
+              {filtrados.map((p, i) => (
+                <Tarjeta
+                  key={p.id}
+                  post={p}
+                  ancho={COL}
+                  indice={i}
+                  atenuada={!!menu && menu.item.id !== p.id}
+                  onPress={() => {
+                    roce();
+                    evento(EV.POST_ABIERTO, { ya_analizado: !!p.details?.analysis });
+                    setAbierto(p);
+                  }}
+                  onLongPress={(ev) => abrirMenu('post', p, ev)}
+                />
+              ))}
+            </Animated.View>
+          )}
+        </ScrollView>
+
+        {menu ? (
+          <>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenu(null)} />
+
+            <Animated.View
+              entering={FadeIn.duration(130)}
+              exiting={FadeOut.duration(100)}
+              style={{
+                position: 'absolute',
+                left: menu.x,
+                top: menu.y,
+                width: MENU_ANCHO,
+                maxHeight: 268,
+                borderRadius: RADIUS.md,
+                backgroundColor: PAPEL,
+                borderWidth: 1,
+                borderColor: 'rgba(28,43,34,0.10)',
+                shadowColor: '#1E3326',
+                shadowOpacity: 0.16,
+                shadowRadius: 20,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 10,
+                overflow: 'hidden',
+              }}
+            >
+              {menu.vista === 'mover' ? (
+                <ScrollView keyboardShouldPersistTaps="handled">
+                  <Opcion
+                    icono={<FolderPlus size={15} color={INK.title} />}
+                    texto="carpeta nueva"
+                    onPress={() => {
+                      const post = menu.item;
+                      setMenu(null);
+                      setNombrando({ modo: 'crear', post });
+                    }}
+                  />
+                  {carpetas
+                    .filter((c) => c.id !== menu.item.folder_id)
+                    .map((c) => (
+                      <Opcion key={c.id} lomo={c.color} texto={c.name} onPress={() => mover(menu.item, c.id)} />
+                    ))}
+                </ScrollView>
+              ) : menu.clase === 'carpeta' ? (
+                <>
+                  <Opcion
+                    icono={<Pencil size={15} color={INK.title} />}
+                    texto="renombrar"
+                    onPress={() => {
+                      const carpeta = menu.item;
+                      setMenu(null);
+                      setNombrando({ modo: 'renombrar', carpeta });
+                    }}
+                  />
+                  <Opcion
+                    icono={<Trash2 size={15} color="#B91C1C" />}
+                    texto="eliminar carpeta"
+                    peligro
+                    onPress={() => borrarCarpeta(menu.item)}
+                  />
+                </>
+              ) : (
+                <>
+                  <Opcion
+                    icono={<FolderInput size={15} color={INK.title} />}
+                    texto="mover a…"
+                    onPress={() => setMenu((m) => ({ ...m, vista: 'mover' }))}
+                  />
+                  {menu.item.folder_id ? (
+                    <Opcion
+                      icono={<FolderMinus size={15} color={INK.title} />}
+                      texto="sacar de la carpeta"
+                      onPress={() => mover(menu.item, null)}
+                    />
+                  ) : null}
+                </>
+              )}
+            </Animated.View>
+          </>
+        ) : null}
+
+        {nombrando ? (
+          <Nombrador
+            modo={nombrando.modo}
+            inicial={nombrando.carpeta?.name || ''}
+            topInset={topInset}
+            onCancel={() => {
+              Keyboard.dismiss();
+              setNombrando(null);
+            }}
+            onConfirm={confirmarNombre}
+          />
+        ) : null}
+      </View>
+
+      {abierto ? (
+        <PostDetailSheet
+          post={abierto}
+          onClose={() => setAbierto(null)}
+          onActualizado={(p) => {
+            // El análisis recién hecho tiene que quedar en la lista: si no, al
+            // reabrir el post el ojo volvería a ofrecer extraer lo ya extraído.
+            setAbierto(p);
+            setPosts((prev) => (prev || []).map((x) => (x.id === p.id ? p : x)));
+          }}
+          topInset={topInset}
+          bottomInset={bottomInset}
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
+// ─── Biblioteca ───────────────────────────────────────────────────────────────
+
+/**
+ * El estante de carpetas, arriba de la galería.
+ *
+ * Deliberadamente **no** tiene la forma de un post: son renglones finos con un
+ * cuadrito de color. Una carpeta con el tamaño de una miniatura competiría con
+ * el contenido y además prometería una imagen que no tiene.
+ *
+ * La cabecera se dibuja aunque no haya ninguna carpeta. Es el único lugar donde
+ * se puede crear la primera: el `+` de arriba ya significa «agregar un post», y
+ * dos signos de más en la misma pantalla queriendo decir cosas distintas es
+ * exactamente lo que hace que nadie toque ninguno.
+ */
+function Biblioteca({ carpetas, conteo, menu, onAbrir, onMenu, onNueva }) {
+  return (
+    <View style={{ marginTop: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, flex: 1 }}>biblioteca</Text>
+        <Pressable
+          onPress={onNueva}
+          hitSlop={12}
+          style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1 })}
+          accessibilityRole="button"
+          accessibilityLabel="Carpeta nueva"
+        >
+          <FolderPlus size={16} color={TENUE} />
+        </Pressable>
+      </View>
+
+      {carpetas.length === 0 ? (
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.24)', lineHeight: 18 }}>
+          sin carpetas todavía.
+        </Text>
+      ) : (
+        carpetas.map((c) => (
+          <Animated.View key={c.id} entering={FadeIn.duration(220)} exiting={FadeOut.duration(160)} layout={LinearTransition.springify().damping(22)}>
+            <Pressable
+              onPress={() => onAbrir(c)}
+              onLongPress={(ev) => onMenu(c, ev)}
+              delayLongPress={380}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingVertical: 10,
+                opacity: menu && menu.item.id !== c.id ? 0.35 : pressed ? 0.55 : 1,
+              })}
+              accessibilityRole="button"
+              accessibilityLabel={`Carpeta ${c.name}, ${etiquetaConteo(conteo.get(c.id) || 0, 'post', 'posts')}`}
+              accessibilityHint="Mantené presionado para más acciones"
+            >
+              <Cuadro color={c.color} />
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>
+                  {c.name}
+                </Text>
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.26)', marginTop: 3 }}>
+                  {etiquetaConteo(conteo.get(c.id) || 0, 'post', 'posts')}
+                </Text>
+              </View>
+              <Text style={{ fontFamily: MONO, fontSize: 13, color: 'rgba(28,43,34,0.22)' }}>›</Text>
+            </Pressable>
+            <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.07)' }} />
+          </Animated.View>
+        ))
+      )}
+    </View>
+  );
+}
+
+/** El cuadrito de la carpeta: su color al 12% con el icono encima, en el color. */
+function Cuadro({ color, tamano = 36 }) {
+  return (
+    <View
+      style={{
+        width: tamano,
+        height: tamano,
+        borderRadius: tamano * 0.28,
+        backgroundColor: `${color}1F`,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Folder size={tamano * 0.44} color={color} strokeWidth={1.8} />
+    </View>
+  );
+}
+
+// ─── Buscador ─────────────────────────────────────────────────────────────────
+
+function Buscador({ value, onChangeText, onCerrar }) {
+  const foco = useSharedValue(0);
+
+  const linea = useAnimatedStyle(() => ({
+    backgroundColor: `rgba(28,43,34,${0.07 + foco.value * 0.13})`,
+  }));
+
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 8 }}>
+        <Search size={14} color="rgba(28,43,34,0.28)" />
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder="buscar"
+          placeholderTextColor="rgba(28,43,34,0.22)"
+          autoCapitalize="none"
+          autoFocus
+          returnKeyType="search"
+          style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title, padding: 0 }}
+          onFocus={() => {
+            foco.value = withTiming(1, { duration: 160 });
+          }}
+          onBlur={() => {
+            foco.value = withSpring(0, MOTION.tap);
+          }}
+        />
+        <Pressable onPress={onCerrar} hitSlop={10} accessibilityRole="button" accessibilityLabel="Cerrar la búsqueda">
+          <X size={14} color="rgba(28,43,34,0.35)" />
+        </Pressable>
+      </View>
+      <Animated.View style={[{ height: 1, borderRadius: RADIUS.sm }, linea]} />
+    </View>
+  );
+}
+
+// ─── Tarjeta ──────────────────────────────────────────────────────────────────
+
+/**
+ * Un post.
+ *
+ * La miniatura manda: es lo que hace reconocible un reel. Debajo, quién lo
+ * publicó y la primera línea del texto — no el `name`, que viene armado como
+ * «@autor — caption» y repetiría el autor que ya está arriba.
+ *
+ * No lleva insignia de play. La tenía, y era una promesa falsa: la tarjeta abre
+ * la ficha del post, no reproduce nada. Un triángulo de play es el símbolo más
+ * literal que existe para «esto se reproduce acá», y ponerlo donde no se
+ * reproduce nada gasta la confianza en todos los demás iconos de la pantalla.
+ */
+function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
+  const [rota, setRota] = useState(false);
+  const press = useSharedValue(0);
+
+  const uri = post.thumbnail_url || post.details?.thumbnail_url || post.details?.images?.[0];
+  const autor = post.details?.author || (post.name || '').match(/^@([^—]+)/)?.[1]?.trim();
+
+  // El caption sin el «@autor — » que el nombre trae adelante.
+  const texto = (post.description || post.name || '').replace(/^@[^—]+—\s*/, '').trim();
+
+  const animado = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - press.value * 0.03 }],
+  }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={380}
+      onPressIn={() => {
+        press.value = withTiming(1, MOTION.press);
+      }}
+      onPressOut={() => {
+        press.value = withSpring(0, MOTION.tap);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={autor ? `Post de ${autor}` : 'Post'}
+      accessibilityHint="Mantené presionado para moverlo a una carpeta"
+    >
+      <Animated.View
+        entering={FadeIn.duration(240).delay(Math.min(indice, 10) * 24)}
+        style={[{ width: ancho, opacity: atenuada ? 0.35 : 1 }, animado]}
+      >
+        <View
+          style={{
+            width: ancho,
+            height: ancho * 1.35,
+            borderRadius: RADIUS.md,
+            overflow: 'hidden',
+            backgroundColor: 'rgba(28,43,34,0.06)',
+            borderWidth: 1,
+            borderColor: 'rgba(28,43,34,0.08)',
+          }}
+        >
+          {uri && !rota ? (
+            <Image source={{ uri }} onError={() => setRota(true)} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            /* Sin miniatura: monograma en vez de un rectángulo vacío.
+               Las miniaturas son URLs firmadas de Instagram que caducan en
+               días — las de este Codex vencieron el 3 de agosto— así que este
+               no es el caso raro sino el habitual, y un hueco gris repetido 43
+               veces se lee como que la pantalla se rompió. La inicial del autor
+               al menos distingue una tarjeta de otra. */
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontFamily: MONO, fontSize: 30, color: 'rgba(28,43,34,0.16)' }}>
+                {(autor || '?').trim().charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {autor ? (
+          <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 11.5, color: INK.title, marginTop: 8 }}>
+            {autor}
+          </Text>
+        ) : null}
+
+        {texto ? (
+          <Text numberOfLines={2} style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.42)', lineHeight: 17, marginTop: 3 }}>
+            {texto}
+          </Text>
+        ) : null}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function vacio(abierta, busqueda) {
+  if (busqueda) return 'nada con eso.';
+  if (abierta) return 'esta carpeta está vacía.';
+  return 'todavía no hay posts.';
+}

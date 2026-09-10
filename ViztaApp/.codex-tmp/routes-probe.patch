@@ -1,0 +1,7 @@
+diff --git a/server/routes/codex.js b/server/routes/codex.js
+--- a/server/routes/codex.js
++++ b/server/routes/codex.js
+@@ -883,2 +883,3 @@
+ } = require('../services/codexContractV4');
+ 
++// codex-v41-route-probe

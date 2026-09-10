@@ -1,0 +1,60 @@
+diff --git a/migrations/20260829_codex_contract_v41_fields_sources_profiles.sql b/migrations/20260829_codex_contract_v41_fields_sources_profiles.sql
+new file mode 100644
+--- /dev/null
++++ b/migrations/20260829_codex_contract_v41_fields_sources_profiles.sql
+@@ -0,0 +1,52 @@
++begin;
++
++create schema if not exists private;
++revoke all on schema private from public, anon, authenticated;
++
++-- Snapshot del catálogo antes de cambiar la clave física de campos personales.
++create table if not exists private.codex_user_fields_v41_backup_20260829 as
++select * from public.codex_user_fields;
++revoke all on private.codex_user_fields_v41_backup_20260829
++  from public, anon, authenticated;
++
++-- Los campos del sistema conservan labels legacy durante la transición del front.
++-- Los campos personales usan field_key como storage_key: renombrar el label no
++-- rompe ni obliga a mantener alias históricos en el contrato.
++do $$
++declare
++  field_record record;
++begin
++  for field_record in
++    select user_id, field_key, label
++    from public.codex_user_fields
++    where label <> field_key
++  loop
++    update public.codex_universe_items
++    set
++      details = case
++        when details ? field_record.field_key
++          then details - field_record.label
++        else (details - field_record.label)
++          || jsonb_build_object(field_record.field_key, details -> field_record.label)
++      end,
++      field_keys = case
++        when field_record.field_key = any(field_keys) then field_keys
++        else array_append(field_keys, field_record.field_key)
++      end
++    where user_id = field_record.user_id
++      and details ? field_record.label;
++  end loop;
++end
++$$;
++
++create index if not exists idx_codex_universe_sources
++  on public.codex_universe_items (user_id, updated_at desc)
++  where tipo = 'Source'::citext and is_profile = false;
++
++comment on table public.codex_user_fields is
++  'Campos personalizados reutilizables por usuario. field_key es identidad y clave física; label es presentación renombrable.';
++comment on table public.codex_user_presets is
++  'Machotes personales por usuario. Sus field_keys son fuente de verdad; desactivar conserva snapshots y valores.';
++comment on column public.codex_universe_items.field_keys is
++  'Snapshot de campos visibles al guardar. La lectura suma campos nuevos de presets activos sin mutar el item.';
++comment on column public.codex_universe_items.preset_keys is
++  'Presets aplicados. Su catálogo vigente puede sugerir campos nuevos; los valores históricos no se borran.';
++
++commit;

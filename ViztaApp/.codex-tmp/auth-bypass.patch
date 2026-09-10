@@ -1,0 +1,18 @@
+diff --git a/server/middlewares/auth.js b/server/middlewares/auth.js
+--- a/server/middlewares/auth.js
++++ b/server/middlewares/auth.js
+@@ -128,5 +128,5 @@
+ 
+ // Modo desarrollo/pruebas
+ const bypassAuthForTesting = async (req, res, next) => {
+-  if (process.env.NODE_ENV === 'development' || process.env.ALLOW_BYPASS_AUTH === 'true') {
++  if (process.env.ALLOW_BYPASS_AUTH === 'true') {
+     console.log('⚠️ MODO DESARROLLO: Permitiendo acceso con usuario por defecto');
+@@ -241,6 +241,6 @@
+ };
+ 
+ module.exports = {
+-  verifyUserAccess: process.env.NODE_ENV === 'development' ? bypassAuthForTesting : verifyUserAccess,
++  verifyUserAccess: process.env.ALLOW_BYPASS_AUTH === 'true' ? bypassAuthForTesting : verifyUserAccess,
+   optionalAuth
+ }; 

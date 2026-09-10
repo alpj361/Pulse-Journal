@@ -11,7 +11,8 @@ const callbackQueryString = `callbackUrl=${callbackUrl}`;
  * This renders a WebView for authentication and handles both web and native platforms.
  */
 export const AuthWebView = ({ mode, proxyURL, baseURL }) => {
-  const [currentURI, setURI] = useState(`${baseURL}/account/${mode}?${callbackQueryString}`);
+  const initialURI = baseURL && mode ? `${baseURL}/account/${mode}?${callbackQueryString}` : null;
+  const [currentURI, setURI] = useState(initialURI);
   const { auth, setAuth, isReady } = useAuthStore();
   const isAuthenticated = isReady ? !!auth : null;
   const iframeRef = useRef(null);
@@ -27,7 +28,9 @@ export const AuthWebView = ({ mode, proxyURL, baseURL }) => {
     if (isAuthenticated) {
       return;
     }
-    setURI(`${baseURL}/account/${mode}?${callbackQueryString}`);
+    if (baseURL && mode) {
+      setURI(`${baseURL}/account/${mode}?${callbackQueryString}`);
+    }
   }, [mode, baseURL, isAuthenticated]);
 
   useEffect(() => {
@@ -71,6 +74,8 @@ export const AuthWebView = ({ mode, proxyURL, baseURL }) => {
       />
     );
   }
+  if (!currentURI) return null;
+
   return (
     <WebView
       sharedCookiesEnabled
