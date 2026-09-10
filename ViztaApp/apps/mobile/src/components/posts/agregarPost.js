@@ -19,6 +19,31 @@ import { EXTRACTORT_URL, EXTRACTORW_URL } from '../../utils/servicios';
  * Devuelve la fila insertada. Lanza con un mensaje legible si algo falla: quien
  * llama decide cómo mostrarlo.
  */
+/**
+ * Las plataformas de las que se puede traer un post.
+ *
+ * Vive acá, al lado de los tres caminos de extracción, para que no se
+ * desincronicen: agregar un servicio nuevo abajo y olvidarse de esta lista
+ * dejaría enlaces que la app sabe traer pero no reconoce al pegarlos.
+ */
+const PLATAFORMAS = /^https?:\/\/(?:[a-z0-9-]+\.)*(?:x\.com|twitter\.com|instagram\.com)\//i;
+
+/**
+ * ¿Este texto es el enlace de un post?
+ *
+ * Devuelve el enlace limpio, o `null` si lo que hay no lo es.
+ *
+ * Se pide que sea de una plataforma conocida y no solo que parezca una URL,
+ * porque esto decide qué se pega solo en el campo. Rellenarlo con cualquier
+ * cosa que ande en el portapapeles —una dirección, un texto copiado, el enlace
+ * de otra app— es peor que dejarlo vacío: obliga a borrar antes de escribir, y
+ * convierte una ayuda en un estorbo.
+ */
+export function enlaceDePost(texto) {
+  const url = String(texto || '').trim();
+  return PLATAFORMAS.test(url) ? url : null;
+}
+
 export default async function agregarPost(urlCruda) {
   const url = String(urlCruda || '').trim();
   if (!/^https?:\/\//i.test(url)) throw new Error('Pegá un enlace que empiece con http');

@@ -39,7 +39,8 @@ import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
 import { Nombrador, Opcion, TENUE, etiquetaConteo } from '../codex/piezasCarpeta';
 import PostDetailSheet from './PostDetailSheet';
-import agregarPost from './agregarPost';
+import agregarPost, { enlaceDePost } from './agregarPost';
+import * as Clipboard from 'expo-clipboard';
 import MorphingInfinity from '../MorphingInfinity';
 import { supabase } from '../../utils/supabase';
 import {
@@ -94,9 +95,51 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const [enlace, setEnlace] = useState('');
   const [trayendo, setTrayendo] = useState(false);
   const [errorAlta, setErrorAlta] = useState(null);
+  // Si al abrir la caja hay que enfocar el campo. Ver `abrirAlta`.
+  const [enfocarEnlace, setEnfocarEnlace] = useState(true);
 
   const [menu, setMenu] = useState(null); // { clase, item, x, y, vista }
   const [nombrando, setNombrando] = useState(null); // { modo, carpeta?, post? }
+
+  /**
+   * Abrir la caja del enlace, ya con el enlace puesto.
+   *
+   * Agregar un post siempre empieza igual: se copia el enlace en Instagram o en
+   * X y se vuelve a Vizta. Cuando se llega acá el enlace ya está en el
+   * portapapeles, así que pedir que lo peguen a mano es pedir dos toques —
+   * mantener presionado, «Pegar»— para poner algo que la app ya podía saber.
+   *
+   * Solo se pega si es de una plataforma conocida; `enlaceDePost` explica por
+   * qué. Si no lo es, la caja se abre como antes, vacía y con el teclado
+   * arriba, porque ahí sí hay algo que escribir.
+   *
+   * Y por eso el foco es condicional: con el enlace ya puesto lo único que
+   * queda es tocar «traer», y abrir el teclado para nada sería taparle media
+   * pantalla a quien no va a escribir.
+   *
+   * El portapapeles se lee antes de abrir la caja, no después: `autoFocus` se
+   * evalúa cuando el campo se monta, así que decidirlo más tarde no llegaría a
+   * tiempo. La lectura es local y tarda milésimas.
+   */
+  const abrirAlta = async () => {
+    roce();
+    setErrorAlta(null);
+    if (agregando) {
+      setAgregando(false);
+      return;
+    }
+
+    let url = null;
+    try {
+      url = enlaceDePost(await Clipboard.getStringAsync());
+    } catch {
+      // Sin portapapeles —o negado— la caja se abre igual, a mano.
+    }
+
+    if (url) setEnlace(url);
+    setEnfocarEnlace(!url);
+    setAgregando(true);
+  };
 
   const traer = async () => {
     if (trayendo || !enlace.trim()) return;
@@ -334,11 +377,7 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           </Pressable>
 
           <Pressable
-            onPress={() => {
-              roce();
-              setAgregando((a) => !a);
-              setErrorAlta(null);
-            }}
+            onPress={abrirAlta}
             hitSlop={12}
             style={{ padding: 6 }}
             accessibilityRole="button"
@@ -395,7 +434,7 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="url"
-                  autoFocus
+                  autoFocus={enfocarEnlace}
                   onSubmitEditing={traer}
                   returnKeyType="go"
                   style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title, padding: 0 }}

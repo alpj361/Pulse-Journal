@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 /**
  * Espacios del Codex.
  *
- * Un espacio es una fila de `free_canvases`. Espeja
+ * Un espacio es una fila de `spaces`. Espeja
  * ThePulse/src/services/canvasService.ts, con dos diferencias pensadas
  * para teléfono:
  *
@@ -26,7 +26,7 @@ import { supabase } from './supabase';
  */
 export async function listSpaces() {
   const { data, error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('id, name, project_id, updated_at, data->canvasItems, data->cover')
     .order('updated_at', { ascending: false });
 
@@ -103,7 +103,7 @@ export async function loadSpaceItems(itemIds) {
 /** Canvas completo de un espacio — solo al abrirlo. */
 export async function loadSpace(spaceId) {
   const { data, error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('*')
     .eq('id', spaceId)
     .maybeSingle();
@@ -140,7 +140,7 @@ export async function addItemsToSpace(spaceId, itemIds) {
   if (!itemIds?.length) return 0;
 
   const { data: current, error: readError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('data')
     .eq('id', spaceId)
     .maybeSingle();
@@ -156,7 +156,7 @@ export async function addItemsToSpace(spaceId, itemIds) {
   if (added === 0) return 0;
 
   const { error: writeError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .update({
       data: { ...blob, canvasItems: merged },
       updated_at: new Date().toISOString(),
@@ -180,7 +180,7 @@ export async function saveCanvasPatch(spaceId, patch) {
   if (!patch || !Object.keys(patch).length) return;
 
   const { data: current, error: readError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('data')
     .eq('id', spaceId)
     .maybeSingle();
@@ -189,7 +189,7 @@ export async function saveCanvasPatch(spaceId, patch) {
   if (!current) throw new Error('El espacio ya no existe');
 
   const { error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .update({
       data: { ...(current.data || {}), ...patch },
       updated_at: new Date().toISOString(),
@@ -212,7 +212,7 @@ export async function addNote(spaceId, content, color = null) {
   if (!texto) return null;
 
   const { data: current, error: readError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('data')
     .eq('id', spaceId)
     .maybeSingle();
@@ -232,7 +232,7 @@ export async function addNote(spaceId, content, color = null) {
   };
 
   const { error: writeError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .update({
       data: { ...blob, notes: [...notes, nota] },
       updated_at: new Date().toISOString(),
@@ -246,7 +246,7 @@ export async function addNote(spaceId, content, color = null) {
 /** Borra una nota por id. */
 export async function deleteNote(spaceId, noteId) {
   const { data: current, error: readError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('data')
     .eq('id', spaceId)
     .maybeSingle();
@@ -258,7 +258,7 @@ export async function deleteNote(spaceId, noteId) {
   const notes = (Array.isArray(blob.notes) ? blob.notes : []).filter((n) => n.id !== noteId);
 
   const { error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .update({ data: { ...blob, notes }, updated_at: new Date().toISOString() })
     .eq('id', spaceId);
   if (error) throw error;
@@ -275,7 +275,7 @@ export async function removeItemsFromSpace(spaceId, itemIds) {
   if (!itemIds?.length) return 0;
 
   const { data: current, error: readError } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .select('data')
     .eq('id', spaceId)
     .maybeSingle();
@@ -291,7 +291,7 @@ export async function removeItemsFromSpace(spaceId, itemIds) {
   );
 
   const { error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .update({
       data: { ...blob, canvasItems: quedan, positions },
       updated_at: new Date().toISOString(),
@@ -309,7 +309,7 @@ export async function createSpace(name, itemIds = []) {
   if (!userId) throw new Error('Sin sesión activa');
 
   const { data, error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .insert({
       user_id: userId,
       name: name?.trim() || 'Espacio sin nombre',
@@ -331,7 +331,7 @@ export async function createSpace(name, itemIds = []) {
 
 export async function renameSpace(spaceId, name) {
   const { error } = await supabase
-    .from('free_canvases')
+    .from('spaces')
     .update({ name: name.trim(), updated_at: new Date().toISOString() })
     .eq('id', spaceId);
   if (error) throw error;

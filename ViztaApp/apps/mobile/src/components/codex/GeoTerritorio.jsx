@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { Link2, MapPin, BadgeCheck, Landmark, Spline, Shapes, MapPinOff } from 'lucide-react-native';
+import { Link2, MapPin, BadgeCheck, Landmark, Spline, Shapes, MapPinOff, PenTool } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { inputStyle } from './FieldInput';
 import { roce } from '../../utils/haptics';
 import BuscarLimite from './BuscarLimite';
 import MiniMapa from './campos/MiniMapa';
+import MarcarGeoModal from './campos/MarcarGeoModal';
 import {
   ROLES,
   etiquetaNivel,
@@ -163,6 +164,9 @@ export default function GeoTerritorio({ item, nombre, editando, geoEd, onCambiar
   // Cuando ya hay polígono propio y se elige un límite, hay que decidir qué
   // geometría queda. Se guarda el candidato hasta que esa pregunta se responda.
   const [pendiente, setPendiente] = useState(null);
+  // El mapa de marcado, compartido entre punto, área y ruta: el modo con el que
+  // se abre es el único dato que cambia entre los tres.
+  const [marcando, setMarcando] = useState(false);
 
   const geo = normalizarGeo(geoEd ?? item?.geo);
   const rol = geo.spatial_role;
@@ -321,9 +325,29 @@ export default function GeoTerritorio({ item, nombre, editando, geoEd, onCambiar
         </View>
       ) : null}
 
-      {/* ── Punto: coordenadas a mano ── */}
+      {/* ── Punto: el lápiz vive en la esquina del mapa, no en un botón aparte ──
+          El mapa mismo es la vía principal para marcar o ajustar — el lápiz de
+          su esquina abre el mismo modal que antes tenía un botón propio. Sin
+          punto todavía, el mapa no tiene nada que dibujar: queda un círculo con
+          ese mismo lápiz, la misma acción, antes de que haya algo encima.
+          Los campos de texto quedan igual disponibles debajo: alguien que ya
+          tiene la coordenada exacta de otra fuente la pega directo, sin abrir
+          nada. */}
       {rol === 'location' && editando ? (
         <View>
+          <MiniMapa
+            lat={puntoEditado?.lat}
+            lng={puntoEditado?.lng}
+            editable
+            onEditar={() => { roce(); setMarcando(true); }}
+          />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(28,43,34,0.08)' }} />
+            <Text style={{ fontFamily: MONO, fontSize: 9.5, color: INK.faint }}>o a mano</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(28,43,34,0.08)' }} />
+          </View>
+
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <CampoCoord
               etiqueta="LATITUD"
@@ -346,33 +370,56 @@ export default function GeoTerritorio({ item, nombre, editando, geoEd, onCambiar
                 elemento simplemente no aparece. */}
             Guatemala está cerca de 14.6 y −90.5. La longitud va con signo menos.
           </Text>
-
-          {/* El mapa mientras se escribe.
-            *
-            * Es la única forma de notar un error de coordenadas en el momento.
-            * Un signo comido o dos dígitos cambiados dan un número que se ve
-            * perfectamente razonable, y el error recién aparece al abrir el
-            * mapa —o nunca, si nadie vuelve a mirar—. Acá el punto se mueve
-            * mientras se teclea: si aterriza en el mar, se ve en el acto.
-            *
-            * Solo cuando las dos coordenadas son válidas. Dibujar un mapa a
-            * medio escribir haría saltar el pin por medio mundo entre tecla y
-            * tecla. */}
-          {puntoEditado ? (
-            <View style={{ marginTop: 12 }}>
-              <MiniMapa lat={puntoEditado.lat} lng={puntoEditado.lng} />
-            </View>
-          ) : null}
         </View>
       ) : null}
 
-      {/* ── Área y recorrido: acá no se dibujan ── */}
+      {/* ── Área y recorrido: se trazan en el mapa, ya no dicen «no se puede
+          desde acá» ── */}
       {(rol === 'area' || rol === 'route') && editando ? (
-        <Text style={{ fontSize: 13, color: INK.meta, lineHeight: 20 }}>
-          {rol === 'area' ? 'Un área se traza' : 'Un recorrido se traza'} sobre el mapa, no desde acá.
-          {geo.geometry ? ' La geometría que ya tiene se conserva.' : ' Todavía no tiene forma.'}
-        </Text>
+        <View>
+          <Pressable
+            onPress={() => { roce(); setMarcando(true); }}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 9,
+              borderWidth: 1,
+              borderStyle: 'dashed',
+              borderColor: 'rgba(28,43,34,0.22)',
+              borderRadius: 12,
+              paddingVertical: 13,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <PenTool size={15} color={INK.meta} />
+            <Text style={{ fontSize: 13.5, color: INK.body, fontWeight: '600' }}>
+              {geo.geometry ? `Ajustar ${rol === 'area' ? 'el área' : 'el recorrido'}` : `Trazar ${rol === 'area' ? 'el área' : 'el recorrido'}`}
+            </Text>
+          </Pressable>
+          <Text style={{ fontSize: 11.5, color: INK.meta, lineHeight: 17, marginTop: 8 }}>
+            {geo.geometry ? 'La geometría que ya tiene se conserva hasta que la ajustes.' : 'Todavía no tiene forma.'}
+          </Text>
+        </View>
       ) : null}
+
+      <MarcarGeoModal
+        visible={marcando}
+        rol={rol}
+        geoActual={{ ...geo, _itemId: item?.id }}
+        onCancelar={() => setMarcando(false)}
+        onConfirmar={(nuevoGeo) => {
+          setMarcando(false);
+          if (rol === 'location') {
+            const p = puntoDe(nuevoGeo);
+            if (p) {
+              setLatEd(String(p.lat));
+              setLngEd(String(p.lng));
+            }
+          }
+          onCambiar(nuevoGeo);
+        }}
+      />
 
       {/* ── Qué es, en una línea que se pueda leer ──
           Antes acá decía «polígono · 1.635 vértices · oficial» y, arriba,

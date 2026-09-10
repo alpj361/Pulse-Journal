@@ -1,39 +1,53 @@
-import { useEffect, useState } from 'react';
-import { Tabs } from 'expo-router';
-import { Newspaper, Settings } from 'lucide-react-native';
-import { Alert, TouchableOpacity, View, Text } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Tabs, useRouter } from 'expo-router';
+import { Alert, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppBackground from '../../components/AppBackground';
 import NavOrb from '../../components/NavOrb';
 import CreateSnippetSheet from '../../components/codex/CreateSnippetSheet';
 import PostsSheet from '../../components/posts/PostsSheet';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
+import {
+  useUltimoLugarStore,
+  useRecordarLugar,
+  useLugarHidratado,
+} from '../../state/ultimoLugarStore';
 import { EV, evento, identificar } from '../../utils/analitica';
 
-// ─── Medidas de la barra ───────────────────────────────────────────────────────
-const PILL_HEIGHT = 64;
+// ─── Medidas ──────────────────────────────────────────────────────────────────
 const ORB_SIZE = 68;
-const ORB_OVERHANG = 24; // cuánto sobresale el orbe por encima de la píldora
-const ORB_SLOT = 92; // hueco reservado en el centro de la píldora
 
-const ACTIVE = '#1C2B22';
-const INACTIVE = '#A5AB9F';
+/** Lo que la hoja de notas puede borrar del registro de «dónde me quedé». */
+const TIPOS_NOTA = ['nota'];
 
-// El Codex está oculto por ahora: `codex` sigue registrada abajo —igual que
-// `orbit`, que también existe sin botón— así que la pantalla no se borra y
-// `navigation.navigate('codex')` sigue funcionando desde código. Lo único que
-// desapareció es la puerta de entrada.
-//
-// El orbe se queda, pero ya no lleva al Codex: abre una nota en blanco. Es el
-// mismo gesto de antes —el botón grande del centro— con un destino más chico,
-// y evita el agujero de 92px que quedaría en medio de la píldora si el orbe se
-// hubiera ido con la ruta.
+/** Los lugares que viven en la pestaña del Codex, y hay que ir hasta allá. */
+const EN_CODEX = ['item', 'espacio'];
 
-// ─── Custom Tab Bar ────────────────────────────────────────────────────────────
-function CustomTabBar({ state, descriptors, navigation }) {
+/**
+ * Ya no hay barra: solo el orbe.
+ *
+ * La píldora tenía dos botones —Feed y Ajustes— y un hueco en el medio para el
+ * orbe. Se fue entera. Feed no necesita botón porque es la pantalla de partida:
+ * se vuelve a ella cerrando lo que se haya abierto encima, que es el gesto que
+ * ya se venía usando para salir de una nota.
+ *
+ * Las rutas siguen registradas abajo —`codex`, `orbit`, `settings`—: la barra
+ * era la puerta, no la pantalla. `navigation.navigate(…)` las alcanza igual, y
+ * Ajustes va a entrar por otro lado.
+ *
+ * Lo que queda es un solo control, y por eso ya no necesita distinguir entre
+ * «dónde estoy» y «qué hago»: el orbe es siempre lo segundo.
+ */
+function BarraOrbe() {
   const insets = useSafeAreaInsets();
   const [escribiendo, setEscribiendo] = useState(false);
   const [viendoPosts, setViendoPosts] = useState(false);
+
+  // Qué nota tiene la hoja cargada, para poder volver a ella. La hoja lo avisa
+  // porque el id es suyo: nace cuando se abre una del historial.
+  const [notaId, setNotaId] = useState(null);
+  // La nota que hay que volver a abrir en este arranque, si había una.
+  const [notaARestaurar, setNotaARestaurar] = useState(null);
 
   // Sin sesión no hay dónde guardar: el insert de `codex_universe_items` pide
   // `user_id`. El orbe igual se muestra —esconderlo dejaría un agujero en medio
@@ -62,6 +76,31 @@ function CustomTabBar({ state, descriptors, navigation }) {
     if (userId) identificar(userId, { admin: esAdmin });
   }, [userId, esAdmin]);
 
+  // Se anota la nota abierta solo cuando tiene id. Una nota nueva todavía no es
+  // un lugar: no existe en la base, así que no hay nada que volver a pedir.
+  useRecordarLugar(escribiendo && notaId ? { tipo: 'nota', id: notaId } : null, TIPOS_NOTA);
+
+  // Volver a la nota donde se quedó.
+  //
+  // No se consume al montar sino cuando el encargo aparece: los efectos corren
+  // de adentro hacia afuera, así que esta barra se monta —y correría su
+  // efecto— antes de que el layout de arriba alcance a leer el disco. Mirando
+  // `porRestaurar` como cualquier otro estado, el orden deja de importar.
+  const porRestaurar = useUltimoLugarStore((s) => s.porRestaurar);
+  const consumir = useUltimoLugarStore((s) => s.consumir);
+
+  useEffect(() => {
+    if (porRestaurar?.tipo !== 'nota') return;
+    // La nota se trae de la cuenta; sin sesión no hay de dónde. Se espera en vez
+    // de descartar: la sesión suele resolverse un instante después del arranque.
+    if (!conectado) return;
+
+    const lugar = consumir('nota');
+    if (!lugar?.id) return;
+    setNotaARestaurar(lugar.id);
+    setEscribiendo(true);
+  }, [porRestaurar?.tipo, conectado, consumir]);
+
   const abrirNota = () => {
     if (!conectado) {
       Alert.alert(
@@ -74,116 +113,51 @@ function CustomTabBar({ state, descriptors, navigation }) {
     setEscribiendo(true);
   };
 
-  const routeFor = (name) => state.routes.find((r) => r.name === name);
-  const isFocusedRoute = (route) => state.index === state.routes.indexOf(route);
-
-  const navigateTo = (route) => {
-    const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-    if (!isFocusedRoute(route) && !event.defaultPrevented) {
-      navigation.navigate(route.name);
-    }
-  };
-
-  const renderTab = (tab) => {
-    const route = routeFor(tab.name);
-    if (!route) return null;
-
-    const isFocused = isFocusedRoute(route);
-    const color = isFocused ? ACTIVE : INACTIVE;
-
-    return (
-      <TouchableOpacity
-        key={tab.name}
-        onPress={() => navigateTo(route)}
-        activeOpacity={0.7}
-        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6 }}
-      >
-        <tab.Icon size={22} color={color} strokeWidth={isFocused ? 2.4 : 2} />
-        <Text
-          style={{
-            fontSize: 11,
-            fontWeight: isFocused ? '700' : '500',
-            color,
-            marginTop: 4,
-            letterSpacing: -0.1,
-          }}
-        >
-          {tab.label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  // Orbit queda fuera de la barra pero sigue registrada abajo: la ruta existe
-  // y se puede navegar por código, solo no tiene botón.
-  const leftTabs = [{ name: 'index', label: 'Feed', Icon: Newspaper }];
-  const rightTabs = [{ name: 'settings', label: 'Ajustes', Icon: Settings }];
-
   return (
+    // `box-none`: sin píldora detrás, todo lo que no sea el orbe tiene que
+    // dejar pasar el toque al contenido. Sin esto quedaría una franja invisible
+    // al pie de la pantalla comiéndose los taps de lo que está debajo.
     <View
+      pointerEvents="box-none"
       style={{
         backgroundColor: 'transparent',
-        paddingTop: ORB_OVERHANG,
-        paddingHorizontal: 16,
+        alignItems: 'center',
+        paddingTop: 10,
         paddingBottom: Math.max(insets.bottom, 14),
       }}
     >
-      {/* Píldora flotante */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          height: PILL_HEIGHT,
-          borderRadius: PILL_HEIGHT / 2,
-          backgroundColor: '#FFFFFF',
-          shadowColor: '#25332A',
-          shadowOpacity: 0.1,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 8 },
-          elevation: 8,
-        }}
-      >
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-          {leftTabs.map(renderTab)}
-        </View>
-        <View style={{ width: ORB_SLOT }} />
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-          {rightTabs.map(renderTab)}
-        </View>
-      </View>
-
-      {/* Orbe central → nota en blanco. box-none para no robarle los taps a la
-          píldora. `focused` queda en false: el orbe ya no representa una
+      {/* El único control de la app. `focused` en false: el orbe no es una
           pestaña donde se pueda estar parado, sino una acción. */}
-      <View
-        pointerEvents="box-none"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center' }}
-      >
-        <NavOrb
-          size={ORB_SIZE}
-          focused={false}
-          etiqueta="Nota nueva"
-          onPress={abrirNota}
-          // La palanca solo existe si hay a dónde ir: para quien no es admin el
-          // orbe sigue siendo un botón, sin un gesto que no lleva a nada.
-          onArriba={
-            esAdmin && conectado
-              ? () => {
-                  evento(EV.POSTS_ABIERTOS);
-                  setViendoPosts(true);
-                }
-              : undefined
-          }
-          etiquetaArriba="posts"
-        />
-      </View>
+      <NavOrb
+        size={ORB_SIZE}
+        focused={false}
+        etiqueta="Nota nueva"
+        onPress={abrirNota}
+        // La palanca solo existe si hay a dónde ir: para quien no es admin el
+        // orbe sigue siendo un botón, sin un gesto que no lleva a nada.
+        onArriba={
+          esAdmin && conectado
+            ? () => {
+                evento(EV.POSTS_ABIERTOS);
+                setViendoPosts(true);
+              }
+            : undefined
+        }
+        etiquetaArriba="posts"
+      />
 
-      {/* La hoja es un Modal, así que se dibuja sobre toda la app aunque viva
-          en la barra. Colgarla de acá la deja disponible en cualquier pestaña,
-          que es lo que corresponde a un botón que también está en todas. */}
+      {/* Las hojas son Modales, así que se dibujan sobre toda la app aunque
+          vivan acá. Colgarlas del orbe las deja disponibles en cualquier
+          pantalla, igual que el botón. */}
       {escribiendo && (
         <CreateSnippetSheet
-          onClose={() => setEscribiendo(false)}
+          onClose={() => {
+            setEscribiendo(false);
+            setNotaId(null);
+            setNotaARestaurar(null);
+          }}
+          restaurarId={notaARestaurar}
+          onNota={setNotaId}
           topInset={insets.top}
           bottomInset={insets.bottom}
         />
@@ -202,13 +176,32 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
 // ─── Layout ────────────────────────────────────────────────────────────────────
 export default function TabsLayout() {
+  const hidratado = useLugarHidratado();
+  const iniciarRestauracion = useUltimoLugarStore((s) => s.iniciarRestauracion);
+  const router = useRouter();
+  const arrancado = useRef(false);
+
+  // Una sola vez por arranque, en cuanto el disco contestó.
+  //
+  // Acá solo se abre el encargo y, si hace falta, se cambia de pestaña: cada
+  // pantalla se restaura a sí misma. Las pestañas se montan cuando se visitan,
+  // así que un item guardado no se restauraría nunca si nadie va al Codex — y
+  // por eso la navegación no puede vivir dentro del Codex.
+  useEffect(() => {
+    if (!hidratado || arrancado.current) return;
+    arrancado.current = true;
+
+    const lugar = iniciarRestauracion();
+    if (lugar && EN_CODEX.includes(lugar.tipo)) router.navigate('/codex');
+  }, [hidratado, iniciarRestauracion, router]);
+
   return (
     // El fondo vive aquí, detrás de las pantallas y de la tab bar, para que no
     // haya costura entre el área de contenido y la barra flotante.
     <View style={{ flex: 1 }}>
       <AppBackground />
       <Tabs
-        tabBar={(props) => <CustomTabBar {...props} />}
+        tabBar={() => <BarraOrbe />}
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: 'transparent' },

@@ -13,11 +13,16 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { MONO } from './codex/mono';
 import { roce, toque } from '../utils/haptics';
 
 const AV = Animated.View;
+
+/** El verde del orbe. Es el tono medio que tenía la esfera —el que se veía en
+ *  la mitad del cuerpo, ni el brillo ni el borde oscuro— así que aplanarlo no
+ *  cambia el color de la app, solo le quita el relieve. */
+const CUERPO = '#3E6B4C';
 
 // Cuánto se puede empujar el orbe, y desde dónde cuenta como «arriba».
 const TOPE_Y = 78; // recorrido máximo hacia arriba
@@ -210,38 +215,31 @@ export default function NavOrb({
               width: size,
               height: size,
               borderRadius: r,
+              // Sombra corta, no la de una esfera levantada. Se conserva
+              // porque sin píldora detrás el orbe queda apoyado directamente
+              // sobre el feed y necesita despegarse de lo que pase por abajo;
+              // pero un halo largo y difuso volvería a sugerir volumen, que es
+              // justo lo que se quitó.
               shadowColor: '#1E3326',
-              shadowOpacity: focused ? 0.34 : 0.22,
-              shadowRadius: focused ? 16 : 11,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: focused ? 10 : 6,
+              shadowOpacity: 0.16,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 4,
             },
             cuerpo,
           ]}
         >
+          {/* Plano, no esfera.
+            *
+            * Antes eran tres gradientes radiales —cuerpo, brillo cálido y rim
+            * light— que juntos fingían una bola con una fuente de luz arriba a
+            * la izquierda. Todo eso existía para simular volumen, así que al
+            * pasar a 2D no se atenúa: se va.
+            *
+            * Queda un disco liso del verde medio que tenía la esfera, que es
+            * literalmente el mismo objeto sin el sombreado. */}
           <Svg width={size} height={size}>
-            <Defs>
-              <RadialGradient id="orbBody" cx="36%" cy="28%" r="82%">
-                <Stop offset="0" stopColor="#CBD9B8" />
-                <Stop offset="0.26" stopColor="#8FB183" />
-                <Stop offset="0.55" stopColor="#3E6B4C" />
-                <Stop offset="0.84" stopColor="#1F3F2C" />
-                <Stop offset="1" stopColor="#132A1D" />
-              </RadialGradient>
-              <RadialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
-                <Stop offset="0" stopColor="#FBF6DE" stopOpacity={focused ? 1 : 0.92} />
-                <Stop offset="0.45" stopColor="#F2E9C4" stopOpacity="0.4" />
-                <Stop offset="1" stopColor="#F0E7C6" stopOpacity="0" />
-              </RadialGradient>
-              <RadialGradient id="orbRim" cx="66%" cy="76%" r="58%">
-                <Stop offset="0.6" stopColor="#9FBFA2" stopOpacity="0" />
-                <Stop offset="1" stopColor="#9FBFA2" stopOpacity="0.35" />
-              </RadialGradient>
-            </Defs>
-
-            <Circle cx={r} cy={r} r={r} fill="url(#orbBody)" />
-            <Ellipse cx={r * 0.78} cy={r * 0.66} rx={r * 0.6} ry={r * 0.52} fill="url(#orbGlow)" />
-            <Circle cx={r} cy={r} r={r} fill="url(#orbRim)" />
+            <Circle cx={r} cy={r} r={r} fill={CUERPO} />
           </Svg>
         </AV>
       </GestureDetector>

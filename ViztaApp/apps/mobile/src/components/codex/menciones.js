@@ -64,7 +64,7 @@ export function normalizar(texto) {
 
 const PALABRA = /[a-z0-9]+/g;
 
-function palabrasDe(textoNormalizado) {
+export function palabrasDe(textoNormalizado) {
   return textoNormalizado.match(PALABRA) || [];
 }
 

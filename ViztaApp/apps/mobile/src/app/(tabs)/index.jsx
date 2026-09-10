@@ -27,6 +27,8 @@ import MapaSheet from "../../components/mapa/MapaSheet";
 import { PAPEL } from "../../components/codex/Papel";
 import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
+import MediosNoticia, { MarcaTweet } from "../../components/feed/MediosNoticia";
+import { marcaDe } from "../../components/feed/encuadres";
 import { EV, evento } from "../../utils/analitica";
 import {
   TrendingUp,
@@ -43,6 +45,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
+import { Settings as SettingsIcon } from 'lucide-react-native';
+import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarStore';
+
+/** Lo único que el feed puede borrar del registro de «dónde me quedé». */
+const TIPOS_MAPA = ['mapa'];
+
+/** El ámbar de los puntos del mapa. No es un color nuevo: es el mismo acento
+ *  que ya usa la app, puesto donde hacía falta que algo no fuera tinta. */
+const TUERCA = '#B45309';
 import * as Notifications from 'expo-notifications';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://qqshdccpmypelhmyqnut.supabase.co';
@@ -468,6 +479,8 @@ function NewsCardModal({ card, onClose }) {
               </View>
             )}
 
+            <MediosNoticia card={card} />
+
             {card.perspectivas?.length > 0 && (
               <View style={{ marginTop: 24 }}>
                 <Text style={{ fontSize: 10, color: INK.faint, fontWeight: '800', letterSpacing: 1, marginBottom: 12 }}>PERSPECTIVAS</Text>
@@ -489,6 +502,7 @@ function NewsCardModal({ card, onClose }) {
                       {t.verified && <BadgeCheck size={13} color="#2563EB" style={{ marginLeft: 5 }} />}
                     </View>
                     <Text style={{ fontSize: 14, color: INK.body, lineHeight: 21 }}>{t.texto}</Text>
+                    <MarcaTweet marca={marcaDe(t)} />
                     <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.09)', marginTop: 18 }} />
                   </View>
                 ))}
@@ -583,10 +597,24 @@ function NewsCardModal({ card, onClose }) {
 
 export default function Index() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
   const queryClient = useQueryClient();
+
+  // Si se salió con el mapa a la vista, se vuelve al mapa. La cámara —dónde
+  // estaba parado y con cuánto zoom— ya la guarda `mapaStore` aparte; esto solo
+  // decide que el mapa se abra.
+  useRecordarLugar(viendoMapa ? { tipo: 'mapa' } : null, TIPOS_MAPA);
+
+  const porRestaurar = useUltimoLugarStore((s) => s.porRestaurar);
+  const consumir = useUltimoLugarStore((s) => s.consumir);
+
+  useEffect(() => {
+    if (porRestaurar?.tipo !== 'mapa') return;
+    if (consumir('mapa')) setViendoMapa(true);
+  }, [porRestaurar?.tipo, consumir]);
 
   // Realtime: notify when new news_cards are inserted
   useEffect(() => {
@@ -747,7 +775,30 @@ export default function Index() {
               Vizta
             </Text>
 
-            <Mundito size={30} onPress={() => setViendoMapa(true)} />
+            {/* Mundo y ajustes, juntos.
+              *
+              * Ajustes vivía en la barra de abajo, que se fue entera. Sube acá
+              * porque el cabezal ya era el lugar de «salir del feed hacia otra
+              * cosa» —eso hace el mundito— y una segunda puerta al lado no
+              * inventa una zona nueva de la pantalla.
+              *
+              * La tuerca va en ámbar y no en tinta: al lado de un globo azul,
+              * un gris se lee como deshabilitado. El ámbar es el mismo acento
+              * que ya usan los puntos del mapa, así que no entra un color
+              * nuevo a la app. */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <Mundito size={30} onPress={() => setViendoMapa(true)} />
+
+              <Pressable
+                onPress={() => router.push('/settings')}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Ajustes"
+                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+              >
+                <SettingsIcon size={23} color={TUERCA} strokeWidth={2} />
+              </Pressable>
+            </View>
           </View>
 
           {/* Portada del día: el título manda, el análisis se abre tocando. */}

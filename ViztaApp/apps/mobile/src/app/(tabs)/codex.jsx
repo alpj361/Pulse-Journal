@@ -30,7 +30,11 @@ import { elegirYSubirDocumento } from '../../utils/subirDocumento';
 import SegmentedSlider from '../../components/SegmentedSlider';
 import CreateSpaceSheet from '../../components/codex/CreateSpaceSheet';
 import CodexAccessGate from '../../components/codex/CodexAccessGate';
-import { listSpaces } from '../../utils/codexSpaces';
+import { listSpaces, loadSpace } from '../../utils/codexSpaces';
+import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarStore';
+
+/** Los lugares que vivan en el Codex, y que esta pantalla puede olvidar. */
+const TIPOS_CODEX = ['item', 'espacio'];
 import { BookOpen, FileText, Search, Link, Headphones, Video, AlertCircle, X, Camera, Plus, ChevronLeft, ChevronRight, ClipboardPaste, Eye, EyeOff, Pencil, Database, Table, Trash2, Lock, Globe, ChevronDown, ChevronUp, Heart, Repeat2, MessageCircle } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
@@ -3074,7 +3078,7 @@ export default function CodexScreen() {
   const [wikiFilter, setWikiFilter] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Espacios (free_canvases) + modo de la pila
+  // Espacios (spaces) + modo de la pila
   const [spaces, setSpaces] = useState([]);
   const [isLoadingSpaces, setIsLoadingSpaces] = useState(false);
   const [stackMode, setStackMode] = useState('espacios'); // 'espacios' | 'todo'
@@ -3083,6 +3087,78 @@ export default function CodexScreen() {
   // ventana. SpaceView crece desde ahí y vuelve ahí al cerrarse.
   const [spaceOrigen, setSpaceOrigen] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
+
+  /**
+   * Dónde se quedó la persona dentro del Codex.
+   *
+   * La precedencia la resuelve esta pantalla y no el store, porque es la única
+   * que sabe que una ficha abierta sobre un espacio es una ficha: cerrarla no
+   * lleva al feed, lleva al espacio, y por eso el espacio viaja junto al item.
+   */
+  useRecordarLugar(
+    detailItem?.id
+      ? { tipo: 'item', id: detailItem.id, espacioId: openSpace?.id || null }
+      : openSpace?.id
+        ? { tipo: 'espacio', id: openSpace.id }
+        : null,
+    TIPOS_CODEX
+  );
+
+  const porRestaurar = useUltimoLugarStore((s) => s.porRestaurar);
+  const consumirLugar = useUltimoLugarStore((s) => s.consumir);
+  const montado = useRef(true);
+
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const tipo = porRestaurar?.tipo;
+    if (tipo !== 'item' && tipo !== 'espacio') return;
+
+    const lugar = consumirLugar(tipo);
+    if (!lugar) return;
+
+    (async () => {
+      try {
+        // El espacio primero: si la ficha se pintara antes, cargar el espacio
+        // después la reemplazaría en pantalla y se vería un parpadeo.
+        if (lugar.espacioId || tipo === 'espacio') {
+          const space = await loadSpace(lugar.espacioId || lugar.id);
+          // Sin `origen` la vista se abre sin la animación de crecer desde la
+          // pill: no hay pill de la cual crecer cuando nadie tocó nada.
+          if (montado.current && space) {
+            setSpaceOrigen(null);
+            setOpenSpace(space);
+          }
+        }
+
+        if (tipo !== 'item' || !montado.current) return;
+
+        const { data } = await supabase
+          .from('codex_universe_items')
+          .select('id, name, tipo, description, tags, aliases, details, mentions, created_at')
+          .eq('id', lugar.id)
+          .maybeSingle();
+
+        if (montado.current && data) setDetailItem(data);
+      } catch {
+        // Un item borrado desde la web, o sin red al arrancar: se abre el Codex
+        // como siempre. Volver al lugar equivocado es peor que no volver, y el
+        // registro ya se consumió, así que esto no se reintenta solo.
+      }
+    })();
+
+    // El corte va por desmontaje y no por el cleanup del efecto: consumir el
+    // encargo pone `porRestaurar` en null, o sea que cambia una dependencia y
+    // el efecto se vuelve a correr enseguida. Con `return () => vivo = false`
+    // ese re-run cancelaría la búsqueda que él mismo acaba de lanzar, y nunca
+    // se restauraría nada.
+  }, [porRestaurar?.tipo, consumirLugar]);
+
   const [showCreateItem, setShowCreateItem] = useState(false);
   // El «+» ya no abre la hoja de crear directo: primero se elige qué se agrega.
   // `crearTipo` guarda con qué tipo arranca la ficha en modo crear.

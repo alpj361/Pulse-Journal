@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { Pencil } from 'lucide-react-native';
 import { INK, RADIUS } from '../../theme';
 import { MONO } from '../mono';
 import { latAY, lngAX, TESELA } from '../../mapa/proyeccion';
@@ -10,7 +11,7 @@ import { latAY, lngAX, TESELA } from '../../mapa/proyeccion';
  *
  * **No es el mapa grande en miniatura.** Ese trae gestos, capas, niebla y
  * territorios; acá lo único que hay que contestar es «dónde queda esto». Sin
- * interacción, sin estado, sin red más allá de las teselas que se ven.
+ * gestos propios — el único toque que reconoce es el lápiz de la esquina.
  *
  * **Se dibujan cuatro teselas, no una.** Con una sola, el punto cae donde caiga
  * dentro de ella —a veces contra un borde— y la mitad del contexto que explica
@@ -19,20 +20,52 @@ import { latAY, lngAX, TESELA } from '../../mapa/proyeccion';
  *
  * Las coordenadas van abajo y en gris: son la respuesta a «cuál exactamente»,
  * que casi nunca es la pregunta. La pregunta es la imagen.
+ *
+ * **Sin punto, no hay mapa que dibujar.** En vez de fingir uno vacío, queda un
+ * círculo con el mismo lápiz — es la misma acción de siempre, «editar», nada más
+ * que todavía no tiene nada encima que editar.
  */
 
 const MAPBOX = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 const ESTILO = 'mapbox/outdoors-v12';
 const ALTO = 172;
 const ZOOM = 14;
+const DIAMETRO_VACIO = 88;
 
 const urlTesela = (z, x, y) =>
   MAPBOX
     ? `https://api.mapbox.com/styles/v1/${ESTILO}/tiles/256/${z}/${x}/${y}@2x?access_token=${MAPBOX}`
     : `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
 
-export default function MiniMapa({ lat, lng, ancho = 320, etiqueta }) {
+/** El lápiz. Mismo botón en las dos situaciones —sobre el mapa o solo en el
+ * círculo— para que sea evidente que es la misma acción en los dos casos. */
+function BotonEditar({ onPress, flotante }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      style={({ pressed }) => ({
+        ...(flotante ? { position: 'absolute', right: 8, top: 8 } : null),
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: flotante ? 'rgba(12,18,14,0.42)' : 'transparent',
+        opacity: pressed ? 0.65 : 1,
+      })}
+    >
+      <Pencil size={flotante ? 13 : 18} color={flotante ? '#FFFDF8' : INK.meta} />
+    </Pressable>
+  );
+}
+
+export default function MiniMapa({ lat, lng, ancho = 320, etiqueta, editable = false, onEditar }) {
+  const tienePunto = Number.isFinite(lat) && Number.isFinite(lng);
+
   const { teselas, pin } = useMemo(() => {
+    if (!tienePunto) return { teselas: [], pin: null };
+
     const px = lngAX(lng, ZOOM);
     const py = latAY(lat, ZOOM);
 
@@ -62,7 +95,35 @@ export default function MiniMapa({ lat, lng, ancho = 320, etiqueta }) {
     }
 
     return { teselas: fuera, pin: { x: px - x0, y: py - y0 } };
-  }, [lat, lng, ancho]);
+  }, [lat, lng, ancho, tienePunto]);
+
+  if (!tienePunto) {
+    // De solo vista y sin coordenadas: quien llama ya decide qué mostrar en su
+    // lugar (el «Punto sin coordenadas» de `Resumen`, por ejemplo).
+    if (!editable) return null;
+
+    return (
+      <View style={{ alignItems: 'flex-start' }}>
+        <View
+          style={{
+            width: DIAMETRO_VACIO,
+            height: DIAMETRO_VACIO,
+            borderRadius: DIAMETRO_VACIO / 2,
+            borderWidth: 1.5,
+            borderStyle: 'dashed',
+            borderColor: 'rgba(28,43,34,0.25)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <BotonEditar onPress={onEditar} />
+        </View>
+        <Text style={{ fontFamily: MONO, fontSize: 11, color: INK.meta, marginTop: 7 }}>
+          {etiqueta ? `${etiqueta} · ` : ''}toca para marcar en el mapa
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View>
@@ -106,6 +167,8 @@ export default function MiniMapa({ lat, lng, ancho = 320, etiqueta }) {
             borderColor: '#FFFDF8',
           }}
         />
+
+        {editable ? <BotonEditar onPress={onEditar} flotante /> : null}
       </View>
 
       <Text style={{ fontFamily: MONO, fontSize: 11, color: INK.meta, marginTop: 7 }}>

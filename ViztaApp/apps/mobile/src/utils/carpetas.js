@@ -27,6 +27,12 @@ import { supabase } from './supabase';
  */
 export const NOTA = 'nota';
 export const POST = 'post';
+export const TERRITORIO = 'territorio';
+
+/** Filtro especial: territorios sin carpeta asignada. No es un id real —los
+ *  ids de Postgres nunca empiezan con guion bajo— así que no puede
+ *  colisionar con una carpeta de verdad. */
+export const SIN_CARPETA = '__sin_carpeta__';
 
 /**
  * Colores de lomo. Son los mismos acentos que usa la taxonomía del universo

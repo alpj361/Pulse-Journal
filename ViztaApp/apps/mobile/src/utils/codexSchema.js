@@ -236,6 +236,32 @@ export function presetFor(tipo, schema) {
 }
 
 /**
+ * Alias semánticos: clave cruda de datos migrados → label del campo del
+ * catálogo que representa el mismo concepto.
+ *
+ * **Por qué existen.** Antes de que el contrato 4.1 nombrara los campos del
+ * sistema, los datos se guardaban con el nombre de columna crudo de la
+ * importación — un Territorio migrado trae `lider`, no `"Quién controla"`. El
+ * backend nunca corrió (ni va a correr) un backfill que renombre esa clave
+ * dentro de `details`, así que sin este mapa el campo canónico aparece
+ * siempre vacío y el dato viejo se ve pero no tiene con qué editor calzar.
+ *
+ * Es el mismo mapa que ya existe en ThePulse (`CodexItemModal.tsx`,
+ * `FIELD_ALIASES`) — se replica acá porque el móvil resuelve sus campos con
+ * su propio código, no comparte el de la web.
+ *
+ * Solo alias tipo-compatibles: `lider` es un `RefVal` crudo y «Quién
+ * controla» es `type: 'ref'` — coinciden en forma. Un alias que apuntara a un
+ * tipo incompatible (ej. un string libre hacia un campo `ref`) rompería el
+ * picker en vez de arreglar nada.
+ */
+export const FIELD_ALIASES = {
+  lider: 'Quién controla',            // Territorio — raw RefVal, preset 'ref'
+  resultado: 'Resultado / desenlace', // Evento — raw string, preset 'parrafo'
+  profesion: 'Profesión',             // Actor (raw sin tilde) — ambos 'texto'
+};
+
+/**
  * La forma que consumen los modales.
  *
  * `config` en el contrato 4.1 anida `options`, `poles` y `cols`; los editores
@@ -345,15 +371,26 @@ export function collectFields(item, schema, tipoCanonico) {
    * el valor está bajo la clave canónica y se encuentra en el primer intento;
    * si no corrió, se cae al label. Al revés, un item ya migrado que conservara
    * basura vieja bajo el label mostraría el dato viejo como si fuera el bueno.
+   *
+   * El último intento es `FIELD_ALIASES` al revés: alguna clave cruda de
+   * `raw` cuyo alias apunta al label de este campo (ej. `lider` → «Quién
+   * controla»). Va al final porque `field_key`/`storage_key` son la fuente de
+   * verdad publicada por el backend; el alias es solo la red para el nombre
+   * de columna que la migración dejó sin traducir.
    */
   const leer = (campo) => {
     if (campo.field_key && campo.field_key in raw) {
       return { clave: campo.field_key, valor: raw[campo.field_key] };
     }
     const legacy = campo.storage_key || campo.label;
-    if (!legacy) return null;
-    const hallada = Object.keys(raw).find((k) => k.toLowerCase() === String(legacy).toLowerCase());
-    return hallada ? { clave: hallada, valor: raw[hallada] } : null;
+    if (legacy) {
+      const hallada = Object.keys(raw).find((k) => k.toLowerCase() === String(legacy).toLowerCase());
+      if (hallada) return { clave: hallada, valor: raw[hallada] };
+    }
+    const aliasKey = Object.keys(raw).find(
+      (k) => FIELD_ALIASES[k.toLowerCase()]?.toLowerCase() === String(campo.label).toLowerCase()
+    );
+    return aliasKey ? { clave: aliasKey, valor: raw[aliasKey] } : null;
   };
 
   // El tipo llega ya normalizado desde la pantalla: los items de wiki_items

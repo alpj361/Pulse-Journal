@@ -213,14 +213,29 @@ export default function MapaVizta({
       claveVista.current = clave;
 
       setZInt(z);
-      // Dos anillos por delante cubren una inercia corta y permiten que
-      // expo-image resuelva desde memoria/disco antes de que la tesela entre a
-      // la pantalla. Es preferible a mostrar el fondo mientras llega la red.
-      const crudas = teselasVisibles({ cx, cy, z, ancho, alto, escala, margen: 2 });
+      // Tres anillos por delante, no dos: en una red de teléfono real —a
+      // diferencia del simulador, que sirve del caché del Mac— la tesela que
+      // recién entra al margen todavía puede estar en camino cuando el dedo la
+      // alcanza. Un anillo más le da a la petición de red un respiro extra
+      // antes de que la tesela sea visible, sin pedir tantas de más como para
+      // notarse en los datos.
+      const crudas = teselasVisibles({ cx, cy, z, ancho, alto, escala, margen: 3 });
+      // Cuáles de esas caen realmente en pantalla ahora mismo, sin el margen de
+      // anticipación. Sirve para pedirle a `expo-image` que las traiga con
+      // prioridad `high` — lo que se ve ya tiene que ganarle la cola de red a
+      // lo que todavía es previsión.
+      const visiblesAhora = new Set(
+        teselasVisibles({ cx, cy, z, ancho, alto, escala, margen: 0 }).map((t) => t.clave)
+      );
       const ox = crudas.length ? Math.min(...crudas.map((t) => t.px)) : 0;
       const oy = crudas.length ? Math.min(...crudas.map((t) => t.py)) : 0;
       setOrigen({ x: ox, y: oy });
-      const locales = crudas.map((t) => ({ ...t, lx: t.px - ox, ly: t.py - oy }));
+      const locales = crudas.map((t) => ({
+        ...t,
+        lx: t.px - ox,
+        ly: t.py - oy,
+        visible: visiblesAhora.has(t.clave),
+      }));
       setTeselas(locales);
 
       // El cambio de ancla recrea paths Skia. Durante un arrastre eso dejaba un
@@ -552,10 +567,32 @@ export default function MapaVizta({
       lat.value = Math.max(-LAT_MAX, Math.min(LAT_MAX, nLat));
     });
 
-  // El arrastre compite directamente con el toque y gana apenas se superan
-  // tres píxeles. El doble toque conserva prioridad sobre ambos.
+  /**
+   * Navegar.
+   *
+   * **El arrastre ya no espera al doble toque.** Con `Exclusive(doble, ...)` el
+   * reconocedor nativo tenía que dejar pasar la ventana del doble toque —hasta
+   * 280 ms— antes de dejar correr el arrastre, y esa negociación es exactamente
+   * lo que se sentía como un mapa pesado al primer contacto del dedo: en el
+   * simulador los toques son sintéticos y no se nota, en un teléfono de verdad
+   * sí. Es el mismo problema que ya se había resuelto en `edicion` más abajo —y
+   * quedó sin resolver acá.
+   *
+   * La solución no es sacar el doble toque, es no obligarlos a excluirse: los
+   * tres —doble, arrastre, simple— compiten en la misma carrera. El doble toque
+   * gana apenas junta sus dos golpes porque nada más se mueve en esos primeros
+   * milisegundos; el arrastre gana en cuanto el dedo se corre más de un pelo,
+   * sin esperar a que el doble toque termine de fallar.
+   *
+   * **Dos dedos mueven la cámara por sí solos.** Antes, con dos dedos quietos
+   * en el aire el único gesto que los reconocía era el pellizco, y ese solo
+   * traslada cuando además detecta cambio de escala — imposible sostener dos
+   * dedos exactamente a la misma distancia todo el arrastre, así que el paneo
+   * salía a los tumbos, atado a un zoom que nadie pidió. `arrastreDosDedos` es
+   * un paneo limpio para dos dedos, sin esa dependencia.
+   */
   const navegacion = Gesture.Simultaneous(
-    Gesture.Exclusive(doble, Gesture.Race(arrastre, simple)),
+    Gesture.Race(doble, arrastre, simple, arrastreDosDedos),
     pellizco
   );
   /**
@@ -715,6 +752,13 @@ const TESELA_VACIA = MAPBOX ? '#EFEFEA' : '#E9E7DE';
  * **El fondo de la tesela no es blanco mientras carga.** Un blanco puro sobre
  * el mapa de por sí calmo se lee como un hueco roto; un tono cercano al de la
  * tierra hace que la tesela que falta se note menos mientras llega.
+ *
+ * **La que se ve ahora entra antes en la cola que la que es previsión.**
+ * `expo-image` despacha sus descargas con un límite de conexiones simultáneas;
+ * sin prioridad, una tesela del margen —que todavía no se ve— puede tomar el
+ * turno de una que ya está en pantalla, y esa es la que el ojo nota tarde. Con
+ * `priority="high"` en lo visible y `"low"` en el colchón, la red atiende
+ * primero lo que hace falta ya.
  */
 function Tesela({ t, nivel }) {
   // Un nivel distinto al que se está dibujando es una tesela que quedó de un
@@ -735,6 +779,7 @@ function Tesela({ t, nivel }) {
       <Image
         source={FUENTE.headers ? { uri: FUENTE.url(t.z, t.x, t.y), headers: FUENTE.headers } : { uri: FUENTE.url(t.z, t.x, t.y) }}
         cachePolicy="memory-disk"
+        priority={t.visible ? 'high' : 'low'}
         recyclingKey={t.clave}
         // `+1` mata la costura: con teselas de ancho exacto, el redondeo a
         // píxeles físicos deja una hilacha del fondo entre columna y columna.

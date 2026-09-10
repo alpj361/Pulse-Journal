@@ -19,7 +19,6 @@ import {
   PenTool,
   Phone,
   Route,
-  ScanSearch,
   Search,
   Shapes,
   SlidersHorizontal,
@@ -36,6 +35,7 @@ import MorphingInfinity from '../MorphingInfinity';
 import MapaVizta, { CENTRO_INICIAL } from './MapaVizta';
 import SelectorNiveles from './SelectorNiveles';
 import BuscarLugar from './BuscarLugar';
+import { crearCarpeta, listarCarpetas, moverItem, SIN_CARPETA, TERRITORIO } from '../../utils/carpetas';
 import FiltroTerritorios from './FiltroTerritorios';
 import { geoDeLugar } from '../../services/lugares';
 import { rutaPorCalles } from '../../services/rutas';
@@ -51,6 +51,7 @@ import { roce } from '../../utils/haptics';
 import { geoDeArea, geoDePunto, geoDeRecorrido } from '../codex/geo';
 
 const CABEZAL = 46;
+
 const TENUE = 'rgba(28,43,34,0.3)';
 const VERDE = 'rgba(58,96,73,0.72)';
 const AMBAR = '#B45309';
@@ -119,6 +120,12 @@ function repartir(items) {
       name: item.name || 'Sin nombre',
       tipo: geo.boundary_type || item?.details?.boundary_type || 'territorio',
       description: item.description || null,
+      folder_id: item.folder_id || null,
+      // El rol geográfico real —frontera, área, ubicación, ruta— que es lo que
+      // permite subagrupar por tipo dentro de cada familia visual sin adivinar
+      // nada a partir de la geometría.
+      rol: geo.spatial_role || null,
+      itemTipo: item.tipo || null,
       // El item entero, sin aplastar. La ficha solo necesita cuatro campos
       // para dibujarse, pero el botón que abre el detalle necesita el item tal
       // como vino del Codex. Sin esta referencia, tocar un punto era un
@@ -340,9 +347,46 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const ocultos = useMapaStore((s) => s.ocultos);
   const clases = useMapaStore((s) => s.clases);
   const alternarOculto = useMapaStore((s) => s.alternarOculto);
+  const ocultarLote = useMapaStore((s) => s.ocultarLote);
   const alternarClase = useMapaStore((s) => s.alternarClase);
   const mostrarTodo = useMapaStore((s) => s.mostrarTodo);
   const [filtrando, setFiltrando] = useState(false);
+
+  /**
+   * Carpetas de territorio.
+   *
+   * Mismo mecanismo que ya usan las notas y los posts —`post_folders`, con
+   * `scope` para no mezclar los tres espacios— así que mover un territorio a
+   * una carpeta es una fila más en una tabla que ya existía, no una tabla
+   * nueva que aprender.
+   */
+  const { data: carpetas = [] } = useQuery({
+    queryKey: ['mapa-carpetas', userId],
+    enabled: Boolean(userId),
+    queryFn: () => listarCarpetas(TERRITORIO),
+    staleTime: 1000 * 60,
+  });
+
+  const crearCarpetaTerritorio = useCallback(
+    async (nombre) => {
+      const nueva = await crearCarpeta(nombre, carpetas, TERRITORIO);
+      queryClient.invalidateQueries({ queryKey: ['mapa-carpetas', userId] });
+      return nueva;
+    },
+    [carpetas, queryClient, userId]
+  );
+
+  /** Mover un territorio de carpeta. `null` lo saca de donde esté. */
+  const moverACarpeta = useCallback(
+    async (itemId, carpetaId) => {
+      await moverItem(itemId, carpetaId);
+      // El `folder_id` vive en `codex_universe_items`, la misma fila que ya
+      // trae la consulta de territorios: no hace falta un estado aparte, alcanza
+      // con refrescar la que ya existe.
+      queryClient.invalidateQueries({ queryKey: ['mapa-territorios', userId] });
+    },
+    [queryClient, userId]
+  );
   const rasparCeldas = useNieblaStore((s) => s.raspar);
   const [modo, setModo] = useState('navegar');
   const [borrador, setBorrador] = useState(null);
@@ -386,7 +430,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       // encuentra su preset de campos.
       const { data, error } = await supabase
         .from('codex_universe_items')
-        .select('id, name, tipo, description, tags, aliases, details, geo')
+        .select('id, name, tipo, description, tags, aliases, details, geo, folder_id')
         .eq('tipo', 'Territorio')
         .not('geo', 'is', null);
       if (error) throw error;
@@ -433,6 +477,17 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   );
 
   /**
+   * En qué carpeta mirar.
+   *
+   * `null` es «todas», el string especial `SIN_CARPETA` es «sin carpeta
+   * asignada», y cualquier otro valor es el id de una carpeta real. No se
+   * persiste junto al resto del filtro: mirar una carpeta es una consulta de
+   * paso, no una preferencia — la próxima vez que se abra el mapa tiene más
+   * sentido ver todo que recordar en qué carpeta se había quedado.
+   */
+  const [carpetaFiltro, setCarpetaFiltro] = useState(null);
+
+  /**
    * Lo que el filtro deja pasar.
    *
    * Se aplica una sola vez y arriba de todo, para que el resto del archivo
@@ -441,14 +496,19 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
    * como terminan existiendo tres filtros que no coinciden.
    */
   const pasa = useCallback(
-    (clase, id) => clases[clase] && !ocultos.has(id),
-    [clases, ocultos]
+    (clase, item) => {
+      if (!clases[clase] || ocultos.has(item.id)) return false;
+      if (carpetaFiltro === SIN_CARPETA) return !item.folder_id;
+      if (carpetaFiltro) return item.folder_id === carpetaFiltro;
+      return true;
+    },
+    [clases, ocultos, carpetaFiltro]
   );
 
-  const areas = useMemo(() => areasTodas.filter((a) => pasa('area', a.id)), [areasTodas, pasa]);
-  const pines = useMemo(() => pinesTodos.filter((p) => pasa('pin', p.id)), [pinesTodos, pasa]);
+  const areas = useMemo(() => areasTodas.filter((a) => pasa('area', a)), [areasTodas, pasa]);
+  const pines = useMemo(() => pinesTodos.filter((p) => pasa('pin', p)), [pinesTodos, pasa]);
   const recorridos = useMemo(
-    () => recorridosTodos.filter((r) => pasa('ruta', r.id)),
+    () => recorridosTodos.filter((r) => pasa('ruta', r)),
     [recorridosTodos, pasa]
   );
 
@@ -630,7 +690,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   );
 
   const tocarMapa = (punto) => {
-    if (modo === 'navegar' || modo === 'explorar' || modo === 'raspar') {
+    if (modo === 'navegar' || modo === 'raspar') {
       if (modo !== 'raspar') seleccionar(punto);
       return;
     }
@@ -950,7 +1010,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           modo={modo}
           zonasSinToque={zonasSinToque}
           onTocar={tocarMapa}
-          onExplorar={modo === 'explorar' ? seleccionar : modo === 'raspar' ? raspar : null}
+          onExplorar={modo === 'raspar' ? raspar : null}
         >
           <View
             style={{ position: 'absolute', right: 12, top: 12 }}
@@ -1043,10 +1103,6 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                 />
               </Leyenda>
             </View>
-          ) : null}
-
-          {modo === 'explorar' && !elegido ? (
-            <AyudaModo bottomInset={bottomInset} texto="deslizá el dedo para identificar territorios" />
           ) : null}
 
           {['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
@@ -1185,8 +1241,14 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           ocultos={ocultos}
           clases={clases}
           onAlternarOculto={alternarOculto}
+          onOcultarLote={ocultarLote}
           onAlternarClase={alternarClase}
           onMostrarTodo={mostrarTodo}
+          carpetas={carpetas}
+          carpetaFiltro={carpetaFiltro}
+          onCarpetaFiltro={setCarpetaFiltro}
+          onCrearCarpeta={crearCarpetaTerritorio}
+          onMoverACarpeta={moverACarpeta}
         />
 
         <BuscarLugar
@@ -1218,7 +1280,10 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
 
 const MODOS_MAPA = [
   { clave: 'navegar', etiqueta: 'Navegar', Icono: Hand },
-  { clave: 'explorar', etiqueta: 'Explorar territorios', Icono: ScanSearch },
+  // Segundo botón, justo después de la mano: es el que quita la niebla
+  // tocando el mapa. El de «explorar territorios» se quitó de la barra —
+  // tocar un territorio en modo Navegar ya abre su ficha, así que el modo
+  // aparte no tenía ninguna acción propia que el otro no cubriera.
   { clave: 'raspar', etiqueta: 'Descubrir el mapa', Icono: Eraser },
   { clave: 'punto', etiqueta: 'Crear punto', Icono: MapPinPlus },
   { clave: 'area', etiqueta: 'Crear área', Icono: Pentagon },
@@ -1305,29 +1370,6 @@ function HerramientasMapa({ modo, calor, niebla, onModo, onCalor, onNiebla }) {
       >
         <CloudFog size={18} color={niebla ? PAPEL : INK.body} strokeWidth={niebla ? 2.4 : 1.8} />
       </Pressable>
-    </View>
-  );
-}
-
-function AyudaModo({ texto, bottomInset }) {
-  return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: 36, right: 80, bottom: bottomInset + 18, alignItems: 'center' }}>
-      <Text
-        style={{
-          fontFamily: MONO,
-          fontSize: 10.5,
-          color: INK.body,
-          backgroundColor: 'rgba(255,253,248,0.94)',
-          borderWidth: 1,
-          borderColor: 'rgba(28,43,34,0.10)',
-          borderRadius: 18,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          overflow: 'hidden',
-        }}
-      >
-        {texto}
-      </Text>
     </View>
   );
 }

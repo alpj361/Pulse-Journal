@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { presetFor, INTERNAL_KEYS } from '../../utils/codexSchema';
+import { presetFor, INTERNAL_KEYS, FIELD_ALIASES } from '../../utils/codexSchema';
 import { EXTRACTORW_URL } from '../../utils/servicios';
 import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
 import { supabase } from '../../utils/supabase';
@@ -94,18 +94,56 @@ export default function useCamposEditables(item, tipo) {
   // fila en vez de mostrar solo un mensaje arriba.
   const [errorCampo, setErrorCampo] = useState(null);
 
-  // Valores crudos guardados, sin claves internas ni las estructuras anidadas
-  // que este editor no toca (esas se preservan al guardar).
+  const schemaUsuario = useSchemaDelUsuario();
+
+  // El preset se necesita ya para filtrar `raw` más abajo, no solo dentro del
+  // efecto async — por eso se calcula directo de `schemaUsuario` en vez de
+  // esperar a que el estado `schema` se asiente.
+  const preset = useMemo(() => (schemaUsuario ? presetFor(tipo, schemaUsuario) : []), [tipo, schemaUsuario]);
+
+  // Claves crudas de objeto que el catálogo sí reconoce como campo de este
+  // tipo — por `field_key`, por `storage_key`/label, o por `FIELD_ALIASES`
+  // (ej. `lider` → «Quién controla»). Sirve para decidir en `raw` cuáles
+  // objetos son datos de catálogo editables y cuáles son blobs de sistema.
+  const clavesDeCatalogo = useMemo(() => {
+    const claves = new Set();
+    for (const f of preset) {
+      if (f.field_key) claves.add(f.field_key.toLowerCase());
+      const legacy = f.storage_key || f.label;
+      if (legacy) claves.add(String(legacy).toLowerCase());
+    }
+    for (const [aliasKey, label] of Object.entries(FIELD_ALIASES)) {
+      if (preset.some((f) => f.label.toLowerCase() === label.toLowerCase())) {
+        claves.add(aliasKey.toLowerCase());
+      }
+    }
+    return claves;
+  }, [preset]);
+
+  /**
+   * Valores crudos guardados, sin claves internas.
+   *
+   * **Un objeto solo pasa si el catálogo lo reconoce como campo de este
+   * tipo.** Antes se excluía cualquier valor `typeof === 'object'` sin
+   * excepción — pensado para no tocar blobs anidados como `research` o
+   * `analysis`, que este editor nunca mostró ni debe mostrar. El efecto
+   * secundario: campos de catálogo perfectamente editables cuya forma es un
+   * objeto —`ref` (`lider`/«Quién controla»), `moneda`, `rango`, `eje`— caían
+   * en el mismo filtro y desaparecían de la lista editable aunque `FieldInput`
+   * ya sepa dibujarlos. Un objeto que NO calza con ningún campo del catálogo
+   * (ni directo ni por alias) sigue quedando fuera — sigue siendo un blob de
+   * sistema y `guardar` lo preserva intacto, como antes.
+   */
   const raw = useMemo(() => {
     const fuente = isUniverse ? item?.details || item?.metadata?.details || {} : item?.metadata || {};
     return Object.fromEntries(
-      Object.entries(fuente).filter(
-        ([k, v]) => !INTERNAL_KEYS.has(k.toLowerCase()) && (typeof v !== 'object' || v === null || Array.isArray(v))
-      )
+      Object.entries(fuente).filter(([k, v]) => {
+        if (INTERNAL_KEYS.has(k.toLowerCase())) return false;
+        if (typeof v !== 'object' || v === null || Array.isArray(v)) return true;
+        return clavesDeCatalogo.has(k.toLowerCase());
+      })
     );
-  }, [item, isUniverse]);
-
-  const schemaUsuario = useSchemaDelUsuario();
+  }, [item, isUniverse, clavesDeCatalogo]);
 
   useEffect(() => {
     let vivo = true;
@@ -114,12 +152,12 @@ export default function useCamposEditables(item, tipo) {
       if (!s || !vivo) return;
       setSchema(s);
 
-      const preset = presetFor(tipo, s);
-
-      // Dos índices, y se consulta el canónico primero. Un valor puede estar
-      // guardado bajo `field_key` —si el backfill ya corrió— o bajo el label
-      // que usaba el contrato viejo; el schema publica las dos claves en la
-      // misma definición, así que no hay que adivinar cuál es cuál.
+      // Tres índices, y se consulta en este orden. Un valor puede estar
+      // guardado bajo `field_key` —si el backfill ya corrió—, bajo el label
+      // que usaba el contrato viejo, o bajo una clave cruda de migración que
+      // nunca se tradujo (`lider` en vez de «Quién controla») — el schema
+      // publica las dos primeras en la misma definición; la tercera la cubre
+      // `FIELD_ALIASES`.
       const porKey = new Map(preset.filter((f) => f.field_key).map((f) => [f.field_key, f]));
       const porLabel = new Map(
         preset.map((f) => [String(f.storage_key || f.label).toLowerCase(), f])
@@ -130,7 +168,8 @@ export default function useCamposEditables(item, tipo) {
       const iniciales = [];
       const vals = {};
       for (const [k, v] of Object.entries(raw)) {
-        const def = porKey.get(k) || porLabel.get(k.toLowerCase());
+        const alias = FIELD_ALIASES[k.toLowerCase()];
+        const def = porKey.get(k) || porLabel.get(k.toLowerCase()) || (alias ? porLabel.get(alias.toLowerCase()) : undefined);
         iniciales.push(conKey(def ? { ...def } : { label: k, type: 'texto', extra: true }));
         // Los valores se siguen indexando como llegaron: `guardar` todavía
         // escribe `details` directo a Supabase. Cambiar esta clave antes de
@@ -145,9 +184,7 @@ export default function useCamposEditables(item, tipo) {
     // `schemaUsuario` entra en las dependencias: el schema llega asíncrono y sin
     // él este efecto correría una sola vez, con `null`, y los campos nunca se
     // poblarían.
-  }, [tipo, raw, schemaUsuario]);
-
-  const preset = useMemo(() => (schema ? presetFor(tipo, schema) : []), [tipo, schema]);
+  }, [tipo, raw, schemaUsuario, preset]);
 
   const disponibles = useMemo(
     () => preset.filter((p) => !campos.some((c) => c.label.toLowerCase() === p.label.toLowerCase())),
@@ -253,10 +290,16 @@ export default function useCamposEditables(item, tipo) {
         );
 
         const fuenteOriginal = isUniverse ? item?.details || item?.metadata?.details || {} : item?.metadata || {};
-        // Las estructuras anidadas que este editor no muestra se conservan tal cual.
+        // Las estructuras anidadas que este editor no muestra se conservan tal
+        // cual — pero solo las que de verdad no pasaron por el editor. Un
+        // objeto cuya clave está en `clavesDeCatalogo` (ej. `lider`) SÍ se
+        // editó, bajo su nombre canónico (`Quién controla`) — conservarlo acá
+        // además, con su clave cruda vieja, dejaría el mismo dato duplicado
+        // bajo dos nombres apenas se guardara una vez.
         const sistema = Object.fromEntries(
           Object.entries(fuenteOriginal).filter(
-            ([, v]) => typeof v === 'object' && v !== null && !Array.isArray(v)
+            ([k, v]) =>
+              typeof v === 'object' && v !== null && !Array.isArray(v) && !clavesDeCatalogo.has(k.toLowerCase())
           )
         );
 
@@ -392,7 +435,7 @@ export default function useCamposEditables(item, tipo) {
         return null;
       }
     },
-    [campos, values, item, isUniverse, dbId, tipo]
+    [campos, values, item, isUniverse, dbId, tipo, clavesDeCatalogo]
   );
 
   return {

@@ -17,10 +17,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import appConfig from '../../../app.json';
 import GlassCard from '../../components/GlassCard';
 import { INK, ACCENT, chipStyle } from '../../components/theme';
 import {
+  ArrowLeft,
   Eye,
   EyeOff,
   LogOut,
@@ -741,6 +743,7 @@ function FaqItem({ question, children }) {
 // ─── Pantalla principal ───────────────────────────────────────────────────────
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { isConnected, connectedUser, connectedAt, disconnect, connectWithApple } =
     usePulseConnectionStore();
 
@@ -821,6 +824,33 @@ export default function SettingsScreen() {
         }}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Volver ──
+          *
+          * Ajustes es una pestaña, no una pila, así que no hay gesto de
+          * deslizar desde el borde que la cierre: sin este botón se entra y no
+          * se sale. Va arriba a la izquierda, donde iOS pone el retorno en
+          * cualquier pantalla que se haya abierto encima de otra.
+          *
+          * `canGoBack` antes de `back`: si alguien llegara acá sin historial
+          * —un enlace directo, un reinicio en esta ruta— `back()` no haría
+          * nada y el botón sería decorativo. El feed es el destino de reposo,
+          * así que ahí cae. */}
+        <Pressable
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Volver al feed"
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start',
+            marginBottom: 14,
+            marginLeft: -6,
+            padding: 6,
+            opacity: pressed ? 0.5 : 1,
+          })}
+        >
+          <ArrowLeft size={24} color={INK.title} strokeWidth={2.2} />
+        </Pressable>
+
         {/* ── Header + versión ── */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 }}>
           <View>

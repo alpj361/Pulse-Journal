@@ -70,6 +70,23 @@ export const useMapaStore = create(
           return { ocultos: proximo };
         }),
 
+      /**
+       * Ocultar o mostrar varios de una vez.
+       *
+       * Existe para los subgrupos del filtro —«Frontera» dentro de «áreas»
+       * puede ser 300 territorios—. Alternarlos uno por uno sería 300
+       * escrituras al store y 300 renders por un solo toque; esto es una.
+       */
+      ocultarLote: (ids, ocultar) =>
+        set((s) => {
+          const proximo = new Set(s.ocultos);
+          for (const id of ids) {
+            if (ocultar) proximo.add(id);
+            else proximo.delete(id);
+          }
+          return { ocultos: proximo };
+        }),
+
       alternarClase: (clase) =>
         set((s) => ({ clases: { ...s.clases, [clase]: !s.clases[clase] } })),
 
