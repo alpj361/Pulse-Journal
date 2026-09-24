@@ -7,12 +7,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
-import { ChevronLeft, FolderInput, FolderMinus, FolderPlus, Pencil, Trash2 } from 'lucide-react-native';
+import { ChevronLeft, FolderInput, FolderMinus, FolderPlus, Layers, Pencil, Trash2 } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { PAPEL } from './Papel';
@@ -26,6 +25,8 @@ import {
   renombrarCarpeta,
 } from '../../utils/carpetas';
 import { Nombrador, Opcion, RESALTADOR, TENUE, etiquetaConteo } from './piezasCarpeta';
+import { TYPE_ACCENT, normalizeTipo } from './tipos';
+import { listSpaces, addItemsToSpace } from '../../utils/codexSpaces';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 
 const MENU_ANCHO = 190;
@@ -36,11 +37,19 @@ const HAIRLINE = 'rgba(28,43,34,0.07)';
 // la lista viene cortada, una carpeta miente sobre cuánto tiene adentro.
 const TECHO = 300;
 
-const FILTROS = [
-  { id: 'todo', label: 'todo' },
-  { id: 'notas', label: 'notas' },
-  { id: 'carpetas', label: 'carpetas' },
-];
+// Los elementos del Codex se traen de a pocos. Acá no se viene a recorrer el
+// universo entero —son más de mil y para eso está el buscador—, sino a tener a
+// mano lo último que se tocó.
+const TECHO_CODEX = 80;
+
+const CAMPOS_NOTA = 'id, name, tipo, description, tags, aliases, details, created_at, folder_id';
+const CAMPOS_ITEM = 'id, name, tipo, description, aliases, created_at, folder_id';
+
+// Snippets y Posts quedan afuera de la lista del Codex por razones distintas:
+// los Snippets **son** esta página, y los Posts tienen su propia galería con
+// sus propias carpetas. Es el mismo recorte que hace el índice de menciones.
+// Los Facts tampoco: son sub-items de un post y se ven adentro de ese post.
+const FUERA = '("Snippet","Post","Fact")';
 
 /**
  * Historial de notas — la página de la izquierda.
@@ -55,11 +64,17 @@ const FILTROS = [
  * decir dos veces lo mismo — por eso el cuerpo que se muestra empieza después
  * de esa primera línea.
  *
- * **El filtro no existe hasta que exista una carpeta.** Sin carpetas la página
- * queda exactamente como estaba: sin buscador, sin filtros, sin categorías. Que
- * la función no le cobre nada a quien no la usa es la única razón por la que se
- * puede agregar sin ensuciar una pantalla cuyo trabajo es responder «¿qué
- * escribí ayer?».
+ * **El filtro no existe hasta que haya algo que filtrar.** Sin carpetas y sin
+ * Codex la página queda exactamente como estaba: sin buscador, sin filtros, sin
+ * categorías. Que la función no le cobre nada a quien no la usa es la única
+ * razón por la que se puede agregar sin ensuciar una pantalla cuyo trabajo es
+ * responder «¿qué escribí ayer?».
+ *
+ * **`todo` sigue siendo solo notas.** Los elementos del Codex viven en su
+ * propio filtro, no mezclados en la raíz: son otra cosa —un actor no es algo
+ * que escribiste— y meterlos en la lista de siempre convertiría el historial en
+ * un cajón. Adentro de una carpeta sí conviven, porque ahí la mezcla es una
+ * decisión que tomó la persona.
  *
  * **Abrir una carpeta no abre otra hoja.** Esta página ya vive dentro de un
  * pager que vive dentro de un Modal; un tercer nivel dejaría el gesto de volver
@@ -70,34 +85,56 @@ const FILTROS = [
  * Mantener presionado es el clic derecho del teléfono: lo peligroso vive ahí,
  * escondido hasta que lo pedís, y la lista queda limpia.
  */
-export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset = 0 }) {
+export default function HistorialSnippets({ onAbrir, onAbrirItem, topInset = 0, bottomInset = 0 }) {
   const { width: W, height: H } = useWindowDimensions();
 
   const [notas, setNotas] = useState(null); // null = cargando
+  const [items, setItems] = useState([]); // elementos del Codex
   const [carpetas, setCarpetas] = useState([]);
   const [error, setError] = useState(null);
+  // Las notas cargaron pero alguna consulta del Codex no: el historial se ve,
+  // aunque con carpetas que pueden estar incompletas.
+  const [avisoCodex, setAvisoCodex] = useState(null);
 
   const [filtro, setFiltro] = useState('todo');
   const [abierta, setAbierta] = useState(null); // carpeta abierta
   const [menu, setMenu] = useState(null); // { clase, item, x, y, vista }
-  const [nombrando, setNombrando] = useState(null); // { modo, carpeta?, nota? }
+  const [nombrando, setNombrando] = useState(null); // { modo, carpeta?, fila? }
+  const [espacios, setEspacios] = useState(null); // null = todavía no se pidieron
 
   useEffect(() => {
     let vivo = true;
     (async () => {
       try {
-        const [{ data, error: e }, cs] = await Promise.all([
+        const base = () =>
+          supabase.from('codex_universe_items').select(CAMPOS_ITEM).not('tipo', 'in', FUERA);
+
+        const [{ data, error: e }, recientes, guardados, cs] = await Promise.all([
           supabase
             .from('codex_universe_items')
-            .select('id, name, tipo, description, tags, aliases, details, created_at, folder_id')
+            .select(CAMPOS_NOTA)
             .eq('tipo', 'Snippet')
             .order('created_at', { ascending: false })
             .limit(TECHO),
+          base().order('created_at', { ascending: false }).limit(TECHO_CODEX),
+          // Lo que está guardado en una carpeta se pide aparte y sin importar la
+          // fecha: si solo trajéramos los recientes, agrupar un actor de hace un
+          // año lo haría desaparecer de su propia carpeta.
+          base().not('folder_id', 'is', null).limit(TECHO),
           listarCarpetas(NOTA),
         ]);
         if (e) throw e;
         if (!vivo) return;
         setNotas(data || []);
+        // Si falla la parte del Codex, el historial abre igual. Las notas son lo
+        // que se vino a buscar; el resto es de paso.
+        // Si una de las dos falla, lo que trajo la otra se muestra igual, pero no
+        // en silencio: sin aviso, un elemento guardado en una carpeta
+        // desaparecía de ella y del conteo como si no existiera.
+        if (recientes.error || guardados.error) {
+          setAvisoCodex('No se pudieron traer todos tus elementos del Codex: alguna carpeta puede verse incompleta.');
+        }
+        setItems(unir(recientes.data, guardados.data));
         setCarpetas(cs);
       } catch (e) {
         if (vivo) {
@@ -111,13 +148,41 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
     };
   }, []);
 
+  /** Cuánto tiene cada carpeta, separado por naturaleza para poder nombrarlo. */
   const conteo = useMemo(() => {
     const m = new Map();
-    for (const n of notas || []) {
-      if (n.folder_id) m.set(n.folder_id, (m.get(n.folder_id) || 0) + 1);
-    }
+    const sumar = (id, clave) => {
+      if (!id) return;
+      const c = m.get(id) || { notas: 0, items: 0 };
+      c[clave] += 1;
+      m.set(id, c);
+    };
+    for (const n of notas || []) sumar(n.folder_id, 'notas');
+    for (const it of items) sumar(it.folder_id, 'items');
     return m;
-  }, [notas]);
+  }, [notas, items]);
+
+  const hayCarpetas = carpetas.length > 0;
+  const hayCodex = items.length > 0;
+
+  /**
+   * La fila de filtros lista **solo lo que existe**. Ofrecer «carpetas» a quien
+   * no tiene ninguna es mandarlo a una pantalla vacía, y ofrecer «codex» a quien
+   * no cargó nada es prometer algo que no está.
+   */
+  const filtros = useMemo(() => {
+    const f = [{ id: 'todo', label: 'todo' }];
+    if (hayCarpetas) f.push({ id: 'notas', label: 'notas' });
+    if (hayCodex) f.push({ id: 'codex', label: 'codex' });
+    if (hayCarpetas) f.push({ id: 'carpetas', label: 'carpetas' });
+    return f.length > 1 ? f : [];
+  }, [hayCarpetas, hayCodex]);
+
+  // Borrar la última carpeta estando en «carpetas» dejaba un filtro activo que
+  // ya no está en la fila: la lista quedaba vacía sin que se viera por qué.
+  useEffect(() => {
+    if (filtro !== 'todo' && !filtros.some((f) => f.id === filtro)) setFiltro('todo');
+  }, [filtros, filtro]);
 
   /**
    * La lista de la raíz: carpetas y notas sueltas ordenadas por la misma fecha.
@@ -127,25 +192,38 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
   const filas = useMemo(() => {
     if (!notas) return [];
 
-    const items = [];
-    if (filtro !== 'notas') {
+    const acc = [];
+    if (filtro === 'todo' || filtro === 'carpetas') {
       for (const c of carpetas) {
-        items.push({ clase: 'carpeta', item: c, cuando: c.updated_at || c.created_at });
+        acc.push({ clase: 'carpeta', item: c, cuando: c.updated_at || c.created_at });
       }
     }
-    if (filtro !== 'carpetas') {
+    if (filtro === 'todo' || filtro === 'notas') {
       for (const n of notas) {
-        if (!n.folder_id) items.push({ clase: 'nota', item: n, cuando: n.created_at });
+        if (!n.folder_id) acc.push({ clase: 'nota', item: n, cuando: n.created_at });
+      }
+    }
+    if (filtro === 'codex') {
+      for (const it of items) {
+        if (!it.folder_id) acc.push({ clase: 'item', item: it, cuando: it.created_at });
       }
     }
 
-    return items.sort((a, b) => new Date(b.cuando || 0) - new Date(a.cuando || 0));
-  }, [notas, carpetas, filtro]);
+    return acc.sort((a, b) => new Date(b.cuando || 0) - new Date(a.cuando || 0));
+  }, [notas, items, carpetas, filtro]);
 
-  const dentro = useMemo(
-    () => (abierta ? (notas || []).filter((n) => n.folder_id === abierta.id) : []),
-    [notas, abierta]
-  );
+  /** Adentro de una carpeta sí se mezclan: notas y elementos, por fecha. */
+  const dentro = useMemo(() => {
+    if (!abierta) return [];
+    const acc = [];
+    for (const n of notas || []) {
+      if (n.folder_id === abierta.id) acc.push({ clase: 'nota', item: n, cuando: n.created_at });
+    }
+    for (const it of items) {
+      if (it.folder_id === abierta.id) acc.push({ clase: 'item', item: it, cuando: it.created_at });
+    }
+    return acc.sort((a, b) => new Date(b.cuando || 0) - new Date(a.cuando || 0));
+  }, [notas, items, abierta]);
 
   // ─── Acciones ───────────────────────────────────────────────────────────────
 
@@ -154,7 +232,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
     const { pageX = 0, pageY = 0 } = ev?.nativeEvent || {};
     // El menú se ancla donde estuvo el dedo, pero sin salirse de la pantalla: en
     // una fila del borde derecho o del pie quedaría medio cortado. El margen de
-    // abajo contempla la vista más alta, que es la lista de carpetas.
+    // abajo contempla la vista más alta, que es la lista de carpetas o espacios.
     setMenu({
       clase,
       item,
@@ -162,6 +240,35 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
       x: Math.min(Math.max(pageX - MENU_ANCHO / 2, 14), W - MENU_ANCHO - 14),
       y: Math.min(pageY + 8, H - 300),
     });
+  };
+
+  const abrirEspacios = async () => {
+    setMenu((m) => (m ? { ...m, vista: 'espacio' } : null));
+    if (espacios !== null) return;
+    try {
+      setEspacios(await listSpaces());
+    } catch {
+      setError('No se pudieron traer tus espacios');
+      setMenu((m) => (m ? { ...m, vista: 'acciones' } : null));
+    }
+  };
+
+  const ponerEnEspacio = async (espacio) => {
+    const item = menu?.item;
+    if (!item?.id) return;
+    setMenu(null);
+    try {
+      await addItemsToSpace(espacio.id, [item.id]);
+      setEspacios((es) =>
+        (es || []).map((s) =>
+          s.id === espacio.id ? { ...s, itemIds: [...(s.itemIds || []), item.id] } : s
+        )
+      );
+      toque();
+    } catch (e) {
+      setError(e.message || 'No se pudo agregar al espacio');
+      falla();
+    }
   };
 
   const borrarNota = async (nota) => {
@@ -192,29 +299,41 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
     }
   };
 
-  const mover = async (nota, carpetaId) => {
+  /**
+   * Mover a una carpeta. Sirve igual para una nota y para un elemento del Codex
+   * porque los dos son filas de `codex_universe_items` y la carpeta no
+   * distingue; lo único que cambia acá es de qué lista sale la fila.
+   */
+  const mover = async (clase, item, carpetaId) => {
     setMenu(null);
-    const antes = notas;
-    setNotas((n) => (n || []).map((x) => (x.id === nota.id ? { ...x, folder_id: carpetaId } : x)));
+    const poner = (lista) =>
+      (lista || []).map((x) => (x.id === item.id ? { ...x, folder_id: carpetaId } : x));
+
+    const antesN = notas;
+    const antesI = items;
+    if (clase === 'item') setItems(poner);
+    else setNotas(poner);
 
     try {
-      await moverItem(nota.id, carpetaId);
+      await moverItem(item.id, carpetaId);
       toque();
     } catch {
       falla();
-      setNotas(antes);
-      setError('No se pudo mover la nota.');
+      setNotas(antesN);
+      setItems(antesI);
+      setError(clase === 'item' ? 'No se pudo mover el elemento.' : 'No se pudo mover la nota.');
     }
   };
 
   const borrarCarpeta = (carpeta) => {
     setMenu(null);
-    const cuantas = conteo.get(carpeta.id) || 0;
+    const cuantas = conteo.get(carpeta.id);
+    const total = (cuantas?.notas || 0) + (cuantas?.items || 0);
 
     Alert.alert(
       `Eliminar "${carpeta.name}"`,
-      cuantas > 0
-        ? `Las ${cuantas} notas que tiene adentro vuelven al historial. No se borra ninguna.`
+      total > 0
+        ? `Lo que tiene adentro vuelve al historial: ${resumen(cuantas)}. No se borra nada.`
         : 'La carpeta está vacía.',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -224,10 +343,15 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
           onPress: async () => {
             const antesC = carpetas;
             const antesN = notas;
+            const antesI = items;
+            const soltar = (lista) =>
+              (lista || []).map((x) => (x.folder_id === carpeta.id ? { ...x, folder_id: null } : x));
+
             setCarpetas((c) => c.filter((x) => x.id !== carpeta.id));
-            // La foreign key es ON DELETE SET NULL, así que en la base las notas
+            // La foreign key es ON DELETE SET NULL, así que en la base las filas
             // quedan sueltas solas. Acá se espeja para no tener que recargar.
-            setNotas((n) => (n || []).map((x) => (x.folder_id === carpeta.id ? { ...x, folder_id: null } : x)));
+            setNotas(soltar);
+            setItems(soltar);
             if (abierta?.id === carpeta.id) setAbierta(null);
 
             try {
@@ -237,6 +361,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
               falla();
               setCarpetas(antesC);
               setNotas(antesN);
+              setItems(antesI);
               setError('No se pudo eliminar la carpeta.');
             }
           },
@@ -247,7 +372,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
 
   /**
    * Confirmar el nombre. Sirve para los tres caminos que piden uno: crear suelta,
-   * crear desde una nota (que además la guarda adentro) y renombrar.
+   * crear desde una fila (que además la guarda adentro) y renombrar.
    */
   const confirmarNombre = async (texto) => {
     const destino = nombrando;
@@ -262,7 +387,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
       } else {
         const nueva = await crearCarpeta(texto, carpetas, NOTA);
         setCarpetas((c) => [...c, nueva]);
-        if (destino.nota) await mover(destino.nota, nueva.id);
+        if (destino.fila) await mover(destino.fila.clase, destino.fila.item, nueva.id);
       }
       toque();
     } catch (e) {
@@ -273,8 +398,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
-  const lista = abierta ? dentro.map((n) => ({ clase: 'nota', item: n })) : filas;
-  const hayCarpetas = carpetas.length > 0;
+  const lista = abierta ? dentro : filas;
 
   return (
     <View style={{ flex: 1 }}>
@@ -309,7 +433,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
               {abierta.name}
             </Text>
             <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.26)' }}>
-              {etiquetaConteo(dentro.length)}
+              {resumen(conteo.get(abierta.id))}
             </Text>
           </Pressable>
         ) : (
@@ -318,7 +442,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: hayCarpetas ? 18 : 26,
+              marginBottom: filtros.length ? 18 : 26,
             }}
           >
             <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE }}>historial</Text>
@@ -338,14 +462,12 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
           </View>
         )}
 
-        {/* Sin carpetas no hay nada que filtrar, y una fila de filtros sobre una
-            lista de notas sueltas es ruido que no resuelve nada. */}
-        {!abierta && hayCarpetas ? (
+        {!abierta && filtros.length ? (
           <Animated.View
             entering={FadeIn.duration(200)}
             style={{ flexDirection: 'row', gap: 14, marginBottom: 20 }}
           >
-            {FILTROS.map((f) => {
+            {filtros.map((f) => {
               const activo = filtro === f.id;
               return (
                 <Pressable
@@ -381,13 +503,13 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
           <ActivityIndicator size="small" color={INK.faint} style={{ marginTop: 30 }} />
         ) : lista.length === 0 ? (
           <Text style={{ fontFamily: MONO, fontSize: 13, color: TENUE, lineHeight: 21 }}>
-            {error || vacio(abierta, filtro)}
+            {error || avisoCodex || vacio(abierta, filtro)}
           </Text>
         ) : (
           <>
-            {error ? (
+            {error || avisoCodex ? (
               <Text style={{ fontFamily: MONO, fontSize: 12, color: '#B91C1C', lineHeight: 19, marginBottom: 16 }}>
-                {error}
+                {error || avisoCodex}
               </Text>
             ) : null}
 
@@ -402,7 +524,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
                   <>
                     <FilaCarpeta
                       carpeta={f.item}
-                      cuantas={conteo.get(f.item.id) || 0}
+                      resumen={resumen(conteo.get(f.item.id))}
                       atenuada={!!menu && menu.item.id !== f.item.id}
                       onPress={() => {
                         roce();
@@ -412,6 +534,16 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
                     />
                     <LineaCarpeta />
                   </>
+                ) : f.clase === 'item' ? (
+                  <FilaItem
+                    item={f.item}
+                    atenuada={!!menu && menu.item.id !== f.item.id}
+                    onPress={() => {
+                      roce();
+                      onAbrirItem?.(f.item);
+                    }}
+                    onLongPress={(ev) => abrirMenu('item', f.item, ev)}
+                  />
                 ) : (
                   <FilaNota
                     nota={f.item}
@@ -462,9 +594,9 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
                   icono={<FolderPlus size={15} color={INK.title} />}
                   texto="carpeta nueva"
                   onPress={() => {
-                    const nota = menu.item;
+                    const fila = { clase: menu.clase, item: menu.item };
                     setMenu(null);
-                    setNombrando({ modo: 'crear', nota });
+                    setNombrando({ modo: 'crear', fila });
                   }}
                 />
                 {carpetas
@@ -474,9 +606,57 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
                       key={c.id}
                       lomo={c.color}
                       texto={c.name}
-                      onPress={() => mover(menu.item, c.id)}
+                      onPress={() => mover(menu.clase, menu.item, c.id)}
                     />
                   ))}
+              </ScrollView>
+            ) : menu.vista === 'espacio' ? (
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {espacios === null ? (
+                  <ActivityIndicator size="small" color={INK.faint} style={{ marginVertical: 18 }} />
+                ) : (() => {
+                  const candidatos = espacios.filter((s) => !(s.itemIds || []).includes(menu.item.id));
+                  if (!espacios.length) {
+                    return (
+                      <Text
+                        style={{
+                          fontFamily: MONO,
+                          fontSize: 12.5,
+                          color: 'rgba(28,43,34,0.38)',
+                          paddingHorizontal: 14,
+                          paddingVertical: 16,
+                          lineHeight: 18,
+                        }}
+                      >
+                        todavía no hay espacios
+                      </Text>
+                    );
+                  }
+                  if (!candidatos.length) {
+                    return (
+                      <Text
+                        style={{
+                          fontFamily: MONO,
+                          fontSize: 12.5,
+                          color: 'rgba(28,43,34,0.38)',
+                          paddingHorizontal: 14,
+                          paddingVertical: 16,
+                          lineHeight: 18,
+                        }}
+                      >
+                        ya está en tus espacios
+                      </Text>
+                    );
+                  }
+                  return candidatos.map((s) => (
+                    <Opcion
+                      key={s.id}
+                      icono={<Layers size={15} color={INK.title} />}
+                      texto={s.name}
+                      onPress={() => ponerEnEspacio(s)}
+                    />
+                  ));
+                })()}
               </ScrollView>
             ) : menu.clase === 'carpeta' ? (
               <>
@@ -503,19 +683,30 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
                   texto="mover a…"
                   onPress={() => setMenu((m) => ({ ...m, vista: 'mover' }))}
                 />
+                <Opcion
+                  icono={<Layers size={15} color={INK.title} />}
+                  texto="a un espacio…"
+                  onPress={abrirEspacios}
+                />
                 {menu.item.folder_id ? (
                   <Opcion
                     icono={<FolderMinus size={15} color={INK.title} />}
                     texto="sacar de la carpeta"
-                    onPress={() => mover(menu.item, null)}
+                    onPress={() => mover(menu.clase, menu.item, null)}
                   />
                 ) : null}
-                <Opcion
-                  icono={<Trash2 size={15} color="#B91C1C" />}
-                  texto="eliminar"
-                  peligro
-                  onPress={() => borrarNota(menu.item)}
-                />
+                {/* Eliminar solo aparece para notas. Un elemento del Codex es una
+                    entidad del universo con relaciones colgando: borrarlo desde
+                    acá, de un toque largo y sin confirmar, sería una puerta
+                    trasera a una decisión que se toma en su ficha. */}
+                {menu.clase === 'nota' ? (
+                  <Opcion
+                    icono={<Trash2 size={15} color="#B91C1C" />}
+                    texto="eliminar"
+                    peligro
+                    onPress={() => borrarNota(menu.item)}
+                  />
+                ) : null}
               </>
             )}
           </Animated.View>
@@ -546,7 +737,7 @@ export default function HistorialSnippets({ onAbrir, topInset = 0, bottomInset =
  * regla de 3px al borde izquierdo se lee con el rabo del ojo, y el `›` es la
  * única señal honesta de que esta fila navega en vez de abrir.
  */
-function FilaCarpeta({ carpeta, cuantas, atenuada, onPress, onLongPress }) {
+function FilaCarpeta({ carpeta, resumen, atenuada, onPress, onLongPress }) {
   return (
     <Pressable
       onPress={onPress}
@@ -560,7 +751,7 @@ function FilaCarpeta({ carpeta, cuantas, atenuada, onPress, onLongPress }) {
         opacity: atenuada ? 0.35 : pressed ? 0.55 : 1,
       })}
       accessibilityRole="button"
-      accessibilityLabel={`Carpeta ${carpeta.name}, ${etiquetaConteo(cuantas)}`}
+      accessibilityLabel={`Carpeta ${carpeta.name}, ${resumen}`}
       accessibilityHint="Mantené presionado para más acciones"
     >
       <View style={{ width: 3, backgroundColor: carpeta.color, marginTop: 2 }} />
@@ -570,7 +761,7 @@ function FilaCarpeta({ carpeta, cuantas, atenuada, onPress, onLongPress }) {
           {carpeta.name}
         </Text>
         <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.26)', marginTop: 6 }}>
-          {etiquetaConteo(cuantas)}
+          {resumen}
         </Text>
       </View>
 
@@ -625,12 +816,88 @@ function FilaNota({ nota, atenuada, onPress, onLongPress }) {
   );
 }
 
+/**
+ * Un elemento del Codex en la lista.
+ *
+ * Lo que lo separa de una nota es el tipo escrito en su color —el mismo acento
+ * que usa la taxonomía en todo el resto de la app— y no un icono ni un lomo. El
+ * lomo ya significa carpeta acá, y un segundo elemento con lomo haría dudar de
+ * cuál de los dos navega.
+ *
+ * El nombre no se corta en dos renglones como el de una nota: el de una nota es
+ * la primera línea de un texto y puede ser larga; el de un actor es un nombre.
+ */
+function FilaItem({ item, atenuada, onPress, onLongPress }) {
+  const tipo = normalizeTipo(item.tipo);
+  const color = TYPE_ACCENT[tipo] || INK.faint;
+  const resumen = String(item.description || '').replace(/\s+/g, ' ').trim();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={380}
+      style={({ pressed }) => ({
+        paddingVertical: 15,
+        opacity: atenuada ? 0.35 : pressed ? 0.55 : 1,
+      })}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}, ${tipo}`}
+      accessibilityHint="Mantené presionado para más acciones"
+    >
+      <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 21 }}>
+        {item.name || 'sin nombre'}
+      </Text>
+
+      {resumen ? (
+        <Text numberOfLines={2} style={{ fontFamily: MONO, fontSize: 12.5, color: 'rgba(28,43,34,0.42)', lineHeight: 20, marginTop: 5 }}>
+          {resumen}
+        </Text>
+      ) : null}
+
+      {/* El tipo va en su color y la fecha en el gris de siempre. Adentro de una
+          carpeta las dos clases de fila conviven, y si esta perdiera la fecha el
+          orden por fecha se leería roto justo donde importa. */}
+      <Text style={{ fontFamily: MONO, fontSize: 11, marginTop: 7 }}>
+        <Text style={{ color, opacity: 0.75 }}>{tipo.toLowerCase()}</Text>
+        <Text style={{ color: 'rgba(28,43,34,0.26)' }}>{` · ${fecha(item.created_at)}`}</Text>
+      </Text>
+
+      <View style={{ height: 1, backgroundColor: HAIRLINE, marginTop: 15 }} />
+    </Pressable>
+  );
+}
+
 // ─── Texto ────────────────────────────────────────────────────────────────────
+
+/** Junta las dos consultas del Codex sin repetir a los que caen en las dos. */
+function unir(...listas) {
+  const vistos = new Map();
+  for (const lista of listas) {
+    for (const fila of lista || []) if (!vistos.has(fila.id)) vistos.set(fila.id, fila);
+  }
+  return [...vistos.values()].sort(
+    (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+  );
+}
+
+/**
+ * Qué tiene una carpeta. Mientras sean solo notas se cuentan como notas; en
+ * cuanto hay algo del Codex adentro, decir «3 notas» sería mentir sobre lo que
+ * hay, así que pasa a contar elementos.
+ */
+function resumen(c) {
+  const notas = c?.notas || 0;
+  const items = c?.items || 0;
+  if (!items) return etiquetaConteo(notas);
+  return etiquetaConteo(notas + items, 'elemento', 'elementos');
+}
 
 function vacio(abierta, filtro) {
   if (abierta) return 'esta carpeta está vacía.';
   if (filtro === 'carpetas') return 'todavía no hay carpetas.';
   if (filtro === 'notas') return 'todas tus notas están en carpetas.';
+  if (filtro === 'codex') return 'todo lo del Codex está en carpetas.';
   return 'todavía no hay notas.';
 }
 

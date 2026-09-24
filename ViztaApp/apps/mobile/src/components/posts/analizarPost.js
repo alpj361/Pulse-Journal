@@ -2,71 +2,46 @@ import { supabase } from '../../utils/supabase';
 import { EXTRACTORW_URL } from '../../utils/servicios';
 
 /**
- * Extraer los detalles de un post con IA.
+ * Pedirle al servidor que analice un post.
  *
- * Manda el texto —la transcripción si el post es un video, si no la
- * descripción— a `/api/ai/analyze-content` de ExtractorW, que por dentro usa
- * un modelo vía OpenRouter y devuelve actores, entidades, territorios, eventos,
- * hechos y una narrativa.
+ * **No espera el resultado.** Devuelve apenas el servidor acepta el trabajo, y
+ * el análisis sigue allá: lo escribe él en la fila del post.
  *
- * El resultado se guarda en `details.analysis`. Eso no es cache por ahorrar: es
- * para que el análisis siga estando la próxima vez que se abra el post, en otro
- * teléfono o en la web. Analizar dos veces el mismo texto cuesta plata y puede
- * dar respuestas distintas, que es peor que cualquier ahorro.
+ * Antes esto era al revés —la app llamaba al modelo, esperaba, y guardaba ella
+ * misma— y cerrar la app a mitad mataba el `fetch`: el trabajo se perdía
+ * entero, ya pagado y sin guardar. Ahora cerrar la app no cambia nada; al
+ * volver, el análisis está. Lo mismo si lo abrís después desde la web.
  *
- * Al guardar se releen los `details` actuales y se escriben de vuelta enteros:
- * `update` sobre una columna jsonb reemplaza todo el objeto, así que sin ese
- * paso el análisis borraría la transcripción, el autor y el enlace.
+ * Quien llama no recibe el análisis: lo ve llegar mirando la fila. Ver
+ * `useAnalisisPost`.
  */
-export default async function analizarPost(post) {
+export default async function pedirAnalisis(post) {
   const texto = post?.details?.transcription || post?.description || post?.name || '';
-  if (!texto.trim()) throw new Error('Este post no tiene texto para analizar.');
+  if (texto.trim().length < 10) throw new Error('Este post no tiene texto para analizar.');
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
+  const { data: sesion } = await supabase.auth.getSession();
+  const token = sesion?.session?.access_token;
+  if (!token) throw new Error('Sin sesión activa');
 
-  const res = await fetch(`${EXTRACTORW_URL}/api/ai/analyze-content`, {
+  const res = await fetch(`${EXTRACTORW_URL}/api/analisis-post`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ text: texto, title: post?.name || '' }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ postId: post.id }),
   });
 
   const json = await res.json().catch(() => null);
+
+  // Sin cupo o sin créditos: el motivo va en `code`, no en el texto.
+  if (res.status === 402) {
+    const e = new Error(json?.message || 'No podés analizar por ahora.');
+    e.code = json?.code || 'sin_cupo';
+    e.creditos = json?.creditos;
+    throw e;
+  }
+
   if (!res.ok || !json?.success) {
-    throw new Error(json?.error || json?.message || `El servicio respondió ${res.status}`);
+    throw new Error(json?.message || `El servicio respondió ${res.status}`);
   }
 
-  const d = json.analysis || {};
-  const analisis = {
-    actores: d.actores || [],
-    // Territorios y entidades se muestran juntos: en un post nadie separa «el
-    // Congreso» de «Quetzaltenango», los dos son el dónde y el quién.
-    entidades: [...(d.entidades || []), ...(d.territorios || [])],
-    temas: d.eventos || [],
-    hechos: d.hechos || [],
-    contexto: d.narrativa || '',
-    resumen: d.hechos?.[0] || (d.narrativa || '').slice(0, 140),
-    analyzed_at: new Date().toISOString(),
-  };
-
-  try {
-    const { data: actual } = await supabase
-      .from('codex_universe_items')
-      .select('details')
-      .eq('id', post.id)
-      .single();
-
-    await supabase
-      .from('codex_universe_items')
-      .update({ details: { ...(actual?.details || {}), analysis: analisis } })
-      .eq('id', post.id);
-  } catch {
-    // Que no se pueda guardar no invalida el análisis: ya está en pantalla.
-    // Se perderá al cerrar, y volver a pedirlo es una molestia, no un error.
-  }
-
-  return analisis;
+  return { estado: json.estado, yaEstaba: !!json.yaEstaba };
 }

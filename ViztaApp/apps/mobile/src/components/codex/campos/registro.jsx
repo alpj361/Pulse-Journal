@@ -1,5 +1,5 @@
-import { Linking, Pressable, Text, View } from 'react-native';
-import { Check, ExternalLink, Mail, Minus, Phone } from 'lucide-react-native';
+import { Image, Linking, Pressable, Text, View } from 'react-native';
+import { Check, ExternalLink, Link2, Mail, Minus, Phone } from 'lucide-react-native';
 import { INK, ACCENT, RADIUS, chipStyle } from '../../theme';
 import { MONO } from '../mono';
 import { formatValue } from '../../../utils/codexSchema';
@@ -224,18 +224,72 @@ function VerGeo({ value }) {
  * Muestran lo que tengan a mano y **nunca el UUID**. La resolución a nombre,
  * tipo y miniatura es el `ReferenceResolver`, que todavía no existe; hasta
  * entonces esto dice honestamente que hay algo vinculado sin fingir saber qué.
+ *
+ * **Un campo `ref` no siempre guarda un objeto.** La mayoría de los items
+ * importados de datasets traen el nombre en texto plano —«Partido»: «Vamos por
+ * una Guatemala Diferente - VAMOS»— porque se llenaron antes de que el campo
+ * fuera una referencia. Ese texto es el dato que la persona escribió y se lee
+ * perfectamente; leerlo como objeto vacío y contestar «Referencia no
+ * disponible» borra de la pantalla algo que sí está guardado. Se muestra el
+ * texto tal cual, sin la pastilla de vínculo, que sería mentir sobre que
+ * apunta a una ficha.
  */
-function VerReferencia({ value }) {
-  const lista = Array.isArray(value) ? value : value ? [value] : [];
+/** Un valor que es una imagen en sí: la URL de una foto, no el nombre de algo. */
+const esImagen = (v) => typeof v === 'string' && /^https?:\/\//.test(v);
+
+function VerReferencia({ value, type }) {
+  const lista = Array.isArray(value) ? value : value || value === 0 ? [value] : [];
   if (!lista.length) return null;
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
       {lista.map((r, i) => {
-        const nombre = r?.name || r?.label || null;
+        const suelto = typeof r !== 'object' || r === null;
+        const nombre = suelto ? texto(r) : r.name || r.nombre || r.label || r.titulo || null;
+        if (!nombre && !r?.id) return null;
+
+        // Un campo `imagen` cuyo valor es una URL se mira, no se lee: la foto
+        // de un actor escrita como «https://congreso.gob.gt/assets/…» ocupa dos
+        // renglones para no mostrar nada.
+        if (type === 'imagen' && esImagen(suelto ? r : r.url)) {
+          return (
+            <Image
+              key={r?.id || i}
+              source={{ uri: suelto ? r : r.url }}
+              style={{
+                width: 76, height: 76, borderRadius: 12,
+                backgroundColor: 'rgba(28,43,34,0.06)',
+                borderWidth: 1, borderColor: 'rgba(28,43,34,0.10)',
+              }}
+            />
+          );
+        }
+        // Los dos casos van en pastilla —es un campo de referencia, no un
+        // párrafo—, pero no en la misma: el texto suelto usa la pastilla neutra
+        // del catálogo (la de dropdown y tags) y no lleva eslabón, porque no
+        // apunta a ninguna ficha. El color y el ícono son la diferencia.
+        if (suelto) {
+          return (
+            <View key={i} style={chipStyle(ACCENT.neutral.tint, 'rgba(28,43,34,0.10)')}>
+              <Text style={{ fontSize: 12.5, color: INK.title }}>{nombre}</Text>
+            </View>
+          );
+        }
+        // Una referencia apunta a otra ficha, y eso tiene que verse sin leer:
+        // pastilla y eslabón. Al lado del texto plano de la línea de arriba, la
+        // diferencia entre «acá dice VAMOS» y «acá está VAMOS» queda a la vista.
         return (
-          <View key={r?.id || i} style={chipStyle(ACCENT.indigo.tint, 'rgba(99,102,241,0.22)')}>
-            <Text style={{ fontSize: 12, color: ACCENT.indigo.ink }}>
-              {nombre || (r?.id ? 'vinculado' : 'Referencia no disponible')}
+          <View
+            key={r.id || i}
+            style={{
+              ...chipStyle(ACCENT.indigo.tint, 'rgba(99,102,241,0.22)'),
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+            }}
+          >
+            <Link2 size={11} color={ACCENT.indigo.ink} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: ACCENT.indigo.ink }}>
+              {nombre || 'vinculado'}
             </Text>
           </View>
         );

@@ -1,7 +1,7 @@
 import { normalizar } from '../codex/menciones';
 
 /**
- * Pinta, dentro del texto del post, lo que la IA reconoció.
+ * Pinta, dentro del texto del post, lo que el análisis reconoció.
  *
  * Reusa `normalizar` de las menciones para no tener dos ideas distintas de qué
  * significa «el mismo nombre»: sin tildes, sin mayúsculas, y sin correr los
@@ -13,19 +13,28 @@ import { normalizar } from '../codex/menciones';
  * largo a más corto para que «Ministerio de Gobernación» gane sobre
  * «Gobernación», y se exige que el match empiece y termine en borde de palabra
  * para no pintar la mitad de una.
+ *
+ * Recibe las menciones enteras —con su tipo y su vínculo al Codex— y devuelve
+ * cada tramo con la mención que le toca, para que la pantalla decida el color y
+ * qué hacer al tocarlo. Antes recibía dos listas sueltas, actores y entidades,
+ * y todo lo demás se quedaba sin pintar.
+ *
+ * Los nombres de dos letras entran («MP», «CC»): el borde de palabra ya impide
+ * que se pinten dentro de otra palabra, y dejarlos afuera escondía justo las
+ * instituciones que más se nombran por sigla.
  */
-export function anotarTexto(texto, actores = [], entidades = []) {
+export function anotarTexto(texto, menciones = []) {
   const original = String(texto || '');
   if (!original) return [];
 
-  const terminos = [
-    ...actores.map((t) => ({ t: String(t || '').trim(), tipo: 'actor' })),
-    ...entidades.map((t) => ({ t: String(t || '').trim(), tipo: 'entidad' })),
-  ]
-    .filter((x) => x.t.length > 2)
-    .sort((a, b) => b.t.length - a.t.length);
+  const terminos = (menciones || [])
+    .map((m) => ({ t: String(m?.texto || '').trim(), mencion: m }))
+    .filter((x) => x.t.length > 1)
+    .map((x) => ({ ...x, tn: normalizar(x.t) }))
+    .filter((x) => x.tn)
+    .sort((a, b) => b.tn.length - a.tn.length);
 
-  if (!terminos.length) return [{ texto: original, tipo: null }];
+  if (!terminos.length) return [{ texto: original, mencion: null }];
 
   const norm = normalizar(original);
   const esLetra = (c) => !!c && /[a-z0-9]/.test(c);
@@ -37,16 +46,14 @@ export function anotarTexto(texto, actores = [], entidades = []) {
   while (i < original.length) {
     let encontrado = null;
 
-    for (const { t, tipo } of terminos) {
-      const tn = normalizar(t);
-      if (!tn) continue;
+    for (const { tn, mencion } of terminos) {
       if (norm.startsWith(tn, i)) {
         // Bordes: ni el carácter previo ni el siguiente pueden ser parte de una
         // palabra, o estaríamos pintando un pedazo de otra.
         const antes = i > 0 ? norm[i - 1] : '';
         const despues = norm[i + tn.length] || '';
         if (!esLetra(antes) && !esLetra(despues)) {
-          encontrado = { largo: tn.length, tipo };
+          encontrado = { largo: tn.length, mencion };
           break;
         }
       }
@@ -54,10 +61,10 @@ export function anotarTexto(texto, actores = [], entidades = []) {
 
     if (encontrado) {
       if (buffer) {
-        tramos.push({ texto: buffer, tipo: null });
+        tramos.push({ texto: buffer, mencion: null });
         buffer = '';
       }
-      tramos.push({ texto: original.slice(i, i + encontrado.largo), tipo: encontrado.tipo });
+      tramos.push({ texto: original.slice(i, i + encontrado.largo), mencion: encontrado.mencion });
       i += encontrado.largo;
     } else {
       buffer += original[i];
@@ -65,6 +72,6 @@ export function anotarTexto(texto, actores = [], entidades = []) {
     }
   }
 
-  if (buffer) tramos.push({ texto: buffer, tipo: null });
+  if (buffer) tramos.push({ texto: buffer, mencion: null });
   return tramos;
 }

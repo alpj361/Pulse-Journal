@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { BlurMask, Canvas, Circle, FillType, Group, Path, Skia } from '@shopify/react-native-skia';
 import {
   Easing,
@@ -100,10 +100,20 @@ const RELLENO_DEPARTAMENTO = `rgba(${VERDE},0.055)`;
 const RELLENO_ELEGIDO = `rgba(${VERDE},0.20)`;
 const BORDE = `rgba(${VERDE},0.72)`;
 const PIN = '#B45309';
+// El pin de algo que no es tuyo: un país o un municipio del catálogo, puesto
+// ahí porque una nota lo nombra. Verde como todo lo que tiene extensión —es una
+// frontera, aunque se muestre como punto— y así no se confunde con tus lugares.
+const PIN_CATALOGO = '#3A6049';
 const PIN_ARO = '#FFFDF8';
 const RUTA = '#15803D';
 const RUTA_ARO = 'rgba(255,253,248,0.92)';
 const BORRADOR = '#4B4FA6';
+// Vos. El mismo índigo del borrador, que es el acento reservado para la
+// persona y no para los datos: tu punto y tu trazo son lo único en el mapa que
+// no describe algo guardado.
+const YO = '#4B4FA6';
+const YO_ARO = '#FFFDF8';
+const YO_HALO = 'rgba(75,79,166,0.14)';
 const CALOR_FRIO = 'rgba(33,102,172,0.16)';
 const CALOR_MEDIO = 'rgba(245,158,11,0.17)';
 const CALOR_ALTO = 'rgba(220,38,38,0.22)';
@@ -111,7 +121,7 @@ const CALOR_ALTO = 'rgba(220,38,38,0.22)';
 /** Lo que tarda el país en dibujarse solo al aparecer. */
 const ENTRADA = 1100;
 
-export default function MapaCapas({
+function MapaCapas({
   ancho,
   alto,
   ancla, // { x, y, z } — píxel de mundo cuantizado, y su nivel entero
@@ -130,6 +140,8 @@ export default function MapaCapas({
   /** Qué nivel administrativo se está mostrando. Solo se usa para re-entintar. */
   nivel,
   elegido,
+  /** Dónde está la persona: { lat, lng, precision } o null. */
+  yo = null,
 }) {
   /**
    * El velo, como un solo path con relleno par-impar.
@@ -201,6 +213,10 @@ export default function MapaCapas({
           id: p.id,
           x: lngAX(p.coordinates.lng, z) - ancla.x,
           y: latAY(p.coordinates.lat, z) - ancla.y,
+          // Índigo para una nota: es tuya, la escribiste vos, y no es un sitio
+          // que exista sin vos. Ámbar para un lugar, verde para una frontera
+          // del catálogo.
+          color: p.esNota ? YO : p.delCatalogo ? PIN_CATALOGO : PIN,
         }))
       : [];
 
@@ -224,6 +240,33 @@ export default function MapaCapas({
 
     return { rutas, lineas, puntos, dibujo };
   }, [areas, pines, recorridos, mostrarAreas, mostrarPines, mostrarCalor, borrador, ancla]);
+
+  /**
+   * Mi punto, proyectado.
+   *
+   * Aparte del resto de las capas a propósito: cambia con cada lectura del GPS
+   * —varias veces por minuto— y meterlo en el memo grande obligaría a
+   * reproyectar los 336 municipios cada vez que la persona da un paso.
+   *
+   * Por dónde anduvo no se dibuja acá: eso destapa la niebla, que ya es la capa
+   * que contesta «hasta dónde llegué».
+   */
+  const mio = useMemo(() => {
+    const z = ancla.z;
+    const punto =
+      yo && Number.isFinite(yo.lat) && Number.isFinite(yo.lng)
+        ? {
+            x: lngAX(yo.lng, z) - ancla.x,
+            y: latAY(yo.lat, z) - ancla.y,
+            // La precisión es un radio en metros; en pantalla depende de la
+            // escala. Se dibuja solo cuando es grande: un halo de tres píxeles
+            // no informa nada y ensucia el punto.
+            radio: Number.isFinite(yo.precision) ? metrosAPixeles(yo.precision, yo.lat, z) : 0,
+          }
+        : null;
+
+    return { punto };
+  }, [yo, ancla]);
 
   // ─── Vida ───────────────────────────────────────────────────────────────────
 
@@ -433,8 +476,8 @@ export default function MapaCapas({
               <Circle cx={p.x} cy={p.y} r={radioLatido} color={PIN} opacity={opacidadLatido} />
             ) : null}
             <Circle cx={p.x} cy={p.y} r={radioPin} color={PIN_ARO} />
-            <Circle cx={p.x} cy={p.y} r={radioPin} color={PIN} style="stroke" strokeWidth={radioAro} />
-            <Circle cx={p.x} cy={p.y} r={radioPin} color={PIN} opacity={0.9} />
+            <Circle cx={p.x} cy={p.y} r={radioPin} color={p.color || PIN} style="stroke" strokeWidth={radioAro} />
+            <Circle cx={p.x} cy={p.y} r={radioPin} color={p.color || PIN} opacity={0.9} />
           </Group>
         )) : null}
 
@@ -448,6 +491,16 @@ export default function MapaCapas({
             color={PIN}
             opacity={opacidadOnda}
           />
+        ) : null}
+
+        {mio.punto ? (
+          <Group>
+            {mio.punto.radio > 14 ? (
+              <Circle cx={mio.punto.x} cy={mio.punto.y} r={mio.punto.radio} color={YO_HALO} />
+            ) : null}
+            <Circle cx={mio.punto.x} cy={mio.punto.y} r={7.5} color={YO_ARO} />
+            <Circle cx={mio.punto.x} cy={mio.punto.y} r={5.5} color={YO} />
+          </Group>
         ) : null}
 
         {dibujo.path ? (
@@ -524,6 +577,18 @@ function geometriaAPath(geometry, z, ancla) {
   return '';
 }
 
+/**
+ * Cuántos píxeles mide en pantalla una distancia real.
+ *
+ * Web Mercator estira hacia los polos, así que un metro no ocupa lo mismo en
+ * Guatemala que en Islandia: sin el coseno de la latitud el halo de precisión
+ * mentiría justo donde más se nota.
+ */
+function metrosAPixeles(metros, lat, z) {
+  const porPixel = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * 2 ** z);
+  return porPixel > 0 ? metros / porPixel : 0;
+}
+
 function lineaAPath(coordinates, z, ancla, cerrar = false) {
   if (!Array.isArray(coordinates) || coordinates.length === 0) return '';
   const partes = coordinates
@@ -545,3 +610,14 @@ function geometriaLinealAPath(geometry, z, ancla) {
   }
   return '';
 }
+
+/**
+ * Memoizado.
+ *
+ * El lienzo reconstruye paths Skia en cuanto sus props cambian de identidad, y
+ * vive dentro de un árbol que se re-renderiza por razones que no le incumben —
+ * un toque en un botón, una consulta que volvió—. Con la comparación por props,
+ * esos renders no lo tocan: solo lo hacen mover los datos, el ancla o la
+ * selección, que es cuando de verdad hay algo distinto que dibujar.
+ */
+export default memo(MapaCapas);

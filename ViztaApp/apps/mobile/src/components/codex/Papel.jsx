@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Line, Path, Rect } from 'react-native-svg';
-import { INK } from '../theme';
 
 /**
  * Piezas del lenguaje «papel» del lienzo.
@@ -127,11 +126,3 @@ export function Punteado({ children, fill, borde, radio = 999, style }) {
   );
 }
 
-/** Pastel por modo/tipo: relleno tenue + borde punteado del mismo tono. */
-export const PASTEL = {
-  indigo: { fill: 'rgba(99,102,241,0.10)', borde: 'rgba(99,102,241,0.50)', ink: '#4B4FA6' },
-  verde: { fill: 'rgba(22,163,74,0.10)', borde: 'rgba(22,163,74,0.48)', ink: '#15803D' },
-  ambar: { fill: 'rgba(217,151,32,0.13)', borde: 'rgba(180,120,9,0.48)', ink: '#8A5A08' },
-  lila: { fill: 'rgba(139,92,246,0.10)', borde: 'rgba(139,92,246,0.45)', ink: '#6D3FC4' },
-  neutro: { fill: 'rgba(28,43,34,0.05)', borde: 'rgba(28,43,34,0.22)', ink: INK.body },
-};

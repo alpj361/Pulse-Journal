@@ -82,9 +82,20 @@ export default function MediosNoticia({ card }) {
           análisis no corrió, y decir «no se sabe si coinciden» es ruido sobre
           algo que nadie intentó averiguar. */}
       {d.estado === 'divergen' ? (
-        <Text style={{ fontSize: 14.5, color: ALERTA, lineHeight: 22 }}>
-          {d.enQue ? `Las fuentes no coinciden en ${d.enQue}.` : 'Las fuentes no coinciden.'}
-        </Text>
+        <>
+          <Text style={{ fontSize: 14.5, color: ALERTA, lineHeight: 22 }}>
+            Las fuentes no coinciden.
+          </Text>
+          {/* El en_qué va en su propia línea y no pegado a la anterior: el campo
+              llega como oración entera —«Los tweets difieren entre el
+              trámite…»—, así que meterlo detrás de «no coinciden en» armaba un
+              engendro. Suelto se lee como lo que es: la explicación. */}
+          {d.enQue ? (
+            <Text style={{ fontSize: 13.5, color: INK.body, lineHeight: 21, marginTop: 5 }}>
+              {d.enQue}
+            </Text>
+          ) : null}
+        </>
       ) : d.estado === 'coinciden' ? (
         <Text style={{ fontSize: 14.5, color: INK.body, lineHeight: 22 }}>
           Las fuentes coinciden en los hechos.

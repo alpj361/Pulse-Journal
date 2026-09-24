@@ -55,3 +55,4 @@ htmlcov/
 
 # JSONL datasets (often large)
 *.jsonl
+.gstack/

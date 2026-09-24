@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeInDown, FadeOut } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,11 +20,14 @@ import {
   Check,
   CloudFog,
   Crosshair,
+  Footprints,
+  LocateFixed,
   Eraser,
   Flame,
   Hand,
   MapPinPlus,
   Pentagon,
+  Quote,
   Globe,
   Landmark,
   MapPin,
@@ -28,29 +43,46 @@ import {
   Undo2,
   X,
 } from 'lucide-react-native';
-import { ACCENT, INK, RADIUS, SERIF, chipStyle } from '../theme';
+import { ACCENT, INK, RADIUS, SERIF } from '../theme';
 import { MONO } from '../codex/mono';
 import { PAPEL } from '../codex/Papel';
 import MorphingInfinity from '../MorphingInfinity';
 import MapaVizta, { CENTRO_INICIAL } from './MapaVizta';
-import SelectorNiveles from './SelectorNiveles';
 import BuscarLugar from './BuscarLugar';
-import { crearCarpeta, listarCarpetas, moverItem, SIN_CARPETA, TERRITORIO } from '../../utils/carpetas';
+import AccionEnPunto from './AccionEnPunto';
+import { crearCarpeta, listarCarpetas, moverItem, NOTA, POST, SIN_CARPETA, TERRITORIO } from '../../utils/carpetas';
 import FiltroTerritorios from './FiltroTerritorios';
 import { geoDeLugar } from '../../services/lugares';
 import { rutaPorCalles } from '../../services/rutas';
 import { comercioDe, estadoHorario } from '../../services/comercio';
 import { ROLES } from '../codex/geo';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
+import CreateSnippetSheet from '../codex/CreateSnippetSheet';
+import { construirIndice, segmentar, normalizar } from '../codex/menciones';
 import { supabase } from '../../utils/supabase';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { useMapaStore, useCamaraLista } from '../../state/mapaStore';
 import { useNieblaStore } from '../../state/nieblaStore';
 import { CELDA, desdeClave, celdasBajoPincel, ZOOM_MINIMO_RASPADO } from './niebla';
+import SelectorNiveles from './SelectorNiveles';
+import useMiUbicacion from './useMiUbicacion';
 import { roce } from '../../utils/haptics';
 import { geoDeArea, geoDePunto, geoDeRecorrido } from '../codex/geo';
 
 const CABEZAL = 46;
+
+/**
+ * La lista vacía, una sola para toda la pantalla.
+ *
+ * `const { data = [] }` parece inofensivo y es la causa de un bucle: mientras
+ * la consulta no tiene datos —o mientras está deshabilitada— ese `[]` es un
+ * array **nuevo en cada render**, así que cualquier `useMemo` que dependa de él
+ * se recalcula siempre. Acá eso significaba recorrer 96 textos contra un índice
+ * de mil entidades en cada cuadro del arrastre, y reconstruir todos los paths
+ * de Skia detrás. Compartiendo una constante, la identidad no cambia y los
+ * memos hacen lo que prometen.
+ */
+const VACIO = [];
 
 const TENUE = 'rgba(28,43,34,0.3)';
 const VERDE = 'rgba(58,96,73,0.72)';
@@ -69,6 +101,13 @@ function coordenadasDe(geo) {
   if (Number.isFinite(Number(c?.lat)) && Number.isFinite(Number(c?.lng))) {
     return { lat: Number(c.lat), lng: Number(c.lng) };
   }
+  // El ancla de un territorio con polígono. No se usa para decidir si algo es
+  // pin —un municipio se dibuja como su forma— pero sí para poder señalarlo
+  // cuando lo que importa es dónde queda y no cómo es su borde.
+  const a = geo?.anchor;
+  if (Number.isFinite(Number(a?.lat)) && Number.isFinite(Number(a?.lng))) {
+    return { lat: Number(a.lat), lng: Number(a.lng) };
+  }
   return null;
 }
 
@@ -79,10 +118,17 @@ function coordenadasDe(geo) {
  * nivel que contiene, después el contenido.
  */
 const NIVELES = [
+  { clave: 'pais', etiqueta: 'países' },
   { clave: 'departamento', etiqueta: 'departamentos' },
   { clave: 'municipio', etiqueta: 'municipios' },
-  { clave: 'otro', etiqueta: 'otros' },
+  { clave: 'zona', etiqueta: 'zonas' },
+  { clave: 'nivel5', etiqueta: 'nivel 05' },
+  { clave: 'nivel6', etiqueta: 'nivel 06' },
 ];
+
+// «Otros» ya no es una escala: era el cajón de descarte del selector y no
+// contesta «a qué escala miro». Lo dibujado a mano no desaparece por eso — se
+// ve siempre, sin importar qué escala esté activa (ver `areasVisibles`).
 
 /**
  * De qué nivel es este territorio.
@@ -94,7 +140,7 @@ const NIVELES = [
  */
 function nivelDe(item, geo) {
   const crudo = String(geo?.boundary_type || item?.details?.boundary_type || '').toLowerCase();
-  if (crudo === 'departamento' || crudo === 'municipio') return crudo;
+  if (['pais', 'departamento', 'municipio', 'zona', 'nivel5', 'nivel6'].includes(crudo)) return crudo;
   return 'otro';
 }
 
@@ -291,6 +337,22 @@ function loQueSeToco({ lat, lng, zoom }, areas, pines, recorridos) {
   return null;
 }
 
+/**
+ * Si dos coordenadas caen en el mismo lugar de la pantalla.
+ *
+ * En grados, «cerca» no significa nada: a zoom de país medio kilómetro es un
+ * píxel y a zoom de cuadra son cien. El radio se define en píxeles —el pulpejo
+ * del dedo— y se convierte a grados con la escala actual.
+ */
+function cercaDe(punto, otro, zoom, radioPx = 22) {
+  const gradosPorPixel = 360 / (256 * Math.pow(2, zoom));
+  const cos = Math.cos((otro.lat * Math.PI) / 180) || 1;
+  const dx = (punto.lng - otro.lng) * cos;
+  const dy = punto.lat - otro.lat;
+  const radio = gradosPorPixel * radioPx;
+  return dx * dx + dy * dy <= radio * radio;
+}
+
 function distanciaSegmento(p, a, b) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -315,8 +377,8 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   // El mapa se orienta por escala: departamentos para descubrir el país,
   // municipios al bajar al detalle. La persona puede fijar un nivel desde el
   // selector o apagar la capa por completo.
-  const [mostrarLimites, setMostrarLimites] = useState(true);
-  const [nivelPreferido, setNivelPreferido] = useState(null);
+  // La escala vive en el store: se recuerda entre aperturas y arranca en `null`
+  // —sin capa—, que es el mapa limpio.
   // Dónde quedó el mapa la última vez.
   //
   // `MapaVizta` lee su centro inicial una sola vez, al montar, así que no se lo
@@ -339,33 +401,132 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   // no una capa opcional que haya que ir a buscar. Se puede apagar —a veces se
   // necesita ver el terreno completo— y esa preferencia no se guarda a
   // propósito: apagarla es para una consulta puntual, no para vivir sin ella.
-  const [nieblaActiva, setNieblaActiva] = useState(true);
+  const [nieblaActiva, setNieblaActiva] = useState(false);
   const [buscandoLugar, setBuscandoLugar] = useState(false);
   const [destino, setDestino] = useState(null);
-  const [avisoNivel, setAvisoNivel] = useState(null);
   const celdasRaspadas = useNieblaStore((s) => s.celdas);
   const ocultos = useMapaStore((s) => s.ocultos);
-  const clases = useMapaStore((s) => s.clases);
+  const procedencia = useMapaStore((s) => s.procedencia);
+  const nivel = useMapaStore((s) => s.nivel);
+  const elegirProcedencia = useMapaStore((s) => s.elegirProcedencia);
+  const elegirNivel = useMapaStore((s) => s.elegirNivel);
   const alternarOculto = useMapaStore((s) => s.alternarOculto);
-  const ocultarLote = useMapaStore((s) => s.ocultarLote);
-  const alternarClase = useMapaStore((s) => s.alternarClase);
   const mostrarTodo = useMapaStore((s) => s.mostrarTodo);
+
   const [filtrando, setFiltrando] = useState(false);
 
   /**
-   * Carpetas de territorio.
+   * El punto sobre el que hay que decidir, y la nota que se está escribiendo.
    *
-   * Mismo mecanismo que ya usan las notas y los posts —`post_folders`, con
-   * `scope` para no mezclar los tres espacios— así que mover un territorio a
-   * una carpeta es una fila más en una tabla que ya existía, no una tabla
-   * nueva que aprender.
+   * Marcar en el mapa contesta «acá», no «qué es esto»: lo que sigue puede ser
+   * un lugar guardado o una nota con ese punto. Ver `AccionEnPunto`.
    */
-  const { data: carpetas = [] } = useQuery({
-    queryKey: ['mapa-carpetas', userId],
+  const [decidiendo, setDecidiendo] = useState(null);
+  const [notaEnPunto, setNotaEnPunto] = useState(null);
+
+  /**
+   * Mi punto, y el mapa que se destapa al andar. Ver `useMiUbicacion`: no pide
+   * nada hasta que alguien toca el botón, y descubrir solo es un permiso
+   * aparte que se pide en su momento.
+   */
+  const { permiso: permisoUbicacion, yo, explorando, ubicar, alternarExploracion } = useMiUbicacion(true);
+
+  const rasparCeldas = useNieblaStore((s) => s.raspar);
+  const [modo, setModo] = useState('navegar');
+  const [borrador, setBorrador] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [nombreBorrador, setNombreBorrador] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [errorEditor, setErrorEditor] = useState(null);
+  const [elegido, setElegido] = useState(null);
+  // El item cuyo detalle está abierto. Separado de `elegido` a propósito: al
+  // cerrar el detalle se vuelve a la ficha sobre el mapa, no al mapa pelado.
+  // Cerrar una capa debería devolverte a la anterior, no al principio.
+  const [detalle, setDetalle] = useState(null);
+
+  // El usuario sale de la conexión con Pulse, que es la sesión que usa el resto
+  // de la app. La otra —`utils/auth`, con su JWT en SecureStore— es el login web
+  // antiguo y hoy no la alimenta nadie: colgarse de ella dejaba este mapa
+  // pidiendo iniciar sesión para siempre, con el usuario ya conectado.
+  const userId = usePulseConnectionStore((s) => s.connectedUser?.id);
+  const queryClient = useQueryClient();
+
+  /**
+   * Las carpetas que se muestran son las del cajón que se está mirando.
+   *
+   * Filtrar por «Amarillos» mirando notas no es lo mismo que filtrar por
+   * «Amarillos» mirando territorios: en el primer caso se pregunta por las
+   * notas de esa carpeta, en el segundo por los territorios guardados ahí. Son
+   * tres cajones distintos en `post_folders` —`scope` los separa— y el panel
+   * enseña el que corresponde: el del historial de notas, el de posts, o el de
+   * territorios. Mostrar siempre el de territorios era ofrecer un filtro que
+   * no podía cruzarse con nada de lo que estaba en pantalla.
+   */
+  /**
+   * En qué espacio mirar. `null` es «todos».
+   *
+   * Un espacio (`spaces` + `workspace_resources`) agrupa lo que estás
+   * investigando: los items, las notas y los posts de un caso. Filtrar por
+   * espacio contesta «de lo que estoy trabajando en el Caso USAC, ¿qué lugares
+   * hay?», que es otra pregunta que la carpeta —la carpeta ordena, el espacio
+   * investiga— y por eso son dos filtros, no uno.
+   *
+   * No se persiste, por lo mismo que la carpeta: es una consulta de paso.
+   */
+  const [espacioFiltro, setEspacioFiltro] = useState(null);
+
+  const { data: espacios = VACIO } = useQuery({
+    queryKey: ['mapa-espacios', userId],
     enabled: Boolean(userId),
-    queryFn: () => listarCarpetas(TERRITORIO),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('spaces')
+        .select('id, name, status')
+        .neq('status', 'archived')
+        .order('position', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
     staleTime: 1000 * 60,
   });
+
+  /**
+   * Qué hay dentro de cada espacio, como un conjunto de ids.
+   *
+   * Solo `codex_item`: es el tipo de recurso que apunta a `codex_universe_items`,
+   * o sea lo mismo que el mapa ya dibuja y los textos que ya lee. Un territorio
+   * y una nota son los dos un item, así que el mismo conjunto sirve para los dos
+   * modos del filtro sin preguntar dos veces.
+   */
+  const { data: enEspacio = null } = useQuery({
+    queryKey: ['mapa-espacio-recursos', userId, espacioFiltro],
+    enabled: Boolean(userId && espacioFiltro),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('workspace_resources')
+        .select('resource_id')
+        .eq('space_id', espacioFiltro)
+        .eq('resource_type', 'codex_item');
+      if (error) throw error;
+      return new Set((data || []).map((r) => r.resource_id));
+    },
+    staleTime: 1000 * 60,
+  });
+
+  const scopeCarpetas = procedencia === 'notas' ? NOTA : procedencia === 'posts' ? POST : TERRITORIO;
+
+  const { data: carpetas = VACIO, error: errorCarpetas } = useQuery({
+    queryKey: ['mapa-carpetas', userId, scopeCarpetas],
+    enabled: Boolean(userId),
+    queryFn: () => listarCarpetas(scopeCarpetas),
+    staleTime: 1000 * 60,
+  });
+
+  // Una lista vacía y una consulta que falló se ven igual en pantalla, y la
+  // segunda es un problema.
+  useEffect(() => {
+    if (errorCarpetas) console.warn('[mapa] carpetas', scopeCarpetas, errorCarpetas.message);
+  }, [errorCarpetas, scopeCarpetas]);
 
   const crearCarpetaTerritorio = useCallback(
     async (nombre) => {
@@ -387,51 +548,68 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     },
     [queryClient, userId]
   );
-  const rasparCeldas = useNieblaStore((s) => s.raspar);
-  const [modo, setModo] = useState('navegar');
-  const [borrador, setBorrador] = useState(null);
-  const [confirmando, setConfirmando] = useState(false);
-  const [nombreBorrador, setNombreBorrador] = useState('');
-  const [guardando, setGuardando] = useState(false);
-  const [errorEditor, setErrorEditor] = useState(null);
-  const [elegido, setElegido] = useState(null);
-  // El item cuyo detalle está abierto. Separado de `elegido` a propósito: al
-  // cerrar el detalle se vuelve a la ficha sobre el mapa, no al mapa pelado.
-  // Cerrar una capa debería devolverte a la anterior, no al principio.
-  const [detalle, setDetalle] = useState(null);
-
-  // El usuario sale de la conexión con Pulse, que es la sesión que usa el resto
-  // de la app. La otra —`utils/auth`, con su JWT en SecureStore— es el login web
-  // antiguo y hoy no la alimenta nadie: colgarse de ella dejaba este mapa
-  // pidiendo iniciar sesión para siempre, con el usuario ya conectado.
-  const userId = usePulseConnectionStore((s) => s.connectedUser?.id);
-  const queryClient = useQueryClient();
 
   const alto = H - topInset - CABEZAL - bottomInset;
 
-  const { data: territorios = [], isLoading, isError } = useQuery({
+  const { data: territorios = VACIO, isLoading, isError } = useQuery({
     queryKey: ['mapa-territorios', userId],
     enabled: Boolean(userId),
     queryFn: async () => {
-      // Sin `.eq('user_id', …)`: la política de RLS ya devuelve solo lo tuyo, y
-      // repetir el filtro del lado del cliente solo agrega una forma de que los
-      // dos no coincidan.
-      // La proyección tiene que ser completa, no la mínima para dibujar.
-      //
-      // El mapa solo necesita `name` y `geo` para pintar un polígono, pero
-      // desde la ficha se abre el detalle, y el detalle **escribe de vuelta**:
-      // al guardar hace UPDATE de name, description, tags, aliases, geo y
-      // details. Un campo que no se trajo llega como `undefined`, y del otro
-      // lado `tags ?? []` lo convierte en un array vacío: guardar un cambio de
-      // nombre borraría las etiquetas y los alias sin decir nada.
-      //
-      // `tipo` va por otra razón: acá se filtra por él, así que todos son
-      // Territorio, pero si no viaja el detalle lo resuelve como «Otros» y no
-      // encuentra su preset de campos.
+      /**
+       * Lo justo para dibujar, y no el archivo entero.
+       *
+       * Traer el `geo` completo de los 366 territorios eran 6.2 MB de JSON por
+       * apertura: descargarlos, parsearlos y reproyectarlos es exactamente el
+       * tiempo que el mapa tardaba en aparecer. La función del servidor
+       * devuelve la misma forma con la geometría simplificada a unos 55 m —que
+       * a la escala en que se mira un departamento no se distingue— y pesa
+       * 1.4 MB.
+       *
+       * Lo que llega así viene marcado con `geo.dibujo`, y **no se puede
+       * guardar de vuelta**: quien edite pide antes el original por id. Ver
+       * `traerCompleto`.
+       */
+      const { data, error } = await supabase.rpc('map_territorios_dibujo', { p_tolerancia: 0.0005 });
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  /**
+   * El territorio entero, por id.
+   *
+   * Para editar y para la ficha de detalle, que escribe de vuelta: guardar
+   * sobre la versión simplificada reemplazaría una frontera oficial por su
+   * contorno recortado, en silencio.
+   */
+  const traerCompleto = useCallback(async (id) => {
+    const { data, error } = await supabase
+      .from('codex_universe_items')
+      .select('id, name, tipo, description, tags, aliases, details, geo, folder_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }, []);
+
+  /**
+   * Las notas que tienen un dónde.
+   *
+   * Una nota ubicada **no es un lugar**: el lugar es el sitio y existe por sí
+   * mismo; la nota es lo que escribiste, que además pasó en algún lado. Por eso
+   * son dos consultas y dos puntos distintos en el mapa, y no un item con dos
+   * disfraces — ver `AccionEnPunto`, donde se elige cuál de los dos se está
+   * creando.
+   */
+  const { data: notasUbicadas = VACIO } = useQuery({
+    queryKey: ['mapa-notas-ubicadas', userId],
+    enabled: Boolean(userId),
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('codex_universe_items')
         .select('id, name, tipo, description, tags, aliases, details, geo, folder_id')
-        .eq('tipo', 'Territorio')
+        .in('tipo', ['Snippet', 'snippet'])
         .not('geo', 'is', null);
       if (error) throw error;
       return data || [];
@@ -477,6 +655,30 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   );
 
   /**
+   * Lo que el filtro deja pasar.
+   *
+   * Se aplica una sola vez y arriba de todo, para que el resto del archivo
+   * —niveles, leyendas, lo que se puede tocar— trabaje sobre una única
+   * respuesta a «qué está visible». Repartir esa decisión en cada consumidor es
+   * como terminan existiendo tres filtros que no coinciden.
+   */
+  /**
+   * Una sola lista para el panel.
+   *
+   * El panel ya no piensa en familias, así que recibe los tres grupos juntos
+   * con su forma adentro: la forma sirve para el glifo de cada renglón, no para
+   * separar secciones.
+   */
+  const itemsPanel = useMemo(
+    () => [
+      ...areasTodas.map((t) => ({ ...t, clase: 'area' })),
+      ...pinesTodos.map((t) => ({ ...t, clase: 'pin' })),
+      ...recorridosTodos.map((t) => ({ ...t, clase: 'ruta' })),
+    ],
+    [areasTodas, pinesTodos, recorridosTodos]
+  );
+
+  /**
    * En qué carpeta mirar.
    *
    * `null` es «todas», el string especial `SIN_CARPETA` es «sin carpeta
@@ -487,26 +689,311 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
    */
   const [carpetaFiltro, setCarpetaFiltro] = useState(null);
 
+  // Las carpetas de notas, posts y territorios son cajones distintos: el id que
+  // se eligió en uno no significa nada en el otro, y dejarlo puesto filtraría
+  // contra una carpeta que ya no está en la lista —cero resultados sin motivo
+  // visible—. Al cambiar de cajón se vuelve a «todas».
+  useEffect(() => {
+    setCarpetaFiltro(null);
+  }, [procedencia]);
+
   /**
-   * Lo que el filtro deja pasar.
+   * En modo menciones, la carpeta es la del texto, no la del territorio.
    *
-   * Se aplica una sola vez y arriba de todo, para que el resto del archivo
-   * —niveles, leyendas, lo que se puede tocar— trabaje sobre una única
-   * respuesta a «qué está visible». Repartir esa decisión en cada consumidor es
-   * como terminan existiendo tres filtros que no coinciden.
+   * Es la diferencia que hace útil el filtro: elegir «Amarillos» no es
+   * «territorios guardados en Amarillos», es «los lugares que nombran las notas
+   * —o los posts— de Amarillos».
+   *
+   * «Sin carpeta» sí significa algo acá: los textos que nadie archivó. Antes
+   * se comportaba como «todas», que es la peor respuesta posible — parece que
+   * el filtro no hace nada.
    */
+  const carpetaDeTextos = carpetaFiltro || null;
+
+  /**
+   * Los textos donde buscar menciones.
+   *
+   * Solo notas y posts: las noticias son 3,452 y no hacen falta para esto.
+   */
+  const { data: textos = VACIO } = useQuery({
+    queryKey: ['mapa-textos', userId],
+    enabled: Boolean(userId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('codex_textos_buscables')
+        .select('fuente, ref_id, titulo, texto')
+        .in('fuente', ['snippet', 'post']);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  /**
+   * De qué carpeta es cada texto, y qué resolvió su análisis.
+   *
+   * El análisis de un post ya identifica los lugares que nombra —«Atte for
+   * Coffee» contra Apple Maps, con dirección y coordenadas— y lo guarda en
+   * `details.analysis.menciones[].identidad`. Eso no pasa por el índice de
+   * nombres, y no podría: un café no es un item tuyo ni una frontera del
+   * catálogo. Se lee de ahí y se dibuja igual que cualquier otra mención.
+   */
+  const { data: duenos = VACIO } = useQuery({
+    queryKey: ['mapa-duenos-textos', userId],
+    enabled: Boolean(userId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('codex_universe_items')
+        .select('id, folder_id, analisis:details->analysis')
+        .in('tipo', ['Snippet', 'post', 'Post']);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  /**
+   * El catálogo de fronteras, para resolver lo que no es item tuyo.
+   *
+   * Tus posts nombran quince países —Guatemala en 49, Estados Unidos en 3— y
+   * ninguno es item del Codex, así que buscando solo entre tus items no
+   * resolvía ninguno. El catálogo tiene los 242 países y las 386 fronteras
+   * guatemaltecas con su centroide, y **no crea nada**: si después tocás ese
+   * pin y lo guardás, ahí nace el item con su frontera ya vinculada.
+   */
+  const { data: bordes = VACIO } = useQuery({
+    queryKey: ['mapa-catalogo'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('map_boundaries')
+        .select('boundary_id, name, level, centroid');
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: Infinity,
+  });
+
+  /**
+   * Qué territorios menciona lo que escribiste y lo que guardaste.
+   *
+   * **Se calcula acá y no en la base.** La consulta equivalente tardaba más de
+   * los 8 segundos que Supabase le da al rol `authenticated`, y el timeout
+   * llegaba como un conjunto vacío: el panel decía tranquilamente «0
+   * menciones», que es una respuesta legítima y por eso la más difícil de
+   * notar. Acá son 96 textos contra 366 territorios y es instantáneo.
+   *
+   * Y no es un mecanismo nuevo: `construirIndice` y `segmentar` son los mismos
+   * que resaltan las menciones mientras escribís una nota, con el mismo piso de
+   * cuatro letras que usa la función del Codex. Lo que se pinta en el mapa y lo
+   * que se subraya en la nota no pueden discrepar porque son el mismo código.
+   */
+  const menciones = useMemo(() => {
+    if (!textos.length) return { notas: null, posts: null };
+
+    // Un item tuyo gana sobre la frontera homónima: «Mixco» es tu ficha, no el
+    // polígono del catálogo. El catálogo entra solo donde no tenés nada.
+    const nombresPropios = new Set();
+    for (const i of territorios) {
+      for (const crudo of [i.name, ...(Array.isArray(i.aliases) ? i.aliases : [])]) {
+        if (crudo) nombresPropios.add(normalizar(crudo));
+      }
+    }
+    const delCatalogo = bordes
+      .filter((b) => b.name && !nombresPropios.has(normalizar(b.name)))
+      .map((b) => ({ id: b.boundary_id, name: b.name, nivel: b.level, centroid: b.centroid, catalogo: true }));
+
+    const indice = construirIndice([...territorios, ...delCatalogo]);
+    const carpetaDe = new Map(duenos.map((d) => [d.id, d.folder_id]));
+    const notas = new Map();
+    const posts = new Map();
+
+    for (const t of textos) {
+      const esNota = t.fuente === 'snippet';
+      // La carpeta filtra el texto, no el territorio: elegir «Amarillos» es
+      // «los lugares que nombran lo que está guardado en Amarillos». Vale para
+      // los dos cajones —las notas cuando se mira notas, los posts cuando se
+      // mira posts— porque la carpeta que se ofrece ya es la del cajón activo.
+      if (carpetaDeTextos) {
+        const suya = carpetaDe.get(t.ref_id) || null;
+        if (carpetaDeTextos === SIN_CARPETA ? suya : suya !== carpetaDeTextos) continue;
+      }
+      // El espacio filtra igual que la carpeta: las notas y los posts que están
+      // adentro del caso que se está investigando.
+      if (enEspacio && !enEspacio.has(t.ref_id)) continue;
+      const destino = esNota ? notas : posts;
+      for (const tramo of segmentar(t.texto || '', indice)) {
+        if (!tramo.item) continue;
+        // Se guarda dónde se nombró, no solo que se nombró: es lo que deja
+        // contestar «¿de dónde salió este pin?» sin volver a leer todo.
+        const ya = destino.get(tramo.item.id);
+        if (ya) ya.donde.set(t.ref_id, t);
+        else destino.set(tramo.item.id, { entidad: tramo.item, donde: new Map([[t.ref_id, t]]) });
+      }
+    }
+
+    /**
+     * Los lugares que el análisis ya resolvió.
+     *
+     * Un restaurante o un hotel no está en tu Codex ni en el catálogo de
+     * fronteras, así que el índice de nombres nunca lo va a ver. El análisis
+     * sí: le pregunta a Apple Maps y guarda nombre, dirección y coordenadas.
+     * Acá solo se cosecha lo que ya está guardado — no se consulta nada.
+     */
+    const textoDe = new Map(textos.map((t) => [t.ref_id, t]));
+    for (const d of duenos) {
+      const suya = d.folder_id || null;
+      if (carpetaDeTextos && (carpetaDeTextos === SIN_CARPETA ? suya : suya !== carpetaDeTextos)) continue;
+      if (enEspacio && !enEspacio.has(d.id)) continue;
+
+      const t = textoDe.get(d.id);
+      if (!t || t.fuente !== 'post') continue;
+
+      for (const m of Array.isArray(d.analisis?.menciones) ? d.analisis.menciones : []) {
+        const ident = m?.identidad;
+        if (!ident || ident.material !== 'place') continue;
+        const lat = Number(ident.lat);
+        const lng = Number(ident.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+        // Por el id de Apple cuando hay: dos posts que nombran el mismo café
+        // son dos menciones de un pin, no dos pines encimados.
+        const id = 'place:' + (ident.id || normalizar(ident.titulo || m.texto));
+        const ya = posts.get(id);
+        if (ya) {
+          ya.donde.set(t.ref_id, t);
+          continue;
+        }
+        posts.set(id, {
+          entidad: {
+            id,
+            name: ident.titulo || m.texto,
+            centroid: { lat, lng },
+            nivel: 'lugar',
+            // La misma forma que usa un lugar guardado a mano, para que la
+            // ficha muestre dirección y acciones sin aprender un caso nuevo.
+            geo: {
+              spatial_role: 'location',
+              geometry: { type: 'Point', coordinates: [lng, lat] },
+              lugar: {
+                fuente: 'apple',
+                id: ident.id || null,
+                address: ident.direccion || null,
+                category: ident.categoria || null,
+              },
+            },
+          },
+          donde: new Map([[t.ref_id, t]]),
+        });
+      }
+    }
+
+    return { notas, posts };
+  }, [textos, territorios, bordes, duenos, carpetaDeTextos, enEspacio]);
+
+  /**
+   * Lo mencionado, como puntos.
+   *
+   * Si una nota habla de Mixco, lo que se quiere ver es **dónde queda**, no su
+   * polígono: el borde es la capa de límites, que contesta otra pregunta. Por
+   * eso una mención se pincha en el ancla del territorio aunque el territorio
+   * sea una forma — y por eso 35 de las 36 menciones, que son municipios y
+   * departamentos, aparecen igual que aparecería un restaurante.
+   */
+  const pinesMencionados = useMemo(() => {
+    const cuales = procedencia === 'notas' ? menciones.notas : procedencia === 'posts' ? menciones.posts : null;
+    if (!cuales) return [];
+
+    const porId = new Map(itemsPanel.map((t) => [t.id, t]));
+
+    return [...cuales.entries()]
+      .map(([id, { entidad, donde }]) => {
+        const mio = porId.get(id);
+        const coordinates = mio
+          ? mio.coordinates || coordenadasDe(mio.original?.geo)
+          : entidad.centroid && Number.isFinite(Number(entidad.centroid.lat))
+            ? { lat: Number(entidad.centroid.lat), lng: Number(entidad.centroid.lng) }
+            : null;
+
+        return {
+          ...(mio || { id, name: entidad.name, folder_id: null, original: entidad.geo ? { geo: entidad.geo } : null }),
+          clase: 'pin',
+          coordinates,
+          // De dónde salió el pin y dónde se lo nombra: lo lee la ficha.
+          // Un lugar de Apple no es «del catálogo»: tiene ficha propia.
+          delCatalogo: !mio && !entidad.geo,
+          nivelCatalogo: mio ? null : entidad.nivel,
+          donde: [...donde.values()],
+        };
+      })
+      .filter((t) => t.coordinates);
+  }, [procedencia, menciones, itemsPanel]);
+
+  /** Lo tuyo que es un lugar: los puntos y lo dibujado a mano, no las fronteras. */
+  const lugaresPropios = useMemo(
+    () => itemsPanel.filter((t) => t.rol !== 'frontier'),
+    [itemsPanel]
+  );
+
+  /**
+   * Las notas ubicadas, como puntos.
+   *
+   * Índigo, que en este mapa es el color de **vos** —tu punto, lo que estás
+   * trazando— y no el de los datos: una nota es lo que escribiste, no un sitio
+   * que exista sin vos. Así se distingue de un ojo del ámbar de tus lugares y
+   * del verde de las fronteras.
+   */
+  const pinesDeNotas = useMemo(
+    () =>
+      notasUbicadas
+        .map((n) => {
+          const coordinates = coordenadasDe(n.geo);
+          return coordinates
+            ? { ...n, clase: 'pin', coordinates, esNota: true, rol: 'location', nivel: 'otro' }
+            : null;
+        })
+        .filter(Boolean),
+    [notasUbicadas]
+  );
+
+  const porMenciones = procedencia === 'notas' || procedencia === 'posts';
+
   const pasa = useCallback(
     (clase, item) => {
-      if (!clases[clase] || ocultos.has(item.id)) return false;
+      if (ocultos.has(item.id)) return false;
+      // El espacio se aplica siempre: mirando lo tuyo filtra el territorio,
+      // mirando menciones ya se aplicó sobre los textos —y el lugar mencionado
+      // no es un item del espacio, así que acá no se vuelve a pedir.
+      if (enEspacio && !porMenciones && !enEspacio.has(item.id)) return false;
+      // Con menciones la carpeta ya se aplicó en la consulta —sobre las notas—,
+      // así que volver a filtrar por la carpeta del territorio dejaría fuera
+      // justo lo que se fue a buscar.
+      if (porMenciones) return true;
       if (carpetaFiltro === SIN_CARPETA) return !item.folder_id;
       if (carpetaFiltro) return item.folder_id === carpetaFiltro;
       return true;
     },
-    [clases, ocultos, carpetaFiltro]
+    [ocultos, carpetaFiltro, porMenciones, enEspacio]
   );
 
   const areas = useMemo(() => areasTodas.filter((a) => pasa('area', a)), [areasTodas, pasa]);
-  const pines = useMemo(() => pinesTodos.filter((p) => pasa('pin', p)), [pinesTodos, pasa]);
+
+  /**
+   * Los puntos que se dibujan.
+   *
+   * Mirando menciones son las menciones —cada territorio nombrado, pinchado en
+   * su ancla— y no los puntos de siempre. Mirando lo tuyo son los lugares que
+   * cargaste, sin las fronteras: el borde de un municipio es la capa de
+   * límites, y dibujarlo además como un pin sería decir dos veces lo mismo.
+   */
+  const pines = useMemo(() => {
+    const base = porMenciones ? pinesMencionados : lugaresPropios.filter((p) => p.clase === 'pin');
+    // Las notas ubicadas salen en «todo» —son parte de lo que pusiste en el
+    // mapa— y en «notas», donde conviven con lo que las notas mencionan. En
+    // «mis lugares» no: ahí se pregunta por sitios, y una nota no lo es.
+    const conNotas =
+      procedencia === 'todo' || procedencia === 'notas' ? [...base, ...pinesDeNotas] : base;
+    return conNotas.filter((p) => pasa('pin', p));
+  }, [porMenciones, procedencia, pinesMencionados, lugaresPropios, pinesDeNotas, pasa]);
   const recorridos = useMemo(
     () => recorridosTodos.filter((r) => pasa('ruta', r)),
     [recorridosTodos, pasa]
@@ -563,7 +1050,14 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
    * que preguntarlo sería una consulta por cada toque en el mapa a cambio de
    * nada.
    */
-  const lugarElegido = elegido?.original?.geo?.lugar ? elegido : null;
+  // Cualquier punto que no sea frontera: los lugares guardados, los puntos
+  // propios y las menciones que resolvieron a un sitio concreto. Una frontera
+  // no tiene horario ni teléfono, así que preguntarlo sería una consulta por
+  // cada toque a cambio de nada.
+  const lugarElegido =
+    elegido?.clase === 'pin' && elegido?.original?.geo?.spatial_role !== 'frontier' && !elegido?.delCatalogo
+      ? elegido
+      : null;
   const puntoElegido = lugarElegido?.coordinates;
 
   const { data: comercio } = useQuery({
@@ -582,8 +1076,29 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const totalTerritorios = areasTodas.length + pinesTodos.length + recorridosTodos.length;
   const visiblesTerritorios = areas.length + pines.length + recorridos.length;
 
-  const nivelAutomatico = vista.zoom < 9.75 ? 'departamento' : 'municipio';
-  const nivel = mostrarLimites ? nivelPreferido || nivelAutomatico : null;
+
+  const propiosDelEspacio = useMemo(
+    () => (enEspacio ? lugaresPropios.filter((t) => enEspacio.has(t.id)) : lugaresPropios),
+    [lugaresPropios, enEspacio]
+  );
+
+  const conteos = useMemo(
+    () => ({
+      // Las fronteras no se cuentan acá: son la capa de límites y se cuentan en
+      // sus escalas. Contarlas dos veces decía «366 lugares» cuando lugares
+      // tenés siete y el resto son bordes que vos vinculaste del catálogo.
+      // Y el espacio también los recorta: si se está mirando un caso, «7
+      // lugares» cuando dentro del caso hay dos es un número de otra pregunta.
+      todo: propiosDelEspacio.length,
+      items: propiosDelEspacio.length,
+      notas: menciones.notas ? menciones.notas.size : null,
+      posts: menciones.posts ? menciones.posts.size : null,
+    }),
+    [menciones, propiosDelEspacio]
+  );
+
+  // Sin escala automática por zoom: que la capa se encienda sola al acercarse
+  // es exactamente lo que hacía que el mapa se sintiera fuera de control.
 
   // Los controles son overlays sobre el GestureDetector. La zona es algo más
   // amplia que cada control para incluir el hitSlop y evitar selecciones al
@@ -608,8 +1123,8 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
 
   const zonasSinToque = useMemo(
     () => [
-      cajaNiveles || { x: 0, y: alto / 2 - 100, ancho: 190, alto: 160 },
       cajaHerramientas || { x: W - 78, y: 0, ancho: 78, alto: 340 },
+      cajaNiveles || { x: 0, y: alto / 2 - 100, ancho: 70, alto: 150 },
       { x: 0, y: alto - bottomInset - 142, ancho: W, alto: 142 },
     ],
     [W, alto, bottomInset, cajaHerramientas, cajaNiveles]
@@ -633,21 +1148,132 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     return cuenta;
   }, [areasTodas]);
 
+  /**
+   * Las fronteras de los países, del catálogo y no de tus items.
+   *
+   * Los otros niveles se dibujan con lo que vos vinculaste —22 departamentos,
+   * 336 municipios—, pero países no tenés ninguno cargado y la escala igual
+   * tiene que existir: mirar el mundo es una pregunta legítima. Salen de
+   * `map_boundaries`, ya simplificadas en la base (2.1 MB de Natural Earth
+   * quedan en 761 kB, y a esta escala la diferencia no se ve).
+   *
+   * **Solo cuando se pide.** La consulta no corre hasta que alguien elige la
+   * escala de países, y después queda en caché para siempre: las fronteras del
+   * mundo no cambian entre dos aperturas del mapa.
+   */
+  const { data: paisesCatalogo = VACIO } = useQuery({
+    queryKey: ['mapa-fronteras-pais'],
+    enabled: nivel === 'pais',
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('map_paises_simplificados', { p_tolerancia: 0.05 });
+      if (error) throw error;
+      return (data || [])
+        .filter((b) => b.geometry)
+        .map((b) => ({
+          id: b.boundary_id,
+          name: b.name,
+          folder_id: null,
+          original: null,
+          clase: 'area',
+          nivel: 'pais',
+          delCatalogo: true,
+          geometry: b.geometry,
+          caja: cajaDe(b.geometry),
+          coordinates:
+            b.centroid && Number.isFinite(Number(b.centroid.lat))
+              ? { lat: Number(b.centroid.lat), lng: Number(b.centroid.lng) }
+              : null,
+        }));
+    },
+    staleTime: Infinity,
+  });
+
+  /**
+   * La ventana por la que se está mirando, a saltos.
+   *
+   * Sirve para no construir el trazo de un polígono que cae fuera de la
+   * pantalla: con la capa de países activa son 242 formas del mundo entero y
+   * mirando Guatemala hacen falta cinco.
+   *
+   * **Se recalcula a saltos y no en cada cuadro.** Reconstruir la lista con
+   * cada pixel del arrastre le cambiaría la identidad al array sesenta veces
+   * por segundo, y `MapaCapas` volvería a armar todos los paths en cada una —
+   * el remedio sería peor. La ventana se guarda con un margen de una pantalla
+   * y media alrededor, y solo se vuelve a calcular cuando el centro se sale de
+   * ese colchón o cambia el nivel de zoom.
+   */
+  const [ventana, setVentana] = useState(null);
+
+  useEffect(() => {
+    if (!inicial) return;
+    const gradosPorPixel = 360 / (256 * Math.pow(2, vista.zoom));
+    const margenLat = gradosPorPixel * alto * 0.75;
+    const margenLng = gradosPorPixel * W * 0.75;
+    const caja = {
+      zoom: Math.round(vista.zoom),
+      latMin: vista.lat - margenLat,
+      latMax: vista.lat + margenLat,
+      lngMin: vista.lng - margenLng,
+      lngMax: vista.lng + margenLng,
+    };
+
+    setVentana((previa) => {
+      if (
+        previa &&
+        previa.zoom === caja.zoom &&
+        // Mientras el centro siga cómodo dentro de la ventana anterior —con la
+        // mitad del colchón de sobra— no hace falta tocar nada.
+        vista.lat > previa.latMin + margenLat * 0.5 &&
+        vista.lat < previa.latMax - margenLat * 0.5 &&
+        vista.lng > previa.lngMin + margenLng * 0.5 &&
+        vista.lng < previa.lngMax - margenLng * 0.5
+      ) {
+        return previa;
+      }
+      return caja;
+    });
+  }, [vista, alto, W, inicial]);
+
+  /** Si la caja de un territorio toca la ventana. Sin caja, se dibuja igual. */
+  const enVentana = useCallback(
+    (a) => {
+      const c = a.caja;
+      if (!ventana || !c) return true;
+      return (
+        c.lngMax >= ventana.lngMin &&
+        c.lngMin <= ventana.lngMax &&
+        c.latMax >= ventana.latMin &&
+        c.latMin <= ventana.latMax
+      );
+    },
+    [ventana]
+  );
+
   const areasVisibles = useMemo(
     // Las áreas dibujadas por la persona no son un nivel administrativo y se
     // conservan visibles aunque se cambie de departamentos a municipios.
-    () => areas.filter((a) => a.nivel === 'otro' || (nivel && a.nivel === nivel)),
-    [areas, nivel]
+    () =>
+      [
+        ...areas.filter((a) => a.nivel === 'otro' || (nivel && a.nivel === nivel)),
+        // Las del catálogo no pasan por `pasa`: no son items tuyos, así que no
+        // tienen carpeta, ni espacio, ni interruptor en la lista de ocultos.
+        ...(nivel === 'pais' ? paisesCatalogo : []),
+      ].filter(enVentana),
+    [areas, nivel, paisesCatalogo, enVentana]
   );
 
   // Solo los niveles que existen llegan al control: un mapa sin municipios no
   // ofrece una opción que no cambia nada.
   const nivelesDisponibles = useMemo(
     () =>
-      NIVELES.filter(({ clave }) => porNivel[clave]).map(({ clave, etiqueta }) => ({
+      // País va siempre, tenga o no items tuyos: sus fronteras salen del
+      // catálogo. El resto de las escalas existe solo si tenés algo en ellas —
+      // ofrecer «municipios» a quien no tiene ninguno es un control que no hace
+      // nada.
+      NIVELES.filter(({ clave }) => clave === 'pais' || porNivel[clave]).map(({ clave, etiqueta }) => ({
         clave,
         etiqueta,
-        cuantos: porNivel[clave],
+        cuantos: clave === 'pais' ? porNivel.pais || 242 : porNivel[clave],
       })),
     [porNivel]
   );
@@ -665,8 +1291,17 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           ? 'los territorios de tu Codex aparecen acá.'
           : null;
 
-  const seleccionar = (punto) =>
+  const seleccionar = (punto) => {
+    // Tocar tu propio punto es la tercera forma de marcar acá, y la más
+    // directa: no hay que buscar una dirección ni apuntar con el dedo a dónde
+    // ya estás parado.
+    if (yo && cercaDe(punto, yo, vista.zoom)) {
+      roce();
+      setDecidiendo({ lat: yo.lat, lng: yo.lng, nombre: 'Donde estoy', direccion: null });
+      return;
+    }
     setElegido(loQueSeToco(punto, areasVisibles, pines, recorridos));
+  };
 
   /**
    * Raspar.
@@ -694,6 +1329,11 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       if (modo !== 'raspar') seleccionar(punto);
       return;
     }
+
+    // Un punto no se coloca con el dedo: se apunta con la mira del centro y se
+    // confirma. Ver `MiraPunto` — tocar el mapa acá no hace nada a propósito,
+    // porque el dedo tapa justo el lugar que se está eligiendo.
+    if (modo === 'punto') return;
 
     const tipo = modo;
     const coordenada = [punto.lng, punto.lat];
@@ -876,6 +1516,30 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     }
   };
 
+  /**
+   * Los dos caminos de un punto marcado.
+   *
+   * Guardar el lugar reusa lo que ya existía: si el punto vino de la búsqueda
+   * trae nombre y dirección de Apple y se guarda derecho; si lo marcaste con el
+   * dedo no tiene nombre, así que pasa por el borrador —que es lo que pide uno—
+   * en vez de inventarle «Punto sin título».
+   */
+  const elegirLugar = (punto) => {
+    setDecidiendo(null);
+    if (punto.sugerencia) {
+      guardarLugar(punto.sugerencia);
+      return;
+    }
+    setModo('punto');
+    setBorrador({ tipo: 'punto', coordinates: [[punto.lng, punto.lat]] });
+    setConfirmando(true);
+  };
+
+  const elegirNota = (punto) => {
+    setDecidiendo(null);
+    setNotaEnPunto(punto);
+  };
+
   const guardarBorrador = async () => {
     const nombre = nombreBorrador.trim();
     if (!nombre || !puedeGuardar || !userId) return;
@@ -890,7 +1554,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             // `base` conserva lo que la geometría ya sabía de sí misma —origen,
             // curación, nivel—: reconstruirla desde cero al mover un vértice
             // degradaría una frontera oficial a un dibujo a mano.
-            ? geoDeArea({ coordinates, base: territorios.find((t) => t.id === borrador.editando)?.geo })
+            ? geoDeArea({ coordinates, base: (await traerCompleto(borrador.editando).catch(() => null))?.geo })
             // Lo que se guarda de una ruta es el camino por calles, no los
             // puntos que se tocaron: los toques son andamiaje para construirlo.
             : geoDeRecorrido({ coordinates: borrador.trazo || coordinates });
@@ -1005,6 +1669,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           borrador={borrador}
           onMoverVertice={['area', 'ruta'].includes(modo) ? moverVertice : null}
           niebla={nieblaNivel}
+          yo={yo}
           nivel={nivel}
           elegido={elegido?.id}
           modo={modo}
@@ -1039,8 +1704,11 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             />
           </View>
 
-          {/* El interruptor de límites, a media altura del borde izquierdo: la
-              ficha de lo que se toca sale de abajo, y ahí se taparían. */}
+          {/* Los límites, en el borde izquierdo y a media altura: la ficha de
+              lo que se toca sale de abajo, y ahí se taparían. Vive acá y no en
+              el panel porque cambiar de escala es un gesto que se repite
+              mirando el mapa —bajar a municipios, subir a países— y abrir un
+              panel para cada paso convierte un toque en cuatro. */}
           {nivelesDisponibles.length ? (
             <View
               style={{ position: 'absolute', left: 14, top: alto / 2 - 90 }}
@@ -1053,17 +1721,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                 niveles={nivelesDisponibles}
                 nivel={nivel}
                 onCambiar={(siguiente) => {
-                  if (!siguiente) {
-                    setMostrarLimites(false);
-                    setNivelPreferido(null);
-                  } else {
-                    setMostrarLimites(true);
-                    setNivelPreferido(siguiente);
-                    // El nombre del nivel se anuncia arriba y se va. Ver
-                    // `AvisoNivel`: es información de transición, no un rótulo.
-                    const etiqueta = nivelesDisponibles.find((n) => n.clave === siguiente)?.etiqueta;
-                    setAvisoNivel(etiqueta ? { texto: etiqueta, n: Date.now() } : null);
-                  }
+                  elegirNivel(siguiente);
                   // Lo elegido puede pertenecer al nivel que se acaba de apagar;
                   // dejar la ficha abierta mostraría un municipio que ya no está
                   // dibujado y que no se puede volver a tocar para cerrarla.
@@ -1072,6 +1730,58 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               />
             </View>
           ) : null}
+
+          {/* Dónde estoy. Debajo de las capas y en la misma columna: las dos
+              contestan «qué veo en el mapa», y la mano que tocó una ya está
+              donde aparece la otra.
+
+              El segundo botón —descubrir al andar— solo existe cuando la
+              ubicación ya está concedida: ofrecerlo a quien todavía no dijo que
+              sí a nada es pedir la llave antes de saludar. */}
+          <View style={{ position: 'absolute', left: 14, top: alto / 2 + 40, gap: 8 }}>
+            <BotonMapa
+              Icono={LocateFixed}
+              activo={Boolean(yo)}
+              etiqueta={permisoUbicacion === 'ninguno' ? 'Mostrar dónde estoy' : 'Centrar en mi ubicación'}
+              onPress={async () => {
+                roce();
+                const aqui = await ubicar();
+                if (!aqui) return;
+                setDestino((d) => ({
+                  lat: aqui.lat,
+                  lng: aqui.lng,
+                  zoom: Math.max(vista.zoom, 15),
+                  n: (d?.n || 0) + 1,
+                }));
+              }}
+            />
+            {permisoUbicacion !== 'ninguno' ? (
+              <BotonMapa
+                Icono={Footprints}
+                activo={explorando}
+                etiqueta={explorando ? 'Dejar de descubrir el mapa al andar' : 'Descubrir el mapa al andar'}
+                onPress={async () => {
+                  roce();
+                  const r = await alternarExploracion();
+                  // Un botón que se toca y no hace nada visible parece roto. Si
+                  // el sistema ya no va a preguntar más, el único camino es
+                  // Ajustes y hay que decirlo una vez —no insistir, decir dónde
+                  // está la llave. Un «no» de esta vez no se comenta: el botón
+                  // sigue ahí y otro toque vuelve a preguntar.
+                  if (r === 'negado') {
+                    Alert.alert(
+                      'El mapa se destapa solo desde Ajustes',
+                      'Ahí podés permitirle a Vizta ver tu ubicación siempre, y el mapa se va descubriendo por donde andás.',
+                      [
+                        { text: 'Ahora no', style: 'cancel' },
+                        { text: 'Ir a Ajustes', onPress: () => Linking.openSettings() },
+                      ]
+                    );
+                  }
+                }}
+              />
+            ) : null}
+          </View>
 
           {/* Un solo control de visibilidad.
             *
@@ -1105,7 +1815,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             </View>
           ) : null}
 
-          {['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
+          {['area', 'ruta'].includes(modo) && !confirmando ? (
             <EditorBorrador
               tipo={modo}
               cuantos={borrador?.coordinates.length || 0}
@@ -1121,6 +1831,23 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                 setNombreBorrador('');
                 setConfirmando(true);
                 roce();
+              }}
+            />
+          ) : null}
+
+          {modo === 'punto' && !confirmando && !decidiendo ? (
+            <MiraPunto
+              centro={vista}
+              alto={alto}
+              bottomInset={bottomInset}
+              onCancelar={() => {
+                setModo('navegar');
+                roce();
+              }}
+              onListo={() => {
+                roce();
+                setDecidiendo({ lat: vista.lat, lng: vista.lng, nombre: null, direccion: null });
+                setModo('navegar');
               }}
             />
           ) : null}
@@ -1216,9 +1943,14 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               }
               onAbrir={
                 elegido.original
-                  ? () => {
+                  ? async () => {
                       roce();
-                      setDetalle(elegido.original);
+                      // El detalle escribe de vuelta, así que necesita el `geo`
+                      // original y no el recortado para dibujar. Si la consulta
+                      // falla se abre con lo que hay: leer la ficha sirve igual,
+                      // y guardar sin geometría no la borra.
+                      const completo = await traerCompleto(elegido.original.id).catch(() => null);
+                      setDetalle(completo || elegido.original);
                     }
                   : null
               }
@@ -1230,31 +1962,65 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
         {/* El detalle va fuera de `MapaVizta` y último en el árbol: cubre el
           * mapa entero, y montarlo adentro lo dejaría bajo los controles y
           * atrapado por los gestos del mapa. */}
-        <AvisoNivel aviso={avisoNivel} topInset={topInset + CABEZAL} onFin={() => setAvisoNivel(null)} />
-
         <FiltroTerritorios
           visible={filtrando}
           onClose={() => setFiltrando(false)}
-          areas={areasTodas}
-          pines={pinesTodos}
-          recorridos={recorridosTodos}
+          items={itemsPanel}
           ocultos={ocultos}
-          clases={clases}
           onAlternarOculto={alternarOculto}
-          onOcultarLote={ocultarLote}
-          onAlternarClase={alternarClase}
           onMostrarTodo={mostrarTodo}
+          procedencia={procedencia}
+          onProcedencia={elegirProcedencia}
+          conteos={conteos}
+          cargandoMenciones={menciones.notas === null}
           carpetas={carpetas}
+          espacios={espacios}
+          espacioFiltro={espacioFiltro}
+          onEspacioFiltro={setEspacioFiltro}
           carpetaFiltro={carpetaFiltro}
           onCarpetaFiltro={setCarpetaFiltro}
-          onCrearCarpeta={crearCarpetaTerritorio}
-          onMoverACarpeta={moverACarpeta}
+          {...(scopeCarpetas === TERRITORIO
+            ? { onCrearCarpeta: crearCarpetaTerritorio, onMoverACarpeta: moverACarpeta }
+            : null)}
         />
+
+        <AccionEnPunto
+          punto={decidiendo}
+          bottomInset={bottomInset}
+          onLugar={elegirLugar}
+          onNota={elegirNota}
+          onClose={() => setDecidiendo(null)}
+        />
+
+        {/* La nota se escribe **sobre el mapa**, sin salir: la ubicación es el
+            contexto de lo que se está por escribir, y mandar a otra pantalla la
+            haría perder. Al guardar vuelve al mapa, donde ya aparece su punto. */}
+        {notaEnPunto ? (
+          <CreateSnippetSheet
+            ubicacion={notaEnPunto}
+            topInset={topInset}
+            bottomInset={bottomInset}
+            onClose={() => setNotaEnPunto(null)}
+            onCreated={() => {
+              setNotaEnPunto(null);
+              queryClient.invalidateQueries({ queryKey: ['mapa-notas-ubicadas', userId] });
+            }}
+          />
+        ) : null}
 
         <BuscarLugar
           visible={buscandoLugar}
           centro={vista}
-          onElegir={guardarLugar}
+          onElegir={(sugerencia) => {
+            setBuscandoLugar(false);
+            setDecidiendo({
+              lat: sugerencia.lat,
+              lng: sugerencia.lng,
+              nombre: sugerencia.name || null,
+              direccion: sugerencia.address || null,
+              sugerencia,
+            });
+          }}
           onClose={() => setBuscandoLugar(false)}
         />
 
@@ -1371,6 +2137,116 @@ function HerramientasMapa({ modo, calor, niebla, onModo, onCalor, onNiebla }) {
         <CloudFog size={18} color={niebla ? PAPEL : INK.body} strokeWidth={niebla ? 2.4 : 1.8} />
       </Pressable>
     </View>
+  );
+}
+
+/**
+ * La mira para poner un punto.
+ *
+ * **El pin se queda quieto y el mapa se mueve debajo**, como en Uber o en la
+ * app de Mapas. Es lo contrario de lo que hacía antes —tocar donde va el
+ * punto— y es mejor por una razón física: el dedo tapa exactamente el lugar
+ * que se está eligiendo, así que marcar con precisión obligaba a tocar, mirar
+ * dónde quedó, arrastrar el vértice y volver a mirar. Con la mira, lo que se
+ * ajusta es el mapa, que se ve entero mientras se mueve.
+ *
+ * El punto **no se guarda al confirmar**: confirmar abre la pregunta de qué es
+ * —lugar o nota—, que es la decisión que sigue. Ver `AccionEnPunto`.
+ */
+function MiraPunto({ centro, alto, bottomInset, onCancelar, onListo }) {
+  const [moviendo, setMoviendo] = useState(false);
+
+  // El pin se levanta mientras el mapa se mueve y se posa al detenerse, con la
+  // sombra achicándose: es la señal de que el punto es el de abajo y no el
+  // dibujo que flota. Se detecta por quietud —no hay evento de «soltó»— con
+  // una ventana corta.
+  useEffect(() => {
+    setMoviendo(true);
+    const t = setTimeout(() => setMoviendo(false), 240);
+    return () => clearTimeout(t);
+  }, [centro.lat, centro.lng, centro.zoom]);
+
+  return (
+    <>
+      {/* La mira, clavada en el centro de la parte visible del mapa. Sin
+          `pointerEvents`: el gesto tiene que llegar al mapa de abajo. */}
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, height: alto, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <Animated.View style={{ alignItems: 'center', transform: [{ translateY: moviendo ? -46 : -38 }] }}>
+          <MapPin size={34} color={AMBAR} fill={PAPEL} strokeWidth={1.8} />
+        </Animated.View>
+        {/* La sombra queda en el suelo, donde de verdad cae el punto. */}
+        <View
+          style={{
+            position: 'absolute',
+            width: moviendo ? 7 : 10,
+            height: moviendo ? 3 : 4,
+            borderRadius: 5,
+            backgroundColor: 'rgba(28,43,34,0.28)',
+            transform: [{ translateY: -4 }],
+          }}
+        />
+      </View>
+
+      <Animated.View
+        entering={FadeInDown.springify().damping(19).stiffness(180)}
+        style={{
+          position: 'absolute',
+          left: 14,
+          right: 14,
+          bottom: bottomInset + 18,
+          backgroundColor: PAPEL,
+          borderRadius: RADIUS.md,
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          shadowColor: '#14201A',
+          shadowOpacity: 0.14,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 8,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, color: INK.title }}>Mové el mapa hasta el lugar</Text>
+          <Text style={{ fontFamily: MONO, fontSize: 11, color: INK.meta, marginTop: 3 }}>
+            {centro.lat.toFixed(5)}, {centro.lng.toFixed(5)}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={onCancelar}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Cancelar"
+          style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 1 })}
+        >
+          <X size={17} color={INK.faint} />
+        </Pressable>
+
+        <Pressable
+          onPress={onListo}
+          accessibilityRole="button"
+          accessibilityLabel="Marcar acá"
+          style={({ pressed }) => ({
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 7,
+            paddingHorizontal: 15,
+            paddingVertical: 11,
+            borderRadius: RADIUS.pill,
+            backgroundColor: pressed ? 'rgba(58,96,73,0.85)' : '#3A6049',
+          })}
+        >
+          <Check size={15} color={PAPEL} />
+          <Text style={{ fontFamily: MONO, fontSize: 12.5, color: PAPEL }}>acá</Text>
+        </Pressable>
+      </Animated.View>
+    </>
   );
 }
 
@@ -1568,98 +2444,21 @@ function Fila({ simbolo, texto, cuantos, activo, onPress }) {
 
 /** La ficha de lo que tocaste. Papel sobre el mapa, con el nombre en serif. */
 /**
- * La ficha de lo que se tocó.
+ * La ficha de lo que se toca en el mapa.
  *
- * **Tres cosas distintas comparten esta caja**, y la diferencia importa:
+ * **Hoja inferior, no tarjeta flotante.** La forma es la de una ficha de lugar
+ * de mapa —tirador arriba, título grande, pastillas de acción, y el cuerpo que
+ * sube— porque es la que ya sabe leer cualquiera que haya abierto un mapa en un
+ * teléfono. Lo que estaba antes era una tarjeta chica con todo comprimido: no
+ * daba lugar a la dirección, ni al horario, ni a de dónde salió el pin.
  *
- * - un **lugar guardado** —vino de Apple Places— sabe su dirección;
- * - un **item del Codex** con ubicación sabe su tipo y a qué se conecta;
- * - un **territorio** trazado sabe su nivel y su forma.
+ * **Lo primero es qué es esto; de dónde salió se lee subiendo.** Las menciones
+ * van al final del scroll y su número va arriba, en la esquina: el contador
+ * explica por qué el pin está ahí sin obligar a bajar, y la lista contesta
+ * cuáles cuando alguien la busca.
  *
- * Mostrar los tres igual fue la versión anterior, y el resultado era que la
- * ficha no decía nada: «tipo · nombre · tres líneas» sirve para cualquiera y
- * por eso no ayuda con ninguno. Acá cada uno trae el dato que solo él tiene, y
- * el encabezado dice de cuál se trata antes de que haya que deducirlo.
- *
- * Lo que **no** cambia entre los tres es la estructura —marca, encabezado,
- * título, cuerpo, una acción— para que cambiar de uno a otro no obligue a
- * reaprender dónde está cada cosa.
- */
-/**
- * El nombre del nivel, arriba y de paso.
- *
- * Reemplaza a la lista que vivía fija en la esquina. La diferencia no es de
- * estilo: «en qué nivel estoy» solo se pregunta justo después de cambiarlo, y
- * el resto del tiempo la respuesta es ruido sobre el mapa. Aparece, se lee, se
- * va.
- *
- * Se remonta con `key` en cada cambio para que la animación de entrada vuelva a
- * correr aunque el aviso anterior siguiera en pantalla; sin eso, subir dos
- * niveles seguidos cambia el texto sin ningún movimiento y no se percibe que
- * pasó algo.
- */
-function AvisoNivel({ aviso, topInset, onFin }) {
-  useEffect(() => {
-    if (!aviso) return undefined;
-    const t = setTimeout(onFin, 1400);
-    return () => clearTimeout(t);
-  }, [aviso, onFin]);
-
-  if (!aviso) return null;
-
-  return (
-    <Animated.View
-      key={aviso.n}
-      entering={FadeInDown.duration(200)}
-      exiting={FadeOut.duration(260)}
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        top: topInset + 10,
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-      }}
-    >
-      <View
-        style={{
-          paddingHorizontal: 13,
-          paddingVertical: 7,
-          borderRadius: RADIUS.pill,
-          backgroundColor: 'rgba(255,253,248,0.94)',
-          borderWidth: 1,
-          borderColor: 'rgba(28,43,34,0.12)',
-        }}
-      >
-        <Text style={{ fontFamily: MONO, fontSize: 11, color: INK.body, letterSpacing: 0.3 }}>
-          {aviso.texto}
-        </Text>
-      </View>
-    </Animated.View>
-  );
-}
-
-/**
- * La ficha de lo que se tocó.
- *
- * **Tres cosas comparten esta caja y no deben verse igual.**
- *
- * - Un **lugar** —vino de Apple Places— es un comercio: lo que se busca al
- *   tocarlo es dónde queda, si está abierto y cómo llamar.
- * - Un **área** es una forma: lo que importa es qué nivel es y poder
- *   corregirla.
- * - Un **item del Codex** es una ficha: importa su tipo y llegar al detalle.
- *
- * La versión anterior mostraba los tres con «tipo · nombre · tres líneas», que
- * sirve para cualquiera y por eso no ayuda con ninguno. Lo que se conserva
- * entre los tres es el esqueleto —marca, encabezado, título, cuerpo, acciones—
- * para que cambiar de uno a otro no obligue a reaprender dónde está cada cosa.
- *
- * **La entrada es un resorte corto, no un fundido.** La ficha aparece porque
- * alguien tocó un punto, y un resorte que sube desde abajo conecta el toque con
- * lo que apareció; un fundido deja la duda de si ya estaba ahí. Se remonta con
- * `key` en cada selección para que tocar otro punto vuelva a animar en vez de
- * cambiar el texto en silencio.
+ * La tipografía es la de la app —la serif para el nombre, la monoespaciada para
+ * los datos— y no la del sistema operativo: la estructura se copia, la voz no.
  */
 function Ficha({ item, comercio, bottomInset, onClose, onAbrir, onAjustar }) {
   const lugar = item.original?.geo?.lugar || null;
@@ -1669,20 +2468,8 @@ function Ficha({ item, comercio, bottomInset, onClose, onAbrir, onAjustar }) {
   const horario = comercio?.opening_hours ? estadoHorario(comercio.opening_hours) : null;
   const direccion = comercio?.address || lugar?.address || null;
 
-  /**
-   * Qué es esto, dicho con un ícono.
-   *
-   * Antes iba escrito —«punto», «área», «frontera»— y ocupaba la línea
-   * completa del encabezado para decir algo que una forma dice más rápido. El
-   * vocabulario es el mismo que ya usa `GeoTerritorio` para los mismos roles:
-   * dos pantallas que muestran la misma cosa no deberían dibujarla distinto.
-   *
-   * El color sigue la familia de la paleta —ámbar lo puntual, verde lo que
-   * tiene extensión— así que el ícono dice *qué* y el color dice *de qué
-   * clase*, sin repetirse.
-   */
   const rol = item.original?.geo?.spatial_role || null;
-  const esFrontera = rol === 'frontier';
+  const esFrontera = rol === 'frontier' || item.delCatalogo;
 
   const marca = lugar
     ? { Icono: Store, color: AMBAR }
@@ -1694,163 +2481,276 @@ function Ficha({ item, comercio, bottomInset, onClose, onAbrir, onAjustar }) {
           ? { Icono: Shapes, color: VERDE }
           : { Icono: MapPin, color: AMBAR };
 
+  /**
+   * Qué es esto, en una línea. `null` cuando no hay nada que no diga ya el ícono.
+   */
+  const subtitulo =
+    direccion ||
+    (item.delCatalogo
+      ? null
+      : esArea && item.nivel && item.nivel !== 'otro'
+        ? item.nivel
+        : esArea
+          ? 'trazada a mano'
+          : esRuta
+            ? 'recorrido'
+            : null);
+
+  const donde = Array.isArray(item.donde) ? item.donde : [];
+
   return (
     <Animated.View
       key={item.id}
-      entering={FadeInDown.springify().damping(18).stiffness(190)}
+      entering={FadeInDown.springify().damping(19).stiffness(180)}
       style={{
         position: 'absolute',
-        left: 14,
-        right: 14,
-        bottom: bottomInset + 14,
+        left: 0,
+        right: 0,
+        bottom: 0,
         backgroundColor: PAPEL,
-        borderWidth: 1,
-        borderColor: 'rgba(28,43,34,0.12)',
-        borderRadius: RADIUS.md,
-        paddingHorizontal: 16,
-        paddingTop: 13,
-        paddingBottom: 15,
+        borderTopLeftRadius: 26,
+        borderTopRightRadius: 26,
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: bottomInset + 18,
+        shadowColor: '#14201A',
+        shadowOpacity: 0.16,
+        shadowRadius: 22,
+        shadowOffset: { width: 0, height: -6 },
+        elevation: 12,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {/* El ícono lleva la etiqueta accesible: quien no ve la forma necesita
-            que alguien le diga qué es, y ese alguien ya no es el texto. */}
-        <marca.Icono
-          size={15}
-          color={marca.color}
-          accessibilityLabel={ROLES.find((r) => r.clave === rol)?.etiqueta || 'punto'}
-        />
-        <View style={{ flex: 1 }} />
-        <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar la ficha">
-          <X size={15} color={INK.faint} />
+      {/* El tirador. No arrastra —el cuerpo scrollea— pero es la señal de que
+          acá adentro hay más de lo que se ve. */}
+      <View
+        style={{
+          alignSelf: 'center',
+          width: 38,
+          height: 5,
+          borderRadius: 3,
+          backgroundColor: 'rgba(28,43,34,0.18)',
+          marginBottom: 12,
+        }}
+      />
+
+      {/* La insignia de menciones, pisando el borde de la hoja. Es lo que
+          explica por qué este pin existe, y por eso sale antes que el nombre. */}
+      {donde.length ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: -16,
+            right: 18,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            paddingHorizontal: 11,
+            paddingVertical: 7,
+            borderRadius: RADIUS.pill,
+            backgroundColor: VERDE,
+            shadowColor: '#14201A',
+            shadowOpacity: 0.22,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 3 },
+            elevation: 6,
+          }}
+          accessibilityLabel={donde.length === 1 ? 'Mencionado una vez' : 'Mencionado ' + donde.length + ' veces'}
+        >
+          <Quote size={11} color={PAPEL} />
+          <Text style={{ fontFamily: MONO, fontSize: 12, color: PAPEL }}>{donde.length}</Text>
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <Text style={{ flex: 1, fontFamily: SERIF, fontSize: 30, lineHeight: 35, color: INK.title }}>
+          {item.name}
+        </Text>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar la ficha"
+          style={{ marginTop: 6 }}
+        >
+          <X size={17} color={INK.faint} />
         </Pressable>
       </View>
 
-      <Text style={{ fontFamily: SERIF, fontSize: 22, color: INK.title, marginTop: 9, lineHeight: 27 }}>
-        {item.name}
-      </Text>
+      {/* Bajo el nombre, qué es y dónde.
+          *
+          * Solo si hay algo real que decir. Una frontera del catálogo no tiene
+          * dirección ni nivel propio que agregue nada: escribir «frontera del
+          * catálogo» es nombrarle a la persona la tabla de donde salió, no el
+          * lugar. En ese caso el ícono ya lo dice y la línea no se dibuja. */}
+      {subtitulo ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+          <marca.Icono
+            size={13}
+            color={marca.color}
+            accessibilityLabel={ROLES.find((r) => r.clave === rol)?.etiqueta || 'punto'}
+          />
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: INK.meta }}>
+            {subtitulo}
+          </Text>
+        </View>
+      ) : null}
 
-      {/* ── Lugar: el comercio ── */}
-      {lugar ? (
-        <>
-          {direccion ? (
-            <Text numberOfLines={2} style={{ fontSize: 12.5, color: INK.meta, marginTop: 5, lineHeight: 18 }}>
-              {direccion}
-            </Text>
-          ) : null}
+      <ScrollView
+        style={{ maxHeight: 250, marginTop: 12 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 4 }}
+      >
+        {item.description ? (
+          <Text style={{ fontSize: 13.5, lineHeight: 20, color: INK.body }}>{item.description}</Text>
+        ) : null}
 
-          {/* El estado se afirma solo si el horario se pudo interpretar. Con un
-              formato que no se entiende se muestra el texto crudo: decir
-              «abierto» sin estar seguro es peor que no decir nada. */}
-          {horario ? (
-            <View style={{ flexDirection: 'row', marginTop: 11 }}>
+        {/* El estado se afirma solo si el horario se pudo interpretar. Con un
+            formato que no se entiende se muestra el texto crudo: decir
+            «abierto» sin estar seguro es peor que no decir nada. */}
+        {horario || comercio?.phone || comercio?.website ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            {horario ? (
               <View
-                style={chipStyle(
-                  horario.abierto ? ACCENT.green.tint : ACCENT.red.tint,
-                  horario.abierto ? 'rgba(22,163,74,0.22)' : 'rgba(220,38,38,0.22)'
-                )}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  borderRadius: RADIUS.pill,
+                  backgroundColor: horario.abierto ? ACCENT.green.tint : ACCENT.red.tint,
+                }}
               >
-                <Text style={{ fontSize: 10.5, color: horario.abierto ? ACCENT.green.ink : ACCENT.red.ink }}>
+                <Text
+                  style={{ fontSize: 12, color: horario.abierto ? ACCENT.green.ink : ACCENT.red.ink }}
+                >
                   {horario.abierto ? 'abierto' : 'cerrado'} · {horario.detalle}
                 </Text>
               </View>
-            </View>
-          ) : comercio?.opening_hours ? (
-            <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.meta, marginTop: 10 }}>
-              {comercio.opening_hours}
-            </Text>
-          ) : null}
-
-          {comercio?.phone || comercio?.website ? (
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 13 }}>
-              {comercio.phone ? (
-                <Accion
-                  Icono={Phone}
-                  texto="llamar"
-                  onPress={() => Linking.openURL(`tel:${String(comercio.phone).replace(/\s/g, '')}`)}
-                />
-              ) : null}
-              {comercio.website ? (
-                <Accion Icono={Globe} texto="sitio" onPress={() => Linking.openURL(comercio.website)} />
-              ) : null}
-            </View>
-          ) : null}
-        </>
-      ) : null}
-
-      {/* ── Área: la forma ── */}
-      {esArea && !lugar ? (
-        <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.meta, marginTop: 7 }}>
-          {item.nivel === 'otro' ? 'trazada a mano' : `nivel ${item.nivel}`}
-        </Text>
-      ) : null}
-
-      {item.description ? (
-        <>
-          <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.09)', marginTop: 12 }} />
-          <Text numberOfLines={3} style={{ fontSize: 13, lineHeight: 20, color: INK.body, marginTop: 11 }}>
-            {item.description}
+            ) : null}
+            {comercio?.phone ? (
+              <Pastilla
+                Icono={Phone}
+                texto="llamar"
+                onPress={() => Linking.openURL(`tel:${String(comercio.phone).replace(/\s/g, '')}`)}
+              />
+            ) : null}
+            {comercio?.website ? (
+              <Pastilla Icono={Globe} texto="sitio" onPress={() => Linking.openURL(comercio.website)} />
+            ) : null}
+          </View>
+        ) : comercio?.opening_hours ? (
+          <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.meta, marginTop: 10 }}>
+            {comercio.opening_hours}
           </Text>
-        </>
-      ) : null}
+        ) : null}
 
-      {/* Las acciones, en ícono y en fila.
-        *
-        * Escritas ocupaban dos renglones enteros de la ficha para dos verbos
-        * que un ícono dice igual de bien. En fila además se leen como lo que
-        * son —dos cosas que se pueden hacer con esto— en vez de dos botones
-        * apilados donde el de abajo parece menos importante.
-        *
-        * La etiqueta accesible se conserva completa: quitar el texto es una
-        * decisión visual, no una excusa para dejar de nombrar el botón. */}
+        {/* ── Dónde se lo nombra ──
+          *
+          * Debajo del pliegue a propósito: lo primero es qué es este lugar; de
+          * dónde salió se lee después, subiendo. Y sin recorte: si una nota lo
+          * nombra doce veces, las doce importan cuando se vino a buscar eso. */}
+        {donde.length ? (
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.08, color: INK.meta, marginBottom: 8 }}>
+              MENCIONADO EN
+            </Text>
+            {donde.map((d) => (
+              <View
+                key={d.ref_id}
+                style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                  paddingVertical: 10,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: 'rgba(28,43,34,0.10)',
+                }}
+              >
+                <View style={{ paddingTop: 2 }}>
+                  {d.fuente === 'snippet' ? <Spline size={13} color={VERDE} /> : <Shapes size={13} color={AMBAR} />}
+                </View>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 13.5, color: INK.title }}>
+                    {d.titulo || (d.fuente === 'snippet' ? 'nota sin título' : 'post sin título')}
+                  </Text>
+                  {/* El cuerpo, dos renglones. Un solo renglón cortado a la
+                      mitad de la primera frase no dice en qué contexto se lo
+                      nombra, que es justo lo que se vino a leer. */}
+                  {d.texto ? (
+                    <Text numberOfLines={2} style={{ fontSize: 12.5, lineHeight: 17, color: INK.meta }}>
+                      {String(d.texto).replace(/\s+/g, ' ').trim()}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
+
       {onAjustar || onAbrir ? (
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
           {onAjustar ? (
-            <BotonIcono
-              Icono={PenTool}
-              etiqueta={`Ajustar la forma de ${item.name}`}
-              onPress={onAjustar}
-            />
+            <Pastilla Icono={PenTool} texto="ajustar" onPress={onAjustar} />
           ) : null}
-          {onAbrir ? (
-            <BotonIcono
-              Icono={ArrowUpRight}
-              etiqueta={`Abrir ${item.name}`}
-              onPress={onAbrir}
-            />
-          ) : null}
+          {onAbrir ? <Pastilla Icono={ArrowUpRight} texto="abrir" onPress={onAbrir} /> : null}
         </View>
       ) : null}
     </Animated.View>
   );
 }
 
-/** Una acción de la ficha reducida a su ícono. */
-function BotonIcono({ Icono, etiqueta, onPress }) {
+/** Una acción en pastilla: ícono y palabra, como en cualquier ficha de mapa. */
+/**
+ * Un botón cuadrado sobre el mapa, de la familia del selector de capas.
+ *
+ * Mismo tamaño, mismo papel y mismo borde: son controles hermanos y tienen que
+ * leerse como una columna, no como dos widgets que se encontraron ahí.
+ */
+function BotonMapa({ Icono, activo, etiqueta, onPress }) {
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={etiqueta}
-      // Cuadrado y de 44: sin texto que le dé ancho, el área táctil tiene que
-      // declararse a mano o queda del tamaño del dibujo.
+      accessibilityState={{ selected: Boolean(activo) }}
       style={({ pressed }) => ({
         width: 44,
         height: 44,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255,253,248,0.94)',
+        borderWidth: 1,
+        borderColor: activo ? 'rgba(75,79,166,0.45)' : 'rgba(28,43,34,0.10)',
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: RADIUS.sm,
-        borderWidth: 1,
-        borderColor: 'rgba(28,43,34,0.14)',
-        backgroundColor: pressed ? 'rgba(28,43,34,0.06)' : 'transparent',
+        opacity: pressed ? 0.6 : 1,
       })}
     >
-      <Icono size={16} color={INK.body} />
+      <Icono size={18} color={activo ? '#4B4FA6' : INK.faint} />
     </Pressable>
   );
 }
 
-/** Una acción corta de la ficha: llamar, abrir el sitio. */
+function Pastilla({ Icono, texto, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={texto}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: RADIUS.pill,
+        backgroundColor: pressed ? 'rgba(28,43,34,0.10)' : 'rgba(28,43,34,0.055)',
+      })}
+    >
+      <Icono size={14} color={INK.body} />
+      <Text style={{ fontSize: 12.5, color: INK.body }}>{texto}</Text>
+    </Pressable>
+  );
+}
+
 function Accion({ Icono, texto, onPress }) {
   return (
     <Pressable

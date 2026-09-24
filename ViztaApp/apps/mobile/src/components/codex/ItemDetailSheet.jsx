@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -14,15 +16,22 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { X, Pencil, ExternalLink, Plus, Trash2, ChevronDown } from 'lucide-react-native';
-import { INK, GLASS, CARD_SHADOW, RADIUS } from '../theme';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
+import { X, Pencil, ExternalLink, Plus, Trash2, ChevronDown, TriangleAlert } from 'lucide-react-native';
+import { INK, ACCENT, GLASS, CARD_SHADOW, RADIUS } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
 import { roce } from '../../utils/haptics';
 import { collectFields, canonicalTipo, presetFor, FIELD_TYPES } from '../../utils/codexSchema';
+import { indexarFoto } from '../../utils/reconocimientoRostros';
 import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
 import { componenteDe } from './campos/registro';
-import useCamposEditables from './useCamposEditables';
+import { esSintetico, esCampoSintetico } from './sintetico';
+import useCamposEditables, { claveDeCampo } from './useCamposEditables';
 import useVinculos from './useVinculos';
 import FieldInput, { inputStyle } from './FieldInput';
 import { normalizeTipo, TYPE_ACCENT, TYPE_ORDER } from './tipos';
@@ -30,6 +39,8 @@ import { esReconocible, PISO } from './menciones';
 import GeoTerritorio from './GeoTerritorio';
 import { normalizarGeo, etiquetaNivel } from './geo';
 import PortadaEspacio from './PortadaEspacio';
+import usePortada from '../../utils/portada';
+import { formaValida, avisoDeForma } from '../../utils/formaCampo';
 import { supabase } from '../../utils/supabase';
 
 /**
@@ -109,6 +120,18 @@ function Insignia({ children }) {
 function FilaCampo({ label, value, crudo, type, accent, onPress, ...resto }) {
   const { Viewer } = componenteDe(type);
 
+  /**
+   * El campo dice una cosa y el dato es otra.
+   *
+   * No se corrige ni se esconde: se marca. «Sesgo / posición» es un eje entre
+   * dos polos y en 56 fichas guarda una frase; el visor la muestra igual, pero
+   * el editor abre el control del eje y ese control no sabe qué hacer con
+   * texto — de ahí la sensación de que leer y editar no coinciden. El triángulo
+   * dice dónde pasó, que es lo que hace falta para poder arreglarlo después.
+   */
+  const dato = crudo !== undefined && crudo !== null ? crudo : value;
+  const desalineado = !formaValida(type, dato, resto);
+
   return (
     <Pressable
       onPress={onPress}
@@ -120,8 +143,17 @@ function FilaCampo({ label, value, crudo, type, accent, onPress, ...resto }) {
     >
       {/* Sin insignia de tipo: leyendo, «texto» o «dropdown» no dice nada sobre
           el dato — es información del esquema, y solo importa al editarlo. */}
-      <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta, marginBottom: 5 }}>{label}</Text>
-      <Viewer value={crudo !== undefined && crudo !== null ? crudo : value} type={type} field={resto} accent={accent} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+        <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta }}>{label}</Text>
+        {desalineado ? (
+          <TriangleAlert
+            size={11}
+            color={ACCENT.amber.ink}
+            accessibilityLabel={avisoDeForma(type)}
+          />
+        ) : null}
+      </View>
+      <Viewer value={dato} type={type} field={resto} accent={accent} />
     </Pressable>
   );
 }
@@ -315,7 +347,37 @@ function BuscadorItem({ accent, onBuscar, onElegir }) {
   );
 }
 
-export default function ItemDetailSheet({ item, onClose, onSaved, creando = false, bottomInset = 0 }) {
+export default function ItemDetailSheet({
+  item: itemInicial,
+  onClose,
+  onSaved,
+  creando = false,
+  bottomInset = 0,
+}) {
+  /**
+   * El item que la ficha está mostrando, no el que le pasaron.
+   *
+   * La vista de lectura se arma con `collectFields(item, …)`, o sea con los
+   * datos de la prop. Al guardar, el editor escribía en la base y avisaba hacia
+   * arriba, pero la prop seguía siendo la de antes: volver a lectura mostraba
+   * los valores viejos, y solo reaparecían los nuevos cuando el padre decidía
+   * recargar y volver a abrir la ficha. Guardando una copia acá, lo que se
+   * guardó es lo que se ve — sin depender de quién nos abrió.
+   */
+  const [item, setItem] = useState(itemInicial);
+
+  // Cuánto ocupa el teclado, en vivo. Lo usa la barra de guardado para no
+  // quedarse debajo.
+  const teclado = useAnimatedKeyboard();
+  const sobreTeclado = useAnimatedStyle(() => ({
+    transform: [{ translateY: -teclado.height.value }],
+  }));
+
+  // Si el padre manda otro item —o el mismo recargado—, esa versión manda.
+  useEffect(() => {
+    setItem(itemInicial);
+  }, [itemInicial]);
+
   // Los items del universo que vienen de la pila llevan `id` prefijado
   // (`universe_<uuid>`) y el uuid real en `_sourceId`; los que vienen del
   // espacio traen el uuid directo. Las consultas necesitan el uuid.
@@ -337,6 +399,22 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
   // `undefined` mientras nadie lo toque, para que guardar un cambio de nombre no
   // reescriba la geometría. Ver `useCamposEditables.guardar`.
   const [geoEd, setGeoEd] = useState(undefined);
+
+  /**
+   * Fotos marcadas para reconocer mientras el actor todavía no existe.
+   *
+   * No se pueden indexar antes de «Crear»: la cara se asocia a un actor, y
+   * recién al guardar hay uno. Se anotan acá y se cumplen al crear.
+   */
+  const [pendientesRostro, setPendientesRostro] = useState(() => new Set());
+  const marcarRostroPendiente = useCallback((archivoId, quiere) => {
+    setPendientesRostro((previo) => {
+      const siguiente = new Set(previo);
+      if (quiere) siguiente.add(archivoId);
+      else siguiente.delete(archivoId);
+      return siguiente;
+    });
+  }, []);
   const [aliasEd, setAliasEd] = useState(
     (Array.isArray(item?.aliases) ? item.aliases.filter(Boolean) : []).join(', ')
   );
@@ -357,7 +435,7 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
   const ed = useCamposEditables(item, tipo);
   const vinc = useVinculos(dbId);
   const { progresiones, relaciones, menciones } = vinc;
-  const soportaProgresion = tipo !== 'Post' && tipo !== 'Snippet';
+  const soportaProgresion = tipo !== 'Post' && tipo !== 'Snippet' && tipo !== 'Fact' && tipo !== 'Ref';
 
 
   // Relaciones y progresiones se cargan al abrir su pestaña, no antes.
@@ -373,6 +451,19 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
     if (tab === 'menciones' && menciones === null) vinc.cargarMenciones();
   }, [tab, menciones, vinc]);
 
+  /**
+   * El retrato del item, si tiene.
+   *
+   * La portada de arriba está difuminada y tapada por el velo —es fondo, no
+   * foto—, así que una ficha con retrato no mostraba el retrato. El cuadrado va
+   * pegado al nombre, que es donde se mira para saber de quién es la ficha.
+   *
+   * Sale de `usePortada`, que ya resuelve las tres formas en que una imagen
+   * puede estar guardada: enlace público (`thumbnail_url`, `details.foto`) o
+   * ruta privada firmada, como las fotos de una nota.
+   */
+  const retrato = usePortada(item);
+
   const canon = schema ? canonicalTipo(tipo, schema) : null;
   const catalogo = useMemo(() => (schema ? presetFor(tipo, schema) : []), [schema, tipo]);
 
@@ -383,7 +474,15 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
 
   // ThePulse agrupa por «tiene valor», sin importar si el campo viene del preset
   // o es extra. Se replica.
-  const conDatos = [...conDato, ...extra];
+  //
+  // Con una excepción: **«Sintético» no se lista al ver, solo al editar.** La
+  // insignia junto al título ya lo dice, y en el lugar donde importa — al lado
+  // de la identidad, de un vistazo. La casilla es el control para marcarlo y
+  // desmarcarlo, no la manera de enterarse; leyendo, decirlo dos veces en la
+  // misma pantalla es decirlo una de más.
+  const conDatos = [...conDato, ...extra].filter(
+    (f) => editando || !esCampoSintetico(f)
+  );
 
   /**
    * La descripción, salvo que sea el relleno de la importación.
@@ -399,6 +498,8 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
    * igual, como «Departamento de alto riesgo por…».
    */
   const descripcionCruda = item?.description || item?.descripcion;
+  // Un perfil sintético no es un actor más: se marca junto al tipo.
+  const sintetico = esSintetico(item);
   const tags = Array.isArray(item?.tags) ? item.tags.filter(Boolean) : [];
   const aliases = Array.isArray(item?.aliases) ? item.aliases.filter(Boolean) : [];
   const nombre = item?.name || item?.titulo || 'Sin nombre';
@@ -442,6 +543,26 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: bottomInset + (editando ? 104 : 34) }}
             showsVerticalScrollIndicator={false}
+            /**
+             * El teclado deja de tapar el campo que se está llenando.
+             *
+             * `automaticallyAdjustKeyboardInsets` es la solución de iOS: mete el
+             * alto del teclado como inset del scroll, así el contenido se puede
+             * subir y el campo enfocado queda a la vista. Sin esto, los campos
+             * de la mitad de abajo de la ficha quedaban debajo del teclado y no
+             * había forma de llegar a ellos — el scroll terminaba antes.
+             *
+             * `keyboardShouldPersistTaps` es lo que hace que el primer toque
+             * cuente: sin él, tocar otro campo con el teclado abierto solo lo
+             * cierra y hay que tocar dos veces. Y `interactive` deja bajarlo
+             * arrastrando, como en Mensajes.
+             */
+            automaticallyAdjustKeyboardInsets
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            // El scroll se queda donde estaba cuando el inset del teclado
+            // cambia; sin esto, iOS empuja el contenido y se pierde el renglón.
+            contentInsetAdjustmentBehavior="automatic"
             // [0] portada, [1] pestañas, [2] contenido. El índice tiene que ser
             // estable: `React.Children.toArray` descarta los hijos que rinden
             // null, así que cualquier bloque condicional acá arriba corre la
@@ -501,7 +622,28 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                 </Pressable>
               </View>
 
-              <View style={{ position: 'absolute', left: 20, right: 20, bottom: 16 }}>
+              <View
+                style={{
+                  position: 'absolute', left: 20, right: 20, bottom: 16,
+                  flexDirection: 'row', alignItems: 'flex-end', gap: 13,
+                }}
+              >
+                {/* El retrato, cuadrado y nítido, al lado del nombre. La foto ya
+                    estaba en la ficha pero solo como fondo difuminado bajo el
+                    velo, que es textura y no identificación: de un vistazo no se
+                    veía de quién era la ficha. */}
+                {retrato ? (
+                  <Image
+                    source={{ uri: retrato }}
+                    style={{
+                      width: 62, height: 62, borderRadius: 15,
+                      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)',
+                      backgroundColor: 'rgba(12,18,14,0.35)',
+                    }}
+                  />
+                ) : null}
+
+                <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 }}>
                   <Pressable
                     onPress={creando ? () => { roce(); setTipoMenu((v) => !v); } : undefined}
@@ -516,6 +658,38 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                     </Text>
                     {creando ? <ChevronDown size={11} color={accent} /> : null}
                   </Pressable>
+
+                  {/* Que no es una persona real.
+                   *
+                   * Va **pegado al tipo**, no entre los tags de abajo, porque
+                   * es la misma clase de dato: qué es esto. Un perfil sintético
+                   * dice en su propia descripción «no representa a una persona
+                   * real» y hasta ahora aparecía con el badge ACTOR idéntico al
+                   * de Bernardo Arévalo — en una herramienta de periodismo,
+                   * confundir una hipótesis con una fuente es el error que no
+                   * se puede permitir.
+                   *
+                   * Punteado y no relleno: el borde discontinuo ya es el
+                   * vocabulario de la app para lo provisional, y dice «esto no
+                   * es un registro» sin escribirlo. */}
+                  {sintetico ? (
+                    <View
+                      style={{
+                        paddingHorizontal: 9, paddingVertical: 3.5, borderRadius: 7,
+                        borderWidth: 1, borderStyle: 'dashed',
+                        borderColor: 'rgba(255,255,255,0.75)',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10, fontWeight: '800',
+                          color: 'rgba(255,255,255,0.92)', letterSpacing: 0.6,
+                        }}
+                      >
+                        SINTÉTICO
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
 
                 <Text
@@ -543,6 +717,7 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                     también: {aliases.join(', ')}
                   </Text>
                 ) : null}
+                </View>
               </View>
             </View>
 
@@ -827,6 +1002,18 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                                 placeholderTextColor={INK.faint}
                                 style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: INK.body, padding: 0 }}
                               />
+                              {/* La misma marca que en lectura, junto al tipo:
+                                  acá es donde se arregla, y el triángulo dice
+                                  que el control de abajo abrió vacío porque el
+                                  dato no es de este tipo, no porque no haya
+                                  dato. */}
+                              {!formaValida(f.type, ed.values[claveDeCampo(f)], f) ? (
+                                <TriangleAlert
+                                  size={12}
+                                  color={ACCENT.amber.ink}
+                                  accessibilityLabel={avisoDeForma(f.type)}
+                                />
+                              ) : null}
                               <TouchableOpacity
                                 onPress={() => setTipoAbierto((k) => (k === f._k ? null : f._k))}
                                 activeOpacity={0.7}
@@ -884,9 +1071,14 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
 
                             <FieldInput
                               field={f}
-                              value={ed.values[f.label]}
-                              onChange={(v) => ed.setField(f.label, v)}
+                              value={ed.values[claveDeCampo(f)]}
+                              onChange={(v) => ed.setField(claveDeCampo(f), v)}
                               accent={accent}
+                              contexto={
+                                creando
+                                  ? { tipo, pendientesRostro, onPendienteRostro: marcarRostroPendiente }
+                                  : { itemId: dbId, tipo }
+                              }
                             />
                           </View>
                         ))}
@@ -1176,14 +1368,17 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
           {editando ? (
             <Animated.View
               entering={FadeInDown.duration(240).springify().damping(20)}
-              style={{
+              // Guardar y cancelar viajan con el teclado. Quietas abajo, el
+              // teclado las tapaba justo mientras se escribe, que es cuando se
+              // quiere confirmar.
+              style={[sobreTeclado, {
                 position: 'absolute', left: 0, right: 0, bottom: 0,
                 flexDirection: 'row', gap: 9,
                 paddingHorizontal: 20, paddingTop: 12, paddingBottom: bottomInset + 14,
                 backgroundColor: 'rgba(247,248,245,0.97)',
                 borderTopWidth: StyleSheet.hairlineWidth,
                 borderTopColor: 'rgba(28,43,34,0.10)',
-              }}
+              }]}
             >
               <Pressable
                 onPress={() => {
@@ -1215,6 +1410,30 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                   if (!guardado) return;
 
                   if (creando) {
+                    // Las fotos marcadas para reconocer, ahora que el actor
+                    // existe. Solo las que siguen en el campo: una foto que se
+                    // marcó y después se reemplazó no se indexa.
+                    const enCampos = new Set(
+                      Object.values(ed.values)
+                        .map((v) => (v && typeof v === 'object' ? v.id : null))
+                        .filter(Boolean)
+                    );
+                    const aIndexar = [...pendientesRostro].filter((a) => enCampos.has(a));
+                    if (guardado.id && aIndexar.length) {
+                      const fallos = [];
+                      for (const archivoId of aIndexar) {
+                        try {
+                          await indexarFoto(guardado.id, archivoId);
+                        } catch (e) {
+                          fallos.push(e.message);
+                        }
+                      }
+                      // El actor ya quedó creado: lo que falló se dice, pero no
+                      // deshace nada. Se puede volver a marcar desde la ficha.
+                      if (fallos.length) {
+                        Alert.alert('No se pudo usar la foto para reconocer', fallos[0]);
+                      }
+                    }
                     onSaved?.(guardado);
                     onClose();
                     return;
@@ -1227,6 +1446,9 @@ export default function ItemDetailSheet({ item, onClose, onSaved, creando = fals
                   setEditando(false);
                   setTipoAbierto(null);
                   setGeoEd(undefined);
+                  // Primero lo que se ve, después el aviso: la ficha vuelve a
+                  // lectura con lo recién guardado en la mano.
+                  setItem(guardado);
                   onSaved?.(guardado);
                 }}
                 disabled={ed.guardando || !nombreEd.trim()}

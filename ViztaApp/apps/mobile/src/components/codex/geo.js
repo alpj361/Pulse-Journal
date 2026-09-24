@@ -163,7 +163,10 @@ function rolDe(geo, geometry) {
 
   const t = geometry?.type;
   if (t === 'Point' || geo.boundary_type === 'point' || geo.boundary_type === 'place') return 'location';
-  if (geo.frontier || geo.boundary_id || ['departamento', 'municipio', 'zona'].includes(geo.boundary_type || '')) {
+  // `pais` entra en la lista desde que el catálogo tiene el nivel 1 poblado:
+  // un país vinculado desde el catálogo es una frontera como el departamento o
+  // el municipio, y sin esto caía en «otra forma» y se dibujaba distinto.
+  if (geo.frontier || geo.boundary_id || ['pais', 'departamento', 'municipio', 'zona'].includes(geo.boundary_type || '')) {
     return 'frontier';
   }
   if (t === 'Polygon' || t === 'MultiPolygon') return 'area';

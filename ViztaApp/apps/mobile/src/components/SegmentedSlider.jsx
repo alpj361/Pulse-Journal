@@ -26,7 +26,10 @@ import { roce } from '../utils/haptics';
  *
  * `tabs`: [{ id, label, accent, ink }]
  */
-export default function SegmentedSlider({ tabs, valor, onChange, style }) {
+// `onReselect` avisa cuando se toca la pestaña que ya estaba elegida. Sin él ese
+// toque no hacía nada, y había controles que lo necesitaban para volver a
+// plegarse sin cambiar de pestaña.
+export default function SegmentedSlider({ tabs, valor, onChange, onReselect, style }) {
   const [ancho, setAncho] = useState(0);
   const indice = Math.max(0, tabs.findIndex((t) => t.id === valor));
 
@@ -107,7 +110,10 @@ export default function SegmentedSlider({ tabs, valor, onChange, style }) {
             press.value = withSpring(0, MOTION.tap);
           }}
           onPress={() => {
-            if (t.id === valor) return;
+            if (t.id === valor) {
+              onReselect?.(t.id);
+              return;
+            }
             roce();
             onChange?.(t.id);
           }}

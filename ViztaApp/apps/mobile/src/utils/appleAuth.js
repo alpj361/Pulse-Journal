@@ -78,8 +78,9 @@ export async function signInWithApple() {
 /**
  * Devuelve el perfil del usuario; lo crea con `user_type: 'phone'` si no existe.
  *
- * `profiles` no tiene disparador de alta automática en `auth.users`, así que
- * la fila hay que crearla explícitamente tras el primer acceso.
+ * `profiles` es una tabla privada administrada por el sistema. El alta normal
+ * ocurre desde el disparador de `auth.users`; la RPC solo recupera cuentas
+ * antiguas o altas parciales sin permitir escritura directa sobre la tabla.
  */
 async function asegurarPerfil(usuario, nombre) {
   const { data: existente, error: errorLectura } = await supabase
@@ -91,25 +92,15 @@ async function asegurarPerfil(usuario, nombre) {
   if (errorLectura) {
     console.warn('[appleAuth] no se pudo leer el perfil:', errorLectura.message);
   }
-  if (existente) return existente;
+  if (existente) {
+    if (nombre) await guardarNombrePublico(usuario.id, nombre);
+    return existente;
+  }
 
-  const { data: creado, error: errorAlta } = await supabase
-    .from('profiles')
-    .insert({
-      id: usuario.id,
-      email: usuario.email ?? null,
-      user_type: APPLE_USER_TYPE,
-      role: 'user',
-      ...(nombre ? { phone: null } : {}),
-    })
-    .select('id, email, user_type, role, roles, credits')
-    .single();
+  const { error: errorAlta } = await supabase.rpc('ensure_my_account_profile');
 
   if (errorAlta) {
-    // El caso más probable es RLS: `profiles` no tiene política de INSERT para
-    // el propio usuario. Se devuelve un perfil mínimo para no dejar la sesión
-    // a medias, y se avisa arriba.
-    console.warn('[appleAuth] no se pudo crear el perfil:', errorAlta.message);
+    console.warn('[appleAuth] no se pudo recuperar el perfil privado:', errorAlta.message);
     return {
       id: usuario.id,
       email: usuario.email ?? null,
@@ -120,5 +111,36 @@ async function asegurarPerfil(usuario, nombre) {
     };
   }
 
+  if (nombre) await guardarNombrePublico(usuario.id, nombre);
+
+  const { data: creado, error: errorLecturaFinal } = await supabase
+    .from('profiles')
+    .select('id, email, user_type, role, roles, credits')
+    .eq('id', usuario.id)
+    .single();
+
+  if (errorLecturaFinal) {
+    console.warn('[appleAuth] el perfil privado no quedó disponible:', errorLecturaFinal.message);
+    return {
+      id: usuario.id,
+      email: usuario.email ?? null,
+      user_type: APPLE_USER_TYPE,
+      role: 'user',
+      _sinPerfil: true,
+      _motivo: errorLecturaFinal.message,
+    };
+  }
+
   return { ...creado, _recienCreado: true };
+}
+
+async function guardarNombrePublico(userId, nombre) {
+  const { error } = await supabase
+    .from('user_public_profiles')
+    .update({ display_name: nombre })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.warn('[appleAuth] no se pudo guardar el nombre público:', error.message);
+  }
 }

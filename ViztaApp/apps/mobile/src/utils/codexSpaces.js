@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { asegurarCupo, refrescarUso } from '../state/usoStore';
 
 /**
  * Espacios del Codex.
@@ -27,7 +28,7 @@ import { supabase } from './supabase';
 export async function listSpaces() {
   const { data, error } = await supabase
     .from('spaces')
-    .select('id, name, project_id, updated_at, data->canvasItems, data->cover')
+    .select('id, name, project_id, updated_at, data->canvasItems, data->cover, metadata->nota_principal')
     .order('updated_at', { ascending: false });
 
   if (error) throw error;
@@ -41,6 +42,9 @@ export async function listSpaces() {
     // Portada subida por el usuario. Vive en el jsonb `data`, así que no hizo
     // falta migrar la tabla; si no está, el sistema genera una.
     cover: typeof row.cover === 'string' ? row.cover : null,
+    // Si ya tiene historia. Al guardar una nota se ofrece hacerla la historia
+    // solo en los espacios que todavía no tienen una.
+    notaPrincipal: typeof row.nota_principal === 'string' ? row.nota_principal : null,
   }));
 }
 
@@ -264,49 +268,15 @@ export async function deleteNote(spaceId, noteId) {
   if (error) throw error;
 }
 
-/**
- * Quita items de un espacio.
- *
- * Solo desvincula: el item sigue existiendo en el Codex, deja de pertenecer a
- * este espacio. También se limpia su posición para no dejar basura en
- * `data.positions`.
- */
-export async function removeItemsFromSpace(spaceId, itemIds) {
-  if (!itemIds?.length) return 0;
-
-  const { data: current, error: readError } = await supabase
-    .from('spaces')
-    .select('data')
-    .eq('id', spaceId)
-    .maybeSingle();
-
-  if (readError) throw readError;
-  if (!current) throw new Error('El espacio ya no existe');
-
-  const blob = current.data || {};
-  const fuera = new Set(itemIds);
-  const quedan = (Array.isArray(blob.canvasItems) ? blob.canvasItems : []).filter((id) => !fuera.has(id));
-  const positions = Object.fromEntries(
-    Object.entries(blob.positions || {}).filter(([id]) => !fuera.has(id))
-  );
-
-  const { error } = await supabase
-    .from('spaces')
-    .update({
-      data: { ...blob, canvasItems: quedan, positions },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', spaceId);
-
-  if (error) throw error;
-  return itemIds.length;
-}
-
 /** Crea un espacio suelto (sin proyecto) y lo devuelve ya normalizado. */
 export async function createSpace(name, itemIds = []) {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData?.session?.user?.id;
   if (!userId) throw new Error('Sin sesión activa');
+
+  // Antes de crear, no después: enterarse del límite con el espacio ya hecho
+  // obligaría a borrarlo, y borrar lo recién creado se siente como un error.
+  await asegurarCupo('espacios');
 
   const { data, error } = await supabase
     .from('spaces')
@@ -319,6 +289,8 @@ export async function createSpace(name, itemIds = []) {
     .single();
 
   if (error) throw error;
+
+  refrescarUso({ forzar: true });
 
   return {
     id: data.id,
@@ -333,6 +305,68 @@ export async function renameSpace(spaceId, name) {
   const { error } = await supabase
     .from('spaces')
     .update({ name: name.trim(), updated_at: new Date().toISOString() })
+    .eq('id', spaceId);
+  if (error) throw error;
+}
+
+// ─── La nota principal de un espacio ──────────────────────────────────────────
+
+/**
+ * La nota principal de un espacio: su documento.
+ *
+ * **Es una nota de verdad**, un Snippet como cualquier otro: queda en el
+ * historial, resalta menciones y se puede buscar. Lo que la hace «principal»
+ * es un puntero en `spaces.metadata.nota_principal`, y por eso un espacio tiene
+ * **una sola** por construcción — no hay dos filas que puedan decir lo mismo.
+ *
+ * No se usa el rol `output` de `workspace_resources`: el MCP lo expone y la IA
+ * puede ponérselo a varias cosas de un espacio —un informe generado, por
+ * ejemplo—, y ahí «la principal» se mezclaría con cualquier salida.
+ *
+ * Devuelve el id solo si la nota sigue existiendo: un puntero a una nota
+ * borrada abriría una hoja vacía que dice estar editando algo.
+ */
+export async function notaPrincipalDe(spaceId) {
+  if (!spaceId) return null;
+  const { data: espacio, error } = await supabase
+    .from('spaces')
+    .select('metadata')
+    .eq('id', spaceId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const id = espacio?.metadata?.nota_principal || null;
+  if (!id) return null;
+
+  const { data: nota } = await supabase
+    .from('codex_universe_items')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  return nota?.id || null;
+}
+
+/**
+ * Marca una nota como la principal del espacio.
+ *
+ * Lee y mezcla antes de escribir: `metadata` puede tener otras claves, y el
+ * update reemplaza la columna entera.
+ */
+export async function marcarNotaPrincipal(spaceId, snippetId) {
+  const { data: actual, error: errLeer } = await supabase
+    .from('spaces')
+    .select('metadata')
+    .eq('id', spaceId)
+    .maybeSingle();
+  if (errLeer) throw errLeer;
+  if (!actual) throw new Error('El espacio ya no existe');
+
+  const { error } = await supabase
+    .from('spaces')
+    .update({
+      metadata: { ...(actual.metadata || {}), nota_principal: snippetId },
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', spaceId);
   if (error) throw error;
 }

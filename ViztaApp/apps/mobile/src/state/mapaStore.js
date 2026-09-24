@@ -25,6 +25,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const LAT_MAX = 85.05112878;
 
+// Lo que puede venir del disco. Un valor viejo o corrupto vuelve a «todo» en
+// vez de dejar el mapa filtrado por algo que ya no existe.
+const PROCEDENCIAS = new Set(['todo', 'items', 'notas', 'posts']);
+
 function valida(v) {
   if (!v) return null;
   const { lat, lng, zoom } = v;
@@ -52,8 +56,24 @@ export const useMapaStore = create(
        */
       ocultos: new Set(),
 
-      /** Las tres clases del mapa. Se guardan encendidas salvo que se apaguen. */
-      clases: { area: true, pin: true, ruta: true },
+      /**
+       * De dónde viene lo que se está mirando.
+       *
+       * `todo` · `items` (lo que cargaste vos) · `notas` (lo que mencionan tus
+       * notas) · `posts` (lo que mencionan los posts). Reemplazó a las tres
+       * clases por geometría —áreas, puntos, recorridos—, que eran nombres del
+       * programa: nadie abre el mapa preguntándose «¿quiero ver polígonos?».
+       */
+      procedencia: 'todo',
+
+      /**
+       * A qué escala se dibujan los límites. `null` es sin capa.
+       *
+       * Se persiste, y el valor de fábrica es `null` a propósito: el mapa abre
+       * limpio. Antes abría con los departamentos encima sin que nadie los
+       * pidiera, y esa capa tapa justo lo que se fue a mirar.
+       */
+      nivel: null,
 
       recordar: (camara) => {
         const limpia = valida(camara);
@@ -87,10 +107,11 @@ export const useMapaStore = create(
           return { ocultos: proximo };
         }),
 
-      alternarClase: (clase) =>
-        set((s) => ({ clases: { ...s.clases, [clase]: !s.clases[clase] } })),
+      elegirProcedencia: (procedencia) => set({ procedencia: procedencia || 'todo' }),
 
-      mostrarTodo: () => set({ ocultos: new Set(), clases: { area: true, pin: true, ruta: true } }),
+      elegirNivel: (nivel) => set({ nivel: nivel || null }),
+
+      mostrarTodo: () => set({ ocultos: new Set(), procedencia: 'todo', nivel: null }),
     }),
     {
       name: 'mapa-vizta',
@@ -98,7 +119,8 @@ export const useMapaStore = create(
       partialize: (s) => ({
         camara: s.camara,
         ocultos: Array.from(s.ocultos),
-        clases: s.clases,
+        procedencia: s.procedencia,
+        nivel: s.nivel,
       }),
       // Lo que ya está en disco pudo escribirse con una versión anterior —o
       // haberse corrompido—, así que se revalida al rehidratar en vez de
@@ -107,7 +129,8 @@ export const useMapaStore = create(
         ...actual,
         camara: valida(persistido?.camara),
         ocultos: new Set(Array.isArray(persistido?.ocultos) ? persistido.ocultos : []),
-        clases: { ...actual.clases, ...(persistido?.clases || {}) },
+        procedencia: PROCEDENCIAS.has(persistido?.procedencia) ? persistido.procedencia : 'todo',
+        nivel: typeof persistido?.nivel === 'string' ? persistido.nivel : null,
       }),
     }
   )

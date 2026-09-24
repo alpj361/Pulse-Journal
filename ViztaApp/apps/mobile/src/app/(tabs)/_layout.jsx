@@ -7,6 +7,7 @@ import NavOrb from '../../components/NavOrb';
 import CreateSnippetSheet from '../../components/codex/CreateSnippetSheet';
 import PostsSheet from '../../components/posts/PostsSheet';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
+import { useCapacidadesStore, refrescarCapacidades } from '../../state/capacidadesStore';
 import {
   useUltimoLugarStore,
   useRecordarLugar,
@@ -57,11 +58,11 @@ function BarraOrbe() {
   // significa perder el párrafo que acabás de escribir.
   const conectado = usePulseConnectionStore((s) => s.isConnected);
 
-  // Posts es solo para admins. Las cuentas nacidas en el teléfono
-  // (`user_type: 'phone'`) ven espacios y notas, no la biblioteca de posts.
-  // El rol ya viene en el perfil que guarda la sesión, así que no hace falta
-  // llamar a `is_admin`: es el mismo dato y evita un viaje.
+  // Posts depende del plan, no del rol: lo trae Weekly, y en Free se paga con
+  // créditos. Lo decide la base —la misma respuesta que usa el servidor para
+  // dejar pasar el gasto—, así que la app no tiene que saber las reglas.
   const esAdmin = usePulseConnectionStore((s) => s.connectedUser?.role) === 'admin';
+  const puedePosts = useCapacidadesStore((s) => !!s.capacidades?.posts);
   const userId = usePulseConnectionStore((s) => s.connectedUser?.id);
 
   useEffect(() => {
@@ -75,6 +76,11 @@ function BarraOrbe() {
   useEffect(() => {
     if (userId) identificar(userId, { admin: esAdmin });
   }, [userId, esAdmin]);
+
+  // Al entrar y cada vez que cambia de cuenta.
+  useEffect(() => {
+    refrescarCapacidades({ forzar: true });
+  }, [userId]);
 
   // Se anota la nota abierta solo cuando tiene id. Una nota nueva todavía no es
   // un lugar: no existe en la base, así que no hay nada que volver a pedir.
@@ -136,7 +142,7 @@ function BarraOrbe() {
         // La palanca solo existe si hay a dónde ir: para quien no es admin el
         // orbe sigue siendo un botón, sin un gesto que no lleva a nada.
         onArriba={
-          esAdmin && conectado
+          puedePosts && conectado
             ? () => {
                 evento(EV.POSTS_ABIERTOS);
                 setViendoPosts(true);

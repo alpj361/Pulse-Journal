@@ -83,3 +83,53 @@ export async function consultar(pregunta, modelo, hilo = null) {
     incompleta: !!json.incompleta,
   };
 }
+
+/**
+ * El prompt del sistema: el que rige y el de fábrica.
+ *
+ * Vienen juntos porque el editor necesita los dos — el activo para editarlo, y
+ * el de fábrica para poblarlo cuando todavía no hay uno propio. Traer una copia
+ * del de fábrica en la app sería tenerlo en dos lugares que se van separando.
+ */
+export async function leerSistema() {
+  const res = await fetch(`${BASE}/sistema`, {
+    headers: { Authorization: `Bearer ${await token()}` },
+  });
+
+  if (!res.ok) throw new Error('No se pudo leer el prompt');
+
+  const json = await res.json();
+  return {
+    predeterminado: json.predeterminado || '',
+    activo: json.activo || null,
+  };
+}
+
+/**
+ * Guardar el prompt.
+ *
+ * Escribe en `workshop_prompts`, que ya existía: es el mismo lugar del que la
+ * web levanta los prompts propios, así que lo que se edita acá también rige
+ * allá. No hay dos sitios donde configurar a Vizta.
+ *
+ * Con `id` actualiza el que estaba; sin `id` crea uno y lo deja activo — y el
+ * endpoint desactiva los demás al hacerlo, así que nunca quedan dos activos.
+ */
+export async function guardarSistema(texto, id = null) {
+  const jwt = await token();
+  const cuerpo = { prompt_text: texto, is_active: true };
+
+  const res = await fetch(
+    `${EXTRACTORW_URL}/api/workshop-prompts${id ? `/${id}` : ''}`,
+    {
+      method: id ? 'PUT' : 'POST',
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(id ? cuerpo : { name: 'Vizta en la app', ...cuerpo }),
+    }
+  );
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error || 'No se pudo guardar el prompt');
+
+  return json?.prompt || null;
+}

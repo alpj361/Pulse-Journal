@@ -25,6 +25,24 @@ let contador = 0;
 const conKey = (f) => ({ ...f, _k: f._k ?? `f${++contador}` });
 
 /**
+ * Bajo qué clave vive el valor de un campo.
+ *
+ * **Tiene que ser la misma al guardar y al leer**, y no lo era: el hook
+ * indexaba por `storage_key || label` y la ficha leía solo por `label`. Para un
+ * campo del catálogo las dos coinciden y nadie lo notaba; para un campo propio
+ * con `storage_key` distinto del label —«Sintético» guardado como
+ * `usr_sintetico`— el valor se escribía en un lado y se buscaba en otro, así
+ * que el control aparecía siempre vacío: un interruptor en «No» sobre un item
+ * que decía que sí.
+ *
+ * Se exporta para que quien pinte los campos use esta y no arme la suya.
+ *
+ * Los campos renombrables no traen `storage_key`, así que siguen indexados por
+ * etiqueta y `renombrarCampo` los sigue moviendo bien.
+ */
+export const claveDeCampo = (f) => f?.storage_key || f?.label;
+
+/**
  * Manda los campos del catálogo por su endpoint.
  *
  * Devuelve `null` si salió bien, o un objeto de error listo para mostrar. El
@@ -105,20 +123,35 @@ export default function useCamposEditables(item, tipo) {
   // tipo — por `field_key`, por `storage_key`/label, o por `FIELD_ALIASES`
   // (ej. `lider` → «Quién controla»). Sirve para decidir en `raw` cuáles
   // objetos son datos de catálogo editables y cuáles son blobs de sistema.
+  /**
+   * Qué claves reconoce el catálogo — **el catálogo entero, no solo el preset
+   * de este tipo.**
+   *
+   * Esta lista decide qué objeto de `details` es un campo editable y cuál es
+   * un blob de sistema. Medida contra el preset, un campo que el esquema sí
+   * conoce pero que no está en el preset de este tipo (creado con
+   * `createUserField`, o heredado de otro tipo) quedaba del lado de los blobs:
+   * **la ficha lo mostraba al leer y el editor no lo listaba**, que es la
+   * forma más común de este desalineo. Más abajo el hook ya consulta el
+   * esquema completo para resolver la definición de un campo; acá se usaba una
+   * medida más estrecha, y esa diferencia era el bug.
+   */
   const clavesDeCatalogo = useMemo(() => {
     const claves = new Set();
-    for (const f of preset) {
-      if (f.field_key) claves.add(f.field_key.toLowerCase());
-      const legacy = f.storage_key || f.label;
+    const anotar = (f) => {
+      if (f?.field_key) claves.add(String(f.field_key).toLowerCase());
+      const legacy = f?.storage_key || f?.label;
       if (legacy) claves.add(String(legacy).toLowerCase());
-    }
+    };
+    for (const f of preset) anotar(f);
+    for (const f of schemaUsuario?.campos || []) anotar(f);
     for (const [aliasKey, label] of Object.entries(FIELD_ALIASES)) {
       if (preset.some((f) => f.label.toLowerCase() === label.toLowerCase())) {
         claves.add(aliasKey.toLowerCase());
       }
     }
     return claves;
-  }, [preset]);
+  }, [preset, schemaUsuario]);
 
   /**
    * Valores crudos guardados, sin claves internas.
@@ -169,13 +202,45 @@ export default function useCamposEditables(item, tipo) {
       const vals = {};
       for (const [k, v] of Object.entries(raw)) {
         const alias = FIELD_ALIASES[k.toLowerCase()];
-        const def = porKey.get(k) || porLabel.get(k.toLowerCase()) || (alias ? porLabel.get(alias.toLowerCase()) : undefined);
+
+        /**
+         * El cuarto índice: **el esquema entero, no solo el preset**.
+         *
+         * `createUserField` da de alta un campo sin meterlo en ningún preset,
+         * así que todo campo propio caía al `else` y se editaba como texto con
+         * su clave técnica por nombre — «usr_sintetico» con valor «true» en vez
+         * de «Sintético» con su casilla. El esquema conoce el campo desde que
+         * se creó; solo faltaba preguntarle.
+         *
+         * Va después del preset porque el preset manda cuando ambos lo
+         * conocen: ahí la definición puede venir ajustada para ese tipo de item.
+         */
+        const delSchema =
+          schemaUsuario?.porKey?.get(k) || schemaUsuario?.porStorage?.get(k.toLowerCase());
+
+        const def =
+          porKey.get(k) ||
+          porLabel.get(k.toLowerCase()) ||
+          (alias ? porLabel.get(alias.toLowerCase()) : undefined) ||
+          (delSchema
+            ? {
+                field_key: delSchema.field_key,
+                storage_key: delSchema.storage_key,
+                label: delSchema.label,
+                type: delSchema.field_type,
+                options: delSchema.options,
+                poles: delSchema.poles,
+                cols: delSchema.cols,
+                readonly: delSchema.readonly,
+              }
+            : undefined);
+
         iniciales.push(conKey(def ? { ...def } : { label: k, type: 'texto', extra: true }));
         // Los valores se siguen indexando como llegaron: `guardar` todavía
         // escribe `details` directo a Supabase. Cambiar esta clave antes de
         // mover la escritura al endpoint dejaría los datos en un lugar que el
         // guardado actual no sabe encontrar.
-        vals[def ? def.storage_key || def.label : k] = v;
+        vals[def ? claveDeCampo(def) : k] = v;
       }
       setCampos(iniciales);
       setValues(vals);
@@ -281,25 +346,49 @@ export default function useCamposEditables(item, tipo) {
       setError(null);
       setErrorCampo(null);
       try {
-        // Solo los campos con dato y con etiqueta se escriben.
+        /**
+         * Solo los campos con dato y con etiqueta se escriben.
+         *
+         * **Bajo `claveDeCampo`, igual que en todos lados.** Acá se indexaba
+         * por `label` mientras el resto del hook —al cargar, al editar y al
+         * mandar el PATCH— usa `storage_key || label`. Para un campo cuyo
+         * `storage_key` difiere de su etiqueta («Sintético» guardado como
+         * `usr_sintetico`), `values[c.label]` es `undefined`: el campo se caía
+         * de `editados` y se borraba del item al guardar, además de escribirse
+         * bajo la clave equivocada si tenía valor.
+         */
         const editados = Object.fromEntries(
           campos
             .filter((c) => c.label?.trim())
-            .map((c) => [c.label.trim(), values[c.label]])
+            .map((c) => [String(claveDeCampo(c) || c.label).trim(), values[claveDeCampo(c)]])
             .filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length))
         );
 
         const fuenteOriginal = isUniverse ? item?.details || item?.metadata?.details || {} : item?.metadata || {};
-        // Las estructuras anidadas que este editor no muestra se conservan tal
-        // cual — pero solo las que de verdad no pasaron por el editor. Un
-        // objeto cuya clave está en `clavesDeCatalogo` (ej. `lider`) SÍ se
-        // editó, bajo su nombre canónico (`Quién controla`) — conservarlo acá
-        // además, con su clave cruda vieja, dejaría el mismo dato duplicado
-        // bajo dos nombres apenas se guardara una vez.
+
+        /**
+         * Lo que el editor nunca mostró se conserva tal cual.
+         *
+         * **El criterio es «no pasó por el editor», no «es un objeto».** Antes
+         * acá sobrevivían solo las estructuras anidadas, así que toda clave
+         * interna escalar o de lista —`dataset_visibility`, `actor_type`,
+         * `post_id`, `transcription`…— se borraba del item en el primer
+         * guardado: no entra en `raw` por interna, no entra en `editados`
+         * porque nadie la editó, y este filtro la descartaba por no ser
+         * objeto. Corregir el nombre de un actor le arrancaba media
+         * procedencia sin avisar. Con la lista de claves internas creciendo,
+         * ese agujero crecía con ella.
+         *
+         * Se mide contra `raw` —lo que el editor sí puso en pantalla— y no
+         * contra `editados`: una clave que se mostró y ya no está es un campo
+         * que alguien borró a propósito, y resucitarla haría imposible
+         * quitarlo. Las del catálogo tampoco se conservan: `lider` se edita
+         * como «Quién controla» y quedaría el mismo dato bajo dos nombres.
+         */
+        const mostradas = new Set(Object.keys(raw).map((k) => k.toLowerCase()));
         const sistema = Object.fromEntries(
           Object.entries(fuenteOriginal).filter(
-            ([k, v]) =>
-              typeof v === 'object' && v !== null && !Array.isArray(v) && !clavesDeCatalogo.has(k.toLowerCase())
+            ([k]) => !mostradas.has(k.toLowerCase()) && !clavesDeCatalogo.has(k.toLowerCase())
           )
         );
 
@@ -367,11 +456,66 @@ export default function useCamposEditables(item, tipo) {
            * traduce él mismo desde `field_key`. Esa traducción es justamente lo
            * que no hay que replicar en el cliente.
            */
+          /**
+           * Las referencias viajan como `{ id }` y nada más.
+           *
+           * El contrato es explícito —`hasOnlyKeys(value, ['id'])`— y el
+           * servidor hidrata `name` y `tipo` él mismo con el item real. El
+           * picker, en cambio, guarda `{id, name, tipo}` porque necesita el
+           * nombre para dibujar la pastilla; mandar eso tal cual devolvía
+           * `INVALID_FIELD_SHAPE` y **tumbaba el guardado entero**, no solo ese
+           * campo.
+           *
+           * Y hay un caso peor: los items importados traen la referencia en
+           * texto plano («Partido»: «VAMOS»). Ese valor no tiene UUID que
+           * mandar, así que se omite del PATCH —queda como está, que es lo que
+           * la persona ve— en vez de hacer fallar el guardado de todo lo demás
+           * cada vez que se abre una ficha vieja.
+           */
+          const REFERENCIAS = new Set(['ref', 'refs', 'archivo', 'imagen']);
+          const soloId = (v) => (v && typeof v === 'object' && v.id ? { id: v.id } : null);
+
           const porClave = {};
           for (const c of campos) {
             if (!c.field_key || c.readonly || c.type === 'formula') continue;
             const v = values[c.storage_key || c.label];
             if (v === undefined) continue;
+
+            if (REFERENCIAS.has(c.type)) {
+              if (v === null) {
+                porClave[c.field_key] = null;
+                continue;
+              }
+              if (c.type === 'refs') {
+                const ids = (Array.isArray(v) ? v : [v]).map(soloId).filter(Boolean);
+                if (ids.length) porClave[c.field_key] = ids;
+                continue;
+              }
+              const uno = soloId(v);
+              if (uno) porClave[c.field_key] = uno;
+              continue;
+            }
+
+            /**
+             * El eje viaja como `{ value }` y nada más.
+             *
+             * Mismo caso que las referencias: el contrato exige exactamente esa
+             * clave («los polos viven en la definición del campo»), pero el
+             * editor conserva `poles` dentro del valor y 14 de los 15 ejes
+             * guardados lo traen. Mandarlo tal cual devolvía
+             * `INVALID_FIELD_SHAPE` y tumbaba el guardado entero de la ficha.
+             * Los polos no se pierden: están en el catálogo, que es de donde
+             * el control los lee para dibujarse.
+             */
+            if (c.type === 'eje') {
+              if (v === null) {
+                porClave[c.field_key] = null;
+              } else if (v && typeof v === 'object' && Number.isInteger(v.value)) {
+                porClave[c.field_key] = { value: v.value };
+              }
+              continue;
+            }
+
             porClave[c.field_key] = v;
           }
 
@@ -435,7 +579,7 @@ export default function useCamposEditables(item, tipo) {
         return null;
       }
     },
-    [campos, values, item, isUniverse, dbId, tipo, clavesDeCatalogo]
+    [campos, values, item, isUniverse, dbId, tipo, clavesDeCatalogo, raw]
   );
 
   return {
