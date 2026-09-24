@@ -164,7 +164,3 @@ function ChipOrden({ label, activo, onPress }) {
     </Pressable>
   );
 }
-
-// Reexportado por compatibilidad: SpaceView, FreeCanvas, StructuredView,
-// y otros ya importan la taxonomía desde acá.
-export { normalizeTipo, TYPE_ACCENT, TYPE_ORDER };

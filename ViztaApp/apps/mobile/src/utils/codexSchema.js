@@ -336,6 +336,17 @@ export const INTERNAL_KEYS = new Set([
   'id', 'user_id', 'created_at', 'updated_at', 'avatar', 'research',
   'research_last_updated', 'thumbnail_url', 'embedding', '_source',
 
+  // Las fotos que se adjuntan a una nota desde el teléfono. Es una lista de
+  // objetos {url, storage_path, ancho, alto}, no un campo de investigación: la
+  // hoja de la nota las pinta como fotos y la ficha no tiene que escribirlas
+  // como un renglón de texto.
+  'usr_imagenes', 'usr_audios',
+
+  // Plomería del análisis de posts en segundo plano. `analysis` ya lo pinta la
+  // hoja del post con su propio diseño; el estado y el error son de la máquina,
+  // no del post, y no tienen por qué ocupar un renglón de la ficha.
+  'analysis', 'analysis_estado', 'analysis_error',
+
   // Legacy del contrato geográfico. El nivel de un territorio vive en
   // `geo.hierarchy.level` y la ficha ya lo muestra —«Departamento» con su
   // cheque— en la sección del mapa. Dejarlo acá lo escribía por segunda vez en
@@ -347,6 +358,29 @@ export const INTERNAL_KEYS = new Set([
   // fila y no qué es el territorio. Ocupaban un renglón cada uno en la ficha
   // para no decirle nada a nadie.
   'dataset_id', 'datasets', 'source',
+
+  // El resto de la misma plomería, que se escapaba: `dataset_visibility` dice
+  // «public» —permiso de la fila, no del actor—, `actor_type` dice «person»
+  // cuando la insignia de arriba ya dice ACTOR, y `original_type` es el nombre
+  // del tipo antes de migrar. Entre los tres aparecían en más de mil fichas.
+  'dataset_visibility', 'actor_type', 'original_type',
+
+  // Contrato interno: la declaración de campos propios que el backend lee para
+  // saber qué tipo tiene cada clave. Es esquema, no dato.
+  '__cx_custom_fields__', 'flag',
+
+  // La ruta interna de la portada de una nota. **`foto` no va acá**: es
+  // `sys_actor_foto`, un campo del catálogo con tipo `imagen`, y esconder un
+  // campo real del catálogo lo vuelve inaccesible para editarlo. Se muestra
+  // como miniatura, no como URL.
+  'portada_path',
+
+  // Todo lo que trae un post capturado. La hoja del post lo pinta con su
+  // propio diseño —video, carrusel, transcripción, métricas— y en la ficha del
+  // Codex serían quince renglones de plomería: ids, banderas y URLs.
+  'post_id', 'is_reel', 'is_twitter', 'video_url', 'images', 'extracted_images',
+  'transcription', 'tweet_metrics', 'analysis_v1', 'author', 'author_name',
+  'caption', 'permalink', 'media_type', 'shortcode', 'source_url',
 ]);
 
 /**
@@ -424,12 +458,41 @@ export function collectFields(item, schema, tipoCanonico) {
     });
   }
 
-  // Campos que el item trae pero el preset no contempla — se muestran igual.
+  /**
+   * Campos que el item trae pero el preset no contempla.
+   *
+   * **Se busca su definición en el esquema antes de rendirse.** No estar en un
+   * preset no significa ser desconocido: `createUserField` da de alta el campo
+   * sin agregarlo a ningún preset, así que todo campo propio caía acá — y acá
+   * se mostraba con su clave técnica por nombre (`usr_sintetico` en vez de
+   * «Sintético») y como texto plano, aunque el esquema supiera que es un
+   * booleano con su casilla.
+   *
+   * Con la definición a mano, un campo fuera del preset se ve exactamente igual
+   * que uno de adentro: su label y su control. Lo único que cambia es el orden
+   * en que aparece, que es lo que el preset decide de verdad.
+   */
   const extra = [];
   for (const [k, v] of Object.entries(raw)) {
     if (usadas.has(k) || INTERNAL_KEYS.has(k.toLowerCase())) continue;
-    const shown = formatValue(v);
-    if (shown) extra.push({ label: k, type: 'texto', value: shown, crudo: v, extra: true });
+
+    const def = schema?.porKey?.get(k) || schema?.porStorage?.get(k.toLowerCase()) || null;
+    const shown = formatValue(v, def?.field_type);
+    if (!shown) continue;
+
+    extra.push({
+      field_key: def?.field_key,
+      storage_key: def?.storage_key,
+      label: def?.label || k,
+      type: def?.field_type || 'texto',
+      value: shown,
+      crudo: v,
+      readonly: def?.readonly,
+      options: def?.options,
+      poles: def?.poles,
+      cols: def?.cols,
+      extra: true,
+    });
   }
 
   return { conDato, sinDato, extra };

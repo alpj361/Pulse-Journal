@@ -22,7 +22,6 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { INK, GLASS, CARD_SHADOW } from '../../components/theme';
 import SpacesStack from '../../components/codex/SpacesStack';
-import SpaceView from '../../components/codex/SpaceView';
 import ItemDetailSheet from '../../components/codex/ItemDetailSheet';
 import CreateSnippetSheet from '../../components/codex/CreateSnippetSheet';
 import AgregarSheet, { SubiendoDocumento } from '../../components/codex/AgregarSheet';
@@ -3043,12 +3042,6 @@ export default function CodexScreen() {
    */
   const esAdmin = connectedUser?.role === 'admin';
 
-  // Si la pestaña activa dejó de estar disponible —el perfil cargó tarde y no
-  // es admin, o se cerró sesión— se vuelve a Codex en vez de quedar en una
-  // pestaña que ya no se puede elegir.
-  useEffect(() => {
-    if (activeTab === 'datasets' || (activeTab === 'posts' && !esAdmin)) setActiveTab('codex');
-  }, [activeTab, esAdmin]);
 
 
   const [instagramPosts, setInstagramPosts] = useState([]);
@@ -3075,6 +3068,17 @@ export default function CodexScreen() {
   const [showMoveModal, setShowMoveModal] = useState(false);
 
   const [activeTab, setActiveTab] = useState('codex'); // 'codex' | 'posts' (admin)
+
+  // Si la pestaña activa dejó de estar disponible —el perfil cargó tarde y no
+  // es admin, o se cerró sesión— se vuelve a Codex en vez de quedar en una
+  // pestaña que ya no se puede elegir.
+  //
+  // Va después de declarar `activeTab`: el arreglo de dependencias se evalúa
+  // al renderizar, y usarlo antes de su `const` tiraba un ReferenceError apenas
+  // se abría esta pestaña.
+  useEffect(() => {
+    if (activeTab === 'datasets' || (activeTab === 'posts' && !esAdmin)) setActiveTab('codex');
+  }, [activeTab, esAdmin]);
   const [wikiFilter, setWikiFilter] = useState('Todos');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -3083,9 +3087,6 @@ export default function CodexScreen() {
   const [isLoadingSpaces, setIsLoadingSpaces] = useState(false);
   const [stackMode, setStackMode] = useState('espacios'); // 'espacios' | 'todo'
   const [openSpace, setOpenSpace] = useState(null);
-  // Rect de la pill desde la que se abrió el espacio, en coordenadas de
-  // ventana. SpaceView crece desde ahí y vuelve ahí al cerrarse.
-  const [spaceOrigen, setSpaceOrigen] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
 
   /**
@@ -3131,7 +3132,6 @@ export default function CodexScreen() {
           // Sin `origen` la vista se abre sin la animación de crecer desde la
           // pill: no hay pill de la cual crecer cuando nadie tocó nada.
           if (montado.current && space) {
-            setSpaceOrigen(null);
             setOpenSpace(space);
           }
         }
@@ -3789,21 +3789,16 @@ export default function CodexScreen() {
         />
       )}
 
-      {/* Espacio abierto. La ficha y el crear cuelgan de él cuando está abierto,
-          porque iOS solo presenta un Modal a la vez. */}
+      {/* Espacio abierto: su nota principal, en la hoja de notas. El documento
+          de un espacio ya no es un editor de bloques aparte, es una nota. */}
       {openSpace ? (
-        <SpaceView
-          space={openSpace}
-          origen={spaceOrigen}
+        <CreateSnippetSheet
+          espacioPrincipal={{ id: openSpace.id, name: openSpace.name }}
           onClose={() => setOpenSpace(null)}
-          onOpenItem={(item) => setDetailItem(item)}
-          onAddItems={() => setShowAgregar(true)}
+          onCreated={registrarNuevo}
           topInset={insets.top}
           bottomInset={insets.bottom}
-        >
-          {detailSheet}
-          {createSheet}
-        </SpaceView>
+        />
       ) : (
         <>
           {detailSheet}
@@ -4241,7 +4236,6 @@ export default function CodexScreen() {
               onModeChange={setStackMode}
               onOpenItem={(item) => setDetailItem(item)}
               onOpenSpace={(space, origen) => {
-                setSpaceOrigen(origen || null);
                 setOpenSpace(space);
               }}
               onNewItem={() => setShowAgregar(true)}

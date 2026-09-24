@@ -25,6 +25,8 @@ import Animated, {
 import {
   ChevronLeft,
   Folder,
+  HelpCircle,
+  ListFilter,
   FolderInput,
   FolderMinus,
   FolderPlus,
@@ -40,6 +42,13 @@ import { MONO } from '../codex/mono';
 import { Nombrador, Opcion, TENUE, etiquetaConteo } from '../codex/piezasCarpeta';
 import PostDetailSheet from './PostDetailSheet';
 import agregarPost, { enlaceDePost } from './agregarPost';
+import usePostsEnCurso from './usePostsEnCurso';
+import AnalizandoImagen, { TextoAnalizando } from './AnalizandoImagen';
+import { MarcaCarrusel } from './CarruselPost';
+import PanelAutofiltro from './PanelAutofiltro';
+import { cumple, facetasDe } from './autofiltro';
+import Pista from '../Pista';
+import { usePistasStore, PISTA } from '../../state/pistasStore';
 import * as Clipboard from 'expo-clipboard';
 import MorphingInfinity from '../MorphingInfinity';
 import { supabase } from '../../utils/supabase';
@@ -88,12 +97,45 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
 
   const [buscando, setBuscando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+
+  // Autofiltro: grupos que salen de los análisis. `seleccion` guarda un valor
+  // por grupo —{ pais: 'guatemala', tema: 'elecciones' }— y los grupos suman.
+  const [filtrando, setFiltrando] = useState(false);
+  const [seleccion, setSeleccion] = useState({});
+  const activos = Object.values(seleccion).filter(Boolean).length;
   const [abierta, setAbierta] = useState(null); // carpeta abierta
   const [abierto, setAbierto] = useState(null); // post abierto
 
   const [agregando, setAgregando] = useState(false); // caja de enlace abierta
   const [enlace, setEnlace] = useState('');
   const [trayendo, setTrayendo] = useState(false);
+  const [ayuda, setAyuda] = useState(false); // el «?» de qué enlaces entran
+
+  /**
+   * Los posts que el servidor todavía está trayendo se completan solos.
+   *
+   * La fila se reemplaza entera con lo que llegó: `update` sobre la fila trae
+   * todas las columnas, así que quedarse solo con `details` dejaría el nombre y
+   * la miniatura con los valores del marcador de posición.
+   */
+  // Si hay alguno trayéndose ahora. Alimenta la pista de una sola vez.
+  const hayEnCurso = (posts || []).some((p) => p?.details?.carga === 'procesando');
+
+  const marcarPista = usePistasStore((s) => s.marcar);
+
+  usePostsEnCurso(posts, (fila) => {
+    setPosts((prev) => (prev || []).map((p) => (p.id === fila.id ? { ...p, ...fila } : p)));
+    // Y el detalle, si es ese el que está abierto.
+    //
+    // `abierto` guarda su propia copia del post, no una referencia a la fila de
+    // la lista. Sin esta línea, abrir una tarjeta mientras todavía se estaba
+    // trayendo dejaba el detalle congelado en el marcador —sin descripción, sin
+    // transcripción, sin imágenes— aunque la grilla detrás ya se hubiera
+    // completado. Había que cerrar y volver a abrir para ver el post.
+    setAbierto((a) => (a && a.id === fila.id ? { ...a, ...fila } : a));
+    // Se completó uno: ya vio que el trabajo termina solo.
+    if (fila?.details?.carga !== 'procesando') marcarPista(PISTA.POST_EN_CURSO);
+  });
   const [errorAlta, setErrorAlta] = useState(null);
   // Si al abrir la caja hay que enfocar el campo. Ver `abrirAlta`.
   const [enfocarEnlace, setEnfocarEnlace] = useState(true);
@@ -146,6 +188,8 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     setTrayendo(true);
     setErrorAlta(null);
     try {
+      // Vuelve a medio llenar, con `details.carga === 'procesando'`. Se pinta
+      // ya mismo y `usePostsEnCurso` la ve completarse.
       const nuevo = await agregarPost(enlace);
       // La plataforma sale del propio enlace; el enlace no se manda.
       evento(EV.POST_AGREGADO, {
@@ -216,6 +260,26 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   }, [posts]);
 
   /**
+   * Sobre qué posts se arman los grupos del autofiltro.
+   *
+   * Dentro de una carpeta, sus posts. En la raíz, **la biblioteca entera**, no
+   * solo los sueltos: casi todo lo analizado vive dentro de carpetas, y filtrar
+   * por país en la raíz mirando solo lo suelto dejaba afuera justo lo que se
+   * había ordenado. La grilla sin filtro sigue mostrando solo lo suelto.
+   */
+  const alcance = useMemo(
+    () => (!posts ? [] : abierta ? posts.filter((p) => p.folder_id === abierta.id) : posts),
+    [posts, abierta]
+  );
+  const facetas = useMemo(() => facetasDe(alcance), [alcance]);
+
+  // Cada carpeta tiene sus propios grupos: un filtro elegido afuera no significa
+  // nada adentro, y dejarlo puesto escondería posts sin razón visible.
+  useEffect(() => {
+    setSeleccion({});
+  }, [abierta?.id]);
+
+  /**
    * Lo que se ve en la grilla: dentro de una carpeta, sus posts; afuera, los
    * que no están en ninguna. Guardar un post en una carpeta lo saca de la
    * galería suelta — si no, archivar no ordenaría nada y las carpetas serían
@@ -223,7 +287,11 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
    */
   const filtrados = useMemo(() => {
     if (!posts) return [];
-    const base = abierta ? posts.filter((p) => p.folder_id === abierta.id) : posts.filter((p) => !p.folder_id);
+    const base = activos
+      ? alcance.filter((p) => cumple(p, seleccion))
+      : abierta
+        ? alcance
+        : posts.filter((p) => !p.folder_id);
 
     const q = busqueda.trim().toLowerCase();
     if (!q) return base;
@@ -231,7 +299,7 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       const campos = [p.name, p.description, p.details?.author, ...(p.tags || [])];
       return campos.some((c) => String(c || '').toLowerCase().includes(q));
     });
-  }, [posts, busqueda, abierta]);
+  }, [posts, busqueda, abierta, alcance, seleccion, activos]);
 
   // ─── Acciones de carpeta ────────────────────────────────────────────────────
 
@@ -336,6 +404,17 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     setAgregando(false);
   };
 
+  const alternarFiltro = () => {
+    roce();
+    setFiltrando((f) => {
+      // Igual que la búsqueda: plegar el panel suelta el filtro, porque una
+      // grilla filtrada sin el panel a la vista esconde posts sin explicar por qué.
+      if (f) setSeleccion({});
+      return !f;
+    });
+    setAgregando(false);
+  };
+
   // Dos columnas. El ancho se calcula acá y no con flex para que la miniatura
   // pueda tener una relación de aspecto exacta: los reels son 9:16 y cualquier
   // redondeo distinto por columna se nota como un escalón entre las dos.
@@ -363,6 +442,22 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, paddingRight: 4 }}>
               {filtrados.length}
             </Text>
+          ) : null}
+
+          {/* El filtro solo aparece si hay algo por qué filtrar: sin posts
+              analizados, o sin nada que se repita, sería un botón que abre un
+              panel vacío. */}
+          {facetas.length || filtrando ? (
+            <Pressable
+              onPress={alternarFiltro}
+              hitSlop={12}
+              style={{ padding: 6 }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: filtrando }}
+              accessibilityLabel={filtrando ? 'Cerrar el filtro' : 'Filtrar por lo que hablan los posts'}
+            >
+              <ListFilter size={18} color={filtrando ? INK.title : INK.faint} />
+            </Pressable>
           ) : null}
 
           <Pressable
@@ -451,14 +546,62 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
 
               {/* Traer un reel puede tardar: baja el video y lo transcribe. Sin
                   decirlo, la espera se lee como que se colgó. */}
-              <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginTop: 9, lineHeight: 17 }}>
-                {errorAlta ||
-                  (trayendo
-                    ? 'bajando y transcribiendo… puede tardar'
-                    : abierta
-                      ? `se guarda en ${abierta.name}`
-                      : 'instagram, reels y X')}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 9 }}>
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, lineHeight: 17, flexShrink: 1 }}>
+                  {errorAlta ||
+                    (trayendo
+                      ? 'bajando y transcribiendo… puede tardar'
+                      : abierta
+                        ? `se guarda en ${abierta.name}`
+                        : 'instagram, reels y X')}
+                </Text>
+
+                {/* Qué entra y qué no.
+                
+                    «instagram, reels y X» alcanza para saber por dónde empezar,
+                    pero no dice que de X van los posts y no los videos, ni que
+                    un reel de baile se va a transcribir igual que uno con datos
+                    y va a costar lo mismo sin servir para nada. Eso es
+                    demasiado para un renglón bajo un campo, y esconderlo del
+                    todo hace que se aprenda pegando enlaces que fallan.
+                
+                    Un signo de interrogación es el término medio: no ocupa
+                    lugar y está donde surge la duda. */}
+                {!errorAlta && !trayendo ? (
+                  <Pressable
+                    onPress={() => {
+                      roce();
+                      setAyuda((a) => !a);
+                    }}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Qué enlaces se pueden traer"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.4 : 1, marginTop: -1 })}
+                  >
+                    <HelpCircle size={13} color={ayuda ? INK.title : TENUE} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {ayuda ? (
+                <Animated.View
+                  entering={FadeIn.duration(200)}
+                  exiting={FadeOut.duration(140)}
+                  style={{
+                    marginTop: 13,
+                    paddingLeft: 12,
+                    borderLeftWidth: 2,
+                    borderLeftColor: 'rgba(28,43,34,0.12)',
+                  }}
+                >
+                  <Linea titulo="instagram">reels y carruseles</Linea>
+                  <Linea titulo="X">solo posts</Linea>
+                  <Linea titulo="para qué">
+                    información — notas, análisis, declaraciones. No está pensada para
+                    entretenimiento.
+                  </Linea>
+                </Animated.View>
+              ) : null}
             </Animated.View>
           ) : null}
 
@@ -468,9 +611,28 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             </Animated.View>
           ) : null}
 
+          {filtrando ? (
+            <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={{ marginBottom: 6 }}>
+              <PanelAutofiltro
+                facetas={facetas}
+                seleccion={seleccion}
+                onElegir={(faceta, clave) =>
+                  setSeleccion((s) => {
+                    const siguiente = { ...s };
+                    if (clave) siguiente[faceta] = clave;
+                    else delete siguiente[faceta];
+                    return siguiente;
+                  })
+                }
+              />
+            </Animated.View>
+          ) : null}
+
           {/* La biblioteca solo existe en la raíz: dentro de una carpeta no hay
-              carpetas, y repetir el estante adentro del estante confunde. */}
-          {!abierta ? (
+              carpetas, y repetir el estante adentro del estante confunde. Con un
+              filtro puesto tampoco: lo filtrado ya incluye lo que está dentro
+              de las carpetas, y el estante encima haría creer que no. */}
+          {!abierta && !activos ? (
             <Biblioteca
               carpetas={carpetas}
               conteo={conteo}
@@ -488,11 +650,23 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             />
           ) : null}
 
+          {/* Que el trabajo sobrevive a cerrar la app. **Una vez.**
+          
+              Estaba dentro de cada tarjeta en curso: con tres trayéndose a la
+              vez, el mismo aviso aparecía tres veces, y seguía apareciendo el
+              post número cuarenta. Acá arriba se dice una sola vez, y se apaga
+              en cuanto uno se completa — ahí ya se vio que funciona. */}
+          {hayEnCurso ? (
+            <Pista clave={PISTA.POST_EN_CURSO} style={{ marginTop: 14 }}>
+              Puedes cerrar la app: seguiremos trayendo el post
+            </Pista>
+          ) : null}
+
           {posts === null ? (
             <ActivityIndicator size="small" color={INK.faint} style={{ marginTop: 40 }} />
           ) : filtrados.length === 0 ? (
             <Text style={{ fontFamily: MONO, fontSize: 12.5, color: TENUE, lineHeight: 20, marginTop: 24 }}>
-              {error || vacio(abierta, busqueda)}
+              {error || vacio(abierta, busqueda, activos)}
             </Text>
           ) : (
             <Animated.View
@@ -775,7 +949,16 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
   const [rota, setRota] = useState(false);
   const press = useSharedValue(0);
 
+  // El servidor todavía lo está trayendo, o no pudo.
+  const carga = post.details?.carga;
+  const trayendo = carga === 'procesando';
+  const fallado = carga === 'error';
+
   const uri = post.thumbnail_url || post.details?.thumbnail_url || post.details?.images?.[0];
+
+  // Cuántas imágenes trae. Se deduplica igual que en la hoja: la portada suele
+  // ser la primera del carrusel y contarla aparte daría un número de más.
+  const cuantasImagenes = new Set([uri, ...(post.details?.images || [])].filter(Boolean)).size;
   const autor = post.details?.author || (post.name || '').match(/^@([^—]+)/)?.[1]?.trim();
 
   // El caption sin el «@autor — » que el nombre trae adelante.
@@ -815,15 +998,72 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
             borderColor: 'rgba(28,43,34,0.08)',
           }}
         >
-          {uri && !rota ? (
-            <Image source={{ uri }} onError={() => setRota(true)} style={{ width: '100%', height: '100%' }} />
+          {trayendo ? (
+            /* Trayéndolo.
+            
+               La tarjeta aparece apenas se pega el enlace, con el escaneo en
+               lugar de la miniatura. Antes no había tarjeta hasta que todo
+               terminaba —y un reel tarda cerca de un minuto entre bajar el
+               audio y transcribirlo—, así que pegar el enlace no daba señal de
+               nada y la salida obvia era volver a pegarlo.
+            
+               La línea de abajo dice que **sigue aunque cierres la app**. No es
+               adorno: sin eso, una espera larga se lee como un cuelgue, y matar
+               la app era justo lo que antes rompía el trabajo. Ahora no, y
+               decirlo es lo que vuelve útil el cambio. */
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}>
+              <AnalizandoImagen size={26} color="rgba(28,43,34,0.45)" />
+              <View style={{ marginTop: 11 }}>
+                <TextoAnalizando>trayendo…</TextoAnalizando>
+              </View>
+            </View>
+          ) : fallado ? (
+            /* No se pudo. Se queda la tarjeta en vez de desaparecer: el post
+               que pegaste tiene que seguir estando para poder borrarlo, y una
+               tarjeta que se esfuma sola no se distingue de una que nunca se
+               creó. */
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 }}>
+              <Text
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 10,
+                  color: '#B91C1C',
+                  textAlign: 'center',
+                  lineHeight: 16,
+                }}
+              >
+                {post.details?.carga_error || 'no se pudo traer'}
+              </Text>
+            </View>
+          ) : uri && !rota ? (
+            <>
+              <Image source={{ uri }} onError={() => setRota(true)} style={{ width: '100%', height: '100%' }} />
+              {/* Que hay más de una. Sin esto, un carrusel se ve idéntico a
+                  una foto suelta y nadie lo abre para descubrir que había seis. */}
+              <MarcaCarrusel cuantas={cuantasImagenes} />
+            </>
+          ) : texto ? (
+            /* Sin imagen: la tarjeta **es** el texto.
+            
+               Hoy los tweets vienen solo con texto, y antes eso daba una inicial
+               gigante sobre un rectángulo gris: una letra que no dice nada,
+               ocupando la mitad de la tarjeta, con el contenido real apretado en
+               dos renglones abajo. Puesto acá, el mismo espacio muestra el post.
+            
+               Cuando vuelva a haber imágenes, esta rama no estorba: solo entra
+               si no hay ninguna. */
+            <View style={{ flex: 1, padding: 13, justifyContent: 'flex-start' }}>
+              <Text
+                numberOfLines={9}
+                style={{ fontFamily: MONO, fontSize: 11.5, lineHeight: 18, color: 'rgba(28,43,34,0.72)' }}
+              >
+                {texto}
+              </Text>
+            </View>
           ) : (
-            /* Sin miniatura: monograma en vez de un rectángulo vacío.
-               Las miniaturas son URLs firmadas de Instagram que caducan en
-               días — las de este Codex vencieron el 3 de agosto— así que este
-               no es el caso raro sino el habitual, y un hueco gris repetido 43
-               veces se lee como que la pantalla se rompió. La inicial del autor
-               al menos distingue una tarjeta de otra. */
+            /* Ni imagen ni texto: la inicial, para que la tarjeta no sea un
+               hueco gris idéntico a los demás. Es el último recurso, no el
+               caso normal. */
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontFamily: MONO, fontSize: 30, color: 'rgba(28,43,34,0.16)' }}>
                 {(autor || '?').trim().charAt(0).toUpperCase()}
@@ -838,7 +1078,10 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
           </Text>
         ) : null}
 
-        {texto ? (
+        {/* El texto, solo si la tarjeta mostró una imagen. Con la tarjeta de
+            texto ya está arriba, y repetirlo cuatro dedos más abajo es decir
+            dos veces lo mismo en la misma pantalla. */}
+        {texto && uri && !rota ? (
           <Text numberOfLines={2} style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.42)', lineHeight: 17, marginTop: 3 }}>
             {texto}
           </Text>
@@ -848,8 +1091,36 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
   );
 }
 
-function vacio(abierta, busqueda) {
-  if (busqueda) return 'nada con eso.';
+function vacio(abierta, busqueda, activos) {
+  if (busqueda || activos) return 'nada con eso.';
   if (abierta) return 'esta carpeta está vacía.';
   return 'todavía no hay posts.';
+}
+
+/**
+ * Un renglón de la ayuda.
+ *
+ * Etiqueta angosta a la izquierda y el texto a la derecha, la misma forma que
+ * los detalles de una nota. Sin la columna fija, «instagram» y «X» quedaban a
+ * distinta altura y las tres líneas no se leían como una lista.
+ */
+function Linea({ titulo, children }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 7 }}>
+      <Text style={{ fontFamily: MONO, fontSize: 10.5, color: 'rgba(28,43,34,0.3)', width: 62 }}>
+        {titulo}
+      </Text>
+      <Text
+        style={{
+          fontFamily: MONO,
+          fontSize: 10.5,
+          color: 'rgba(28,43,34,0.5)',
+          lineHeight: 16,
+          flex: 1,
+        }}
+      >
+        {children}
+      </Text>
+    </View>
+  );
 }

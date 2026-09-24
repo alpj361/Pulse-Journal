@@ -145,6 +145,8 @@ export default function MapaVizta({
   niebla = null,
   nivel,
   elegido,
+  /** Dónde está la persona. Ver `useMiUbicacion`. */
+  yo = null,
   onTocar,
   onExplorar,
   modo = 'navegar',
@@ -166,6 +168,18 @@ export default function MapaVizta({
   const [origen, setOrigen] = useState({ x: 0, y: 0 });
 
   /**
+   * El juego de teselas del zoom anterior, mientras el nuevo llega.
+   *
+   * Al cruzar de nivel entero, las teselas viejas dejaban de dibujarse en el
+   * mismo frame en que se pedían las nuevas: por la red, eso es medio segundo
+   * de mapa en blanco —y al volver, un parpadeo—. Los mapas de verdad no
+   * hacen eso: dejan el nivel anterior abajo, escalado, hasta que el nuevo
+   * está. Esta capa es eso, y se retira sola.
+   */
+  const [previo, setPrevio] = useState(null);
+  const limpiezaPrevio = useRef(null);
+
+  /**
    * El ancla de las capas del Codex.
    *
    * Las teselas se recolocan con `origen`, que cambia cada vez que el rango
@@ -181,6 +195,13 @@ export default function MapaVizta({
   });
 
   const claveVista = useRef('');
+
+  // Espejos de lo que se está dibujando, para poder guardarlo como respaldo sin
+  // meter esos estados en las dependencias de `recomputar` —que se recrearía en
+  // cada movimiento, que es justo lo que no puede pasar.
+  const teselasRef = useRef([]);
+  const origenRef = useRef({ x: 0, y: 0 });
+  const bloqueRef = useRef({ w: 0, h: 0 });
 
   /**
    * El origen del bloque de teselas que se está dibujando.
@@ -201,6 +222,49 @@ export default function MapaVizta({
   const ultimaExploracion = useSharedValue(0);
 
   /** Recalcula el juego de teselas. Solo se llama cuando el rango cambió. */
+  /**
+   * Avisar hacia afuera dónde quedó la cámara, con freno.
+   *
+   * Quien usa el mapa —`MapaSheet`— guarda esa posición, recorta la niebla y
+   * decide qué polígonos entran en pantalla. Nada de eso necesita enterarse en
+   * el instante: arrastrando rápido se cruzan varias fronteras de tesela por
+   * segundo, y cada aviso era un render completo del árbol del mapa en medio
+   * del gesto. Ese era el tirón.
+   *
+   * Se avisa como mucho cada 300 ms **y siempre al final**, con un último
+   * disparo diferido: sin él, soltar justo después de un aviso dejaría la
+   * posición real sin registrar.
+   */
+  const ultimoAviso = useRef(0);
+  const avisoPendiente = useRef(null);
+
+  const avisarMovimiento = useCallback(
+    (donde) => {
+      if (!onMover) return;
+      if (avisoPendiente.current) clearTimeout(avisoPendiente.current);
+
+      const ahora = Date.now();
+      if (ahora - ultimoAviso.current > 300) {
+        ultimoAviso.current = ahora;
+        onMover(donde);
+        return;
+      }
+      avisoPendiente.current = setTimeout(() => {
+        ultimoAviso.current = Date.now();
+        onMover(donde);
+      }, 300);
+    },
+    [onMover]
+  );
+
+  useEffect(
+    () => () => {
+      clearTimeout(avisoPendiente.current);
+      clearTimeout(limpiezaPrevio.current);
+    },
+    []
+  );
+
   const recomputar = useCallback(
     (la, ln, zf) => {
       const z = Math.round(limitar(zf, Z_MIN, Z_MAX));
@@ -212,7 +276,21 @@ export default function MapaVizta({
       if (clave === claveVista.current) return;
       claveVista.current = clave;
 
-      setZInt(z);
+      // Antes de cambiar de nivel se guarda el juego actual como respaldo: es
+      // lo que se ve debajo mientras las teselas nuevas llegan por la red.
+      setZInt((anterior) => {
+        if (anterior !== z && teselasRef.current.length) {
+          setPrevio({
+            teselas: teselasRef.current,
+            zInt: anterior,
+            origen: origenRef.current,
+            bloque: bloqueRef.current,
+          });
+          clearTimeout(limpiezaPrevio.current);
+          limpiezaPrevio.current = setTimeout(() => setPrevio(null), 900);
+        }
+        return z;
+      });
       // Tres anillos por delante, no dos: en una red de teléfono real —a
       // diferencia del simulador, que sirve del caché del Mac— la tesela que
       // recién entra al margen todavía puede estar en camino cuando el dedo la
@@ -229,6 +307,7 @@ export default function MapaVizta({
       );
       const ox = crudas.length ? Math.min(...crudas.map((t) => t.px)) : 0;
       const oy = crudas.length ? Math.min(...crudas.map((t) => t.py)) : 0;
+      origenRef.current = { x: ox, y: oy };
       setOrigen({ x: ox, y: oy });
       const locales = crudas.map((t) => ({
         ...t,
@@ -236,18 +315,21 @@ export default function MapaVizta({
         ly: t.py - oy,
         visible: visiblesAhora.has(t.clave),
       }));
+      teselasRef.current = locales;
       setTeselas(locales);
 
       // El cambio de ancla recrea paths Skia. Durante un arrastre eso dejaba un
       // frame vacío; por eso solo se reemplaza al cambiar de zoom entero.
       setAncla((prev) => (prev.z === z ? prev : { x: cx, y: cy, z }));
-      setBloque({
+      const caja = {
         w: locales.length ? Math.max(...locales.map((t) => t.lx)) + TESELA : 0,
         h: locales.length ? Math.max(...locales.map((t) => t.ly)) + TESELA : 0,
-      });
-      onMover?.({ lat: la, lng: ln, zoom: zf });
+      };
+      bloqueRef.current = caja;
+      setBloque(caja);
+      avisarMovimiento({ lat: la, lng: ln, zoom: zf });
     },
-    [ancho, alto, onMover]
+    [ancho, alto, avisarMovimiento]
   );
 
   useEffect(() => {
@@ -666,6 +748,19 @@ export default function MapaVizta({
     };
   }, [ancho, alto, zInt, origen]);
 
+  const lienzoPrevio = useAnimatedStyle(() => {
+    if (!previo) return { opacity: 0 };
+    const k = Math.pow(2, zoom.value - previo.zInt);
+    return {
+      opacity: 1,
+      transform: [
+        { translateX: ancho / 2 + (previo.origen.x - lngAX(lng.value, previo.zInt)) * k },
+        { translateY: alto / 2 + (previo.origen.y - latAY(lat.value, previo.zInt)) * k },
+        { scale: k },
+      ],
+    };
+  }, [ancho, alto, previo]);
+
   return (
     <View style={{ width: ancho, height: alto, overflow: 'hidden', backgroundColor: '#EDEBE3' }}>
       {/* Los gestos solo pertenecen al lienzo. Los controles del Codex son
@@ -673,6 +768,29 @@ export default function MapaVizta({
           el polígono que quedó debajo del botón. */}
       <GestureDetector gesture={gesto}>
         <View style={{ position: 'absolute', left: 0, top: 0, width: ancho, height: alto }}>
+        {/* El nivel anterior, debajo. Se ve solo en el rato que tardan las
+            teselas nuevas: sin él, cambiar de zoom era un parpadeo a blanco. */}
+        {previo ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              {
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: previo.bloque.w,
+                height: previo.bloque.h,
+                transformOrigin: 'top left',
+              },
+              lienzoPrevio,
+            ]}
+          >
+            {previo.teselas.map((t) => (
+              <Tesela key={`previo-${t.clave}`} t={t} nivel={previo.zInt} />
+            ))}
+          </Animated.View>
+        ) : null}
+
         <Animated.View
           style={[
             {
@@ -713,6 +831,7 @@ export default function MapaVizta({
           mostrarCalor={mostrarCalor}
           borrador={borrador}
           niebla={niebla}
+          yo={yo}
           nivel={nivel}
           elegido={elegido}
         />

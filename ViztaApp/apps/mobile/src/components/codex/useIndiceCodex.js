@@ -43,7 +43,9 @@ async function traer() {
     const { data, error } = await supabase
       .from('codex_universe_items')
       .select('id, name, tipo, aliases')
-      .not('tipo', 'in', '("Snippet","Post")')
+      // `Fact` también afuera: su nombre es una oración entera, y pintarla al
+      // escribir algo parecido marcaría media frase como si fuera un nombre.
+      .not('tipo', 'in', '("Snippet","Post","Fact")')
       .order('id', { ascending: true })
       .range(desde, desde + PAGINA - 1);
 
@@ -55,6 +57,30 @@ async function traer() {
   }
 
   return construirIndice(filas);
+}
+
+/**
+ * El mismo índice, fuera de un componente.
+ *
+ * Comparte la caché y el pedido en vuelo con el hook: el grafo de un espacio
+ * lo necesita para saber qué nombra la nota principal, y bajar el Codex entero
+ * dos veces —una para la hoja y otra para el grafo— sería pagar dos veces lo
+ * mismo.
+ */
+export async function indiceCodex() {
+  const fresco = cache.indice && Date.now() - cache.cuando < VIGENCIA_MS;
+  if (fresco) return cache.indice;
+  if (!enVuelo) {
+    enVuelo = traer()
+      .then((nuevo) => {
+        cache = { indice: nuevo, cuando: Date.now() };
+        return nuevo;
+      })
+      .finally(() => {
+        enVuelo = null;
+      });
+  }
+  return enVuelo;
 }
 
 export function invalidarIndice() {

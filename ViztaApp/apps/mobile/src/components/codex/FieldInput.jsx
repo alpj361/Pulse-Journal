@@ -15,6 +15,9 @@ import { INK, GLASS } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
 import Slider from '@react-native-community/slider';
 import { supabase } from '../../utils/supabase';
+import CampoFecha from './CampoFecha';
+import CampoGeo from './CampoGeo';
+import CampoArchivo from './CampoArchivo';
 
 /**
  * Controles por tipo de dato del Codex.
@@ -185,7 +188,23 @@ function RefPicker({ value, multiple, onChange, accent }) {
   const [q, setQ] = useState('');
   const [resultados, setResultados] = useState([]);
   const [buscando, setBuscando] = useState(false);
-  const seleccionadas = multiple ? (Array.isArray(value) ? value : []) : value ? [value] : [];
+  /**
+   * Lo que ya está puesto, venga como venga.
+   *
+   * Un campo `ref` no siempre guarda `{id, name, tipo}`: los items importados
+   * de datasets traen el nombre en texto plano. Leído como objeto, ese texto
+   * daba una pastilla sin letras —`r.name` es `undefined`— y encima tapaba el
+   * buscador, así que el campo quedaba imposible de corregir: ni se veía lo
+   * que había ni se podía poner otra cosa.
+   */
+  const crudas = Array.isArray(value) ? value : value || value === 0 ? [value] : [];
+  const seleccionadas = crudas
+    .map((v) =>
+      v && typeof v === 'object'
+        ? { id: v.id || null, name: v.name || v.nombre || v.label || v.titulo || null, tipo: v.tipo || null }
+        : { id: null, name: String(v), tipo: null }
+    )
+    .filter((r) => r.id || r.name);
 
   useEffect(() => {
     const t = q.trim();
@@ -212,15 +231,19 @@ function RefPicker({ value, multiple, onChange, accent }) {
   }, [q]);
 
   const agregar = (item) => {
-    // Shape de ThePulse: { id, name, tipo }
+    // Shape de ThePulse: { id, name, tipo }. Al guardar se recorta a `{ id }`,
+    // que es lo único que el contrato acepta; el nombre vive acá para la
+    // pastilla y para que la ficha lo muestre sin esperar a releer del backend.
     const ref = { id: item.id, name: item.name, tipo: item.tipo };
-    onChange(multiple ? [...seleccionadas.filter((r) => r.id !== ref.id), ref] : ref);
+    onChange(multiple ? [...crudas.filter((r) => r?.id !== ref.id), ref] : ref);
     setQ('');
     setResultados([]);
   };
 
-  const quitar = (id) => {
-    if (multiple) onChange(seleccionadas.filter((r) => r.id !== id));
+  // Por posición y no por id: un valor viejo en texto plano no tiene id, y
+  // filtrar por `undefined` los quitaba todos de una.
+  const quitar = (i) => {
+    if (multiple) onChange(crudas.filter((_, j) => j !== i));
     else onChange(null);
   };
 
@@ -228,10 +251,10 @@ function RefPicker({ value, multiple, onChange, accent }) {
     <View>
       {seleccionadas.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-          {seleccionadas.map((r) => (
-            <Animated.View key={r.id} entering={FadeIn.duration(180)} layout={LinearTransition.springify()}>
+          {seleccionadas.map((r, i) => (
+            <Animated.View key={r.id || `t${i}`} entering={FadeIn.duration(180)} layout={LinearTransition.springify()}>
               <Pressable
-                onPress={() => quitar(r.id)}
+                onPress={() => quitar(i)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -244,7 +267,7 @@ function RefPicker({ value, multiple, onChange, accent }) {
                   borderColor: `${accent}33`,
                 }}
               >
-                <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>{r.name}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: accent }}>{r.name || 'vinculado'}</Text>
                 <X size={11} color={accent} />
               </Pressable>
             </Animated.View>
@@ -252,7 +275,10 @@ function RefPicker({ value, multiple, onChange, accent }) {
         </View>
       ) : null}
 
-      {multiple || seleccionadas.length === 0 ? (
+      {/* El buscador sigue a la vista mientras lo puesto no sea un vínculo de
+          verdad: con un nombre en texto plano, esconderlo dejaba el campo sin
+          manera de corregirse. */}
+      {multiple || seleccionadas.length === 0 || !seleccionadas[0].id ? (
         <View style={[inputStyle, { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 }]}>
           <Search size={14} color={INK.faint} />
           <TextInput
@@ -374,7 +400,12 @@ function SoloLectura({ children }) {
   );
 }
 
-export default function FieldInput({ field, value, onChange, accent = INK.title }) {
+/**
+ * `contexto` es de quién es el campo: `{ itemId, tipo }`, y al crear también
+ * `{ pendientesRostro, onPendienteRostro }`. Casi ningún control lo necesita; la
+ * foto de un actor sí, para ofrecer usarla en el reconocimiento.
+ */
+export default function FieldInput({ field, value, onChange, accent = INK.title, contexto = null }) {
   const { type, options, poles, cols, readonly } = field;
 
   if (readonly || type === 'formula') {
@@ -399,16 +430,57 @@ export default function FieldInput({ field, value, onChange, accent = INK.title 
         </View>
       );
 
-    case 'dropdown':
+    case 'dropdown': {
+      const lista = Array.isArray(options) ? options.filter(Boolean) : [];
+
+      /**
+       * Sin opciones no hay nada que elegir, y el control quedaba en blanco.
+       *
+       * Un campo del catálogo trae sus opciones, pero uno creado a mano —o uno
+       * cuyo valor llegó bajo una clave que no calza con ninguna definición—
+       * llega sin ellas: el `map` sobre una lista vacía dibujaba un `View` de
+       * cero alto y el campo parecía roto, sin manera de escribir ni de elegir.
+       * Con el texto libre al menos se puede poner el valor; el aviso dice por
+       * qué no hay pastillas.
+       */
+      if (!lista.length) {
+        return (
+          <View style={{ gap: 6 }}>
+            <TextInput
+              value={value == null ? '' : String(value)}
+              onChangeText={(t) => onChange(t === '' ? null : t)}
+              placeholder="Escribí el valor"
+              placeholderTextColor={INK.faint}
+              style={inputStyle}
+            />
+            <Text style={{ fontSize: 11.5, color: INK.faint }}>
+              Este campo todavía no tiene opciones definidas.
+            </Text>
+          </View>
+        );
+      }
+
       return (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {(options || []).map((op) => (
+          {lista.map((op) => (
             <Pastilla key={op} activo={value === op} accent={accent} onPress={() => onChange(value === op ? null : op)}>
               {op}
             </Pastilla>
           ))}
+          {/* Un valor que no está entre las opciones existe igual —lo puso el
+              análisis, o cambió el catálogo— y esconderlo haría creer que el
+              campo está vacío. Se muestra marcado y se puede quitar. */}
+          {value != null && value !== '' && !lista.includes(value) ? (
+            <Pastilla activo accent={accent} onPress={() => onChange(null)}>
+              {String(value)}
+            </Pastilla>
+          ) : null}
         </View>
       );
+    }
+
+    case 'fecha':
+      return <CampoFecha value={value} onChange={onChange} accent={accent} />;
 
     case 'escala':
       return <Escala value={value} onChange={onChange} accent={accent} />;
@@ -480,29 +552,8 @@ export default function FieldInput({ field, value, onChange, accent = INK.title 
       );
     }
 
-    case 'geo': {
-      const v = value && typeof value === 'object' ? value : {};
-      return (
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput
-            value={v.lat != null ? String(v.lat) : ''}
-            onChangeText={(t) => onChange({ ...v, lat: t === '' ? undefined : Number(t) })}
-            placeholder="lat (14.6349)"
-            placeholderTextColor={INK.faint}
-            keyboardType="numbers-and-punctuation"
-            style={[inputStyle, { flex: 1 }]}
-          />
-          <TextInput
-            value={v.lng != null ? String(v.lng) : ''}
-            onChangeText={(t) => onChange({ ...v, lng: t === '' ? undefined : Number(t) })}
-            placeholder="lng (−90.5069)"
-            placeholderTextColor={INK.faint}
-            keyboardType="numbers-and-punctuation"
-            style={[inputStyle, { flex: 1 }]}
-          />
-        </View>
-      );
-    }
+    case 'geo':
+      return <CampoGeo value={value} onChange={onChange} accent={accent} />;
 
     case 'porcentaje': {
       // Se guarda decimal 0..1 y se muestra ×100, igual que en la web.
@@ -573,20 +624,27 @@ export default function FieldInput({ field, value, onChange, accent = INK.title 
       );
 
     case 'archivo':
-    case 'imagen': {
-      const esObjeto = value != null && typeof value === 'object';
-      const texto = esObjeto ? value.url || value.name || '' : value || '';
+    case 'imagen':
       return (
-        <TextInput
-          value={texto}
-          onChangeText={(t) => onChange(t === '' ? null : esObjeto ? { ...value, url: t } : t)}
-          placeholder="URL del archivo"
-          placeholderTextColor={INK.faint}
-          autoCapitalize="none"
-          style={inputStyle}
+        <CampoArchivo
+          value={value}
+          onChange={onChange}
+          soloImagen={type === 'imagen'}
+          accent={accent}
+          // Solo en la foto de un Actor. Si ya existe, el chequecito indexa en
+          // el momento; si se está creando, anota la intención y la ficha la
+          // cumple al guardar, cuando ya hay a quién asociarle la cara.
+          reconocer={
+            type === 'imagen' && String(contexto?.tipo || '').toLowerCase() === 'actor'
+              ? contexto?.itemId
+                ? { actorId: contexto.itemId }
+                : contexto?.onPendienteRostro
+                  ? { actorId: null, pendientes: contexto.pendientesRostro, onPendiente: contexto.onPendienteRostro }
+                  : null
+              : null
+          }
         />
       );
-    }
 
     default: {
       // parrafo: fallback cuando el valor guardado no es string — suele ser un

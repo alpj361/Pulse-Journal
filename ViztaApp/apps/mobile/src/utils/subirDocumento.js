@@ -1,5 +1,6 @@
 import { File } from 'expo-file-system';
 import { supabase } from './supabase';
+import { asegurarCupo } from '../state/usoStore';
 
 /**
  * `expo-document-picker` se carga al usarlo, no al importar este archivo.
@@ -26,7 +27,7 @@ function cargarPicker() {
  * Sigue la convención que ya usan los documentos existentes en la base, para no
  * inventar un segundo formato:
  *
- *  · bucket        `digitalstorage` (público)
+ *  · bucket        `digitalstorage` (privado)
  *  · storage_path  `<user_id>/movil/<timestamp>_<nombre_saneado>`
  *  · tabla         `codex_items` con `tipo: 'documento'`
  *
@@ -115,14 +116,14 @@ export async function elegirYSubirDocumento({ alEmpezarSubida } = {}) {
 
   const bytes = await archivo.bytes();
 
+  await asegurarCupo('almacenamiento', bytes.length);
+
   const storagePath = `${userId}/movil/${Date.now()}_${sanear(nombre)}`;
   const { error: errorSubida } = await supabase.storage.from(BUCKET).upload(storagePath, bytes, {
     contentType: mime,
     upsert: false,
   });
   if (errorSubida) throw new Error(errorSubida.message || 'No se pudo subir el archivo');
-
-  const { data: publico } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
 
   const fila = {
     user_id: userId,
@@ -131,7 +132,9 @@ export async function elegirYSubirDocumento({ alEmpezarSubida } = {}) {
     nombre_archivo: nombre,
     tamano,
     storage_path: storagePath,
-    url: publico?.publicUrl || null,
+    // La URL se firma al abrir el archivo. Guardar una URL pública o una firma
+    // temporal en la fila rompería la privacidad o quedaría vencida.
+    url: null,
     fecha: new Date().toISOString().slice(0, 10),
     proyecto: 'Sin proyecto',
   };

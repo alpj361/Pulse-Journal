@@ -20,6 +20,7 @@ export const TYPE_ORDER = [
   'Historia',
   'Objeto',
   'Artefacto',
+  'Ref',
   'Snippet',
   'Post',
 ];
@@ -37,6 +38,13 @@ export const TYPE_ACCENT = {
   Artefacto: '#3F3A38',
   Snippet: '#5A6B60',
   Post: '#E1306C',
+  // Un hecho guardado de un post. Tinta neutra y oscura: es un dato, no una
+  // categoría que compita en color con las entidades de alrededor.
+  Fact: '#374151',
+  // Algo que existe en tu universo de información pero no en el modelo
+  // analítico: una película, un libro. Tinta cálida y apagada; el color fuerte
+  // lo pone su material.
+  Ref: '#57534E',
 };
 
 // wiki_items guarda la subcategoría en inglés y en español legacy; los tipos

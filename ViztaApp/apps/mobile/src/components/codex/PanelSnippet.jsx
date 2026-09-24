@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image as Foto } from 'expo-image';
 import Animated, {
   FadeIn,
   LinearTransition,
@@ -12,6 +13,7 @@ import { INK, MOTION, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { TYPE_ACCENT, normalizeTipo } from './tipos';
 import { roce } from '../../utils/haptics';
+import usePortada from '../../utils/portada';
 
 /**
  * Panel de la nota — la página de la derecha.
@@ -39,6 +41,29 @@ export default function PanelSnippet({
   onTags,
   fecha,
   onFecha,
+  /** Dónde pasó, y cómo cambiarlo. Ver `OpcionesUbicacion` en la hoja. */
+  ubicacion = null,
+  onUbicacion,
+  /**
+   * Reemplaza la mitad de abajo —los detalles del snippet— dejando intacta la
+   * de arriba.
+   *
+   * En modo chat ahí van las instrucciones de Vizta, pero los **mencionados**
+   * se quedan: nombrar a un actor es nombrarlo se esté escribiendo una nota o
+   * preguntándole algo, así que esa mitad no depende del modo. Sustituir el
+   * panel entero, como estaba, borraba los items de la conversación.
+   */
+  detalles = null,
+  /**
+   * Las fotos de la nota.
+   *
+   * Van **debajo de detalles y no en su lugar**: son de la nota igual que el
+   * título o la fuente, y en la hoja ya se ven junto al texto. Acá el panel
+   * hace lo que hace con todo lo demás — mostrarlo junto, fuera del camino de
+   * la escritura.
+   */
+  fotos = [],
+  onVerFoto,
   topInset = 0,
   bottomInset = 0,
 }) {
@@ -67,19 +92,118 @@ export default function PanelSnippet({
 
       <View style={{ height: 42 }} />
 
-      <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)', marginBottom: 6 }}>
-        detalles
-      </Text>
+      {detalles || (
+        <>
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)', marginBottom: 6 }}>
+            detalles
+          </Text>
 
-      <Renglon
-        etiqueta="título"
-        value={titulo}
-        onChangeText={onTitulo}
-        placeholder={tituloPlaceholder || 'la primera línea'}
-      />
-      <Renglon etiqueta="fuente" value={fuente} onChangeText={onFuente} placeholder="https://" autoCapitalize="none" />
-      <Renglon etiqueta="etiquetas" value={tags} onChangeText={onTags} placeholder="separá con comas" />
-      <Renglon etiqueta="fecha" value={fecha} onChangeText={onFecha} placeholder="AAAA-MM-DD" />
+          <Renglon
+            etiqueta="título"
+            value={titulo}
+            onChangeText={onTitulo}
+            placeholder={tituloPlaceholder || 'la primera línea'}
+          />
+          <Renglon etiqueta="fuente" value={fuente} onChangeText={onFuente} placeholder="https://" autoCapitalize="none" />
+          <Renglon etiqueta="etiquetas" value={tags} onChangeText={onTags} placeholder="separá con comas" />
+          <Renglon etiqueta="fecha" value={fecha} onChangeText={onFecha} placeholder="AAAA-MM-DD" />
+
+          {/* El lugar no se escribe: se busca.
+            *
+            * Es el único detalle que no es texto libre — una dirección tecleada
+            * a mano no tiene coordenadas, y sin coordenadas la nota no puede
+            * aparecer en el mapa, que es para lo que sirve tener un lugar. Por
+            * eso el renglón es un botón que abre el buscador de Apple. */}
+          {onUbicacion ? (
+            <Pressable
+              onPress={() => {
+                roce();
+                onUbicacion();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={ubicacion ? 'Cambiar dónde pasó' : 'Poner dónde pasó'}
+              style={{ paddingVertical: 9 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+                <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)', width: 78 }}>
+                  lugar
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                    fontFamily: MONO,
+                    fontSize: 13,
+                    color: ubicacion ? INK.title : 'rgba(28,43,34,0.22)',
+                  }}
+                >
+                  {ubicacion
+                    ? ubicacion.nombre ||
+                      ubicacion.direccion ||
+                      `${Number(ubicacion.lat).toFixed(4)}, ${Number(ubicacion.lng).toFixed(4)}`
+                    : 'buscá dónde pasó'}
+                </Text>
+              </View>
+              <View
+                style={{
+                  height: 1,
+                  marginTop: 8,
+                  borderRadius: RADIUS.sm,
+                  backgroundColor: 'rgba(28,43,34,0.07)',
+                }}
+              />
+            </Pressable>
+          ) : null}
+
+          {/* Media. Aparece solo si hay algo: un rótulo «media» sobre un hueco
+              vacío anuncia una función que no se está usando, en un panel que
+              ya es una columna angosta. */}
+          {fotos.length ? (
+            <View style={{ marginTop: 34 }}>
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)', marginBottom: 14 }}>
+                media
+              </Text>
+
+              <Animated.View
+                layout={LinearTransition.springify().damping(22)}
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}
+              >
+                {fotos.map((f) => (
+                  <Pressable
+                    key={f.id}
+                    onPress={() => {
+                      if (f.subiendo) return;
+                      roce();
+                      onVerFoto?.(f);
+                    }}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ver la foto"
+                  >
+                    <Foto
+                      source={{ uri: f.url || f.local }}
+                      style={{
+                        width: 62,
+                        height: 62,
+                        borderRadius: 10,
+                        backgroundColor: 'rgba(28,43,34,0.06)',
+                      }}
+                      contentFit="cover"
+                      transition={140}
+                    />
+                  </Pressable>
+                ))}
+              </Animated.View>
+
+              {/* Cuántas hay. El panel es la vista de conjunto de la nota, y
+                  con seis miniaturas de 62 px contarlas a ojo cuesta. */}
+              <Text style={{ fontFamily: MONO, fontSize: 10.5, color: 'rgba(28,43,34,0.28)', marginTop: 12 }}>
+                {fotos.length === 1 ? '1 foto' : `${fotos.length} fotos`}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -99,7 +223,10 @@ function Chip({ item, onPress }) {
   const press = useSharedValue(0);
 
   const color = TYPE_ACCENT[normalizeTipo(item?.tipo)] || '#4B4FA6';
-  const foto = sinFoto ? null : imagenDe(item);
+  // Una nota tiene su portada privada y hay que firmarla; un retrato del
+  // Congreso o un post, un enlace público. `usePortada` resuelve los dos.
+  const portada = usePortada(item);
+  const foto = sinFoto ? null : portada;
 
   const animado = useAnimatedStyle(() => ({
     transform: [{ scale: 1 - press.value * 0.04 }],
@@ -146,19 +273,6 @@ function Chip({ item, onPress }) {
       </Animated.View>
     </Pressable>
   );
-}
-
-/**
- * De dónde sale la foto.
- *
- * `thumbnail_url` es la columna oficial, pero hoy solo la llenan los Posts. Los
- * ~115 diputados que sí tienen retrato lo tienen en `details.foto`, cargado por
- * el scraper del Congreso. Se miran los dos, con la columna primero.
- */
-function imagenDe(item) {
-  const d = item?.details || {};
-  const uri = item?.thumbnail_url || d.foto || d.Foto || null;
-  return typeof uri === 'string' && /^https?:\/\//.test(uri) ? uri : null;
 }
 
 /** Renglón de detalle: etiqueta a la izquierda, campo a la derecha, sin cajas. */

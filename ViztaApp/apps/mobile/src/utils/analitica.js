@@ -80,6 +80,8 @@ export const EV = {
   NOTA_GUARDADA: 'nota_guardada',
   NOTA_DESCARTADA: 'nota_descartada',
   NOTA_PAGINA_VISTA: 'nota_pagina_vista',
+  NOTA_FOTO_ADJUNTA: 'nota_foto_adjunta',
+  NOTA_AUDIO_ADJUNTO: 'nota_audio_adjunto',
 
   MENCION_TOCADA: 'mencion_tocada',
   ITEM_CREADO_DESDE_SELECCION: 'item_creado_desde_seleccion',

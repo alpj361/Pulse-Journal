@@ -272,10 +272,17 @@ export function lineaDeCard(card) {
   const casas = f.casas.length;
 
   if (d.estado === 'divergen') {
-    return {
-      texto: d.enQue ? `las fuentes no coinciden en ${d.enQue}` : 'las fuentes no coinciden',
-      alerta: true,
-    };
+    // **El `en_que` no se concatena.** La plantilla original decía «no coinciden
+    // en ${enQue}», dando por hecho que el campo trae una frase corta que
+    // completa la oración. Los datos reales lo mandan como oración entera y con
+    // mayúscula —«Los tweets difieren entre el trámite…»— así que salía «las
+    // fuentes no coinciden en Los tweets difieren entre…», que además se
+    // truncaba antes de decir en qué difieren.
+    //
+    // En una línea de feed no cabe el detalle de todos modos: acá va el hecho,
+    // que es lo que hace que alguien abra la card, y el en_qué vive en la ficha
+    // donde hay lugar para leerlo entero.
+    return { texto: 'las fuentes no coinciden', alerta: true };
   }
 
   if (d.estado === 'coinciden') {

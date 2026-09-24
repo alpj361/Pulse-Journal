@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vizta",
     "slug": "vibecode",
-    "version": "0.0.8",
+    "version": "0.0.9.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
@@ -10,16 +10,18 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "24",
+      "buildNumber": "27",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIRequiresFullScreen": true
+        "UIRequiresFullScreen": true,
+        "NSLocationAlwaysUsageDescription": "Vizta utiliza su ubicación para mostrar dónde se encuentra en el mapa. Si autoriza el acceso permanente, la aplicación registra las zonas por las que se desplaza —no su recorrido— para ir revelando su mapa de exploración, incluso cuando no la está usando. Esa información se guarda únicamente en este dispositivo."
       },
       "entitlements": {
         "com.apple.developer.applesignin": [
           "Default"
         ]
-      }
+      },
+      "version": "0.0.9"
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +29,8 @@
         "backgroundColor": "#EDE7DA"
       },
       "package": "com.standatpd.vizta",
-      "permissions": []
+      "permissions": [],
+      "version": "0.0.9"
     },
     "plugins": [
       [
@@ -50,7 +53,8 @@
         {
           "ios": {
             "useFrameworks": "static",
-            "ccacheEnabled": false
+            "ccacheEnabled": false,
+            "buildReactNativeFromSource": true
           }
         }
       ],
@@ -77,7 +81,37 @@
         }
       ],
       "expo-web-browser",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Vizta usa la cámara para tomar fotos dentro de una nota.",
+          "microphonePermission": "Vizta usa el micrófono para grabar notas de voz dentro de una nota.",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Vizta muestra tus fotos recientes para que puedas adjuntarlas a una nota.",
+          "savePhotosPermission": false,
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Vizta usa el micrófono para grabar notas de voz dentro de una nota."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Vizta utiliza su ubicación para mostrar dónde se encuentra en el mapa. Si autoriza el acceso permanente, la aplicación registra las zonas por las que se desplaza —no su recorrido— para ir revelando su mapa de exploración, incluso cuando no la está usando. Esa información se guarda únicamente en este dispositivo.",
+          "locationWhenInUsePermission": "Vizta utiliza su ubicación para mostrar dónde se encuentra en el mapa mientras la aplicación está abierta, y para situar con precisión los lugares que registra en su Codex.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ]
     ],
     "web": {
       "bundler": "metro",

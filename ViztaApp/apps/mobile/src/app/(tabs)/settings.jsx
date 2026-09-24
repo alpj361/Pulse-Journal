@@ -42,6 +42,9 @@ import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { appleDisponible } from '../../utils/appleAuth';
 import * as Notifications from 'expo-notifications';
 import { Avatar, AvatarBuilderModal } from '../../components/avatar';
+import SeccionPlan from '../../components/ajustes/SeccionPlan';
+import SeccionUso from '../../components/ajustes/SeccionUso';
+import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimiento';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -55,7 +58,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Leyéndola de `Constants.expoConfig`, hay un solo lugar que declara la
  * versión y todos los demás la reflejan.
  */
-const APP_VERSION = `V.${String(appConfig.expo.version.split('.').pop()).padStart(3, '0')}`;
+// `0.0.9` se muestra V.009; `0.0.9.1`, V.0091. El cuarto número es de los
+// archivos y no llega al build: iOS no acepta cuatro números en la versión, así
+// que el build nativo sale de `ios.version` y `android.version` en `app.json`.
+const [, , menor = '0', parche = ''] = appConfig.expo.version.split('.');
+const APP_VERSION = `V.${menor.padStart(3, '0')}${parche}`;
 
 function formatDate(isoString) {
   if (!isoString) return '';
@@ -1044,6 +1051,13 @@ export default function SettingsScreen() {
             </View>
           )}
         </View>
+
+        {/* ── Planes: un menú plegado más, como los de abajo. Sin muro de
+             pago: se vende acá, donde se viene a ver la cuenta. ── */}
+        <SeccionPlan />
+        <SeccionUso />
+        {/* Solo aparece si la cuenta tiene el flag; para el resto no existe. */}
+        <SeccionReconocimiento />
 
         {/* ── FAQ ── */}
         <View style={{ marginBottom: 8 }}>
