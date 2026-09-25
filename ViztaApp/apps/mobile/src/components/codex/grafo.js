@@ -122,8 +122,31 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
   // puntos sin nombre: se leen tocándolas. Los conceptos son lo que las agrupa
   // y llevan el nombre que el indexador sacó del texto. Los ids llevan prefijo
   // porque viven en otras tablas y no pueden confundirse con un elemento.
+  //
+  // Un documento no se dibuja fragmento por fragmento: treinta páginas serían
+  // cientos de puntos. Se dibuja él, como un nodo, con sus conceptos colgando.
+  // Cada fragmento se representa por su concepto —o por el documento, si no
+  // quedó en ninguno—, y sus líneas salen de ahí.
+  const alNodo = new Map();
+  for (const c of nota?.conceptos || []) {
+    if (!c.documento) continue;
+    for (const id of c.ideas || []) alNodo.set(id, `con:${c.id}`);
+  }
   for (const i of nota?.ideas || []) {
+    if (i.documento) {
+      if (!alNodo.has(i.id)) alNodo.set(i.id, `doc:${i.documento}`);
+      continue;
+    }
     nodos.push({ id: `idea:${i.id}`, idea: i, texto: '', tipo: 'Idea', veces: 0 });
+  }
+  for (const d of nota?.documentos || []) {
+    nodos.push({
+      id: `doc:${d.id}`,
+      documento: d,
+      texto: recortar(d.nombre.replace(/\.[^.]+$/, ''), LARGO_CONCEPTO),
+      tipo: 'Documento',
+      veces: 0,
+    });
   }
   for (const c of nota?.conceptos || []) {
     if (!c.ideas?.length) continue;
@@ -135,6 +158,12 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
       veces: 0,
     });
   }
+  // Dónde cae una idea en el dibujo: ella misma, o lo que representa a su
+  // fragmento.
+  const nodoDe = (idNodo) => {
+    if (!idNodo?.startsWith('idea:')) return idNodo;
+    return alNodo.get(idNodo.slice(5)) || idNodo;
+  };
 
   const porId = new Map(nodos.map((n) => [n.id, n]));
 
@@ -186,13 +215,16 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
   //    elemento del espacio. Es probable, y pesa lo que se parecen.
   // Van en ese orden porque `agregar` se queda con el primero de cada pareja.
   for (const c of nota?.conceptos || []) {
-    for (const id of c.ideas || []) agregar(`idea:${id}`, `con:${c.id}`, 'miembro', 1);
+    // Los conceptos de un documento cuelgan del documento; los de lo escrito,
+    // de sus ideas.
+    if (c.documento) agregar(`con:${c.id}`, `doc:${c.documento}`, 'miembro', 1);
+    else for (const id of c.ideas || []) agregar(`idea:${id}`, `con:${c.id}`, 'miembro', 1);
   }
   for (const i of nota?.ideas || []) {
-    for (const id of i.menciona || []) agregar(`idea:${i.id}`, id, 'menciona', 1);
+    for (const id of i.menciona || []) agregar(nodoDe(`idea:${i.id}`), id, 'menciona', 1);
   }
   for (const l of nota?.lazos || []) {
-    agregar(l.a, l.b, l.tipo === 'mentions' ? 'menciona' : 'parecido', l.peso);
+    agregar(nodoDe(l.a), nodoDe(l.b), l.tipo === 'mentions' ? 'menciona' : 'parecido', l.peso);
   }
 
   // Grado: cuántos lazos toca cada nodo.
@@ -232,7 +264,7 @@ export function construir({ items, relaciones, aristas, menciones, marco, nota =
   // Los conceptos van primero: sin ellos la historia no se ve, y son pocos.
   let activos = [...base.nodos].sort(
     (a, b) =>
-      (b.concepto ? 1 : 0) - (a.concepto ? 1 : 0) ||
+      (b.concepto || b.documento ? 1 : 0) - (a.concepto || a.documento ? 1 : 0) ||
       pesoDe(b) - pesoDe(a) ||
       a.texto.localeCompare(b.texto, 'es')
   );
@@ -250,7 +282,9 @@ export function construir({ items, relaciones, aristas, menciones, marco, nota =
     const peso = pesoDe(n);
     // Un concepto tiene tamaño fijo: es el centro de su racimo. Una idea crece
     // poco, lo justo para que la que se une con más cosas se note.
-    const r = n.concepto
+    const r = n.documento
+      ? 9
+      : n.concepto
       ? 7.5
       : n.idea
         ? 3 + Math.min(3, (n.grado || 0) * 0.45)
@@ -292,7 +326,7 @@ function etiquetar(nodos, marco) {
   // ideas no llevan nombre —una oración entera no entra— y se leen tocándolas.
   const orden = [...nodos].filter((p) => p.texto).sort(
     (a, b) =>
-      (b.concepto ? 1 : 0) - (a.concepto ? 1 : 0) ||
+      (b.concepto || b.documento ? 1 : 0) - (a.concepto || a.documento ? 1 : 0) ||
       b.peso - a.peso ||
       a.texto.localeCompare(b.texto, 'es')
   );

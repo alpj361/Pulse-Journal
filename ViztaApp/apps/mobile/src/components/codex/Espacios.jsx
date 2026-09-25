@@ -9,13 +9,15 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
-import { ChevronLeft, FilePlus2, Layers, NotebookText, Plus } from 'lucide-react-native';
+import { ChevronLeft, FilePlus2, Layers, Maximize2, NotebookText, Plus } from 'lucide-react-native';
 import { INK, MOTION, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { TENUE, RESALTADOR } from './piezasCarpeta';
 import { TYPE_ACCENT, TYPE_ORDER, normalizeTipo } from './tipos';
 import SpaceCarousel from './SpaceCarousel';
 import GrafoEspacio from './GrafoEspacio';
+import AgregarAlEspacio from './AgregarAlEspacio';
+import GrafoPantallaCompleta from './GrafoPantallaCompleta';
 import useGrafoEspacio from './useGrafoEspacio';
 import { portadaDe } from './PortadaEspacio';
 import { addItemsToSpace, listSpaces } from '../../utils/codexSpaces';
@@ -54,6 +56,14 @@ export default function Espacios({
   onAbrirItem,
   onAbrirNota,
   recarga = 0,
+  // La lupa de la hoja: en Espacios busca en el Codex para sumar al espacio
+  // abierto. El panel vive acá porque acá está el espacio.
+  indice = null,
+  buscando = false,
+  onCerrarBusqueda,
+  // Avisa hacia arriba qué espacio está abierto: la lupa solo tiene sentido
+  // adentro de uno.
+  onElegido,
 }) {
   const { width: W } = useWindowDimensions();
 
@@ -94,7 +104,12 @@ export default function Espacios({
   // que se queda sin lugar, y medido sobre «Crisis de gasolina 2026» pasan de
   // 18 a 23 de 33 con esos 90 puntos más.
   const marco = { ancho: W, alto: 420 };
-  const { grafo, items, cargando: armando, error: errorGrafo, incompleto } = useGrafoEspacio(elegido, marco, recarga);
+  const { grafo, armarPara, items, cargando: armando, error: errorGrafo, incompleto } = useGrafoEspacio(
+    elegido,
+    marco,
+    recarga
+  );
+  const [completo, setCompleto] = useState(false);
   const asociados = elegido
     ? (items || []).filter((it) => normalizeTipo(it.tipo) !== 'Post')
     : [];
@@ -149,6 +164,51 @@ export default function Espacios({
     return useEspacioElegidoStore.persist.onFinishHydration(intentar);
   }, [espacios, vuelo]);
 
+  useEffect(() => {
+    onElegido?.(elegido || null);
+  }, [elegido, onElegido]);
+
+  /**
+   * Sumar un elemento al espacio abierto. Lo usan el grafo —lo que la historia
+   * nombra desde afuera— y la lupa. Con el id en la lista del espacio el grafo
+   * se vuelve a armar, y lo que era de afuera pasa a ser un miembro más.
+   */
+  const sumarAlEspacio = async (item) => {
+    if (!elegido?.id || !item?.id) return;
+    try {
+      await addItemsToSpace(elegido.id, [item.id]);
+      roce();
+      const sumar = (e) =>
+        e?.id === elegido.id && !(e.itemIds || []).includes(item.id)
+          ? { ...e, itemIds: [...(e.itemIds || []), item.id] }
+          : e;
+      setElegido(sumar);
+      setEspacios((lista) => (lista || []).map(sumar));
+    } catch (e) {
+      console.warn('[espacio] no se pudo agregar', e?.message || e);
+    }
+  };
+
+  /**
+   * Lo que se puede hacer desde el grafo, igual en la hoja y en pantalla
+   * completa. Lo que abre otra cosa —una ficha, la historia— primero sale de la
+   * pantalla completa: es un modal, y lo nuevo quedaría abajo, sin verse.
+   */
+  const salirYEntonces = (fn) => (...args) => {
+    setCompleto(false);
+    fn?.(...args);
+  };
+  const accionesGrafo = {
+    onAbrirItem: salirYEntonces(onAbrirItem),
+    onAbrirHistoria: salirYEntonces(() => onAbrirEspacio?.(elegido, null)),
+    // Crear el concepto abre la ficha nueva ya con su nombre y tipo; no se
+    // guarda hasta que la confirmes.
+    onCrearConcepto: salirYEntonces((c) =>
+      onAbrirItem?.({ _nuevo: true, tipo: 'Concepto', name: c.nombre, description: '', details: {} })
+    ),
+    onAgregar: sumarAlEspacio,
+  };
+
   const entrar = (espacio) => {
     toque();
     elegir(espacio.id);
@@ -163,6 +223,7 @@ export default function Espacios({
   const volver = () => {
     roce();
     vuelo.value = withTiming(0, { duration: 240 });
+    setCompleto(false);
     elegir(null);
     setElegido(null);
   };
@@ -258,28 +319,30 @@ export default function Espacios({
               alto={marco.alto}
               cargando={armando}
               error={errorGrafo}
-              onAbrirItem={onAbrirItem}
-              onAbrirHistoria={() => onAbrirEspacio?.(elegido, null)}
-              // Crear el concepto abre la ficha nueva ya con su nombre y tipo;
-              // no se guarda hasta que la confirmes.
-              onCrearConcepto={(c) =>
-                onAbrirItem?.({ _nuevo: true, tipo: 'Concepto', name: c.nombre, description: '', details: {} })
-              }
-              onAgregar={async (item) => {
-                try {
-                  await addItemsToSpace(elegido.id, [item.id]);
-                  roce();
-                  // Con el id en la lista del espacio el grafo se vuelve a
-                  // armar, y lo que era de afuera pasa a ser un miembro más.
-                  const sumar = (e) =>
-                    e?.id === elegido.id ? { ...e, itemIds: [...(e.itemIds || []), item.id] } : e;
-                  setElegido(sumar);
-                  setEspacios((lista) => (lista || []).map(sumar));
-                } catch (e) {
-                  console.warn('[espacio] no se pudo agregar', e?.message || e);
-                }
-              }}
+              {...accionesGrafo}
             />
+            {/* Agrandar: el mismo grafo en toda la pantalla. Arriba a la
+                derecha, donde el dibujo casi nunca llega, para no tapar nodos. */}
+            {grafo?.nodos?.length && !armando ? (
+              <Pressable
+                onPress={() => {
+                  toque();
+                  setCompleto(true);
+                }}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  position: 'absolute',
+                  top: 4,
+                  right: 22,
+                  padding: 6,
+                  opacity: pressed ? 0.5 : 1,
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="Ver el grafo en pantalla completa"
+              >
+                <Maximize2 size={16} color="rgba(28,43,34,0.45)" />
+              </Pressable>
+            ) : null}
             {/* Un grafo al que le faltan conexiones parece completo: se dice. */}
             {incompleto && !armando ? (
               <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.35)', marginTop: 8 }}>
@@ -408,6 +471,27 @@ export default function Espacios({
           pointerEvents="none"
           style={[{ position: 'absolute', left: 0, top: 0, backgroundColor: color }, estiloVuelo]}
         />
+      ) : null}
+
+      <GrafoPantallaCompleta
+        visible={completo && !!elegido}
+        espacio={elegido}
+        armarPara={armarPara}
+        onCerrar={() => setCompleto(false)}
+        {...accionesGrafo}
+      />
+
+      {/* La lupa, arriba: el teclado sube desde abajo, y así el campo y los
+          resultados quedan a la vista mientras se escribe. */}
+      {buscando && elegido ? (
+        <View style={{ position: 'absolute', top: 6, left: 20, right: 20 }}>
+          <AgregarAlEspacio
+            indice={indice}
+            espacio={elegido}
+            onAgregar={sumarAlEspacio}
+            onCerrar={onCerrarBusqueda}
+          />
+        </View>
       ) : null}
     </View>
   );

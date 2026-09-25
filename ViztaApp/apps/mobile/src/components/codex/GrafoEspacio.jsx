@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { INK } from '../theme';
 import { MONO } from './mono';
 import { PAPEL } from './Papel';
@@ -94,7 +94,7 @@ export default function GrafoEspacio({
   // adentro del marco. Va con fondo de papel porque puede caer encima de líneas.
   const nombreSuelto = useMemo(() => {
     // Las ideas y los conceptos se leen en su globo, que ya trae el nombre.
-    if (!elegidoNodo || !elegidoNodo.texto || elegidoNodo.concepto || etiquetaDe.has(elegidoNodo.id)) return null;
+    if (!elegidoNodo || !elegidoNodo.texto || elegidoNodo.concepto || elegidoNodo.documento || etiquetaDe.has(elegidoNodo.id)) return null;
     const cuerpo = 10.5;
     const w = elegidoNodo.texto.length * cuerpo * 0.6 + 8;
     const h = cuerpo * 1.3 + 4;
@@ -114,20 +114,27 @@ export default function GrafoEspacio({
    * toque al lienzo, y las acciones quedan en el pie.
    */
   const globo = useMemo(() => {
-    if (!elegidoNodo || !(elegidoNodo.idea || elegidoNodo.concepto)) return null;
+    if (!elegidoNodo || !(elegidoNodo.idea || elegidoNodo.concepto || elegidoNodo.documento)) return null;
     const TOPE = 4;
     let titulo = null;
     let oraciones;
     let resto = 0;
     if (elegidoNodo.idea) {
       oraciones = [elegidoNodo.idea.texto];
+    } else if (elegidoNodo.documento) {
+      // Un documento: su nombre y, si entró una parte, cuánto.
+      const d = elegidoNodo.documento;
+      titulo = d.nombre;
+      oraciones =
+        d.paginas && d.paginas_leidas < d.paginas
+          ? [`se leyeron ${d.paginas_leidas} de ${d.paginas} páginas`]
+          : [];
     } else {
       titulo = elegidoNodo.concepto.nombre;
-      const todas = (elegidoNodo.concepto.ideas || [])
-        .map((id) => porId.get(`idea:${id}`)?.idea)
-        .filter(Boolean)
-        .sort((a, b) => a.orden - b.orden)
-        .map((i) => i.texto);
+      // Los conceptos traen sus textos: los de un documento son fragmentos
+      // que no están dibujados. Un fragmento largo se corta: el globo es para
+      // reconocerlo, no para leerlo entero.
+      const todas = (elegidoNodo.concepto.textos || []).map((t) => (t.length > 180 ? `${t.slice(0, 179)}…` : t));
       oraciones = todas.slice(0, TOPE);
       resto = todas.length - oraciones.length;
     }
@@ -165,7 +172,8 @@ export default function GrafoEspacio({
     );
   }
 
-  const colorDe = (n) => (n.idea || n.concepto ? INDIGO : TYPE_ACCENT[normalizeTipo(n.tipo)] || INK.title);
+  const colorDe = (n) =>
+    n.idea || n.concepto || n.documento ? INDIGO : TYPE_ACCENT[normalizeTipo(n.tipo)] || INK.title;
 
   return (
     <View>
@@ -211,6 +219,26 @@ export default function GrafoEspacio({
           {nodos.map((n) => {
             const apagado = vecinos && !vecinos.has(n.id);
             const esElegido = elegido === n.id;
+            // Un documento es una hoja: rectángulo vertical de papel, con borde
+            // índigo. Se lee distinto de un elemento y de un concepto.
+            if (n.documento) {
+              const w = n.cuerpo * 1.5;
+              const h = n.cuerpo * 2;
+              return (
+                <Rect
+                  key={n.id}
+                  x={n.x - w / 2}
+                  y={n.y - h / 2}
+                  width={w}
+                  height={h}
+                  rx={2}
+                  fill={PAPEL}
+                  stroke={INDIGO}
+                  strokeWidth={esElegido ? 2.2 : 1.5}
+                  opacity={apagado ? 0.16 : 1}
+                />
+              );
+            }
             // Un concepto es un aro: es el centro de un racimo de ideas, no una
             // cosa. Hueco para que se lea distinto de los elementos del Codex.
             if (n.concepto) {
@@ -364,7 +392,7 @@ export default function GrafoEspacio({
                 borderRadius: lado / 2,
               }}
               accessibilityRole="button"
-              accessibilityLabel={`${n.idea?.texto || n.concepto?.nombre || n.item?.name || n.texto}${n.grado ? `, ${n.grado} conexiones` : ''}`}
+              accessibilityLabel={`${n.idea?.texto || n.concepto?.nombre || n.documento?.nombre || n.item?.name || n.texto}${n.grado ? `, ${n.grado} conexiones` : ''}`}
             />
           );
         })}
@@ -388,7 +416,7 @@ export default function GrafoEspacio({
             {elegidoNodo.concepto && !elegidoNodo.concepto.item ? <View style={{ flex: 1 }} /> : (
             <Pressable
               onPress={() => {
-                if (elegidoNodo.idea) onAbrirHistoria?.(elegidoNodo.idea);
+                if (elegidoNodo.idea || elegidoNodo.documento) onAbrirHistoria?.(elegidoNodo.idea || elegidoNodo.documento);
                 else if (elegidoNodo.concepto) {
                   if (elegidoNodo.concepto.item) onAbrirItem?.(elegidoNodo.concepto.item);
                 } else onAbrirItem?.(elegidoNodo.item);
@@ -396,8 +424,8 @@ export default function GrafoEspacio({
               style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.5 : 1, paddingVertical: 5 })}
               accessibilityRole="button"
               accessibilityLabel={
-                elegidoNodo.idea
-                  ? 'Leer esta idea en la historia'
+                elegidoNodo.idea || elegidoNodo.documento
+                  ? 'Leer en la historia'
                   : elegidoNodo.concepto
                     ? elegidoNodo.concepto.nombre
                     : `Abrir ${elegidoNodo.item?.name}`
@@ -407,12 +435,12 @@ export default function GrafoEspacio({
                 numberOfLines={1}
                 style={{
                   fontFamily: MONO,
-                  fontSize: elegidoNodo.idea || elegidoNodo.concepto ? 12 : 12.5,
+                  fontSize: elegidoNodo.idea || elegidoNodo.concepto || elegidoNodo.documento ? 12 : 12.5,
                   lineHeight: 18,
-                  color: elegidoNodo.idea || elegidoNodo.concepto ? INDIGO : INK.title,
+                  color: elegidoNodo.idea || elegidoNodo.concepto || elegidoNodo.documento ? INDIGO : INK.title,
                 }}
               >
-                {elegidoNodo.idea
+                {elegidoNodo.idea || elegidoNodo.documento
                   ? 'leer en la historia'
                   : elegidoNodo.concepto
                     ? 'ver en el Codex'

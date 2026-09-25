@@ -154,3 +154,78 @@ export async function elegirYSubirDocumento({ alEmpezarSubida } = {}) {
 
   return { cancelado: false, item: data };
 }
+
+// ─── Documentos de una nota ───────────────────────────────────────────────────
+
+// Lo que se puede adjuntar a una nota: lo que el servidor sabe leer si la nota
+// es una historia. Una foto o un audio tienen su propio botón.
+const TIPOS_NOTA = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/markdown',
+];
+
+/**
+ * Elegir un documento y subirlo para una nota.
+ *
+ * No crea fila en `codex_items`: el documento es de la nota, y la nota lo
+ * registra en `nota_documentos` al guardarse. Va a `<user_id>/notas/…`, la
+ * carpeta que el usuario puede borrar él mismo.
+ *
+ * @returns {Promise<{cancelado: true} | {cancelado: false, storage_path, nombre, mime, tamano}>}
+ */
+export async function subirDocumentoNota({ alEmpezarSubida } = {}) {
+  const DocumentPicker = cargarPicker();
+  const elegido = await DocumentPicker.getDocumentAsync({
+    type: TIPOS_NOTA,
+    copyToCacheDirectory: true,
+    multiple: false,
+  });
+  if (elegido.canceled || !elegido.assets?.length) return { cancelado: true };
+
+  const asset = elegido.assets[0];
+  const nombre = asset.name || 'documento';
+  const mime = asset.mimeType || 'application/octet-stream';
+
+  const { data: sesion } = await supabase.auth.getSession();
+  const userId = sesion?.session?.user?.id;
+  if (!userId) throw new Error('Sin sesión activa');
+
+  const archivo = new File(asset.uri);
+  const tamano = asset.size ?? archivo.size ?? 0;
+  if (tamano > MAX_BYTES) {
+    const mb = (tamano / 1024 / 1024).toFixed(1);
+    throw new Error(`El archivo pesa ${mb} MB. El máximo es 40 MB.`);
+  }
+
+  alEmpezarSubida?.({ nombre, tamano });
+  const bytes = await archivo.bytes();
+  await asegurarCupo('almacenamiento', bytes.length);
+
+  const storagePath = `${userId}/notas/${Date.now()}_${sanear(nombre)}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(storagePath, bytes, {
+    contentType: mime,
+    upsert: false,
+  });
+  if (error) throw new Error(error.message || 'No se pudo subir el documento');
+
+  return { cancelado: false, storage_path: storagePath, nombre, mime, tamano };
+}
+
+/** Borrar el archivo de un documento de nota. Si falla, no rompe nada. */
+export async function borrarDocumentoNota(storagePath) {
+  if (!storagePath) return;
+  try {
+    await supabase.storage.from(BUCKET).remove([storagePath]);
+  } catch {
+    // Queda en el bucket; no hay nada que el usuario pueda hacer al respecto.
+  }
+}
+
+/** Un enlace temporal para abrir el documento. */
+export async function firmarDocumentoNota(storagePath) {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, 60 * 10);
+  if (error) throw error;
+  return data?.signedUrl || null;
+}
