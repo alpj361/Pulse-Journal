@@ -25,8 +25,10 @@ import Animated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
+  FadeOut,
 } from 'react-native-reanimated';
 import {
   X,
@@ -2198,12 +2200,12 @@ export default function CreateSnippetSheet({
         comoHistoria={!!principalDe}
         notaId={editandoId}
         bottomInset={bottomInset}
+        // Elegir no cierra: la hoja queda abierta para decidir si va como
+        // historia. Se cierra con «Listo» o tocando afuera.
         onElegir={(espacio, historia) => {
           const marca = { id: espacio.id, name: espacio.name, marcar: true };
           setEspacioDestino(marca);
           setPrincipalDe(historia ? marca : null);
-          setEligiendoEspacio(false);
-          roce();
         }}
         onQuitar={() => {
           setEspacioDestino(null);
@@ -2706,13 +2708,90 @@ function OpcionesUbicacion({ visible, ubicacion, bottomInset = 0, onAqui, onBusc
 /**
  * Dónde se guarda la nota.
  *
- * Cada espacio se puede tocar entero para guardar la nota ahí. Los que
- * todavía no tienen historia ofrecen además «como su historia»: la nota pasa a
- * ser lo que ese espacio cuenta. Donde ya hay una no se ofrece, porque
- * reemplazarla sin verla sería perderla de vista.
+ * Tocar un espacio lo elige, y la hoja queda abierta. Abajo, una casilla decide
+ * si la nota es **la historia** de ese espacio o una nota más adentro: casi
+ * siempre es una nota más, así que arranca sin marcar.
+ *
+ * Un espacio que ya tiene historia no puede tener otra: reemplazarla sin verla
+ * sería perderla de vista. Si la casilla está marcada y se elige uno así —o se
+ * la marca con uno así elegido—, la casilla se suelta sola: el tilde entra,
+ * rebota y se va, con la razón a la vista un momento. Se ve que se intentó y por
+ * qué no, sin un aviso que haya que cerrar.
  */
-function ElegirEspacio({ visible, espacios, actual, comoHistoria, notaId, bottomInset = 0, onElegir, onQuitar, onClose }) {
-  if (!visible) return null;
+function ElegirEspacio(props) {
+  if (!props.visible) return null;
+  return <HojaEspacio {...props} />;
+}
+
+function HojaEspacio({ espacios, actual, comoHistoria, notaId, bottomInset = 0, onElegir, onQuitar, onClose }) {
+  const [elegidoId, setElegidoId] = useState(actual);
+  const [historia, setHistoria] = useState(!!comoHistoria);
+  const [motivo, setMotivo] = useState(null);
+  const reloj = useRef(null);
+  useEffect(() => () => clearTimeout(reloj.current), []);
+
+  // Sin historia, o con esta misma nota como historia.
+  const libre = (e) => !!e && (!e.notaPrincipal || (!!notaId && e.notaPrincipal === notaId));
+  const elegido = (espacios || []).find((e) => e.id === elegidoId) || null;
+
+  // El tilde: cuánto está marcado (0–1) y el temblor del rechazo.
+  const marca = useSharedValue(comoHistoria ? 1 : 0);
+  const temblor = useSharedValue(0);
+  const estiloCaja = useAnimatedStyle(() => ({
+    transform: [{ translateX: temblor.value }, { scale: 1 + marca.value * 0.06 - marca.value * marca.value * 0.06 }],
+    backgroundColor: marca.value > 0.5 ? '#4B4FA6' : 'transparent',
+    borderColor: marca.value > 0.5 ? '#4B4FA6' : 'rgba(28,43,34,0.28)',
+  }));
+  const estiloTilde = useAnimatedStyle(() => ({
+    opacity: marca.value,
+    transform: [{ scale: 0.5 + marca.value * 0.5 }],
+  }));
+
+  const marcar = (v) => {
+    marca.value = withSpring(v ? 1 : 0, { damping: 14, stiffness: 260 });
+  };
+
+  /**
+   * La casilla no se puede quedar marcada con este espacio: entra el tilde,
+   * tiembla y se suelta.
+   */
+  const rechazar = (espacio) => {
+    falla();
+    setHistoria(false);
+    marca.value = withSequence(withTiming(1, { duration: 120 }), withTiming(1, { duration: 140 }), withSpring(0, { damping: 16 }));
+    temblor.value = withSequence(
+      withTiming(-5, { duration: 50 }),
+      withTiming(5, { duration: 60 }),
+      withTiming(-3, { duration: 50 }),
+      withTiming(0, { duration: 60 })
+    );
+    setMotivo(`${espacio.name} ya tiene su historia`);
+    clearTimeout(reloj.current);
+    reloj.current = setTimeout(() => setMotivo(null), 2200);
+  };
+
+  const elegir = (espacio) => {
+    roce();
+    setElegidoId(espacio.id);
+    if (historia && !libre(espacio)) {
+      rechazar(espacio);
+      onElegir(espacio, false);
+      return;
+    }
+    onElegir(espacio, historia);
+  };
+
+  const alternar = () => {
+    const siguiente = !historia;
+    if (siguiente && elegido && !libre(elegido)) {
+      rechazar(elegido);
+      return;
+    }
+    toque();
+    setHistoria(siguiente);
+    marcar(siguiente);
+    if (elegido) onElegir(elegido, siguiente);
+  };
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -2727,7 +2806,7 @@ function ElegirEspacio({ visible, espacios, actual, comoHistoria, notaId, bottom
             paddingHorizontal: 20,
             paddingTop: 18,
             paddingBottom: bottomInset + 18,
-            maxHeight: '72%',
+            maxHeight: '76%',
           }}
         >
           <Text style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: 0.08, color: 'rgba(28,43,34,0.45)' }}>
@@ -2741,78 +2820,109 @@ function ElegirEspacio({ visible, espacios, actual, comoHistoria, notaId, bottom
               todavía no tenés espacios.
             </Text>
           ) : (
-            <ScrollView style={{ marginTop: 14 }} contentContainerStyle={{ gap: 8 }} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={{ marginTop: 14, flexGrow: 0 }}
+              contentContainerStyle={{ gap: 8 }}
+              showsVerticalScrollIndicator={false}
+            >
               {espacios.map((e) => {
-                const elegido = actual === e.id;
-                // Sin historia, o con esta misma nota como historia.
-                const libre = !e.notaPrincipal || (notaId && e.notaPrincipal === notaId);
+                const esEste = elegidoId === e.id;
                 return (
-                  <View
+                  <Pressable
                     key={e.id}
-                    style={{
+                    onPress={() => elegir(e)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: esEste }}
+                    accessibilityLabel={`Guardar en ${e.name}`}
+                    style={({ pressed }) => ({
                       flexDirection: 'row',
                       alignItems: 'center',
+                      gap: 10,
+                      paddingVertical: 14,
+                      paddingHorizontal: 15,
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: elegido ? 'rgba(75,79,166,0.45)' : 'rgba(28,43,34,0.12)',
-                    }}
+                      borderColor: esEste ? 'rgba(75,79,166,0.45)' : 'rgba(28,43,34,0.12)',
+                      backgroundColor: pressed ? 'rgba(28,43,34,0.04)' : 'transparent',
+                    })}
                   >
-                    <Pressable
-                      onPress={() => onElegir(e, false)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Guardar en ${e.name}`}
-                      style={({ pressed }) => ({
-                        flex: 1,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 10,
-                        paddingVertical: 14,
-                        paddingHorizontal: 15,
-                        opacity: pressed ? 0.5 : 1,
-                      })}
-                    >
-                      {elegido ? <Check size={15} color="#4B4FA6" /> : null}
-                      <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, color: elegido ? '#4B4FA6' : INK.body }}>
-                        {e.name}
-                      </Text>
-                    </Pressable>
-                    {libre ? (
-                      <Pressable
-                        onPress={() => onElegir(e, true)}
-                        hitSlop={6}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Guardar como la historia de ${e.name}`}
-                        style={({ pressed }) => ({
-                          marginRight: 10,
-                          paddingVertical: 6,
-                          paddingHorizontal: 10,
-                          borderRadius: 999,
-                          backgroundColor: elegido && comoHistoria ? '#4B4FA6' : 'rgba(75,79,166,0.08)',
-                          opacity: pressed ? 0.6 : 1,
-                        })}
-                      >
-                        <Text
-                          style={{
-                            fontFamily: MONO,
-                            fontSize: 11.5,
-                            color: elegido && comoHistoria ? PAPEL : '#4B4FA6',
-                          }}
-                        >
-                          como su historia
-                        </Text>
-                      </Pressable>
+                    {esEste ? (
+                      <Animated.View entering={ZoomIn.springify().damping(16)}>
+                        <Check size={15} color="#4B4FA6" />
+                      </Animated.View>
                     ) : null}
-                  </View>
+                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, color: esEste ? '#4B4FA6' : INK.body }}>
+                      {e.name}
+                    </Text>
+                  </Pressable>
                 );
               })}
             </ScrollView>
           )}
 
-          {actual ? (
-            <View style={{ marginTop: 12 }}>
-              <OpcionLugar Icono={X} texto="No guardar en un espacio" onPress={onQuitar} />
+          {/* La casilla: historia o nota más. */}
+          <Pressable
+            onPress={alternar}
+            hitSlop={6}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: historia }}
+            accessibilityLabel="Guardar como la historia del espacio"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 16, paddingVertical: 6 }}
+          >
+            <Animated.View
+              style={[
+                {
+                  width: 20,
+                  height: 20,
+                  borderRadius: 6,
+                  borderWidth: 1.5,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                },
+                estiloCaja,
+              ]}
+            >
+              <Animated.View style={estiloTilde}>
+                <Check size={13} color={PAPEL} strokeWidth={3} />
+              </Animated.View>
+            </Animated.View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, color: INK.body }}>como su historia</Text>
+              {motivo ? (
+                <Animated.Text
+                  entering={FadeIn.duration(160)}
+                  exiting={FadeOut.duration(260)}
+                  style={{ fontFamily: MONO, fontSize: 11.5, color: '#B45309', marginTop: 2 }}
+                >
+                  {motivo}
+                </Animated.Text>
+              ) : null}
             </View>
-          ) : null}
+          </Pressable>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+            {elegidoId ? (
+              <View style={{ flex: 1 }}>
+                <OpcionLugar Icono={X} texto="Ninguno" onPress={onQuitar} />
+              </View>
+            ) : null}
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Listo"
+              style={({ pressed }) => ({
+                flex: 1,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: 14,
+                borderRadius: 12,
+                backgroundColor: '#4B4FA6',
+                opacity: pressed ? 0.8 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 15, color: PAPEL, fontWeight: '600' }}>Listo</Text>
+            </Pressable>
+          </View>
         </Animated.View>
       </View>
     </Modal>

@@ -33,12 +33,13 @@ function piezasDe(linea) {
   for (const tramo of linea.split(EN_LINEA)) {
     if (!tramo) continue;
 
+    // Lo de adentro se vuelve a partir: cursiva dentro de negrita, o al revés.
     if (/^\*\*[\s\S]+\*\*$/.test(tramo) || /^__[\s\S]+__$/.test(tramo)) {
-      piezas.push({ t: tramo.slice(2, -2), negrita: true });
+      for (const p of piezasDe(tramo.slice(2, -2))) piezas.push({ ...p, negrita: true });
     } else if (/^`[\s\S]+`$/.test(tramo)) {
       piezas.push({ t: tramo.slice(1, -1), codigo: true });
     } else if (/^\*[\s\S]+\*$/.test(tramo) || /^_[\s\S]+_$/.test(tramo)) {
-      piezas.push({ t: tramo.slice(1, -1), cursiva: true });
+      for (const p of piezasDe(tramo.slice(1, -1))) piezas.push({ ...p, cursiva: true });
     } else {
       piezas.push({ t: tramo });
     }

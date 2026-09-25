@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "27",
+      "buildNumber": "28",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiresFullScreen": true,
@@ -33,6 +33,7 @@
       "version": "0.0.9"
     },
     "plugins": [
+      "./plugins/escenas",
       [
         "expo-router",
         {
