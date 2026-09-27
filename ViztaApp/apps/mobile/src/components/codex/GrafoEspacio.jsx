@@ -1,12 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { RotateCcw } from 'lucide-react-native';
+import { CAMARA_INICIAL, LIMITES, dondeSeVe, esInicial, proyectar } from './camara';
+import { etiquetar } from './grafo';
 import { INK } from '../theme';
 import { MONO } from './mono';
 import { PAPEL } from './Papel';
 import { TENUE } from './piezasCarpeta';
 import { TYPE_ACCENT, normalizeTipo } from './tipos';
+import { EV, evento } from '../../utils/analitica';
 
 // El área mínima para tocar un punto. Un punto de 3.5 de radio no se acierta
 // con un dedo; el área invisible alrededor es lo que lo vuelve tocable.
@@ -67,12 +72,108 @@ export default function GrafoEspacio({
   onAgregar,
   onAbrirHistoria,
   onCrearConcepto,
+  // Arma el mismo grafo con un concepto abierto. Sin esto, los conceptos no se
+  // abren y el grafo se queda en el primer nivel.
+  armarCon,
+  // Un dedo orbita en 3D. Solo donde un dedo no hace otra cosa: en la hoja, un
+  // dedo desplaza la página; en pantalla completa, orbita.
+  orbitar = false,
 }) {
   const [elegido, setElegido] = useState(null);
 
-  const nodos = grafo?.nodos || [];
-  const lazos = grafo?.lazos || [];
-  const etiquetas = grafo?.etiquetas || [];
+  /**
+   * El concepto abierto. Al entrar se ven los conceptos; tocar uno muestra sus
+   * ideas alrededor, partiendo de donde estaba todo: abrir no desordena lo que
+   * ya se miraba. Tocarlo de nuevo, o tocar el fondo, lo cierra.
+   */
+  const [expandido, setExpandido] = useState(null);
+  const visto = useMemo(() => {
+    if (!expandido || !armarCon || !grafo?.nodos?.length) return grafo;
+    const iniciales = new Map(grafo.nodos.map((n) => [n.id, { x: n.x, y: n.y }]));
+    return armarCon({ expandido, iniciales }) || grafo;
+  }, [expandido, armarCon, grafo]);
+
+  // Si el seguro tuvo que rehacer el acomodo, se anota: es un caso que la
+  // prueba no cubrió y conviene verlo.
+  useEffect(() => {
+    if (visto?.rescate) evento(EV.GRAFO_RESCATADO, { rescate: visto.rescate, nodos: visto.nodos?.length || 0 });
+  }, [visto]);
+
+  const planos = visto?.nodos || [];
+  const lazos = visto?.lazos || [];
+
+  /**
+   * La cámara. Pellizcar acerca y aleja; dos dedos mueven; girar dos dedos
+   * rota en el plano; un dedo orbita en 3D (donde está habilitado). Se orbita
+   * alrededor del nodo tocado, o del centro si no hay ninguno.
+   */
+  const [camara, setCamara] = useState(CAMARA_INICIAL);
+  const inicial = esInicial(camara);
+  const pivote = useMemo(() => {
+    const n = elegido ? planos.find((x) => x.id === elegido) : null;
+    return n ? { x: n.x, y: n.y, z: n.z || 0 } : { x: ancho / 2, y: alto / 2, z: 0 };
+  }, [elegido, planos, ancho, alto]);
+
+  // Cambiar de pivote con la cámara movida haría saltar la vista: se corrige
+  // el desplazamiento para que el nuevo pivote quede donde se estaba viendo.
+  const pivoteAntes = useRef(pivote);
+  useEffect(() => {
+    const antes = pivoteAntes.current;
+    pivoteAntes.current = pivote;
+    if (antes === pivote) return;
+    setCamara((c) => {
+      if (esInicial(c)) return c;
+      const seVe = dondeSeVe(pivote, { ...c, dx: 0, dy: 0 }, antes);
+      return { ...c, dx: seVe.x + c.dx - pivote.x, dy: seVe.y + c.dy - pivote.y };
+    });
+  }, [pivote]);
+
+  const nodos = useMemo(() => proyectar(planos, camara, pivote), [planos, camara, pivote]);
+  // Sin mover la cámara, los nombres son los que ubicó el acomodo. Movida, se
+  // vuelven a ubicar sobre lo que se ve.
+  const etiquetas = useMemo(
+    () => (inicial ? visto?.etiquetas || [] : etiquetar(nodos, { ancho, alto })),
+    [inicial, visto, nodos, ancho, alto]
+  );
+  // Lo que queda al fondo se apaga un poco: es lo que da la profundidad.
+  const hondura = (n) => 1 - (n?.fondo || 0) * 0.55;
+
+  const desde = useRef({});
+  const tomar = (campos) => {
+    desde.current = { ...desde.current, ...campos };
+  };
+  const pellizco = Gesture.Pinch()
+    .runOnJS(true)
+    .onStart(() => tomar({ escala: camara.escala }))
+    .onUpdate((e) =>
+      setCamara((c) => ({
+        ...c,
+        escala: Math.min(LIMITES.escalaMax, Math.max(LIMITES.escalaMin, desde.current.escala * e.scale)),
+      }))
+    );
+  const mover = Gesture.Pan()
+    .minPointers(2)
+    .runOnJS(true)
+    .onStart(() => tomar({ dx: camara.dx, dy: camara.dy }))
+    .onUpdate((e) => setCamara((c) => ({ ...c, dx: desde.current.dx + e.translationX, dy: desde.current.dy + e.translationY })));
+  const giro = Gesture.Rotation()
+    .runOnJS(true)
+    .onStart(() => tomar({ roll: camara.roll }))
+    .onUpdate((e) => setCamara((c) => ({ ...c, roll: desde.current.roll + e.rotation })));
+  const orbita = Gesture.Pan()
+    .enabled(orbitar)
+    .maxPointers(1)
+    .minDistance(10)
+    .runOnJS(true)
+    .onStart(() => tomar({ yaw: camara.yaw, pitch: camara.pitch }))
+    .onUpdate((e) =>
+      setCamara((c) => ({
+        ...c,
+        yaw: desde.current.yaw + e.translationX * 0.009,
+        pitch: Math.max(-LIMITES.pitchMax, Math.min(LIMITES.pitchMax, desde.current.pitch - e.translationY * 0.009)),
+      }))
+    );
+  const gestos = Gesture.Simultaneous(orbita, mover, pellizco, giro);
 
   // Con quién se toca el elegido. Se calcula una vez y no por nodo: si no, cada
   // punto recorría la lista entera de lazos en cada render.
@@ -89,12 +190,15 @@ export default function GrafoEspacio({
   const porId = useMemo(() => new Map(nodos.map((n) => [n.id, n])), [nodos]);
   const etiquetaDe = useMemo(() => new Map(etiquetas.map((e) => [e.id, e])), [etiquetas]);
   const elegidoNodo = elegido ? porId.get(elegido) : null;
+  // Un elemento que además es concepto se trata como elemento: su nombre abre
+  // su ficha. El concepto solo es el que tiene acciones de concepto.
+  const conceptoSolo = elegidoNodo?.concepto && !elegidoNodo?.item ? elegidoNodo.concepto : null;
 
   // El nombre del elegido cuando no había entrado: debajo del punto, empujado
   // adentro del marco. Va con fondo de papel porque puede caer encima de líneas.
   const nombreSuelto = useMemo(() => {
     // Las ideas y los conceptos se leen en su globo, que ya trae el nombre.
-    if (!elegidoNodo || !elegidoNodo.texto || elegidoNodo.concepto || elegidoNodo.documento || etiquetaDe.has(elegidoNodo.id)) return null;
+    if (!elegidoNodo || !elegidoNodo.texto || (elegidoNodo.concepto && !elegidoNodo.item) || elegidoNodo.documento || etiquetaDe.has(elegidoNodo.id)) return null;
     const cuerpo = 10.5;
     const w = elegidoNodo.texto.length * cuerpo * 0.6 + 8;
     const h = cuerpo * 1.3 + 4;
@@ -114,13 +218,17 @@ export default function GrafoEspacio({
    * toque al lienzo, y las acciones quedan en el pie.
    */
   const globo = useMemo(() => {
-    if (!elegidoNodo || !(elegidoNodo.idea || elegidoNodo.concepto || elegidoNodo.documento)) return null;
+    // Un concepto no lleva globo: se abre y sus ideas quedan a la vista.
+    if (!elegidoNodo || !(elegidoNodo.idea || elegidoNodo.documento)) return null;
     const TOPE = 4;
     let titulo = null;
     let oraciones;
     let resto = 0;
     if (elegidoNodo.idea) {
-      oraciones = [elegidoNodo.idea.texto];
+      // Un fragmento de documento puede ser largo: el globo es para
+      // reconocerlo; se lee entero en la historia.
+      const t = elegidoNodo.idea.texto || '';
+      oraciones = [t.length > 420 ? `${t.slice(0, 419)}…` : t];
     } else if (elegidoNodo.documento) {
       // Un documento: su nombre y, si entró una parte, cuánto.
       const d = elegidoNodo.documento;
@@ -173,12 +281,18 @@ export default function GrafoEspacio({
   }
 
   const colorDe = (n) =>
-    n.idea || n.concepto || n.documento ? INDIGO : TYPE_ACCENT[normalizeTipo(n.tipo)] || INK.title;
+    n.idea || (n.concepto && !n.item) || n.documento ? INDIGO : TYPE_ACCENT[normalizeTipo(n.tipo)] || INK.title;
 
   return (
-    <View>
+    // Estilo vacío a propósito: por defecto ocupa todo (`flex: 1`), y dentro de
+    // la hoja desplazable eso lo estiraba.
+    <GestureHandlerRootView style={{}}>
+      <GestureDetector gesture={gestos}>
       <Pressable
-        onPress={() => setElegido(null)}
+        onPress={() => {
+          setElegido(null);
+          setExpandido(null);
+        }}
         style={{ width: ancho, height: alto }}
         // El fondo del lienzo limpia la selección. Es lo que uno intenta
         // primero para «soltar» algo que quedó enfocado.
@@ -211,7 +325,7 @@ export default function GrafoEspacio({
                 strokeDasharray={trazo.punteado}
                 strokeWidth={trazo.ancho}
                 fill="none"
-                opacity={apagado ? 0.08 : 1}
+                opacity={(apagado ? 0.08 : 1) * Math.min(hondura(a), hondura(b))}
               />
             );
           })}
@@ -235,27 +349,45 @@ export default function GrafoEspacio({
                   fill={PAPEL}
                   stroke={INDIGO}
                   strokeWidth={esElegido ? 2.2 : 1.5}
-                  opacity={apagado ? 0.16 : 1}
+                  opacity={(apagado ? 0.16 : 1) * hondura(n)}
                 />
               );
             }
             // Un concepto es un aro: es el centro de un racimo de ideas, no una
             // cosa. Hueco para que se lea distinto de los elementos del Codex.
-            if (n.concepto) {
+            if (n.concepto && !n.item) {
+              const abierto = expandido === n.concepto.id;
               return (
                 <Circle
                   key={n.id}
                   cx={n.x}
                   cy={n.y}
                   r={n.cuerpo}
-                  fill={PAPEL}
+                  // Abierto, el aro se tiñe: dice cuál es el que muestra sus ideas.
+                  fill={abierto ? indigo(0.16) : PAPEL}
                   stroke={INDIGO}
                   strokeWidth={esElegido ? 2.2 : 1.5}
-                  opacity={apagado ? 0.16 : 1}
+                  opacity={(apagado ? 0.16 : 1) * hondura(n)}
                 />
               );
             }
-            return (
+            // Un elemento que además es concepto lleva un aro índigo por fuera:
+            // es lo que dice que también se abre en ideas.
+            const aro =
+              n.item && n.concepto ? (
+                <Circle
+                  key={`aro-${n.id}`}
+                  cx={n.x}
+                  cy={n.y}
+                  r={n.cuerpo + 3.5}
+                  fill={expandido === n.concepto.id ? indigo(0.14) : 'none'}
+                  stroke={INDIGO}
+                  strokeWidth={1.3}
+                  opacity={(apagado ? 0.16 : 0.9) * hondura(n)}
+                />
+              ) : null;
+            return [
+              aro,
               <Circle
                 key={n.id}
                 cx={n.x}
@@ -267,12 +399,12 @@ export default function GrafoEspacio({
                 // punto haría que la taxonomía parpadee.
                 // Lo de afuera del espacio va tenue y con el aro punteado: la
                 // nota lo nombra, pero todavía no es parte del espacio.
-                opacity={apagado ? 0.16 : esElegido ? 1 : n.externo ? 0.4 : n.idea ? 0.7 : 0.86}
+                opacity={(apagado ? 0.16 : esElegido ? 1 : n.externo ? 0.4 : n.idea ? 0.7 : 0.86) * hondura(n)}
                 stroke={esElegido ? INK.title : n.externo ? colorDe(n) : PAPEL}
                 strokeWidth={esElegido ? 1.6 : 1}
                 strokeDasharray={n.externo && !esElegido ? '2 2' : undefined}
-              />
-            );
+              />,
+            ];
           })}
         </Svg>
 
@@ -298,7 +430,7 @@ export default function GrafoEspacio({
                   fontSize: 10.5,
                   lineHeight: e.alto,
                   color: colorDe(n),
-                  opacity: apagado ? 0.14 : elegido === e.id ? 1 : 0.84,
+                  opacity: (apagado ? 0.14 : elegido === e.id ? 1 : 0.84) * hondura(n),
                   textDecorationLine: elegido === e.id ? 'underline' : 'none',
                 }}
               >
@@ -382,7 +514,17 @@ export default function GrafoEspacio({
           return (
             <Pressable
               key={`toque-${n.id}`}
-              onPress={() => setElegido((e) => (e === n.id ? null : n.id))}
+              onPress={() => {
+                // Un concepto —o un elemento que también lo es— se abre y se
+                // cierra con el mismo toque.
+                if (n.concepto && armarCon) {
+                  const cerrar = expandido === n.concepto.id;
+                  setExpandido(cerrar ? null : n.concepto.id);
+                  setElegido(cerrar ? null : n.id);
+                  return;
+                }
+                setElegido((e) => (e === n.id ? null : n.id));
+              }}
               style={{
                 position: 'absolute',
                 left: n.x - lado / 2,
@@ -396,7 +538,21 @@ export default function GrafoEspacio({
             />
           );
         })}
+
+        {/* Volver a la vista de siempre, cuando se movió algo. */}
+        {!inicial ? (
+          <Pressable
+            onPress={() => setCamara(CAMARA_INICIAL)}
+            hitSlop={10}
+            style={({ pressed }) => ({ position: 'absolute', top: 4, left: 22, padding: 6, opacity: pressed ? 0.5 : 1 })}
+            accessibilityRole="button"
+            accessibilityLabel="Volver a la vista original del grafo"
+          >
+            <RotateCcw size={16} color="rgba(28,43,34,0.45)" />
+          </Pressable>
+        ) : null}
       </Pressable>
+      </GestureDetector>
 
       {/* El pie existe por una sola razón: arriba el nombre puede estar
           recortado, y este es el lugar donde se lee entero y se entra a la
@@ -413,12 +569,12 @@ export default function GrafoEspacio({
             {/* Lo que se leyó ya está en el globo; acá van las acciones. Una
                 idea se lee en la historia, donde está escrita; un concepto que
                 ya es del Codex y un elemento, en su ficha. */}
-            {elegidoNodo.concepto && !elegidoNodo.concepto.item ? <View style={{ flex: 1 }} /> : (
+            {conceptoSolo && !conceptoSolo.item ? <View style={{ flex: 1 }} /> : (
             <Pressable
               onPress={() => {
                 if (elegidoNodo.idea || elegidoNodo.documento) onAbrirHistoria?.(elegidoNodo.idea || elegidoNodo.documento);
-                else if (elegidoNodo.concepto) {
-                  if (elegidoNodo.concepto.item) onAbrirItem?.(elegidoNodo.concepto.item);
+                else if (conceptoSolo) {
+                  if (conceptoSolo.item) onAbrirItem?.(conceptoSolo.item);
                 } else onAbrirItem?.(elegidoNodo.item);
               }}
               style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.5 : 1, paddingVertical: 5 })}
@@ -426,8 +582,8 @@ export default function GrafoEspacio({
               accessibilityLabel={
                 elegidoNodo.idea || elegidoNodo.documento
                   ? 'Leer en la historia'
-                  : elegidoNodo.concepto
-                    ? elegidoNodo.concepto.nombre
+                  : conceptoSolo
+                    ? conceptoSolo.nombre
                     : `Abrir ${elegidoNodo.item?.name}`
               }
             >
@@ -435,14 +591,14 @@ export default function GrafoEspacio({
                 numberOfLines={1}
                 style={{
                   fontFamily: MONO,
-                  fontSize: elegidoNodo.idea || elegidoNodo.concepto || elegidoNodo.documento ? 12 : 12.5,
+                  fontSize: elegidoNodo.idea || conceptoSolo || elegidoNodo.documento ? 12 : 12.5,
                   lineHeight: 18,
-                  color: elegidoNodo.idea || elegidoNodo.concepto || elegidoNodo.documento ? INDIGO : INK.title,
+                  color: elegidoNodo.idea || conceptoSolo || elegidoNodo.documento ? INDIGO : INK.title,
                 }}
               >
                 {elegidoNodo.idea || elegidoNodo.documento
                   ? 'leer en la historia'
-                  : elegidoNodo.concepto
+                  : conceptoSolo
                     ? 'ver en el Codex'
                     : elegidoNodo.item?.name}
               </Text>
@@ -450,13 +606,13 @@ export default function GrafoEspacio({
             )}
             {/* Un concepto que todavía no es del Codex se puede crear desde
                 acá. Nunca solo: lo decidís vos. */}
-            {elegidoNodo.concepto && !elegidoNodo.concepto.item && onCrearConcepto ? (
+            {conceptoSolo && !conceptoSolo.item && onCrearConcepto ? (
               <Pressable
-                onPress={() => onCrearConcepto(elegidoNodo.concepto)}
+                onPress={() => onCrearConcepto(conceptoSolo)}
                 hitSlop={8}
                 style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingVertical: 5 })}
                 accessibilityRole="button"
-                accessibilityLabel={`Crear ${elegidoNodo.concepto.nombre} en el Codex`}
+                accessibilityLabel={`Crear ${conceptoSolo.nombre} en el Codex`}
               >
                 <Text style={{ fontFamily: MONO, fontSize: 12, color: INDIGO }}>+ al Codex</Text>
               </Pressable>
@@ -477,6 +633,6 @@ export default function GrafoEspacio({
           </Animated.View>
         ) : null}
       </View>
-    </View>
+    </GestureHandlerRootView>
   );
 }

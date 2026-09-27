@@ -82,7 +82,7 @@ import { geoDePunto } from './geo';
 import { donde, pedirEnUso } from '../../services/ubicacion';
 import MiniMapa from './MiniMapa';
 import BuscarLugar from '../mapa/BuscarLugar';
-import { addItemsToSpace, agregarHistoria, listSpaces, notaPrincipalDe } from '../../utils/codexSpaces';
+import { addItemsToSpace, agregarHistoria, listSpaces, notaPrincipalDe, quitarHistoria } from '../../utils/codexSpaces';
 import { indiceDeHistoria, renglonesHasta } from './historia';
 import DocumentosNota from './DocumentosNota';
 import { borrarDocumentoNota, firmarDocumentoNota, subirDocumentoNota } from '../../utils/subirDocumento';
@@ -594,6 +594,9 @@ export default function CreateSnippetSheet({
    * arriba de la hoja.
    */
   const [principalDe, setPrincipalDe] = useState(null);
+  // De qué espacio era historia la nota al abrirla. Si al guardar ya no lo es
+  // —se desmarcó la casilla o se llevó a otro espacio—, se la saca de ahí.
+  const [historiaAlAbrir, setHistoriaAlAbrir] = useState(null);
 
   const campo = useRef(null);
   const pager = useRef(null);
@@ -975,6 +978,7 @@ export default function CreateSnippetSheet({
         setEditandoId(nota.id);
         setEspacioDestino(null);
         setPrincipalDe(principal);
+        setHistoriaAlAbrir(principal);
         irA(NOTA);
         // Soltar el foco, no solo bajar el teclado.
         //
@@ -1035,6 +1039,7 @@ export default function CreateSnippetSheet({
         yaEnLaBase.current = new Set();
         setSeleccionado('');
         setEditandoId(null);
+        setHistoriaAlAbrir(null);
       }
       setEspacioDestino({ id: espacio.id, name: espacio.name });
     } else {
@@ -1395,6 +1400,7 @@ export default function CreateSnippetSheet({
     soltarDocumentos(documentos);
     setEspacioDestino(null);
     setPrincipalDe(null);
+    setHistoriaAlAbrir(null);
 
     // Distingue cerrar con algo escrito de cerrar en blanco: lo primero es
     // abandonar una nota, lo segundo es solo salir.
@@ -1538,6 +1544,17 @@ export default function CreateSnippetSheet({
           await agregarHistoria(principalDe.id, data.id);
         } catch (e) {
           console.warn('[nota] no se pudo sumar como historia', e?.message || e);
+        }
+      }
+
+      // Era historia de un espacio y ya no lo es: sale de sus historias. La
+      // nota sigue en el espacio como una nota normal.
+      if (editandoId && historiaAlAbrir?.id && principalDe?.id !== historiaAlAbrir.id) {
+        try {
+          await quitarHistoria(historiaAlAbrir.id, editandoId);
+          setRecargaEspacios((n) => n + 1);
+        } catch (e) {
+          console.warn('[nota] no se pudo dejar de usar como historia', e?.message || e);
         }
       }
 
@@ -2265,10 +2282,10 @@ export default function CreateSnippetSheet({
             />
           ) : null}
 
-          {/* Dónde se guarda: en un espacio, o como su historia si todavía
-              no tiene. No va en la historia de un espacio ya abierta: esa
-              ya tiene su lugar. */}
-          {enNotas && pagina === NOTA && !preguntando && !(principalDe && !principalDe.marcar && editandoId) ? (
+          {/* Dónde se guarda: en un espacio, y si va como una de sus
+              historias. Abierta una historia, la casilla viene marcada:
+              desmarcarla la deja como una nota normal del espacio. */}
+          {enNotas && pagina === NOTA && !preguntando ? (
             <Glifo
               Icono={Layers}
               activo={Boolean(principalDe || (espacioDestino && (!editandoId || espacioDestino.marcar)))}

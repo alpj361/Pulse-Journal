@@ -187,7 +187,13 @@ function historiaDe(datos, codex, propios) {
   const conFragmentos = new Set(ideas.map((i) => i.documento).filter(Boolean));
   const documentos = (datos?.documentos || []).filter((d) => conFragmentos.has(d.id));
 
-  return { ideas, conceptos, lazos, documentos, nombrados, externos: new Set() };
+  // Mientras una historia se vectoriza, sus ideas no se dibujan: sin conceptos
+  // todavía serían decenas de puntos sueltos que después se reagrupan. Entran
+  // juntas, ya en sus racimos, cuando termina la espera. Una historia ya
+  // vectorizada se dibuja siempre, tenga conceptos o no.
+  const enCamino = new Set(ideas.filter((i) => !i.indexada).map((i) => i.historia));
+
+  return { ideas, conceptos, lazos, documentos, nombrados, externos: new Set(), enCamino };
 }
 
 /**
@@ -196,20 +202,36 @@ function historiaDe(datos, codex, propios) {
  * conceptos no dice nada de la recién guardada—.
  */
 function historiaCompleta(datos) {
-  const ideas = datos?.ideas || [];
-  if (ideas.some((i) => !i.indexada)) return false;
-  const conConceptos = new Set((datos?.conceptos || []).map((c) => c.historia));
-  const porHistoria = new Map();
-  for (const i of ideas) porHistoria.set(i.historia, (porHistoria.get(i.historia) || 0) + 1);
-  for (const [historia, cuantas] of porHistoria) {
-    if (cuantas > 1 && !conConceptos.has(historia)) return false;
-  }
-  return true;
+  return historiasEnCamino(datos).size === 0;
 }
 
-/** La historia recién guardada tarda unos segundos en vectorizarse. */
-const ESPERA_INDICE_MS = 5000;
-const REINTENTOS_INDICE = 5;
+/**
+ * Las historias que todavía no terminaron de entrar a la memoria: alguna idea
+ * sin vectorizar, o varias ideas y ningún concepto todavía.
+ */
+function historiasEnCamino(datos) {
+  const ideas = datos?.ideas || [];
+  const conConceptos = new Set((datos?.conceptos || []).map((c) => c.historia));
+  const porHistoria = new Map();
+  const sinVector = new Set();
+  for (const i of ideas) {
+    porHistoria.set(i.historia, (porHistoria.get(i.historia) || 0) + 1);
+    if (!i.indexada) sinVector.add(i.historia);
+  }
+  const enCamino = new Set(sinVector);
+  for (const [historia, cuantas] of porHistoria) {
+    if (cuantas > 1 && !conConceptos.has(historia)) enCamino.add(historia);
+  }
+  return enCamino;
+}
+
+/**
+ * Una historia recién guardada tarda en entrar a la memoria: unos segundos si
+ * es corta, un par de minutos si es larga o trae un documento. Se pregunta
+ * cada vez más espaciado, hasta tres minutos.
+ */
+const ESPERAS_INDICE_MS = [4000, 5000, 6000, 8000, 10000, 12000, 15000, 15000, 15000, 20000, 20000, 20000, 25000, 25000];
+const REINTENTOS_INDICE = ESPERAS_INDICE_MS.length;
 
 async function traerHistoria(espacioId) {
   const [{ data, error }, { data: documentos }] = await Promise.all([
@@ -398,9 +420,10 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
               // Lo que ya estaba como de afuera sigue marcado igual; lo nuevo
               // que nombre la historia aparece la próxima vez que se abra.
               nota.externos = d.nota.externos;
-              // Terminado de esperar: lo que no llegó no se vuelve a pedir.
+              // Terminado de esperar: lo que no llegó no se vuelve a pedir, y
+              // lo que haya se dibuja aunque no tenga conceptos.
               if (!lista) nota.ideas = nota.ideas.map((i) => ({ ...i, indexada: true }));
-              return { ...d, nota: { ...nota, esperado: true } };
+              return { ...d, nota: { ...nota, enCamino: new Set(), esperado: true } };
             });
             return;
           }
@@ -408,7 +431,7 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
           if (!vivo) return;
         }
         if (intentos < REINTENTOS_INDICE) probar();
-      }, ESPERA_INDICE_MS);
+      }, ESPERAS_INDICE_MS[Math.min(intentos, REINTENTOS_INDICE - 1)]);
     };
     probar();
 
@@ -457,8 +480,12 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
    * El mismo grafo, acomodado para otro marco —la pantalla completa—. Usa los
    * datos que ya llegaron: agrandar no vuelve a pedir nada.
    */
+  //
+  // También arma el grafo con un concepto abierto (`expandido`) y partiendo de
+  // las posiciones de antes (`iniciales`), para que abrirlo no desordene.
   const armarPara = useCallback(
-    (otro) => (datos && otro?.ancho && otro?.alto ? construir({ ...datos, marco: otro }) : null),
+    (otro, opciones = {}) =>
+      datos && otro?.ancho && otro?.alto ? construir({ ...datos, marco: otro, ...opciones }) : null,
     [datos]
   );
 

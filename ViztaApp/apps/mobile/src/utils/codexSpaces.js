@@ -385,3 +385,29 @@ export async function agregarHistoria(spaceId, snippetId) {
     .eq('id', spaceId);
   if (error) throw error;
 }
+
+/**
+ * Deja de usar una nota como historia del espacio. La nota no se borra: sigue
+ * en el espacio como una nota más. La base se encarga del resto al ver la lista
+ * nueva: borra su memoria y sus conceptos, y renumera las demás historias.
+ */
+export async function quitarHistoria(spaceId, snippetId) {
+  const { data: actual, error: errLeer } = await supabase
+    .from('spaces')
+    .select('metadata')
+    .eq('id', spaceId)
+    .maybeSingle();
+  if (errLeer) throw errLeer;
+  if (!actual) throw new Error('El espacio ya no existe');
+
+  const historias = historiasDeMetadata(actual.metadata).filter((id) => id !== snippetId);
+  const { historias: _h, nota_principal: _n, ...resto } = actual.metadata || {};
+  const { error } = await supabase
+    .from('spaces')
+    .update({
+      metadata: historias.length ? { ...resto, historias, nota_principal: historias[0] } : resto,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', spaceId);
+  if (error) throw error;
+}

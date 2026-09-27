@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   FadeIn,
@@ -110,6 +110,9 @@ export default function Espacios({
     recarga
   );
   const [completo, setCompleto] = useState(false);
+  // Para abrir conceptos: el mismo grafo, armado otra vez con uno abierto.
+  // Estable, porque si cambiara en cada render el grafo se reacomodaría.
+  const armarCon = useCallback((opciones) => armarPara(marco, opciones), [armarPara, marco.ancho, marco.alto]);
   const asociados = elegido
     ? (items || []).filter((it) => normalizeTipo(it.tipo) !== 'Post')
     : [];
@@ -319,6 +322,7 @@ export default function Espacios({
               alto={marco.alto}
               cargando={armando}
               error={errorGrafo}
+              armarCon={armarCon}
               {...accionesGrafo}
             />
             {/* Agrandar: el mismo grafo en toda la pantalla. Arriba a la
