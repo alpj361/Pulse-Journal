@@ -28,7 +28,7 @@ import { asegurarCupo, refrescarUso } from '../state/usoStore';
 export async function listSpaces() {
   const { data, error } = await supabase
     .from('spaces')
-    .select('id, name, project_id, updated_at, data->canvasItems, data->cover, metadata->nota_principal')
+    .select('id, name, project_id, updated_at, data->canvasItems, data->cover, metadata->historias')
     .order('updated_at', { ascending: false });
 
   if (error) throw error;
@@ -42,9 +42,8 @@ export async function listSpaces() {
     // Portada subida por el usuario. Vive en el jsonb `data`, así que no hizo
     // falta migrar la tabla; si no está, el sistema genera una.
     cover: typeof row.cover === 'string' ? row.cover : null,
-    // Si ya tiene historia. Al guardar una nota se ofrece hacerla la historia
-    // solo en los espacios que todavía no tienen una.
-    notaPrincipal: typeof row.nota_principal === 'string' ? row.nota_principal : null,
+    // Sus historias, en orden. Un espacio puede tener varias.
+    historias: Array.isArray(row.historias) ? row.historias : [],
   }));
 }
 
@@ -309,25 +308,33 @@ export async function renameSpace(spaceId, name) {
   if (error) throw error;
 }
 
-// ─── La nota principal de un espacio ──────────────────────────────────────────
+// ─── Las historias de un espacio ─────────────────────────────────────────────
 
 /**
- * La nota principal de un espacio: su documento.
+ * Las historias de un espacio, en orden: la primera es la 1.
  *
- * **Es una nota de verdad**, un Snippet como cualquier otro: queda en el
- * historial, resalta menciones y se puede buscar. Lo que la hace «principal»
- * es un puntero en `spaces.metadata.nota_principal`, y por eso un espacio tiene
- * **una sola** por construcción — no hay dos filas que puedan decir lo mismo.
+ * **Cada historia es una nota de verdad**, un Snippet como cualquier otro:
+ * queda en el historial, resalta menciones y se puede buscar. Lo que la hace
+ * historia es estar en la lista `spaces.metadata.historias`. La base mantiene
+ * `metadata.nota_principal` igual a la primera, para las versiones de la app que
+ * solo conocen esa; acá se lee la lista, y si no está, ese campo.
  *
  * No se usa el rol `output` de `workspace_resources`: el MCP lo expone y la IA
  * puede ponérselo a varias cosas de un espacio —un informe generado, por
- * ejemplo—, y ahí «la principal» se mezclaría con cualquier salida.
- *
- * Devuelve el id solo si la nota sigue existiendo: un puntero a una nota
+ * ejemplo—, y ahí una historia se mezclaría con cualquier salida.
+ */
+function historiasDeMetadata(metadata) {
+  const lista = Array.isArray(metadata?.historias) ? metadata.historias.filter(Boolean) : [];
+  if (lista.length) return lista;
+  return metadata?.nota_principal ? [metadata.nota_principal] : [];
+}
+
+/**
+ * Los ids de las historias que siguen existiendo: un puntero a una nota
  * borrada abriría una hoja vacía que dice estar editando algo.
  */
-export async function notaPrincipalDe(spaceId) {
-  if (!spaceId) return null;
+export async function historiasDe(spaceId) {
+  if (!spaceId) return [];
   const { data: espacio, error } = await supabase
     .from('spaces')
     .select('metadata')
@@ -335,24 +342,28 @@ export async function notaPrincipalDe(spaceId) {
     .maybeSingle();
   if (error) throw error;
 
-  const id = espacio?.metadata?.nota_principal || null;
-  if (!id) return null;
+  const ids = historiasDeMetadata(espacio?.metadata);
+  if (!ids.length) return [];
 
-  const { data: nota } = await supabase
-    .from('codex_universe_items')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  return nota?.id || null;
+  const { data: vivas } = await supabase.from('codex_universe_items').select('id').in('id', ids);
+  const existen = new Set((vivas || []).map((n) => n.id));
+  return ids.filter((id) => existen.has(id));
+}
+
+/** La primera historia: la que abre el botón «la historia» del espacio. */
+export async function notaPrincipalDe(spaceId) {
+  const ids = await historiasDe(spaceId);
+  return ids[0] || null;
 }
 
 /**
- * Marca una nota como la principal del espacio.
+ * Suma una nota a las historias del espacio, al final: si ya había una, esta
+ * es la 2. Una que ya estaba no se repite ni cambia de lugar.
  *
  * Lee y mezcla antes de escribir: `metadata` puede tener otras claves, y el
  * update reemplaza la columna entera.
  */
-export async function marcarNotaPrincipal(spaceId, snippetId) {
+export async function agregarHistoria(spaceId, snippetId) {
   const { data: actual, error: errLeer } = await supabase
     .from('spaces')
     .select('metadata')
@@ -361,10 +372,14 @@ export async function marcarNotaPrincipal(spaceId, snippetId) {
   if (errLeer) throw errLeer;
   if (!actual) throw new Error('El espacio ya no existe');
 
+  const lista = historiasDeMetadata(actual.metadata);
+  if (lista.includes(snippetId)) return;
+  const historias = [...lista, snippetId];
+
   const { error } = await supabase
     .from('spaces')
     .update({
-      metadata: { ...(actual.metadata || {}), nota_principal: snippetId },
+      metadata: { ...(actual.metadata || {}), historias, nota_principal: historias[0] },
       updated_at: new Date().toISOString(),
     })
     .eq('id', spaceId);

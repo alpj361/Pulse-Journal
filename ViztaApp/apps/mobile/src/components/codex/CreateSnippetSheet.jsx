@@ -25,10 +25,8 @@ import Animated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
-  FadeOut,
 } from 'react-native-reanimated';
 import {
   X,
@@ -43,7 +41,9 @@ import {
   Type,
   Layers,
   Check,
+  FileText,
 } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { INK, MOTION } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
 import { PAPEL } from './Papel';
@@ -82,8 +82,11 @@ import { geoDePunto } from './geo';
 import { donde, pedirEnUso } from '../../services/ubicacion';
 import MiniMapa from './MiniMapa';
 import BuscarLugar from '../mapa/BuscarLugar';
-import { addItemsToSpace, listSpaces, marcarNotaPrincipal, notaPrincipalDe } from '../../utils/codexSpaces';
+import { addItemsToSpace, agregarHistoria, listSpaces, notaPrincipalDe } from '../../utils/codexSpaces';
 import { indiceDeHistoria, renglonesHasta } from './historia';
+import DocumentosNota from './DocumentosNota';
+import { borrarDocumentoNota, firmarDocumentoNota, subirDocumentoNota } from '../../utils/subirDocumento';
+import { useEspacioElegidoStore } from '../../state/espacioElegidoStore';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -268,10 +271,24 @@ export default function CreateSnippetSheet({
    * tiene nombres propios que uno quiere ir mirando.
    */
   const [buscando, setBuscando] = useState(false);
+  // La lupa en Espacios: busca en el Codex para sumar al espacio abierto. Solo
+  // hay algo que sumar adentro de un espacio, así que se sabe cuál está abierto.
+  const [espacioAbierto, setEspacioAbierto] = useState(null);
+  const [buscandoEnEspacio, setBuscandoEnEspacio] = useState(false);
+  useEffect(() => {
+    if (!espacioAbierto) setBuscandoEnEspacio(false);
+  }, [espacioAbierto]);
 
   // Fotos adjuntas a la nota, y si la bandeja o la cámara están a la vista.
   const [fotos, setFotos] = useState([]);
   const [audios, setAudios] = useState([]);
+  /**
+   * Los documentos de la nota. Los que ya están guardados traen `id` (su fila
+   * en `nota_documentos`); los recién subidos no, y se registran al guardar.
+   * Quitar uno guardado se hace efectivo al guardar, igual que las fotos.
+   */
+  const [documentos, setDocumentos] = useState([]);
+  const docsQuitados = useRef([]);
   const [mostrandoFotos, setMostrandoFotos] = useState(false);
   // La tira de formato. Vive donde la bandeja y la grabadora, y como ellas, es
   // excluyente: las tres ocupan el mismo hueco sobre el teclado.
@@ -434,6 +451,12 @@ export default function CreateSnippetSheet({
     retiradas.current.clear();
   }, []);
 
+  /** Los documentos subidos para esta nota y nunca guardados: sus archivos se van. */
+  const soltarDocumentos = useCallback((lista) => {
+    for (const d of lista || []) if (!d.id && d.storage_path) borrarDocumentoNota(d.storage_path);
+    docsQuitados.current = [];
+  }, []);
+
   /**
    * Modo Vizta: lo que se escribe es una pregunta, no una nota.
    *
@@ -509,8 +532,34 @@ export default function CreateSnippetSheet({
    * acá. Por eso se cambia con un switch explícito y no deslizando, y por eso
    * reemplaza al pager entero en vez de sumarse a la fila.
    */
-  const [modo, setModo] = useState('notas'); // 'notas' | 'espacios'
+  /**
+   * La pantalla con la que abre: donde la dejaste. Si la hoja se abre para
+   * algo puntual —restaurar una nota, la historia de un espacio—, va a Notas,
+   * que es lo que se pidió.
+   */
+  const abreEnAlgo = !!(restaurarId || espacioPrincipal?.id);
+  const [modo, setModo] = useState(() =>
+    abreEnAlgo ? 'notas' : useEspacioElegidoStore.getState().pantalla || 'notas'
+  ); // 'notas' | 'espacios'
   const enNotas = modo === 'notas';
+
+  // El recuerdo se lee del disco un instante después de arrancar la app. Si la
+  // hoja se abrió antes, se corrige al llegar —solo si todavía no se tocó nada—.
+  const modoTocado = useRef(false);
+  useEffect(() => {
+    if (abreEnAlgo || useEspacioElegidoStore.persist.hasHydrated()) return undefined;
+    return useEspacioElegidoStore.persist.onFinishHydration((st) => {
+      if (!modoTocado.current) setModo(st.pantalla || 'notas');
+    });
+  }, [abreEnAlgo]);
+
+  // Se guarda solo con el recuerdo ya leído: antes, guardar «notas» pisaría en
+  // el disco la pantalla que se estaba por restaurar.
+  const recordarPantalla = useEspacioElegidoStore((st) => st.recordarPantalla);
+  useEffect(() => {
+    if (!useEspacioElegidoStore.persist.hasHydrated()) return;
+    recordarPantalla(modo);
+  }, [modo, recordarPantalla]);
 
   // Si el activo es el segundo segmento, la pista se corre para que el recorte
   // deje a la vista ese y no el primero. Hoy solo se escribe en Notas, así que
@@ -895,6 +944,14 @@ export default function CreateSnippetSheet({
         const susAudios = await Promise.all(audiosDe(nota).map(resolverUrl));
         setFotos(suyas);
         setAudios(susAudios);
+
+        soltarDocumentos(documentos);
+        const { data: susDocs } = await supabase
+          .from('nota_documentos')
+          .select('id, storage_path, nombre, mime, tamano, estado, error, paginas, paginas_leidas')
+          .eq('nota_id', nota.id)
+          .order('created_at');
+        setDocumentos((susDocs || []).map((d) => ({ ...d, clave: d.id })));
         yaEnLaBase.current = new Set(
           [...suyas, ...susAudios].map((m) => m.storage_path).filter(Boolean)
         );
@@ -933,7 +990,7 @@ export default function CreateSnippetSheet({
       // Las fotos cuentan igual que el texto: adjuntar una y abrir otra nota
       // hacía desaparecer la subida sin decir nada, y encima dejaba el archivo
       // en el bucket sin dueño.
-      if (!editandoId && (cuerpo.trim().length > 0 || fotos.length > 0 || audios.length > 0)) {
+      if (!editandoId && (cuerpo.trim().length > 0 || fotos.length > 0 || audios.length > 0 || documentos.length > 0)) {
         Alert.alert(
           'Tenés una nota sin guardar',
           fotos.length && !cuerpo.trim()
@@ -949,7 +1006,7 @@ export default function CreateSnippetSheet({
       cargar();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cuerpo, editandoId, fotos, audios]
+    [cuerpo, editandoId, fotos, audios, documentos]
   );
 
   /**
@@ -973,6 +1030,8 @@ export default function CreateSnippetSheet({
         setTags('');
         setFotos([]);
         setAudios([]);
+        soltarDocumentos(documentos);
+        setDocumentos([]);
         yaEnLaBase.current = new Set();
         setSeleccionado('');
         setEditandoId(null);
@@ -1228,6 +1287,50 @@ export default function CreateSnippetSheet({
     }
   }, []);
 
+  /**
+   * Adjuntar un documento. Aparece en la nota apenas empieza la subida —no
+   * mientras se elige—, con su nombre y un indicador. Se registra en la nota al
+   * guardar; si la nota es una historia, el servidor lo lee después.
+   */
+  const agregarDocumento = useCallback(async () => {
+    if (documentos.length >= 5) {
+      falla();
+      setError('Una nota tiene como máximo 5 documentos.');
+      return;
+    }
+    const clave = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      const r = await subirDocumentoNota({
+        alEmpezarSubida: ({ nombre, tamano }) =>
+          setDocumentos((d) => [...d, { clave, nombre, tamano, subiendo: true }]),
+      });
+      if (r.cancelado) return;
+      toque();
+      setDocumentos((d) => d.map((x) => (x.clave === clave ? { ...x, ...r, subiendo: false } : x)));
+    } catch (e) {
+      falla();
+      setDocumentos((d) => d.filter((x) => x.clave !== clave));
+      setError(e.message || 'No se pudo subir el documento');
+    }
+  }, [documentos.length]);
+
+  /** Quitar un documento: el recién subido se borra ya; el guardado, al guardar. */
+  const quitarDocumento = useCallback((doc) => {
+    setDocumentos((d) => d.filter((x) => x.clave !== doc.clave));
+    if (doc.id) docsQuitados.current.push(doc);
+    else if (doc.storage_path) borrarDocumentoNota(doc.storage_path);
+  }, []);
+
+  const abrirDocumento = useCallback(async (doc) => {
+    try {
+      const url = await firmarDocumentoNota(doc.storage_path);
+      if (url) await WebBrowser.openBrowserAsync(url);
+    } catch (e) {
+      falla();
+      setError('No se pudo abrir el documento');
+    }
+  }, []);
+
   /** Quitar un audio. Mismo criterio que las fotos. */
   const quitarAudio = useCallback((audio) => {
     setAudios((a) => a.filter((x) => x.id !== audio.id));
@@ -1289,6 +1392,7 @@ export default function CreateSnippetSheet({
    */
   const cerrar = useCallback(() => {
     soltarFotos([...fotos, ...audios]);
+    soltarDocumentos(documentos);
     setEspacioDestino(null);
     setPrincipalDe(null);
 
@@ -1296,7 +1400,7 @@ export default function CreateSnippetSheet({
     // abandonar una nota, lo segundo es solo salir.
     evento(EV.NOTA_DESCARTADA, { tenia_texto: cuerpo.trim().length > 0 });
     onClose();
-  }, [fotos, audios, cuerpo, onClose, soltarFotos]);
+  }, [fotos, audios, documentos, cuerpo, onClose, soltarFotos, soltarDocumentos]);
 
   /**
    * Poner dónde estoy.
@@ -1426,17 +1530,50 @@ export default function CreateSnippetSheet({
         }
       }
 
-      // Y si es la principal que se acaba de empezar, queda marcada. Igual que
-      // la membresía: si esto falla, la nota está guardada y en el espacio; se
-      // reintenta la próxima vez que se abra el espacio y no encuentre una.
+      // Y si va como historia, se suma a las del espacio: si ya tenía una,
+      // esta es la siguiente. Igual que la membresía: si esto falla, la nota
+      // está guardada y en el espacio.
       if (principalDe?.id && data?.id && (!editandoId || principalDe.marcar)) {
         try {
-          // Se vuelve a mirar justo antes: si mientras tanto el espacio ganó
-          // una historia, no se le pisa. La nota igual quedó en el espacio.
-          const ya = principalDe.marcar ? await notaPrincipalDe(principalDe.id) : null;
-          if (!ya || ya === data.id) await marcarNotaPrincipal(principalDe.id, data.id);
+          await agregarHistoria(principalDe.id, data.id);
         } catch (e) {
-          console.warn('[nota] no se pudo marcar como principal', e?.message || e);
+          console.warn('[nota] no se pudo sumar como historia', e?.message || e);
+        }
+      }
+
+      // Los documentos: los nuevos se registran en la nota —ahí se aplican los
+      // límites del plan— y los quitados se borran. Si el plan no deja sumar
+      // uno, la nota igual queda guardada y se avisa cuál no entró.
+      if (data?.id) {
+        const nuevos = documentos.filter((d) => !d.id && d.storage_path && !d.subiendo);
+        const rechazados = [];
+        for (const d of nuevos) {
+          const { error: eDoc } = await supabase.from('nota_documentos').insert({
+            user_id: userId,
+            nota_id: data.id,
+            storage_path: d.storage_path,
+            nombre: d.nombre,
+            mime: d.mime,
+            tamano: d.tamano,
+          });
+          if (eDoc) {
+            rechazados.push({ nombre: d.nombre, motivo: eDoc.message });
+            borrarDocumentoNota(d.storage_path);
+          }
+        }
+        for (const d of docsQuitados.current) {
+          await supabase.from('nota_documentos').delete().eq('id', d.id);
+          borrarDocumentoNota(d.storage_path);
+        }
+        docsQuitados.current = [];
+        if (rechazados.length) {
+          const porPlan = rechazados.some((r) => /DOCS_LIMITE_PLAN/.test(r.motivo));
+          Alert.alert(
+            'Un documento no entró',
+            porPlan
+              ? `Llegaste al máximo de documentos de tu plan. La nota se guardó sin ${rechazados.map((r) => `«${r.nombre}»`).join(', ')}.`
+              : `La nota se guardó, pero no se pudo sumar ${rechazados.map((r) => `«${r.nombre}»`).join(', ')}.`
+          );
         }
       }
 
@@ -1554,7 +1691,9 @@ export default function CreateSnippetSheet({
                       valor={modo}
                       onReselect={() => setSwitchPedido(false)}
                       onChange={(m) => {
+                        modoTocado.current = true;
                         setModo(m);
+                        setBuscandoEnEspacio(false);
                         setSwitchPedido(false);
                         setEscribiendo(false);
                         // Lo que flota sobre el teclado pertenece a la nota. Al salir
@@ -1629,9 +1768,17 @@ export default function CreateSnippetSheet({
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
-              {/* Enciende el autocompletado del Codex. Solo en la página de la
-                  nota: es lo que se escribe lo que se busca, y en el historial y
-                  en el panel no hay nada escribiéndose. */}
+              {/* La lupa, en las dos pantallas. En Notas enciende el
+                  autocompletado del Codex —solo en la página de la nota: es lo
+                  que se escribe lo que se busca—. En Espacios, adentro de un
+                  espacio, busca en el Codex para sumarle cosas. */}
+              {!enNotas && espacioAbierto ? (
+                <GlifoBarra
+                  Icono={Search}
+                  activo={buscandoEnEspacio}
+                  onPress={() => setBuscandoEnEspacio((b) => !b)}
+                />
+              ) : null}
               {enNotas && pagina === NOTA ? (
                 <GlifoBarra
                   Icono={Search}
@@ -1742,6 +1889,10 @@ export default function CreateSnippetSheet({
               onNuevoEspacio={() => setCreandoEspacio(true)}
               onAbrirItem={setItemAbierto}
               recarga={recargaEspacios}
+              indice={indice}
+              buscando={buscandoEnEspacio}
+              onCerrarBusqueda={() => setBuscandoEnEspacio(false)}
+              onElegido={setEspacioAbierto}
               onNuevaNota={(espacio) => {
                 // Una nota más del espacio, no la principal.
                 setPrincipalDe(null);
@@ -1823,6 +1974,10 @@ export default function CreateSnippetSheet({
                 onVerFoto={setFotoAbierta}
                 audios={audios}
                 onQuitarAudio={quitarAudio}
+                documentos={documentos}
+                esHistoria={!!principalDe}
+                onAbrirDocumento={abrirDocumento}
+                onQuitarDocumento={quitarDocumento}
                 escribiendo={escribiendo}
                 vacio={!cuerpo.trim()}
                 marcador={marcador}
@@ -2045,6 +2200,21 @@ export default function CreateSnippetSheet({
             />
           ) : null}
 
+          {/* Un documento: PDF, Word o texto. En una historia el servidor lo
+              lee y entra a su memoria; en una nota normal queda de apoyo. */}
+          {enNotas && pagina === NOTA && !preguntando ? (
+            <Glifo
+              Icono={FileText}
+              activo={false}
+              onPress={() => {
+                Keyboard.dismiss();
+                setMostrandoFotos(false);
+                setGrabando(false);
+                agregarDocumento();
+              }}
+            />
+          ) : null}
+
           {/* Cómo se ve lo que se escribe.
 
               Solo mientras se escribe, y por eso cuelga de `escribiendo` y no
@@ -2198,7 +2368,6 @@ export default function CreateSnippetSheet({
         espacios={espaciosParaGuardar}
         actual={principalDe?.id || espacioDestino?.id || null}
         comoHistoria={!!principalDe}
-        notaId={editandoId}
         bottomInset={bottomInset}
         // Elegir no cierra: la hoja queda abierta para decidir si va como
         // historia. Se cierra con «Listo» o tocando afuera.
@@ -2305,6 +2474,10 @@ function Nota({
   onVerFoto,
   audios,
   onQuitarAudio,
+  documentos,
+  esHistoria,
+  onAbrirDocumento,
+  onQuitarDocumento,
   escribiendo,
   onEscribir,
   vacio,
@@ -2577,6 +2750,13 @@ function Nota({
               en un nombre para abrir su ficha y el modo Vizta. */}
           <Audios audios={audios} onQuitar={onQuitarAudio} />
 
+          <DocumentosNota
+            documentos={documentos}
+            esHistoria={esHistoria}
+            onAbrir={onAbrirDocumento}
+            onQuitar={onQuitarDocumento}
+          />
+
           <Adjuntas fotos={fotos} onQuitar={onQuitarFoto} onVer={onVerFoto} />
 
           {/* Dónde pasó, al final: primero lo que se escribió, después el
@@ -2709,36 +2889,24 @@ function OpcionesUbicacion({ visible, ubicacion, bottomInset = 0, onAqui, onBusc
  * Dónde se guarda la nota.
  *
  * Tocar un espacio lo elige, y la hoja queda abierta. Abajo, una casilla decide
- * si la nota es **la historia** de ese espacio o una nota más adentro: casi
- * siempre es una nota más, así que arranca sin marcar.
- *
- * Un espacio que ya tiene historia no puede tener otra: reemplazarla sin verla
- * sería perderla de vista. Si la casilla está marcada y se elige uno así —o se
- * la marca con uno así elegido—, la casilla se suelta sola: el tilde entra,
- * rebota y se va, con la razón a la vista un momento. Se ve que se intentó y por
- * qué no, sin un aviso que haya que cerrar.
+ * si la nota es **una historia** de ese espacio o una nota más adentro: casi
+ * siempre es una nota más, así que arranca sin marcar. Un espacio puede tener
+ * varias historias; una nueva se suma después de las que ya tiene.
  */
 function ElegirEspacio(props) {
   if (!props.visible) return null;
   return <HojaEspacio {...props} />;
 }
 
-function HojaEspacio({ espacios, actual, comoHistoria, notaId, bottomInset = 0, onElegir, onQuitar, onClose }) {
+function HojaEspacio({ espacios, actual, comoHistoria, bottomInset = 0, onElegir, onQuitar, onClose }) {
   const [elegidoId, setElegidoId] = useState(actual);
   const [historia, setHistoria] = useState(!!comoHistoria);
-  const [motivo, setMotivo] = useState(null);
-  const reloj = useRef(null);
-  useEffect(() => () => clearTimeout(reloj.current), []);
-
-  // Sin historia, o con esta misma nota como historia.
-  const libre = (e) => !!e && (!e.notaPrincipal || (!!notaId && e.notaPrincipal === notaId));
   const elegido = (espacios || []).find((e) => e.id === elegidoId) || null;
 
-  // El tilde: cuánto está marcado (0–1) y el temblor del rechazo.
+  // El tilde: cuánto está marcado (0–1).
   const marca = useSharedValue(comoHistoria ? 1 : 0);
-  const temblor = useSharedValue(0);
   const estiloCaja = useAnimatedStyle(() => ({
-    transform: [{ translateX: temblor.value }, { scale: 1 + marca.value * 0.06 - marca.value * marca.value * 0.06 }],
+    transform: [{ scale: 1 + marca.value * 0.06 - marca.value * marca.value * 0.06 }],
     backgroundColor: marca.value > 0.5 ? '#4B4FA6' : 'transparent',
     borderColor: marca.value > 0.5 ? '#4B4FA6' : 'rgba(28,43,34,0.28)',
   }));
@@ -2751,42 +2919,14 @@ function HojaEspacio({ espacios, actual, comoHistoria, notaId, bottomInset = 0, 
     marca.value = withSpring(v ? 1 : 0, { damping: 14, stiffness: 260 });
   };
 
-  /**
-   * La casilla no se puede quedar marcada con este espacio: entra el tilde,
-   * tiembla y se suelta.
-   */
-  const rechazar = (espacio) => {
-    falla();
-    setHistoria(false);
-    marca.value = withSequence(withTiming(1, { duration: 120 }), withTiming(1, { duration: 140 }), withSpring(0, { damping: 16 }));
-    temblor.value = withSequence(
-      withTiming(-5, { duration: 50 }),
-      withTiming(5, { duration: 60 }),
-      withTiming(-3, { duration: 50 }),
-      withTiming(0, { duration: 60 })
-    );
-    setMotivo(`${espacio.name} ya tiene su historia`);
-    clearTimeout(reloj.current);
-    reloj.current = setTimeout(() => setMotivo(null), 2200);
-  };
-
   const elegir = (espacio) => {
     roce();
     setElegidoId(espacio.id);
-    if (historia && !libre(espacio)) {
-      rechazar(espacio);
-      onElegir(espacio, false);
-      return;
-    }
     onElegir(espacio, historia);
   };
 
   const alternar = () => {
     const siguiente = !historia;
-    if (siguiente && elegido && !libre(elegido)) {
-      rechazar(elegido);
-      return;
-    }
     toque();
     setHistoria(siguiente);
     marcar(siguiente);
@@ -2866,7 +3006,7 @@ function HojaEspacio({ espacios, actual, comoHistoria, notaId, bottomInset = 0, 
             hitSlop={6}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: historia }}
-            accessibilityLabel="Guardar como la historia del espacio"
+            accessibilityLabel="Guardar como una historia del espacio"
             style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 16, paddingVertical: 6 }}
           >
             <Animated.View
@@ -2886,18 +3026,7 @@ function HojaEspacio({ espacios, actual, comoHistoria, notaId, bottomInset = 0, 
                 <Check size={13} color={PAPEL} strokeWidth={3} />
               </Animated.View>
             </Animated.View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, color: INK.body }}>como su historia</Text>
-              {motivo ? (
-                <Animated.Text
-                  entering={FadeIn.duration(160)}
-                  exiting={FadeOut.duration(260)}
-                  style={{ fontFamily: MONO, fontSize: 11.5, color: '#B45309', marginTop: 2 }}
-                >
-                  {motivo}
-                </Animated.Text>
-              ) : null}
-            </View>
+            <Text style={{ flex: 1, fontSize: 15, color: INK.body }}>como historia</Text>
           </Pressable>
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>

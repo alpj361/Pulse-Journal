@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../utils/supabase';
-import { loadSpaceItems, notaPrincipalDe } from '../../utils/codexSpaces';
+import { historiasDe, loadSpaceItems } from '../../utils/codexSpaces';
 import { construirIndice, segmentar } from './menciones';
 import { indiceCodex } from './useIndiceCodex';
 import { construir, idsIndiceMostrados } from './grafo';
@@ -111,7 +111,7 @@ function contarMenciones(items, textos) {
  *
  * @returns `{ ideas, conceptos, lazos, nombrados: Map<id, item>, externos: Set<id> }`
  */
-function historiaDe(datos, codex, propioId) {
+function historiaDe(datos, codex, propios) {
   const porCodex = new Map();
   for (const it of codex?.values?.() || []) if (it?.id) porCodex.set(it.id, it);
 
@@ -120,8 +120,14 @@ function historiaDe(datos, codex, propioId) {
     texto: i.texto || '',
     seccion: Number(i.seccion) || 0,
     orden: Number(i.orden) || 0,
+    historia: i.historia || null,
+    // De qué documento viene, si viene de uno: esas ideas son fragmentos y no
+    // se dibujan sueltas.
+    documento: i.documento || null,
     indexada: !!i.indexada,
-    menciona: (Array.isArray(i.menciona) ? i.menciona : []).filter((id) => id && id !== propioId),
+    // Una historia no se menciona a sí misma ni a las otras del espacio: no
+    // son nodos, son lo que el grafo dibuja por dentro.
+    menciona: (Array.isArray(i.menciona) ? i.menciona : []).filter((id) => id && !propios?.has(id)),
   }));
 
   const nombrados = new Map();
@@ -158,15 +164,47 @@ function historiaDe(datos, codex, propioId) {
     return null;
   };
 
+  // El texto de cada idea, para que el globo de un concepto pueda mostrar sus
+  // partes aunque sean fragmentos que no están dibujados.
+  const textoDe = new Map(ideas.map((i) => [i.id, { texto: i.texto, orden: i.orden }]));
+
   const conceptos = (datos?.conceptos || []).map((c) => ({
     id: c.id,
     nombre: c.nombre || '',
     terminos: c.terminos || [],
     ideas: c.ideas || [],
+    historia: c.historia || null,
+    documento: c.documento || null,
+    textos: (c.ideas || [])
+      .map((id) => textoDe.get(id))
+      .filter(Boolean)
+      .sort((a, b) => a.orden - b.orden)
+      .map((t) => t.texto),
     item: yaEnCodex(c.nombre),
   }));
 
-  return { ideas, conceptos, lazos, nombrados, externos: new Set() };
+  // Los documentos que tienen al menos un fragmento leído.
+  const conFragmentos = new Set(ideas.map((i) => i.documento).filter(Boolean));
+  const documentos = (datos?.documentos || []).filter((d) => conFragmentos.has(d.id));
+
+  return { ideas, conceptos, lazos, documentos, nombrados, externos: new Set() };
+}
+
+/**
+ * Si ya llegó todo lo de cada historia: sus ideas vectorizadas y sus
+ * conceptos. Se mira historia por historia —con varias, que una ya tenga
+ * conceptos no dice nada de la recién guardada—.
+ */
+function historiaCompleta(datos) {
+  const ideas = datos?.ideas || [];
+  if (ideas.some((i) => !i.indexada)) return false;
+  const conConceptos = new Set((datos?.conceptos || []).map((c) => c.historia));
+  const porHistoria = new Map();
+  for (const i of ideas) porHistoria.set(i.historia, (porHistoria.get(i.historia) || 0) + 1);
+  for (const [historia, cuantas] of porHistoria) {
+    if (cuantas > 1 && !conConceptos.has(historia)) return false;
+  }
+  return true;
 }
 
 /** La historia recién guardada tarda unos segundos en vectorizarse. */
@@ -174,9 +212,13 @@ const ESPERA_INDICE_MS = 5000;
 const REINTENTOS_INDICE = 5;
 
 async function traerHistoria(espacioId) {
-  const { data, error } = await supabase.rpc('historia_grafo', { p_space_id: espacioId });
+  const [{ data, error }, { data: documentos }] = await Promise.all([
+    supabase.rpc('historia_grafo', { p_space_id: espacioId }),
+    // Los nombres de los documentos. Si esto falla, el grafo se dibuja igual.
+    supabase.rpc('historia_documentos', { p_space_id: espacioId }),
+  ]);
   if (error) throw error;
-  return data || null;
+  return data ? { ...data, documentos: documentos || [] } : null;
 }
 
 export default function useGrafoEspacio(espacio, marco, recarga = 0) {
@@ -207,12 +249,12 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
           return;
         }
 
-        const [{ items: todos }, textos, principalId, codex, filasHistoria] = await Promise.all([
+        const [{ items: todos }, textos, idsHistorias, codex, filasHistoria] = await Promise.all([
           loadSpaceItems(ids),
           traerNotas().catch(() => []),
           // Si alguna de estas falla, el grafo se dibuja igual, sin la capa de
           // la historia.
-          notaPrincipalDe(espacioId).catch(() => null),
+          historiasDe(espacioId).catch(() => []),
           indiceCodex().catch(() => null),
           traerHistoria(espacioId).catch(() => null),
         ]);
@@ -225,7 +267,7 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
         /**
          * La historia, disuelta en el grafo.
          *
-         * La nota principal no es un nodo: sus ideas lo son, agrupadas en los
+         * Las historias no son nodos: sus ideas lo son, agrupadas en los
          * conceptos que armó el indexador. Cada idea se une a lo que nombra y
          * a lo que se le parece, y así el grafo muestra lo que el espacio
          * cuenta además de lo que tiene catalogado.
@@ -233,8 +275,10 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
          * Lo que una idea nombra y no está en el espacio entra igual, marcado
          * como de afuera: la historia lo trae al tema.
          */
-        const items = delEspacio.filter((it) => it.id !== principalId);
-        const nota = principalId && filasHistoria?.ideas?.length ? historiaDe(filasHistoria, codex, principalId) : null;
+        // Un espacio puede tener varias historias; ninguna es un nodo.
+        const historias = new Set(idsHistorias);
+        const items = delEspacio.filter((it) => !historias.has(it.id));
+        const nota = historias.size && filasHistoria?.ideas?.length ? historiaDe(filasHistoria, codex, historias) : null;
         if (nota) {
           const enEspacio = new Set(items.map((it) => it.id));
           for (const it of nota.nombrados.values()) {
@@ -303,10 +347,10 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
           aristas: aristas || [],
           menciones: contarMenciones(items, textos),
           nota,
-          principalId,
+          historias,
           // Los miembros de verdad, para la lista «en este espacio»: sin lo que
-          // la nota nombra desde afuera, y con la nota principal, que sí es
-          // parte del espacio aunque en el grafo no sea un nodo.
+          // las historias nombran desde afuera, y con las historias, que sí son
+          // parte del espacio aunque en el grafo no sean nodos.
           miembros: delEspacio,
           incompleto,
         });
@@ -331,9 +375,7 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
    * preguntar, pocas veces, y solo se cambia la capa de la historia.
    */
   const pendiente =
-    !!datos?.nota?.ideas?.length &&
-    !datos.nota.esperado &&
-    (datos.nota.ideas.some((i) => !i.indexada) || (datos.nota.ideas.length > 1 && !datos.nota.conceptos.length));
+    !!datos?.nota?.ideas?.length && !datos.nota.esperado && !historiaCompleta(datos.nota);
   useEffect(() => {
     if (!pendiente || !espacioId) return undefined;
     let vivo = true;
@@ -346,13 +388,13 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
         try {
           const crudo = await traerHistoria(espacioId);
           if (!vivo) return;
-          const lista = crudo?.ideas?.length && crudo.ideas.every((i) => i.indexada) && crudo.conceptos?.length;
+          const lista = !!crudo?.ideas?.length && historiaCompleta(crudo);
           if (lista || intentos >= REINTENTOS_INDICE) {
             const codex = await indiceCodex().catch(() => null);
             if (!vivo) return;
             setDatos((d) => {
               if (!d || d.espacioId !== espacioId || !d.nota || !crudo) return d;
-              const nota = historiaDe(crudo, codex, d.principalId);
+              const nota = historiaDe(crudo, codex, d.historias);
               // Lo que ya estaba como de afuera sigue marcado igual; lo nuevo
               // que nombre la historia aparece la próxima vez que se abra.
               nota.externos = d.nota.externos;
@@ -411,5 +453,14 @@ export default function useGrafoEspacio(espacio, marco, recarga = 0) {
     };
   }, [espacioId, grafo, datos, cargando]);
 
-  return { grafo, items: datos?.miembros || [], cargando, error, incompleto: !!datos?.incompleto };
+  /**
+   * El mismo grafo, acomodado para otro marco —la pantalla completa—. Usa los
+   * datos que ya llegaron: agrandar no vuelve a pedir nada.
+   */
+  const armarPara = useCallback(
+    (otro) => (datos && otro?.ancho && otro?.alto ? construir({ ...datos, marco: otro }) : null),
+    [datos]
+  );
+
+  return { grafo, armarPara, items: datos?.miembros || [], cargando, error, incompleto: !!datos?.incompleto };
 }
