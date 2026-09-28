@@ -99,6 +99,20 @@ Marcas: `strong`, `em`, `code`, `underline`, `strike`, más `markDefs` para
 
 ## Fases
 
+Qué toca cada fase:
+
+| Fase | App | Base (Supabase) | VPS (ExtractorW) |
+|---|---|---|---|
+| F0 Cimientos | sí | solo lectura (script de ida y vuelta) | — |
+| F1 Editor | sí | RPC de rastreo multi-bloque | — |
+| F2 Barra | sí | — | — |
+| F3 Páginas | sí | `historia_partir` parte por páginas | — |
+| F4 Especiales | sí | — | endpoint LaTeX → SVG (MathJax) |
+| F5 Datasheet | sí | probablemente (vínculo historia ↔ dataset) | a definir |
+| F6 Cierre | sí | — | — |
+
+El VPS solo entra en F4. Se parchea por scp en `root@157.245.115.216:/home/pj/ExtractorW` (rama `vps/app-movil-2026-09`), no desde ThePulse.
+
 ### F0 · Cimientos — STA-196
 Sin cambios visibles.
 1. `apps/mobile/src/documento/` (JS puro, sin React): esquema, validación,
