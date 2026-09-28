@@ -45,6 +45,7 @@ import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 import SeccionPlan from '../../components/ajustes/SeccionPlan';
 import SeccionUso from '../../components/ajustes/SeccionUso';
 import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimiento';
+import SeccionChangelog from '../../components/ajustes/SeccionChangelog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -1058,6 +1059,8 @@ export default function SettingsScreen() {
         <SeccionUso />
         {/* Solo aparece si la cuenta tiene el flag; para el resto no existe. */}
         <SeccionReconocimiento />
+        {/* Qué cambió en cada versión. Vacío hasta que haya entradas. */}
+        <SeccionChangelog />
 
         {/* ── FAQ ── */}
         <View style={{ marginBottom: 8 }}>

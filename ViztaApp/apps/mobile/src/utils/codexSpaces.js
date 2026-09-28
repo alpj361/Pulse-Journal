@@ -28,7 +28,7 @@ import { asegurarCupo, refrescarUso } from '../state/usoStore';
 export async function listSpaces() {
   const { data, error } = await supabase
     .from('spaces')
-    .select('id, name, project_id, updated_at, data->canvasItems, data->cover, metadata->historias')
+    .select('id, name, project_id, updated_at, data->canvasItems, data->cover, data->cover_path, metadata->historias, metadata->aspectos, metadata->hibrido')
     .order('updated_at', { ascending: false });
 
   if (error) throw error;
@@ -42,6 +42,11 @@ export async function listSpaces() {
     // Portada subida por el usuario. Vive en el jsonb `data`, así que no hizo
     // falta migrar la tabla; si no está, el sistema genera una.
     cover: typeof row.cover === 'string' ? row.cover : null,
+    // La que se sube desde el teléfono: ruta privada, se firma al mostrarla.
+    coverPath: typeof row.cover_path === 'string' ? row.cover_path : null,
+    // De qué tipo es: ficción, legal, investigación, política; varios = híbrido.
+    aspectos: Array.isArray(row.aspectos) ? row.aspectos : [],
+    hibrido: row.hibrido === true,
     // Sus historias, en orden. Un espacio puede tener varias.
     historias: Array.isArray(row.historias) ? row.historias : [],
   }));
@@ -410,4 +415,29 @@ export async function quitarHistoria(spaceId, snippetId) {
     })
     .eq('id', spaceId);
   if (error) throw error;
+}
+
+
+// ─── Ajustes del espacio ────────────────────────────────────────────────────
+
+/**
+ * Cambiar la portada, el tipo de espacio o las dos cosas.
+ *
+ * Pasa por `espacio_ajustar`, que mezcla en el jsonb en vez de reemplazarlo:
+ * `data` también guarda los elementos del lienzo, y escribirlo entero desde el
+ * teléfono pisaría lo que ThePulse haya cambiado.
+ *
+ * @param opciones { coverPath?, quitarCover?, aspectos?, hibrido? }
+ * @returns { cover_path, aspectos, hibrido }
+ */
+export async function ajustarEspacio(spaceId, { coverPath = null, quitarCover = false, aspectos = null, hibrido = null } = {}) {
+  const { data, error } = await supabase.rpc('espacio_ajustar', {
+    p_space: spaceId,
+    p_cover_path: coverPath,
+    p_quitar_cover: quitarCover,
+    p_aspectos: aspectos,
+    p_hibrido: hibrido,
+  });
+  if (error) throw error;
+  return data;
 }

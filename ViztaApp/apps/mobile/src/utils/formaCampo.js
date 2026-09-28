@@ -71,10 +71,11 @@ export function formaValida(tipo, valor, config = {}) {
   if (tipo === 'porcentaje') return typeof valor === 'number' && valor >= 0 && valor <= 1;
   if (tipo === 'escala') return Number.isInteger(valor) && valor >= 1 && valor <= 5;
   if (tipo === 'booleano') return typeof valor === 'boolean';
-  if (tipo === 'dropdown') {
-    if (typeof valor !== 'string') return false;
-    return !config.options?.length || config.options.includes(valor);
-  }
+  // Un valor fuera de las opciones no se marca: el editor lo muestra igual,
+  // como pastilla activa, y se puede cambiar por una opción. Marcarlo llenaba
+  // de triángulos fichas correctas —«Guatemalteca» en Nacionalidad, «Activo»
+  // en Estado— sin que hubiera nada roto.
+  if (tipo === 'dropdown') return typeof valor === 'string';
   if (tipo === 'tags') return Array.isArray(valor) && valor.every((t) => typeof t === 'string' && t.trim());
   if (tipo === 'moneda') return soloClaves(valor, ['amount', 'cur']) && 'amount' in valor;
   if (tipo === 'rango') {
@@ -95,8 +96,14 @@ export function formaValida(tipo, valor, config = {}) {
     );
   }
   if (tipo === 'repetible') return objeto(valor) && Array.isArray(valor.rows);
-  if (REFERENCIAS.has(tipo)) return objeto(valor) && UUID.test(String(valor.id || ''));
-  if (tipo === 'refs') return Array.isArray(valor) && valor.every((r) => objeto(r) && UUID.test(String(r.id || '')));
+  // Una imagen o un archivo guardados como enlace se ven y se abren igual.
+  if ((tipo === 'imagen' || tipo === 'archivo') && typeof valor === 'string') return /^https?:\/\//i.test(valor);
+  // Una referencia guardada como texto —«UNE» en Partido, típico de lo
+  // importado— el editor la muestra como una pastilla sin vincular, que se
+  // puede reemplazar por el item real. No está rota: le falta el enlace.
+  const refValida = (r) => (objeto(r) && UUID.test(String(r.id || ''))) || (typeof r === 'string' && r.trim() !== '');
+  if (REFERENCIAS.has(tipo)) return refValida(valor);
+  if (tipo === 'refs') return (Array.isArray(valor) ? valor : [valor]).every(refValida);
 
   // Un tipo que este espejo no conoce no se marca: el servidor manda, y
   // marcar por ignorancia propia sería ruido.
@@ -109,4 +116,34 @@ export function avisoDeForma(tipo) {
   return esperado
     ? `Este campo espera ${esperado}, y lo guardado no tiene esa forma.`
     : 'Lo guardado no tiene la forma que este campo espera.';
+}
+
+/**
+ * El tipo de un campo que no tiene definición, deducido de lo que guarda.
+ *
+ * Un campo suelto —que no está en el catálogo, como `partido_potencial`— no
+ * tiene dónde anotar su tipo. Si alguien lo edita como referencia y guarda un
+ * vínculo, al volver a abrirlo la ficha no sabía qué era y lo trataba como
+ * texto: un vínculo leído como texto se ve `[object Object]`. Mirando la forma
+ * del valor se sabe qué es sin que nadie lo haya anotado.
+ */
+export function tipoPorForma(valor) {
+  if (valor === null || valor === undefined) return 'texto';
+  if (typeof valor === 'boolean') return 'booleano';
+  if (typeof valor === 'number') return 'numero';
+  if (typeof valor === 'string') return valor.length > 120 ? 'parrafo' : 'texto';
+  if (Array.isArray(valor)) {
+    if (valor.length && valor.every((r) => objeto(r) && UUID.test(String(r.id || '')))) return 'refs';
+    if (valor.every((t) => typeof t === 'string')) return 'tags';
+    return 'parrafo';
+  }
+  if (objeto(valor)) {
+    if (UUID.test(String(valor.id || ''))) return 'ref';
+    if (Number.isFinite(valor.lat) && Number.isFinite(valor.lng)) return 'geo';
+    if ('from' in valor || 'to' in valor) return 'rango';
+    if ('amount' in valor) return 'moneda';
+    if (Number.isInteger(valor.value)) return 'eje';
+    if (Array.isArray(valor.rows)) return 'repetible';
+  }
+  return 'parrafo';
 }

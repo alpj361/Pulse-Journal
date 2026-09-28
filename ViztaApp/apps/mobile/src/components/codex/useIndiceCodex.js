@@ -42,7 +42,7 @@ async function traer() {
     const desde = p * PAGINA;
     const { data, error } = await supabase
       .from('codex_universe_items')
-      .select('id, name, tipo, aliases')
+      .select('id, name, tipo, aliases, rastreo')
       // `Fact` también afuera: su nombre es una oración entera, y pintarla al
       // escribir algo parecido marcaría media frase como si fuera un nombre.
       .not('tipo', 'in', '("Snippet","Post","Fact")')
@@ -56,7 +56,11 @@ async function traer() {
     if (data.length < PAGINA) break; // última página
   }
 
-  return construirIndice(filas);
+  const indice = construirIndice(filas);
+  // Las fichas por id: cuando la base decide que una mención es de otra ficha
+  // («Cabal» el partido y no el alias de otra), la nota la pinta con esa.
+  indice.porId = new Map(filas.map((f) => [f.id, f]));
+  return indice;
 }
 
 /**

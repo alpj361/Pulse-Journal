@@ -91,7 +91,7 @@ export function conFormato(tramos) {
     // Una mención dentro de un título se pinta como mención, pero conserva el
     // tamaño del renglón: si no, el título tendría una palabra más chica.
     if (t.item) {
-      empujar(t.texto, { item: t.item, ...(titulo ? { titulo } : {}) });
+      empujar(t.texto, { item: t.item, estado: t.estado, alfa: t.alfa, ...(titulo ? { titulo } : {}) });
       inicioDeLinea = /\n$/.test(t.texto);
       continue;
     }

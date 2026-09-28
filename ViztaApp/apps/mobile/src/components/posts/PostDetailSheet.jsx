@@ -678,7 +678,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
         <ItemDetailSheet
           item={itemAbierto}
           onClose={() => setItemAbierto(null)}
-          onSaved={() => setItemAbierto(null)}
+          onSaved={(guardado) => setItemAbierto((prev) => (prev ? { ...prev, ...guardado } : prev))}
           bottomInset={bottomInset}
         />
       ) : null}
