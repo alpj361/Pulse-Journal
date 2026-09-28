@@ -215,11 +215,13 @@ function RefPicker({ value, multiple, onChange, accent }) {
     let vivo = true;
     setBuscando(true);
     const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from('codex_universe_items')
-        .select('id, name, tipo')
-        .ilike('name', `%${t}%`)
-        .limit(8);
+      // Sin tildes ni mayúsculas, por nombre y alias, y ordenado: primero lo
+      // exacto, después lo que empieza así. Antes era un `ilike` sin orden:
+      // «Raices» no encontraba «RAÍCES», y aunque se escribiera con tilde, la
+      // entidad quedaba afuera de los 8 primeros detrás de posts y notas que
+      // la nombraban. Posts, notas y hechos no se ofrecen: un campo de
+      // referencia apunta a algo del mundo, no a algo que lo menciona.
+      const { data } = await supabase.rpc('buscar_codex_para_referencia', { p_q: t, p_limite: 10 });
       if (!vivo) return;
       setResultados(data || []);
       setBuscando(false);
@@ -315,7 +317,11 @@ function RefPicker({ value, multiple, onChange, accent }) {
               })}
             >
               <Text style={{ fontSize: 13, fontWeight: '600', color: INK.title }}>{r.name}</Text>
-              <Text style={{ fontSize: 10.5, color: INK.faint, marginTop: 1 }}>{r.tipo}</Text>
+              {/* Si apareció por un alias, se dice: «Patty» encontrando a
+                  «Ana Patricia Orantes» se lee como un error hasta que se ve por qué. */}
+              <Text style={{ fontSize: 10.5, color: INK.faint, marginTop: 1 }}>
+                {r.por_alias ? `${r.tipo} · «${r.por_alias}»` : r.tipo}
+              </Text>
             </Pressable>
           ))}
         </Animated.View>
@@ -647,6 +653,16 @@ export default function FieldInput({ field, value, onChange, accent = INK.title,
       );
 
     default: {
+      // Un campo de texto con algo que no es texto —un vínculo, un objeto de
+      // cuando el campo era otro tipo— no se dibuja como `[object Object]`:
+      // se muestra legible y sin editar, hasta que se le cambie el tipo.
+      if (['texto', 'link', 'email', 'telefono', 'id', 'hora'].includes(type) && value != null && typeof value === 'object') {
+        const legible = Array.isArray(value)
+          ? value.map((v) => (v && typeof v === 'object' ? v.name || v.nombre || JSON.stringify(v) : String(v))).join(', ')
+          : value.name || value.nombre || JSON.stringify(value);
+        return <SoloLectura>{legible}</SoloLectura>;
+      }
+
       // parrafo: fallback cuando el valor guardado no es string — suele ser un
       // objeto { value, poles } de cuando el campo era `eje`. Sin esto se
       // renderiza "[object Object]".

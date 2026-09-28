@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { presetFor, INTERNAL_KEYS, FIELD_ALIASES } from '../../utils/codexSchema';
+import { presetFor, collectFields } from '../../utils/codexSchema';
 import { EXTRACTORW_URL } from '../../utils/servicios';
 import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
 import { supabase } from '../../utils/supabase';
@@ -79,21 +79,6 @@ async function guardarCampos(id, fields) {
   }
 }
 
-/**
- * Lo que todavía va a `details` por Supabase.
- *
- * Todo lo que tiene `field_key` ya lo escribió el endpoint. Reenviarlo acá
- * pisaría el valor validado con el crudo, y encima bajo otra clave.
- */
-function soloFueraDelCatalogo(detalles, campos) {
-  const delCatalogo = new Set(
-    campos.filter((c) => c.field_key).map((c) => String(c.storage_key || c.label).toLowerCase())
-  );
-  return Object.fromEntries(
-    Object.entries(detalles).filter(([k]) => !delCatalogo.has(k.toLowerCase()))
-  );
-}
-
 // Formas compatibles entre sí. Cambiar de texto a párrafo no pierde nada;
 // cambiar de texto a geo dejaría un string donde el editor espera un objeto.
 const PLANOS = new Set(['texto', 'parrafo', 'link', 'email', 'telefono', 'id', 'color', 'formula']);
@@ -114,142 +99,64 @@ export default function useCamposEditables(item, tipo) {
 
   const schemaUsuario = useSchemaDelUsuario();
 
-  // El preset se necesita ya para filtrar `raw` más abajo, no solo dentro del
-  // efecto async — por eso se calcula directo de `schemaUsuario` en vez de
-  // esperar a que el estado `schema` se asiente.
+  // El catálogo del tipo: lo que el editor ofrece para agregar.
   const preset = useMemo(() => (schemaUsuario ? presetFor(tipo, schemaUsuario) : []), [tipo, schemaUsuario]);
 
-  // Claves crudas de objeto que el catálogo sí reconoce como campo de este
-  // tipo — por `field_key`, por `storage_key`/label, o por `FIELD_ALIASES`
-  // (ej. `lider` → «Quién controla»). Sirve para decidir en `raw` cuáles
-  // objetos son datos de catálogo editables y cuáles son blobs de sistema.
   /**
-   * Qué claves reconoce el catálogo — **el catálogo entero, no solo el preset
-   * de este tipo.**
+   * Los campos que se editan son **los mismos que se leen**.
    *
-   * Esta lista decide qué objeto de `details` es un campo editable y cuál es
-   * un blob de sistema. Medida contra el preset, un campo que el esquema sí
-   * conoce pero que no está en el preset de este tipo (creado con
-   * `createUserField`, o heredado de otro tipo) quedaba del lado de los blobs:
-   * **la ficha lo mostraba al leer y el editor no lo listaba**, que es la
-   * forma más común de este desalineo. Más abajo el hook ya consulta el
-   * esquema completo para resolver la definición de un campo; acá se usaba una
-   * medida más estrecha, y esa diferencia era el bug.
+   * Antes el editor armaba su propia lista desde `details`, con reglas propias
+   * para decidir qué era campo y qué no, mientras la ficha en lectura usaba
+   * `collectFields`. Eran dos lecturas del mismo dato que no coincidían: la
+   * ficha mostraba campos que el editor no cargaba, y lo que el editor no
+   * cargaba se perdía al guardar. Ahora las dos salen de `collectFields`, con
+   * los mismos campos, las mismas etiquetas y los mismos valores.
    */
-  const clavesDeCatalogo = useMemo(() => {
-    const claves = new Set();
-    const anotar = (f) => {
-      if (f?.field_key) claves.add(String(f.field_key).toLowerCase());
-      const legacy = f?.storage_key || f?.label;
-      if (legacy) claves.add(String(legacy).toLowerCase());
-    };
-    for (const f of preset) anotar(f);
-    for (const f of schemaUsuario?.campos || []) anotar(f);
-    for (const [aliasKey, label] of Object.entries(FIELD_ALIASES)) {
-      if (preset.some((f) => f.label.toLowerCase() === label.toLowerCase())) {
-        claves.add(aliasKey.toLowerCase());
-      }
-    }
-    return claves;
-  }, [preset, schemaUsuario]);
+  const leidos = useMemo(
+    () => (schemaUsuario ? collectFields(item, schemaUsuario, tipo) : { conDato: [], extra: [] }),
+    [item, schemaUsuario, tipo]
+  );
 
-  /**
-   * Valores crudos guardados, sin claves internas.
-   *
-   * **Un objeto solo pasa si el catálogo lo reconoce como campo de este
-   * tipo.** Antes se excluía cualquier valor `typeof === 'object'` sin
-   * excepción — pensado para no tocar blobs anidados como `research` o
-   * `analysis`, que este editor nunca mostró ni debe mostrar. El efecto
-   * secundario: campos de catálogo perfectamente editables cuya forma es un
-   * objeto —`ref` (`lider`/«Quién controla»), `moneda`, `rango`, `eje`— caían
-   * en el mismo filtro y desaparecían de la lista editable aunque `FieldInput`
-   * ya sepa dibujarlos. Un objeto que NO calza con ningún campo del catálogo
-   * (ni directo ni por alias) sigue quedando fuera — sigue siendo un blob de
-   * sistema y `guardar` lo preserva intacto, como antes.
-   */
-  const raw = useMemo(() => {
-    const fuente = isUniverse ? item?.details || item?.metadata?.details || {} : item?.metadata || {};
-    return Object.fromEntries(
-      Object.entries(fuente).filter(([k, v]) => {
-        if (INTERNAL_KEYS.has(k.toLowerCase())) return false;
-        if (typeof v !== 'object' || v === null || Array.isArray(v)) return true;
-        return clavesDeCatalogo.has(k.toLowerCase());
-      })
-    );
-  }, [item, isUniverse, clavesDeCatalogo]);
+  // Las claves de `details` que el editor puso en pantalla. Son las únicas que
+  // le toca reescribir al guardar; todo lo demás se conserva como está.
+  const mostradas = useMemo(
+    () =>
+      new Set(
+        [...leidos.conDato, ...leidos.extra]
+          .map((f) => f.clave)
+          .filter(Boolean)
+          .map((k) => String(k).toLowerCase())
+      ),
+    [leidos]
+  );
 
   useEffect(() => {
-    let vivo = true;
-    (async () => {
-      const s = schemaUsuario;
-      if (!s || !vivo) return;
-      setSchema(s);
-
-      // Tres índices, y se consulta en este orden. Un valor puede estar
-      // guardado bajo `field_key` —si el backfill ya corrió—, bajo el label
-      // que usaba el contrato viejo, o bajo una clave cruda de migración que
-      // nunca se tradujo (`lider` en vez de «Quién controla») — el schema
-      // publica las dos primeras en la misma definición; la tercera la cubre
-      // `FIELD_ALIASES`.
-      const porKey = new Map(preset.filter((f) => f.field_key).map((f) => [f.field_key, f]));
-      const porLabel = new Map(
-        preset.map((f) => [String(f.storage_key || f.label).toLowerCase(), f])
-      );
-
-      // Arranca con los campos que ya tienen dato: los del preset conservan su
-      // tipo; los que no están en el catálogo entran como texto.
-      const iniciales = [];
-      const vals = {};
-      for (const [k, v] of Object.entries(raw)) {
-        const alias = FIELD_ALIASES[k.toLowerCase()];
-
-        /**
-         * El cuarto índice: **el esquema entero, no solo el preset**.
-         *
-         * `createUserField` da de alta un campo sin meterlo en ningún preset,
-         * así que todo campo propio caía al `else` y se editaba como texto con
-         * su clave técnica por nombre — «usr_sintetico» con valor «true» en vez
-         * de «Sintético» con su casilla. El esquema conoce el campo desde que
-         * se creó; solo faltaba preguntarle.
-         *
-         * Va después del preset porque el preset manda cuando ambos lo
-         * conocen: ahí la definición puede venir ajustada para ese tipo de item.
-         */
-        const delSchema =
-          schemaUsuario?.porKey?.get(k) || schemaUsuario?.porStorage?.get(k.toLowerCase());
-
-        const def =
-          porKey.get(k) ||
-          porLabel.get(k.toLowerCase()) ||
-          (alias ? porLabel.get(alias.toLowerCase()) : undefined) ||
-          (delSchema
-            ? {
-                field_key: delSchema.field_key,
-                storage_key: delSchema.storage_key,
-                label: delSchema.label,
-                type: delSchema.field_type,
-                options: delSchema.options,
-                poles: delSchema.poles,
-                cols: delSchema.cols,
-                readonly: delSchema.readonly,
-              }
-            : undefined);
-
-        iniciales.push(conKey(def ? { ...def } : { label: k, type: 'texto', extra: true }));
-        // Los valores se siguen indexando como llegaron: `guardar` todavía
-        // escribe `details` directo a Supabase. Cambiar esta clave antes de
-        // mover la escritura al endpoint dejaría los datos en un lugar que el
-        // guardado actual no sabe encontrar.
-        vals[def ? claveDeCampo(def) : k] = v;
-      }
-      setCampos(iniciales);
-      setValues(vals);
-    })();
-    return () => { vivo = false; };
-    // `schemaUsuario` entra en las dependencias: el schema llega asíncrono y sin
-    // él este efecto correría una sola vez, con `null`, y los campos nunca se
-    // poblarían.
-  }, [tipo, raw, schemaUsuario, preset]);
+    if (!schemaUsuario) return;
+    setSchema(schemaUsuario);
+    const iniciales = [];
+    const vals = {};
+    for (const f of [...leidos.conDato, ...leidos.extra]) {
+      const def = {
+        field_key: f.field_key,
+        storage_key: f.storage_key,
+        label: f.label,
+        type: f.type,
+        options: f.options,
+        poles: f.poles,
+        cols: f.cols,
+        readonly: f.readonly,
+        // Un campo que el catálogo no conoce se puede renombrar y cambiar de
+        // tipo; uno del catálogo no.
+        ...(f.field_key ? {} : { extra: true }),
+      };
+      iniciales.push(conKey(def));
+      vals[claveDeCampo(def)] = f.crudo;
+    }
+    setCampos(iniciales);
+    setValues(vals);
+    // `schemaUsuario` entra en las dependencias: el schema llega asíncrono y
+    // sin él los campos nunca se poblarían.
+  }, [leidos, schemaUsuario]);
 
   const disponibles = useMemo(
     () => preset.filter((p) => !campos.some((c) => c.label.toLowerCase() === p.label.toLowerCase())),
@@ -364,35 +271,49 @@ export default function useCamposEditables(item, tipo) {
             .filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length))
         );
 
-        const fuenteOriginal = isUniverse ? item?.details || item?.metadata?.details || {} : item?.metadata || {};
-
         /**
-         * Lo que el editor nunca mostró se conserva tal cual.
+         * Cómo queda `details` después de guardar, **sin perder nada**.
          *
-         * **El criterio es «no pasó por el editor», no «es un objeto».** Antes
-         * acá sobrevivían solo las estructuras anidadas, así que toda clave
-         * interna escalar o de lista —`dataset_visibility`, `actor_type`,
-         * `post_id`, `transcription`…— se borraba del item en el primer
-         * guardado: no entra en `raw` por interna, no entra en `editados`
-         * porque nadie la editó, y este filtro la descartaba por no ser
-         * objeto. Corregir el nombre de un actor le arrancaba media
-         * procedencia sin avisar. Con la lista de claves internas creciendo,
-         * ese agujero crecía con ella.
+         * Se parte de lo que hay en la base en este momento —no de la copia que
+         * tiene la pantalla, que puede venir incompleta o vieja— y se toca solo
+         * lo que el editor mostró: esas claves se reescriben con lo que hay en
+         * el editor ahora (y si alguien quitó un campo, se va). Todo lo demás
+         * queda exactamente como estaba.
          *
-         * Se mide contra `raw` —lo que el editor sí puso en pantalla— y no
-         * contra `editados`: una clave que se mostró y ya no está es un campo
-         * que alguien borró a propósito, y resucitarla haría imposible
-         * quitarlo. Las del catálogo tampoco se conservan: `lider` se edita
-         * como «Quién controla» y quedaría el mismo dato bajo dos nombres.
+         * Antes, después de mandar los campos del catálogo al servidor, se
+         * reemplazaba `details` entero con lo que no era del catálogo: el
+         * segundo paso borraba lo que acababa de escribir el primero, y cada
+         * guardado arrancaba los campos estándar del ítem.
+         *
+         * `servidor` es lo que el servidor validó y guardó: para los campos del
+         * catálogo manda eso, no el valor crudo del editor.
          */
-        const mostradas = new Set(Object.keys(raw).map((k) => k.toLowerCase()));
-        const sistema = Object.fromEntries(
-          Object.entries(fuenteOriginal).filter(
-            ([k]) => !mostradas.has(k.toLowerCase()) && !clavesDeCatalogo.has(k.toLowerCase())
-          )
+        const armarDetalles = (base, servidor = {}) => {
+          const final = {};
+          for (const [k, v] of Object.entries(base || {})) {
+            if (!mostradas.has(k.toLowerCase())) final[k] = v;
+          }
+          const buscar = (obj, ...claves) => {
+            const lower = claves.filter(Boolean).map((c) => String(c).toLowerCase());
+            return Object.keys(obj || {}).find((k) => lower.includes(k.toLowerCase()));
+          };
+          for (const c of campos) {
+            if (!c.label?.trim()) continue;
+            const clave = String(claveDeCampo(c) || c.label).trim();
+            const v = values[claveDeCampo(c)];
+            if (v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length)) continue;
+            const delServidor = c.field_key ? buscar(servidor, clave, c.field_key) : null;
+            if (delServidor) final[delServidor] = servidor[delServidor];
+            else final[clave] = v;
+          }
+          return final;
+        };
+
+        // Lo que se devuelve y lo que usa `wiki_items`: sin servidor de campos.
+        const detalles = armarDetalles(
+          isUniverse ? item?.details || item?.metadata?.details || {} : item?.metadata || {}
         );
 
-        const detalles = { ...sistema, ...editados };
         const nombreFinal = (name ?? item?.name ?? item?.titulo ?? '').trim();
         const descFinal = (description ?? item?.description ?? item?.descripcion ?? '').trim() || null;
         const tagsFinal = tags ?? (Array.isArray(item?.tags) ? item.tags : []);
@@ -533,6 +454,15 @@ export default function useCamposEditables(item, tipo) {
             }
           }
 
+          // Lo que hay ahora en la base, ya con lo que el servidor validó.
+          const { data: fila, error: errLeer } = await supabase
+            .from('codex_universe_items')
+            .select('details')
+            .eq('id', dbId)
+            .single();
+          if (errLeer) throw errLeer;
+          const final = armarDetalles(fila?.details || {}, fila?.details || {});
+
           ({ error: err } = await supabase
             .from('codex_universe_items')
             .update({
@@ -541,25 +471,29 @@ export default function useCamposEditables(item, tipo) {
               tags: tagsFinal,
               aliases: aliasFinal,
               ...(escribeGeo ? { geo } : {}),
-              // `details` sigue escribiéndose acá solo con lo que el endpoint no
-              // cubre: estructuras que este editor no muestra y campos sueltos
-              // sin `field_key` en el catálogo. Los que sí tienen clave ya los
-              // escribió el PATCH, y volver a mandarlos por Supabase pisaría su
-              // validación con el valor crudo.
-              details: soloFueraDelCatalogo(detalles, campos),
+              details: final,
               updated_at: new Date().toISOString(),
             })
             .eq('id', dbId));
+          if (!err) Object.assign(detalles, final);
         } else {
+          const { data: fila, error: errLeer } = await supabase
+            .from('wiki_items')
+            .select('metadata')
+            .eq('id', dbId)
+            .single();
+          if (errLeer) throw errLeer;
+          const final = armarDetalles(fila?.metadata || {});
           ({ error: err } = await supabase
             .from('wiki_items')
             .update({
               name: nombreFinal,
               description: descFinal,
               tags: tagsFinal,
-              metadata: detalles,
+              metadata: final,
             })
             .eq('id', dbId));
+          if (!err) Object.assign(detalles, final);
         }
 
         if (err) throw err;
@@ -579,7 +513,7 @@ export default function useCamposEditables(item, tipo) {
         return null;
       }
     },
-    [campos, values, item, isUniverse, dbId, tipo, clavesDeCatalogo, raw]
+    [campos, values, item, isUniverse, dbId, tipo, mostradas]
   );
 
   return {

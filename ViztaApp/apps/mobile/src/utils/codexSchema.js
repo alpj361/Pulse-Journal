@@ -24,6 +24,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import { EXTRACTORW_URL } from './servicios';
+import { tipoPorForma } from './formaCampo';
 
 const SCHEMA_URL = `${EXTRACTORW_URL}/api/codex/schema`;
 const DISCO = 'codex-schema';
@@ -444,6 +445,10 @@ export function collectFields(item, schema, tipoCanonico) {
     (shown ? conDato : sinDato).push({
       field_key: f.field_key,
       storage_key: f.storage_key,
+      // Bajo qué clave de `details` se encontró el valor. El editor la usa para
+      // saber exactamente qué claves mostró —y por lo tanto cuáles le toca
+      // reescribir al guardar— sin volver a resolver nada por su cuenta.
+      clave: hallado ? hallado.clave : null,
       label: f.label,
       type: f.type,
       value: shown,
@@ -477,14 +482,18 @@ export function collectFields(item, schema, tipoCanonico) {
     if (usadas.has(k) || INTERNAL_KEYS.has(k.toLowerCase())) continue;
 
     const def = schema?.porKey?.get(k) || schema?.porStorage?.get(k.toLowerCase()) || null;
-    const shown = formatValue(v, def?.field_type);
+    // Sin definición, el tipo sale de la forma del valor: un vínculo guardado en
+    // un campo suelto se lee como referencia, no como texto.
+    const tipoExtra = def?.field_type || tipoPorForma(v);
+    const shown = formatValue(v, tipoExtra);
     if (!shown) continue;
 
     extra.push({
       field_key: def?.field_key,
       storage_key: def?.storage_key,
+      clave: k,
       label: def?.label || k,
-      type: def?.field_type || 'texto',
+      type: tipoExtra,
       value: shown,
       crudo: v,
       readonly: def?.readonly,

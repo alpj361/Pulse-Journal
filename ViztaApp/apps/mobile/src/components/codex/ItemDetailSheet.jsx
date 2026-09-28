@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   View,
@@ -19,13 +19,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   FadeIn,
   FadeInDown,
+  FadeOut,
+  ZoomIn,
   useAnimatedKeyboard,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import { X, Pencil, ExternalLink, Plus, Trash2, ChevronDown, TriangleAlert } from 'lucide-react-native';
+import { X, Pencil, ExternalLink, Plus, Trash2, ChevronDown, TriangleAlert, Check } from 'lucide-react-native';
 import { INK, ACCENT, GLASS, CARD_SHADOW, RADIUS } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
-import { roce } from '../../utils/haptics';
+import { roce, toque } from '../../utils/haptics';
 import { collectFields, canonicalTipo, presetFor, FIELD_TYPES } from '../../utils/codexSchema';
 import { indexarFoto } from '../../utils/reconocimientoRostros';
 import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
@@ -37,6 +39,8 @@ import FieldInput, { inputStyle } from './FieldInput';
 import { normalizeTipo, TYPE_ACCENT, TYPE_ORDER } from './tipos';
 import { esReconocible, PISO } from './menciones';
 import GeoTerritorio from './GeoTerritorio';
+import AjustesItem from './AjustesItem';
+import DecidirMencion from './DecidirMencion';
 import { normalizarGeo, etiquetaNivel } from './geo';
 import PortadaEspacio from './PortadaEspacio';
 import usePortada from '../../utils/portada';
@@ -242,6 +246,69 @@ function MencionesTab({ menciones, accent }) {
   );
 }
 
+/**
+ * Lo que la base no supo decidir si es este item: «Vamos» ¿el partido o el
+ * verbo? No cuenta hasta que alguien lo diga. Tocar una abre la pregunta.
+ */
+function PorConfirmar({ filas, accent, onDecidir }) {
+  return (
+    <>
+      <Etiqueta nota={`${filas.length}`}>Por confirmar</Etiqueta>
+      {filas.slice(0, 20).map((f, i) => (
+        <Pressable
+          key={`${f.fuente}-${f.ref_id}`}
+          onPress={() => {
+            roce();
+            onDecidir(f);
+          }}
+          style={({ pressed }) => ({ opacity: pressed ? 0.55 : 1 })}
+          accessibilityRole="button"
+          accessibilityLabel={`¿${f.escrito} en «${f.titulo}» es este item?`}
+        >
+          <Animated.View
+            entering={FadeInDown.delay(Math.min(i, 8) * 30).duration(240)}
+            style={{
+              flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 11,
+              borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(28,43,34,0.07)',
+            }}
+          >
+            <View
+              style={{
+                width: 6, height: 6, borderRadius: 3, marginTop: 6,
+                borderWidth: 1, borderColor: accent, borderStyle: 'dashed',
+              }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={2} style={{ fontSize: 13.5, color: INK.title, lineHeight: 19 }}>
+                {f.titulo}
+              </Text>
+              <FraseCon texto={f.contexto} escrito={f.escrito} />
+            </View>
+          </Animated.View>
+        </Pressable>
+      ))}
+    </>
+  );
+}
+
+/** Un pedazo de la frase, con el nombre en negrita. */
+function FraseCon({ texto, escrito }) {
+  const limpio = String(texto || '').replace(/\s+/g, ' ').trim();
+  const i = escrito ? limpio.toLowerCase().indexOf(String(escrito).toLowerCase()) : -1;
+  if (i < 0) return null;
+  const desde = Math.max(0, i - 50);
+  const hasta = Math.min(limpio.length, i + escrito.length + 50);
+  return (
+    <Text numberOfLines={2} style={{ fontSize: 12, color: INK.faint, marginTop: 3, lineHeight: 17 }}>
+      {desde > 0 ? '…' : ''}
+      {limpio.slice(desde, i)}
+      <Text style={{ color: INK.meta, fontWeight: '700' }}>{limpio.slice(i, i + escrito.length)}</Text>
+      {limpio.slice(i + escrito.length, hasta)}
+      {hasta < limpio.length ? '…' : ''}
+    </Text>
+  );
+}
+
 function FilaMencion({ m, i, color, etiqueta }) {
   return (
     <Animated.View
@@ -351,9 +418,28 @@ export default function ItemDetailSheet({
   item: itemInicial,
   onClose,
   onSaved,
-  creando = false,
+  creando: creandoPedido = false,
   bottomInset = 0,
 }) {
+  /**
+   * Crear no cierra la ficha: el item recién creado pasa a mostrarse acá
+   * mismo, en lectura. Desde ese momento la ficha deja de estar «creando» —
+   * aunque quien la abrió lo haya pedido así— y lo que sigue es editar lo que
+   * ya existe.
+   */
+  const [creado, setCreado] = useState(false);
+  const creando = creandoPedido && !creado;
+
+  // El cheque de «guardado», abajo, un momento. Guardar ya no cierra nada.
+  const [guardadoOk, setGuardadoOk] = useState(false);
+  const relojOk = useRef(null);
+  useEffect(() => () => clearTimeout(relojOk.current), []);
+  const avisarGuardado = useCallback(() => {
+    toque();
+    setGuardadoOk(true);
+    clearTimeout(relojOk.current);
+    relojOk.current = setTimeout(() => setGuardadoOk(false), 1600);
+  }, []);
   /**
    * El item que la ficha está mostrando, no el que le pasaron.
    *
@@ -435,6 +521,8 @@ export default function ItemDetailSheet({
   const ed = useCamposEditables(item, tipo);
   const vinc = useVinculos(dbId);
   const { progresiones, relaciones, menciones } = vinc;
+  // Una mención por confirmar, abierta para decidir.
+  const [decidiendo, setDecidiendo] = useState(null);
   const soportaProgresion = tipo !== 'Post' && tipo !== 'Snippet' && tipo !== 'Fact' && tipo !== 'Ref';
 
 
@@ -518,6 +606,8 @@ export default function ItemDetailSheet({
     ...(soportaProgresion ? [{ k: 'progresion', label: 'Progresión', badge: progresiones?.length }] : []),
     { k: 'menciones', label: 'Menciones', badge: menciones?.length || undefined },
     { k: 'relaciones', label: 'Relaciones', badge: relaciones?.length || undefined },
+    // Solo los del universo tienen menciones que rastrear.
+    ...(admiteAlias ? [{ k: 'ajustes', label: 'Ajustes' }] : []),
   ];
 
   const ALTO_PORTADA = 208;
@@ -1238,6 +1328,22 @@ export default function ItemDetailSheet({
               ) : null}
 
               {/* ── Menciones ── */}
+              {tab === 'ajustes' ? (
+                <>
+                  <Etiqueta>Menciones</Etiqueta>
+                  <AjustesItem
+                    dbId={dbId}
+                    nombre={nombre}
+                    rastreoInicial={item?.rastreo}
+                    onCambio={(rastreo) => {
+                      setItem((prev) => ({ ...prev, rastreo }));
+                      // Lo que cuenta como mención cambió: la pestaña se vuelve a pedir.
+                      vinc.cargarMenciones();
+                    }}
+                  />
+                </>
+              ) : null}
+
               {tab === 'menciones' ? (
                 <>
                   {menciones === null ? (
@@ -1246,7 +1352,17 @@ export default function ItemDetailSheet({
                       <MorphingInfinity size={36} color={INK.meta} style={{ alignSelf: 'center', marginVertical: 30 }} />
                     </>
                   ) : (
-                    <MencionesTab menciones={menciones} accent={accent} />
+                    <>
+                      {vinc.porConfirmar?.length ? (
+                        <PorConfirmar
+                          filas={vinc.porConfirmar}
+                          item={item}
+                          accent={accent}
+                          onDecidir={(fila) => setDecidiendo(fila)}
+                        />
+                      ) : null}
+                      <MencionesTab menciones={menciones} accent={accent} />
+                    </>
                   )}
                 </>
               ) : null}
@@ -1434,8 +1550,13 @@ export default function ItemDetailSheet({
                         Alert.alert('No se pudo usar la foto para reconocer', fallos[0]);
                       }
                     }
+                    setCreado(true);
+                    setEditando(false);
+                    setTipoAbierto(null);
+                    setGeoEd(undefined);
+                    setItem({ ...guardado, _source: 'universe' });
                     onSaved?.(guardado);
-                    onClose();
+                    avisarGuardado();
                     return;
                   }
 
@@ -1450,6 +1571,7 @@ export default function ItemDetailSheet({
                   // lectura con lo recién guardado en la mano.
                   setItem(guardado);
                   onSaved?.(guardado);
+                  avisarGuardado();
                 }}
                 disabled={ed.guardando || !nombreEd.trim()}
                 style={({ pressed }) => ({
@@ -1467,6 +1589,46 @@ export default function ItemDetailSheet({
                   </Text>
                 )}
               </Pressable>
+            </Animated.View>
+          ) : null}
+
+          {decidiendo ? (
+            <DecidirMencion
+              mencion={{
+                candidatos: [{ id: dbId, name: nombre, tipo }],
+                escrito: decidiendo.escrito,
+                contexto: decidiendo.contexto,
+                firma: decidiendo.firma,
+                firmaCorta: decidiendo.firma_corta,
+              }}
+              bottomInset={bottomInset}
+              onClose={() => setDecidiendo(null)}
+              onDecidido={() => {
+                setDecidiendo(null);
+                vinc.cargarMenciones();
+              }}
+            />
+          ) : null}
+
+          {/* Quedó guardado. Un tilde abajo, un momento, y se va solo. */}
+          {guardadoOk && !editando ? (
+            <Animated.View
+              entering={ZoomIn.springify().damping(12).stiffness(260)}
+              exiting={FadeOut.duration(180)}
+              pointerEvents="none"
+              style={{
+                position: 'absolute', alignSelf: 'center', bottom: bottomInset + 26,
+                flexDirection: 'row', alignItems: 'center', gap: 7,
+                paddingHorizontal: 15, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: 'rgba(247,248,245,0.97)',
+                borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(21,128,61,0.35)',
+                ...CARD_SHADOW,
+              }}
+              accessibilityLiveRegion="polite"
+              accessibilityLabel="Guardado"
+            >
+              <Check size={16} color="#15803D" strokeWidth={2.6} />
+              <Text style={{ fontSize: 13.5, color: '#15803D', fontWeight: '600' }}>guardado</Text>
             </Animated.View>
           ) : null}
         </View>

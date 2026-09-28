@@ -18,6 +18,7 @@ import Animated, {
   Extrapolation,
   FadeIn,
   FadeInDown,
+  FadeOut,
   LinearTransition,
   ZoomIn,
   ZoomOut,
@@ -75,6 +76,8 @@ import GrabadorVoz from './GrabadorVoz';
 import Pista from '../Pista';
 import { usePistasStore, PISTA } from '../../state/pistasStore';
 import ItemDetailSheet from './ItemDetailSheet';
+import DecidirMencion from './DecidirMencion';
+import useVeredictos from './useVeredictos';
 import { toque, roce, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
 import { supabase } from '../../utils/supabase';
@@ -255,7 +258,19 @@ export default function CreateSnippetSheet({
   const [tags, setTags] = useState('');
   const [fecha, setFecha] = useState('');
   const [guardando, setGuardando] = useState(false);
+  // El cheque que reemplaza un momento a «guardar»: guardar ya no cierra la
+  // hoja, así que algo tiene que decir que se guardó.
+  const [guardadoOk, setGuardadoOk] = useState(false);
+  const relojOk = useRef(null);
+  useEffect(() => () => clearTimeout(relojOk.current), []);
   const [error, setError] = useState(null);
+  // El aviso se va solo después de un rato: quedarse pegado sobre la nota
+  // estorba más de lo que avisa.
+  useEffect(() => {
+    if (!error) return undefined;
+    const t = setTimeout(() => setError(null), 7000);
+    return () => clearTimeout(t);
+  }, [error]);
   const [pagina, setPagina] = useState(NOTA);
 
   /**
@@ -271,12 +286,13 @@ export default function CreateSnippetSheet({
    * tiene nombres propios que uno quiere ir mirando.
    */
   const [buscando, setBuscando] = useState(false);
-  // La lupa en Espacios: busca en el Codex para sumar al espacio abierto. Solo
-  // hay algo que sumar adentro de un espacio, así que se sabe cuál está abierto.
+  // Los dos botones de Espacios, adentro de un espacio: «+» suma algo del
+  // Codex, la lupa busca entre lo que ya está. Solo tienen sentido con un
+  // espacio abierto, así que se sabe cuál es.
   const [espacioAbierto, setEspacioAbierto] = useState(null);
-  const [buscandoEnEspacio, setBuscandoEnEspacio] = useState(false);
+  const [panelEspacio, setPanelEspacio] = useState(null); // null | 'agregar' | 'buscar'
   useEffect(() => {
-    if (!espacioAbierto) setBuscandoEnEspacio(false);
+    if (!espacioAbierto) setPanelEspacio(null);
   }, [espacioAbierto]);
 
   // Fotos adjuntas a la nota, y si la bandeja o la cámara están a la vista.
@@ -605,7 +621,39 @@ export default function CreateSnippetSheet({
   // El índice puede llegar vacío (sin sesión, o si falla la carga); en ese caso
   // `segmentar` devuelve un solo tramo sin color y la nota funciona igual.
   const { indice, refrescar } = useIndiceCodex();
-  const tramos = useMemo(() => segmentar(cuerpo, indice), [cuerpo, indice]);
+  const tramosReconocidos = useMemo(() => segmentar(cuerpo, indice), [cuerpo, indice]);
+  // Y lo que cada nombre es según su contexto: «Vamos» el partido o el verbo.
+  // Lo decide la base con las mismas reglas que cuentan las menciones en todos
+  // lados; lo dudoso se pinta tenue y se decide con un toque.
+  const { tramos, releer: releerVeredictos } = useVeredictos(cuerpo, tramosReconocidos, indice, editandoId);
+  const [decidiendo, setDecidiendo] = useState(null);
+
+  /** Lo que hace falta para preguntar por una mención dudosa. */
+  const mencionParaDecidir = useCallback(
+    (t, desde) => ({
+      candidatos: t.candidatos?.length ? t.candidatos : [t.item],
+      escrito: t.texto,
+      contexto: desde == null ? null : cuerpo.slice(Math.max(0, desde - 140), desde + t.texto.length + 140),
+      firma: t.firma,
+      firmaCorta: t.firmaCorta,
+    }),
+    [cuerpo]
+  );
+
+  /** Las dudosas de la nota, una por lugar, para el panel. */
+  const porConfirmar = useMemo(() => {
+    const salida = [];
+    const vistas = new Set();
+    let desde = 0;
+    for (const t of tramos) {
+      if (t.item && t.estado === 'dudosa' && t.firma && !vistas.has(t.firma)) {
+        vistas.add(t.firma);
+        salida.push(mencionParaDecidir(t, desde));
+      }
+      desde += (t.texto || '').length;
+    }
+    return salida;
+  }, [tramos, mencionParaDecidir]);
 
   /**
    * Los mismos tramos, subdivididos por formato.
@@ -638,7 +686,8 @@ export default function CreateSnippetSheet({
   const mencionadosCrudos = useMemo(() => {
     const vistos = new Map();
     for (const t of [...tramosDelHilo, ...tramos]) {
-      if (t.item && !vistos.has(t.item.id)) vistos.set(t.item.id, t.item);
+      // Lo dudoso no es un mencionado hasta que se confirme.
+      if (t.item && t.estado !== 'dudosa' && !vistos.has(t.item.id)) vistos.set(t.item.id, t.item);
     }
     return [...vistos.values()];
   }, [tramosDelHilo, tramos]);
@@ -749,6 +798,18 @@ export default function CreateSnippetSheet({
       // copiar o para crear un item, no para navegar.
       if (!buscando || porTecla || sel.start !== sel.end) return;
 
+      // Una mención dudosa no abre la ficha: pregunta si es ella.
+      let desde = 0;
+      for (const t of tramos) {
+        const largo = (t.texto || '').length;
+        if (t.item && t.estado === 'dudosa' && sel.start >= desde && sel.start < desde + largo) {
+          roce();
+          setDecidiendo(mencionParaDecidir(t, desde));
+          return;
+        }
+        desde += largo;
+      }
+
       const item = mencionEn(tramos, sel.start);
       if (item) {
         toque();
@@ -756,7 +817,7 @@ export default function CreateSnippetSheet({
         setItemAbierto(item);
       }
     },
-    [cuerpo, buscando, tramos]
+    [cuerpo, buscando, tramos, mencionParaDecidir]
   );
 
   /**
@@ -1238,13 +1299,15 @@ export default function CreateSnippetSheet({
       toque();
       setFotos((f) => f.map((x) => (x.id === id ? { ...x, ...subida, subiendo: false } : x)));
       evento(EV.NOTA_FOTO_ADJUNTA, { origen: 'bandeja' });
-    } catch {
+    } catch (e) {
       // Falló: no hay archivo que borrar, y la marca de cancelada ya no tiene a
       // qué referirse. Dejarla ahí no rompe nada, pero la limpia igual para que
       // el conjunto no acumule ids de subidas que nunca existieron.
       canceladas.current.delete(id);
       falla();
       setFotos((f) => f.map((x) => (x.id === id ? { ...x, subiendo: false, error: true } : x)));
+      // Y se dice por qué: si es el límite del plan, es lo que hay que saber.
+      setError(motivoDe(e, 'No se pudo subir la foto.'));
     }
   }, []);
 
@@ -1285,10 +1348,11 @@ export default function CreateSnippetSheet({
       toque();
       setAudios((a) => a.map((x) => (x.id === id ? { ...x, ...medio, subiendo: false } : x)));
       evento(EV.NOTA_AUDIO_ADJUNTO, { segundos: Math.round((duracionMs || 0) / 1000) });
-    } catch {
+    } catch (e) {
       canceladas.current.delete(id);
       falla();
       setAudios((a) => a.map((x) => (x.id === id ? { ...x, subiendo: false, error: true } : x)));
+      setError(motivoDe(e, 'No se pudo subir la grabación.'));
     }
   }, []);
 
@@ -1429,7 +1493,11 @@ export default function CreateSnippetSheet({
   };
 
   const guardar = async () => {
-    if (!puedeGuardar || subiendoAlgo) return;
+    if (subiendoAlgo) {
+      setError('Esperá a que termine de subir lo adjunto.');
+      return;
+    }
+    if (!puedeGuardar) return;
     setGuardando(true);
     setError(null);
     try {
@@ -1533,6 +1601,7 @@ export default function CreateSnippetSheet({
           setRecargaEspacios((n) => n + 1);
         } catch (e) {
           console.warn('[nota] no se pudo poner en el espacio', e?.message || e);
+          setError(`La nota se guardó, pero no entró a ${espacioDestino.name || 'el espacio'}.`);
         }
       }
 
@@ -1612,9 +1681,41 @@ export default function CreateSnippetSheet({
       retiradas.current.clear();
       toque();
       onCreated?.(data);
-      onClose();
+
+      /**
+       * Guardar no cierra: se queda en la nota.
+       *
+       * Antes la hoja se cerraba y volvía al menú, así que corregir algo
+       * recién guardado era volver a buscar la nota. Ahora la nota queda
+       * abierta, ya como guardada —el próximo guardado la actualiza en vez de
+       * crear otra—, y el botón muestra un cheque un momento.
+       */
+      setEditandoId(data.id);
+      // Si entró a un espacio o como historia, ya está: la próxima vez no se
+      // vuelve a pedir. Si es historia, queda como la historia que se abrió,
+      // para poder desmarcarla después.
+      if (principalDe?.id) {
+        const marca = { id: principalDe.id, name: principalDe.name };
+        setPrincipalDe(marca);
+        setHistoriaAlAbrir(marca);
+      } else {
+        setHistoriaAlAbrir(null);
+      }
+      setEspacioDestino(null);
+      // Los documentos, con sus filas recién creadas: sin su id, quitarlos
+      // después no los borraría de la nota.
+      const { data: susDocs } = await supabase
+        .from('nota_documentos')
+        .select('id, storage_path, nombre, mime, tamano, estado, error, paginas, paginas_leidas')
+        .eq('nota_id', data.id)
+        .order('created_at');
+      setDocumentos((susDocs || []).map((d) => ({ ...d, clave: d.id })));
+      setGuardando(false);
+      setGuardadoOk(true);
+      clearTimeout(relojOk.current);
+      relojOk.current = setTimeout(() => setGuardadoOk(false), 1600);
     } catch (e) {
-      setError(e.message || 'No se pudo guardar');
+      setError(motivoDe(e, 'No se pudo guardar la nota.'));
       setGuardando(false);
     }
   };
@@ -1633,7 +1734,10 @@ export default function CreateSnippetSheet({
         // `actualizar`: borrarlo para forzar la relectura dejaba una ventana
         // en la que el chip volvía a estar recortado.
         actualizar(guardado);
-        setItemAbierto(null);
+        // La ficha queda abierta. Si era nuevo, desde ahora es el item que ya
+        // existe: si no, al volver a pintarse la hoja le mandaría otra vez el
+        // borrador y la ficha volvería a «crear».
+        setItemAbierto((prev) => (prev?._nuevo ? { ...guardado, _source: 'universe' } : prev));
       }}
       bottomInset={bottomInset}
     />
@@ -1710,7 +1814,7 @@ export default function CreateSnippetSheet({
                       onChange={(m) => {
                         modoTocado.current = true;
                         setModo(m);
-                        setBuscandoEnEspacio(false);
+                        setPanelEspacio(null);
                         setSwitchPedido(false);
                         setEscribiendo(false);
                         // Lo que flota sobre el teclado pertenece a la nota. Al salir
@@ -1790,11 +1894,18 @@ export default function CreateSnippetSheet({
                   que se escribe lo que se busca—. En Espacios, adentro de un
                   espacio, busca en el Codex para sumarle cosas. */}
               {!enNotas && espacioAbierto ? (
-                <GlifoBarra
-                  Icono={Search}
-                  activo={buscandoEnEspacio}
-                  onPress={() => setBuscandoEnEspacio((b) => !b)}
-                />
+                <>
+                  <GlifoBarra
+                    Icono={Search}
+                    activo={panelEspacio === 'buscar'}
+                    onPress={() => setPanelEspacio((p) => (p === 'buscar' ? null : 'buscar'))}
+                  />
+                  <GlifoBarra
+                    Icono={Plus}
+                    activo={panelEspacio === 'agregar'}
+                    onPress={() => setPanelEspacio((p) => (p === 'agregar' ? null : 'agregar'))}
+                  />
+                </>
               ) : null}
               {enNotas && pagina === NOTA ? (
                 <GlifoBarra
@@ -1872,6 +1983,13 @@ export default function CreateSnippetSheet({
                   >
                     {guardando ? (
                       <MorphingInfinity size={18} color={INK.title} />
+                    ) : guardadoOk && !preguntando ? (
+                      <Animated.View
+                        entering={ZoomIn.springify().damping(12).stiffness(260)}
+                        accessibilityLabel="Guardado"
+                      >
+                        <Check size={20} color="#15803D" strokeWidth={2.6} />
+                      </Animated.View>
                     ) : (
                       <Text
                         numberOfLines={1}
@@ -1896,6 +2014,32 @@ export default function CreateSnippetSheet({
             </View>
           </View>
 
+          {/* Lo que salió mal, arriba y a la vista: al pie de la página quedaba
+              debajo de fotos y mapa, y un guardado fallido parecía un botón que
+              no hacía nada. Se va solo, o con un toque. */}
+          {error ? (
+            <Animated.View
+              key={error}
+              entering={FadeIn.duration(180)}
+              exiting={FadeOut.duration(180)}
+              style={{ position: 'absolute', top: topInset + 58, left: 18, right: 18, zIndex: 5, alignItems: 'flex-end' }}
+            >
+              <Pressable
+                onPress={() => setError(null)}
+                accessibilityRole="alert"
+                accessibilityLabel={error}
+                style={{
+                  maxWidth: '100%',
+                  paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14,
+                  backgroundColor: '#FDECEC',
+                  borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(185,28,28,0.3)',
+                }}
+              >
+                <Text style={{ fontFamily: MONO, fontSize: 12.5, color: '#B91C1C', lineHeight: 18 }}>{error}</Text>
+              </Pressable>
+            </Animated.View>
+          ) : null}
+
           {/* Fuera de Notas no hay pager, ni degradado, ni nada de lo que
               flota sobre el teclado: todo eso pertenece a la nota. Espacios
               ocupa el lugar completo, no una página más. */}
@@ -1907,8 +2051,8 @@ export default function CreateSnippetSheet({
               onAbrirItem={setItemAbierto}
               recarga={recargaEspacios}
               indice={indice}
-              buscando={buscandoEnEspacio}
-              onCerrarBusqueda={() => setBuscandoEnEspacio(false)}
+              panel={panelEspacio}
+              onCerrarPanel={() => setPanelEspacio(null)}
               onElegido={setEspacioAbierto}
               onNuevaNota={(espacio) => {
                 // Una nota más del espacio, no la principal.
@@ -2035,6 +2179,11 @@ export default function CreateSnippetSheet({
             <View style={{ width: W }}>
               <PanelSnippet
                 items={mencionados}
+                porConfirmar={porConfirmar}
+                onDecidir={(m) => {
+                  roce();
+                  setDecidiendo(m);
+                }}
                 onAbrirItem={(item) => {
             evento(EV.MENCION_TOCADA, { tipo: item?.tipo || null });
             setItemAbierto(item);
@@ -2448,6 +2597,18 @@ export default function CreateSnippetSheet({
           cuelga siempre de la hoja. */}
       {ficha}
 
+      {decidiendo ? (
+        <DecidirMencion
+          mencion={decidiendo}
+          bottomInset={bottomInset}
+          onClose={() => setDecidiendo(null)}
+          onDecidido={() => {
+            setDecidiendo(null);
+            releerVeredictos();
+          }}
+        />
+      ) : null}
+
       {creandoEspacio ? (
         <CreateSpaceSheet
           onClose={() => setCreandoEspacio(false)}
@@ -2705,7 +2866,19 @@ function Nota({
                 // escribe, sin separar lo que se ve de lo que se guarda.
                 <Text
                   key={i}
-                  style={[estiloDePieza(t), t.item ? { color: colorDe(t.item) } : null]}
+                  style={[
+                    estiloDePieza(t),
+                    t.item ? { color: tinta(colorDe(t.item), (t.estado === 'dudosa' ? 0.55 : 1) * (t.alfa ?? 1)) } : null,
+                    // Dudosa: el color apagado y un subrayado de puntos. Se
+                    // ve que es un nombre, y que falta decir si es ese.
+                    t.item && t.estado === 'dudosa'
+                      ? {
+                          textDecorationLine: 'underline',
+                          textDecorationStyle: 'dotted',
+                          textDecorationColor: tinta(colorDe(t.item), 0.55 * (t.alfa ?? 1)),
+                        }
+                      : null,
+                  ]}
                 >
                   {t.texto}
                 </Text>
@@ -2786,11 +2959,6 @@ function Nota({
           />
         </Animated.View>
 
-        {error ? (
-          <Animated.View entering={FadeIn.duration(200)} style={{ marginTop: 22 }}>
-            <Text style={{ fontFamily: MONO, fontSize: 12.5, color: '#B91C1C', lineHeight: 19 }}>{error}</Text>
-          </Animated.View>
-        ) : null}
 
         {/* El sitio de lo que flota.
           *
@@ -2847,8 +3015,34 @@ function Punto({ activo, onPress }) {
  * paleta nueva solo para la nota habría hecho que el mismo item tenga dos
  * colores según dónde lo mires.
  */
+/**
+ * El mensaje de un error, para mostrarle a la persona.
+ *
+ * Los de cupo ya vienen escritos para ella («Te quedaste sin espacio de
+ * almacenamiento.», ver `usoStore`); los técnicos de la base o del
+ * almacenamiento no, y en su lugar va el de respaldo.
+ */
+function motivoDe(e, respaldo) {
+  const m = String(e?.message || '');
+  return /límite|almacenamiento|tu plan|créditos|cupo/i.test(m) ? m : respaldo;
+}
+
 function colorDe(item) {
   return TYPE_ACCENT[normalizeTipo(item?.tipo)] || '#4B4FA6';
+}
+
+/**
+ * El color de una mención con cierta presencia, mezclado con la tinta del
+ * texto y no con transparencia: mientras entra, el nombre pasa del negro del
+ * resto de la nota a su color, sin verse nunca más claro que las palabras de
+ * al lado.
+ */
+function tinta(hex, presencia) {
+  const p = Math.max(0, Math.min(1, presencia));
+  const a = [0x1c, 0x2b, 0x22]; // INK.title
+  const b = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
+  const c = a.map((x, k) => Math.round(x + (b[k] - x) * p));
+  return `#${c.map((x) => x.toString(16).padStart(2, '0')).join('')}`;
 }
 
 /**

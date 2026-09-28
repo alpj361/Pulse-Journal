@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { Canvas, Fill, Shader, Skia } from '@shopify/react-native-skia';
 import { Image } from 'expo-image';
+import { useRutaFirmada } from '../../utils/portada';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -158,7 +159,10 @@ export default function PortadaEspacio({ space, radius = 20, style, lado, ancho,
   // distintos, así que el shader recibe las dos medidas por separado.
   const w = ancho ?? lado;
   const h = alto ?? lado;
-  const cover = space?.cover;
+  // La subida desde el teléfono es privada y se firma; la que venga de
+  // ThePulse es un enlace público. La propia gana.
+  const firmada = useRutaFirmada(space?.coverPath || null);
+  const cover = space?.coverPath ? firmada : space?.cover;
 
   if (cover) {
     return (

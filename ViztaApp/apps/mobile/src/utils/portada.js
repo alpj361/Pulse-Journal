@@ -55,6 +55,28 @@ function firmar(ruta) {
   return promesa;
 }
 
+/** Una ruta privada del bucket, firmada y lista para `<Image>`. `null` mientras firma. */
+export function useRutaFirmada(ruta) {
+  const [firmada, setFirmada] = useState(() => {
+    const g = ruta ? firmadas.get(ruta) : null;
+    return g?.url && g.hasta > Date.now() ? g.url : null;
+  });
+  useEffect(() => {
+    if (!ruta) {
+      setFirmada(null);
+      return undefined;
+    }
+    let vivo = true;
+    firmar(ruta).then((url) => {
+      if (vivo) setFirmada(url);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [ruta]);
+  return ruta ? firmada : null;
+}
+
 /** La portada de un elemento: firmada si es privada, o su enlace público. */
 export default function usePortada(item) {
   const ruta = rutaPortada(item);
