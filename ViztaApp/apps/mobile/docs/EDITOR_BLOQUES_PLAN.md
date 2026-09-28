@@ -93,7 +93,8 @@ varios inputs. Se resuelve con un modo «seleccionar bloques» (como Craft).
 }
 ```
 
-Estilos de bloque: `normal`, `h1`, `h2`, `h3`, `cita` (Foco), `tarjeta` (Block).
+Estilos de bloque: `normal`, `h1`, `h2`, `h3`, `cita` (Foco), `tarjeta` (Block);
+`h4`–`h6` se aceptan al leer markdown.
 Marcas: `strong`, `em`, `code`, `underline`, `strike`, más `markDefs` para
 `resaltado` (color) y `link`.
 
@@ -113,20 +114,44 @@ Qué toca cada fase:
 
 El VPS solo entra en F4. Se parchea por scp en `root@157.245.115.216:/home/pj/ExtractorW` (rama `vps/app-movil-2026-09`), no desde ThePulse.
 
-### F0 · Cimientos — STA-196
+### F0 · Cimientos — STA-196 (hecho)
 Sin cambios visibles.
-1. `apps/mobile/src/documento/` (JS puro, sin React): esquema, validación,
-   `desdeMarkdown(md)`, `aMarkdown(doc)`, `aTextoPlano(doc)` → `{ texto, mapa }`
-   (mapa: offset global ↔ `{ _key bloque, offset }`) para el rastreo.
-   `desdeMarkdown` debe entender lo que ya escriben las notas: `#`, `##`,
-   `**`, `_`/`*`, `==resaltado==`, `` ` ``, listas `-`/`1.`, `---`
-   (ver `formato.js`, `markdown.js`, `historia.js`).
-2. Script de prueba de ida y vuelta con **todas las notas reales**
-   (`codex_items` tipo Snippet, `description`): markdown → doc → markdown,
-   reportar cuántas cambian y por qué.
-3. Dependencias nativas juntas (un solo rebuild): `react-native-keyboard-controller`,
-   `expo-sqlite`. Avisar a PJ para compilar en Xcode.
-4. Interruptor `editor_bloques` (solo la cuenta de PJ al principio).
+1. `apps/mobile/src/documento/` (JS puro, sin React): `esquema.js` (forma,
+   claves, `validar`), `enLinea.js`, `desdeMarkdown.js`, `aMarkdown.js`,
+   `aTextoPlano.js` → `{ texto, mapa }` con `aLocal`/`aGlobal` para pasar de
+   posición global a `{ key, offset }` y de vuelta. Pruebas en
+   `src/documento/__tests__/` (`npx jest src/documento`).
+2. `scripts/documento-ida-y-vuelta.mjs`: ida y vuelta con todas las notas
+   reales. **Las notas son `codex_universe_items` con `tipo = 'Snippet'`**
+   (columnas `description` y `details`), no `codex_items`. Solo lee.
+3. `react-native-keyboard-controller` 1.18.5 y `expo-sqlite` ~16.0.8 en
+   `package.json`. **Hace falta un rebuild en Xcode** (`pod install` + compilar);
+   todavía no se usan en código, así que la app corre igual sin él.
+4. Interruptor `editor_bloques`: `src/utils/editorBloques.js`
+   (`useEditorBloques()`), leído de `get_my_capabilities`. Prendido solo para
+   la cuenta de PJ con un override en `profile_limits.overrides.features`.
+   Apagado si no llegan las capacidades.
+
+Decisiones que salieron de las notas reales:
+- **Un bloque por renglón; un renglón en blanco es un bloque vacío.** Así la
+  nota siempre se escribió (el `TextInput` muestra cada salto), y así
+  `description` no cambia al migrar.
+- Tabla y bloque de código son un solo bloque cada uno. Las celdas de la tabla
+  guardan su markdown en línea como texto (`filas: string[][]`), más
+  `encabezado` y `alineacion`. 17 notas tienen tablas.
+- Numeradas: el número se cuenta, salvo `numero` en el renglón donde la cuenta
+  no da lo escrito (los modelos escriben «1. Tema» + párrafo + «2. Tema»).
+- La cursiva sale con `_` (como la barra), o con `*` si va pegada a una letra.
+  `_` no abre pegado a una letra ni cierra antes de una: `@usuario_` no es
+  cursiva. Dentro de URLs no se busca formato.
+- Estilos `h4`–`h6` se aceptan en el documento para no perder nada; el editor
+  los puede pintar como `h3`.
+
+Resultado con las 87 notas (2026-09-28): 60 idénticas, 27 cambian solo de
+escritura y **0 pierden algo** (releer el markdown nuevo da el mismo
+documento). Motivos: fila de guiones de la tabla normalizada (16 notas),
+cursiva `*` → `_` (15), viñeta `*` → `-` (1), `****` → `---` (1), `>` → `> `
+(1). Segunda vuelta estable en todas.
 
 ### F1 · Editor de bloques — STA-197 (riesgo alto)
 - Bloques: párrafo, H1-H3, viñetas, numeración, to-do, toggle, cita.
