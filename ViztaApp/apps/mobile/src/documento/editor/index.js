@@ -5,6 +5,8 @@
 
 export * from './estado.js';
 export * from './operaciones.js';
+export * from './estructura.js';
+export * from './especiales.js';
 export { crearHistorial } from './historial.js';
 export {
   textoDe,

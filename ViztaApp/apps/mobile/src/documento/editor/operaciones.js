@@ -199,6 +199,17 @@ export function escribir(estado, key, nuevo, sel, { clave = nuevaClave } = {}) {
   if (d.insertado === ' ' && d.hasta === d.desde) {
     const escrito = textoDe(children);
     const antes = escrito.slice(0, d.desde);
+
+    // «```js » o «$$ » en un renglón que no tiene nada más: el renglón pasa
+    // a ser un bloque de código o una fórmula.
+    const cerca = /^```([\w+#-]*)$/.exec(antes);
+    if ((cerca || antes === '$$') && tipoDe(b) === 'normal' && escrito === `${antes} `) {
+      const especial = cerca
+        ? { _type: 'codigo', _key: key, lenguaje: cerca[1].toLowerCase(), texto: '' }
+        : { _type: 'formula', _key: key, latex: '' };
+      return { estado: { ...conBloque(estado, especial), pendiente: null }, foco: { key, especial: true } };
+    }
+
     const tipo = atajo(b, antes);
     if (tipo) {
       children = reemplazar(children, 0, d.desde + 1, '', { clave });

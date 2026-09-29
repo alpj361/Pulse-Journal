@@ -1,11 +1,17 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useStore } from 'zustand';
+import { Check, ChevronLeft, GripVertical } from 'lucide-react-native';
 import { INK } from '../../theme';
 import { MONO } from '../mono';
 import { contadorDeListas } from '../../../documento/aMarkdown';
-import { conTexto, textoDe, visible } from '../../../documento/editor';
+import { conTexto, paginaMadre, raizDe, textoDe, visible } from '../../../documento/editor';
 import Bloque, { CUERPO } from './Bloque';
+import Especial from './Especiales';
+import { MediosContexto } from './contexto';
+import { roce, toque } from '../../../utils/haptics';
 
 // Cuántos bloques se montan de una vez. Una nota de 5.000 palabras tiene unos
 // cuatrocientos: montarlos todos juntos se nota al abrir. Se muestran los
@@ -17,6 +23,8 @@ const POR_CUADRO = 80;
 // Doble toque: el mismo margen que la nota vieja.
 const DOBLE_MS = 280;
 
+const TENUE = 'rgba(28,43,34,0.38)';
+
 /**
  * El cuerpo de la nota como bloques.
  *
@@ -25,20 +33,31 @@ const DOBLE_MS = 280;
  *
  * - **Leer es el estado natural.** Mientras no se escribe, los campos no son
  *   editables y dos toques entran a escribir en el bloque tocado; en una nota
- *   vacía alcanza uno. Las casillas de los to-do y las flechas de los toggles
- *   sí responden leyendo: marcar algo hecho no es escribir.
+ *   vacía alcanza uno. Las casillas de los to-do, las flechas de los toggles
+ *   y las páginas sí responden leyendo: marcar algo hecho no es escribir.
  * - **Salir de escribir** es soltar el foco sin que lo tome otro bloque:
  *   pasar de un bloque a otro no cuenta como salir.
+ *
+ * Y suma lo que el campo único no podía:
+ *
+ * - **Páginas.** Se muestra una a la vez; adentro de una subpágina, arriba
+ *   va la vuelta a la de arriba y el título.
+ * - **Seleccionar bloques.** Mantener apretado un bloque, leyendo, entra al
+ *   modo: se eligen bloques, se arrastran de la manija, y la barra de abajo
+ *   los sube, baja, copia o borra.
  *
  * Solo se vuelve a pintar entera cuando cambia la forma del documento
  * (`estructura`); al escribir se pinta el bloque tocado.
  */
 function EditorBloques(
-  { editor, rastreo, indice, escribiendo, onEscribir, buscando, marcador, onMencion, onDecidir, onSeleccion },
+  { editor, rastreo, indice, escribiendo, onEscribir, buscando, marcador, onMencion, onDecidir, onSeleccion, medios },
   ref,
 ) {
   useStore(editor, (s) => s.estructura);
+  const cargas = useStore(editor, (s) => s.cargas);
+  const seleccionando = useStore(editor, (s) => s.seleccionando);
   const { estado } = editor.getState();
+  const enRaiz = estado.pagina === raizDe(estado.resto);
 
   // Lo que se ve, en orden, con el número de cada renglón numerado. La
   // numeración se cuenta por grupo de hermanos, como en el markdown.
@@ -59,8 +78,8 @@ function EditorBloques(
 
   // ── Montar de a poco ──
   const [cuantos, setCuantos] = useState(PRIMEROS);
-  // Otra nota: se vuelve a empezar de a poco.
-  useEffect(() => setCuantos(PRIMEROS), [estado.resto]);
+  // Otra nota u otra página: se vuelve a empezar de a poco.
+  useEffect(() => setCuantos(PRIMEROS), [cargas, estado.pagina]);
   useEffect(() => {
     if (cuantos >= filas.length) return undefined;
     const id = requestAnimationFrame(() => setCuantos((n) => n + POR_CUADRO));
@@ -75,6 +94,9 @@ function EditorBloques(
       if (campos.current.get(k) === c) campos.current.delete(k);
     };
   }, []);
+
+  // Dónde está cada fila, para arrastrar y para ir a un bloque desde el índice.
+  const posiciones = useRef(new Map());
 
   // ── Salir de escribir ──
   const salida = useRef(null);
@@ -121,8 +143,18 @@ function EditorBloques(
     editor.getState().pedirFoco(k, textoDe(b?.children).length);
   }, [escribiendo, editor, ultimoDeTexto]);
 
+  // Elegir bloques y escribir no van juntos.
+  useEffect(() => {
+    if (seleccionando && escribiendo) {
+      const k = editor.getState().enfocado;
+      if (k) campos.current.get(k)?.blur();
+      onEscribir?.(false);
+    }
+  }, [seleccionando, escribiendo, editor, onEscribir]);
+
   /** El toque en el aire de abajo de la nota: escribir al final. */
   const tocarFinal = useCallback(() => {
+    if (editor.getState().seleccionando) return;
     const k = ultimoDeTexto();
     if (!k) return;
     if (!escribiendo) {
@@ -138,104 +170,251 @@ function EditorBloques(
     if (k) campos.current.get(k)?.blur();
   }, [editor]);
 
-  useImperativeHandle(ref, () => ({ tocarFinal, soltarFoco }), [tocarFinal, soltarFoco]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      tocarFinal,
+      soltarFoco,
+      /** Dónde empieza un bloque, desde arriba del editor. */
+      yDe: (k) => posiciones.current.get(k)?.y ?? null,
+      abrirPagina: (k) => editor.getState().abrirPagina(k),
+    }),
+    [tocarFinal, soltarFoco, editor],
+  );
+
+  // ── Arrastrar ──
+  /**
+   * Se soltó una fila a `dy` puntos de donde estaba: va antes de la primera
+   * fila cuyo centro quede por debajo. Si la fila arrastrada está elegida,
+   * viaja con todas las elegidas.
+   */
+  const alSoltar = useCallback(
+    (k, dy) => {
+      const { seleccionados } = editor.getState();
+      const keys = seleccionados.includes(k) ? seleccionados : [k];
+      const p = posiciones.current.get(k);
+      if (!p) return;
+      const y = p.y + p.alto / 2 + dy;
+      const destino = filas.find(({ k: x }) => {
+        if (keys.includes(x)) return false;
+        const q = posiciones.current.get(x);
+        return q && q.y + q.alto / 2 > y;
+      });
+      toque();
+      editor.getState().soltarSeleccionEn(keys, destino ? destino.k : null);
+    },
+    [editor, filas],
+  );
+
+  const entrarSeleccion = useCallback(
+    (k) => {
+      if (escribiendo) return;
+      toque();
+      editor.getState().entrarSeleccion(k);
+    },
+    [editor, escribiendo],
+  );
 
   return (
-    <View>
-      {filas.slice(0, cuantos).map(({ k, numero, nivel }, i) => {
-        const b = estado.porKey[k];
-        if (conTexto(b)) {
+    <MediosContexto.Provider value={medios || MEDIOS_VACIOS}>
+      <GestureHandlerRootView style={{}}>
+        {!enRaiz ? <EncabezadoPagina editor={editor} escribiendo={escribiendo} onEscribir={onEscribir} onSoltar={onSoltar} /> : null}
+        {filas.slice(0, cuantos).map(({ k, numero, nivel }, i) => {
+          const b = estado.porKey[k];
           return (
-            <Bloque
+            <Fila
               key={k}
               k={k}
               editor={editor}
-              rastreo={rastreo}
-              indice={indice}
-              numero={numero}
-              nivelVisual={nivel}
+              posiciones={posiciones}
               escribiendo={escribiendo}
-              buscando={buscando}
-              marcador={i === 0 && vacio ? marcador : undefined}
-              onMencion={onMencion}
-              onDecidir={onDecidir}
-              onSeleccion={onSeleccion}
-              onSoltar={onSoltar}
-              onTocarLeyendo={tocarLeyendo}
-              registrar={registrar}
-            />
+              onMantener={entrarSeleccion}
+              onSoltarArrastre={alSoltar}
+            >
+              {conTexto(b) ? (
+                <Bloque
+                  k={k}
+                  editor={editor}
+                  rastreo={rastreo}
+                  indice={indice}
+                  numero={numero}
+                  nivelVisual={nivel}
+                  escribiendo={escribiendo && !seleccionando}
+                  buscando={buscando}
+                  marcador={i === 0 && vacio && enRaiz ? marcador : undefined}
+                  onMencion={onMencion}
+                  onDecidir={onDecidir}
+                  onSeleccion={onSeleccion}
+                  onSoltar={onSoltar}
+                  onTocarLeyendo={tocarLeyendo}
+                  onMantener={entrarSeleccion}
+                  registrar={registrar}
+                />
+              ) : (
+                <Especial k={k} editor={editor} escribiendo={escribiendo && !seleccionando} nivel={nivel} onSoltar={onSoltar} />
+              )}
+            </Fila>
           );
-        }
-        return <Especial key={k} k={k} editor={editor} escribiendo={escribiendo} nivel={nivel} onSoltar={onSoltar} />;
-      })}
+        })}
+      </GestureHandlerRootView>
+    </MediosContexto.Provider>
+  );
+}
+
+const MEDIOS_VACIOS = { fotos: [], audios: [], documentos: [] };
+
+/**
+ * Una fila de la lista: mide dónde está y, en el modo de elegir bloques,
+ * se vuelve un renglón que se elige con un toque y se arrastra de la manija.
+ */
+const Fila = memo(function Fila({ k, editor, posiciones, escribiendo, onMantener, onSoltarArrastre, children }) {
+  const seleccionando = useStore(editor, (s) => s.seleccionando);
+  const elegido = useStore(editor, (s) => s.seleccionados.includes(k));
+  const dy = useSharedValue(0);
+  const [arrastrando, setArrastrando] = useState(false);
+
+  const arrastre = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .onBegin(() => setArrastrando(true))
+        .onUpdate((e) => {
+          dy.value = e.translationY;
+        })
+        .onEnd((e) => onSoltarArrastre(k, e.translationY))
+        .onFinalize(() => {
+          dy.value = withSpring(0, { damping: 20, stiffness: 240 });
+          setArrastrando(false);
+        }),
+    [k, dy, onSoltarArrastre],
+  );
+  const mover = useAnimatedStyle(() => ({ transform: [{ translateY: dy.value }] }));
+
+  return (
+    <Animated.View
+      onLayout={(e) => posiciones.current.set(k, { y: e.nativeEvent.layout.y, alto: e.nativeEvent.layout.height })}
+      style={[
+        { flexDirection: 'row', alignItems: 'center' },
+        arrastrando ? { zIndex: 10, opacity: 0.85 } : null,
+        mover,
+      ]}
+    >
+      {seleccionando ? (
+        <View
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            marginRight: 10,
+            borderWidth: 1.5,
+            borderColor: elegido ? INK.title : 'rgba(28,43,34,0.3)',
+            backgroundColor: elegido ? INK.title : 'transparent',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {elegido ? <Check size={11} color="#fff" strokeWidth={3} /> : null}
+        </View>
+      ) : null}
+
+      <View style={{ flex: 1 }}>
+        {seleccionando ? (
+          <View>
+            <View pointerEvents="none">{children}</View>
+            <Pressable
+              onPress={() => {
+                roce();
+                editor.getState().alternarSeleccion(k);
+              }}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: elegido }}
+            />
+          </View>
+        ) : (
+          // Leyendo, mantener apretado un bloque que no es texto también
+          // entra al modo de elegir (los de texto lo hacen desde su campo).
+          <Pressable disabled={escribiendo} onLongPress={() => onMantener(k)} delayLongPress={400}>
+            {children}
+          </Pressable>
+        )}
+      </View>
+
+      {seleccionando ? (
+        <GestureDetector gesture={arrastre}>
+          <View style={{ paddingLeft: 10, paddingVertical: 6 }} accessibilityLabel="Arrastrar para mover">
+            <GripVertical size={16} color={TENUE} />
+          </View>
+        </GestureDetector>
+      ) : null}
+    </Animated.View>
+  );
+});
+
+/**
+ * Arriba de una subpágina: volver a la de arriba y el título de esta.
+ */
+function EncabezadoPagina({ editor, escribiendo, onEscribir, onSoltar }) {
+  const pagina = useStore(editor, (s) => s.estado.pagina);
+  const titulo = useStore(editor, (s) => s.estado.resto.paginas.find((p) => p._key === s.estado.pagina)?.titulo ?? '');
+  const madre = useStore(editor, (s) => {
+    const doc = s.estado.resto;
+    const m = paginaMadre(doc, s.estado.pagina);
+    return !m || m._key === raizDe(doc) ? null : m.titulo || 'sin título';
+  });
+  const pedido = useStore(editor, (s) => (s.foco?.titulo ? s.foco : null));
+  const campo = useRef(null);
+  useEffect(() => {
+    if (!pedido) return;
+    // La página nueva se abre para escribir, empezando por su título.
+    if (!escribiendo) onEscribir?.();
+    setTimeout(() => campo.current?.focus(), 0);
+    editor.getState().focoCumplido(pedido.n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido?.n]);
+
+  return (
+    <View style={{ marginBottom: 14 }}>
+      <Pressable
+        onPress={() => {
+          roce();
+          editor.getState().volver();
+        }}
+        hitSlop={8}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10, opacity: pressed ? 0.5 : 1 })}
+        accessibilityRole="button"
+        accessibilityLabel={`Volver a ${madre || 'la nota'}`}
+      >
+        <ChevronLeft size={15} color={TENUE} />
+        <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE }}>{madre || 'la nota'}</Text>
+      </Pressable>
+      <Pressable disabled={escribiendo} onPress={() => onEscribir?.()}>
+        <View pointerEvents={escribiendo ? 'auto' : 'none'}>
+          <TextInput
+            ref={campo}
+            editable={escribiendo}
+            value={titulo}
+            onChangeText={(t) => editor.getState().renombrarPagina(pagina, t)}
+            onFocus={() => editor.getState().enfocar('titulo')}
+            onBlur={() => {
+              editor.getState().soltar('titulo');
+              onSoltar?.();
+            }}
+            submitBehavior="blurAndSubmit"
+            placeholder="sin título"
+            placeholderTextColor="rgba(28,43,34,0.22)"
+            style={{ fontFamily: MONO, fontSize: CUERPO + 6, lineHeight: 33, fontWeight: '700', color: INK.title, padding: 0 }}
+          />
+        </View>
+      </Pressable>
     </View>
   );
 }
 
-/**
- * Lo que no es texto corrido. En esta fase se muestra y se conserva; editarlo
- * de verdad (tablas, fórmulas, dibujo) llega con los bloques especiales. El
- * código sí se puede corregir: es texto.
- */
-const Especial = memo(function Especial({ k, editor, escribiendo, nivel, onSoltar }) {
-  const b = useStore(editor, (s) => s.estado.porKey[k]);
-  if (!b) return null;
-  const sangria = { marginLeft: nivel * 18 };
-
-  switch (b._type) {
-    case 'separador':
-      return <View style={[sangria, { height: 1, backgroundColor: 'rgba(28,43,34,0.14)', marginVertical: 13 }]} />;
-    case 'codigo':
-      return (
-        <View style={[sangria, { backgroundColor: 'rgba(28,43,34,0.05)', borderRadius: 8, padding: 10, marginVertical: 4 }]}>
-          <TextInput
-            editable={escribiendo}
-            multiline
-            scrollEnabled={false}
-            value={b.texto}
-            onChangeText={(t) => editor.getState().escribirCodigo(k, t)}
-            // Cuenta como un bloque más: pasar de un párrafo al código no es
-            // dejar de escribir.
-            onFocus={() => editor.getState().enfocar(k)}
-            onBlur={() => {
-              editor.getState().soltar(k);
-              onSoltar?.(k);
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            style={{ fontFamily: MONO, fontSize: CUERPO - 2, lineHeight: 21, color: INK.title, padding: 0 }}
-          />
-        </View>
-      );
-    case 'tabla':
-      // Como en `markdown.js`: una tabla en cuarenta caracteres no es una
-      // tabla; las celdas separadas por un punto medio sí se leen.
-      return (
-        <View style={[sangria, { marginVertical: 4 }]}>
-          {(b.filas || []).map((f, i) => (
-            <Text
-              key={i}
-              style={{
-                fontFamily: MONO,
-                fontSize: CUERPO - 1,
-                lineHeight: 24,
-                color: INK.title,
-                fontWeight: i === 0 && b.encabezado ? '700' : '400',
-              }}
-            >
-              {f.filter(Boolean).join('  ·  ').replace(/\*\*|__|==|`/g, '')}
-            </Text>
-          ))}
-        </View>
-      );
-    case 'formula':
-      return (
-        <Text style={[sangria, { fontFamily: MONO, fontSize: CUERPO, lineHeight: 27, color: INK.title }]}>{b.latex}</Text>
-      );
-    default:
-      return null;
-  }
-});
-
 export default memo(forwardRef(EditorBloques));
+
+/** Para la hoja: si hay una subpágina abierta y cuál es la raíz. */
+export const enSubpagina = (editor) => {
+  const { estado } = editor.getState();
+  return estado.pagina !== raizDe(estado.resto);
+};

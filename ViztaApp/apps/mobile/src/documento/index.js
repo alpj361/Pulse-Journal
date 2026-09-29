@@ -8,3 +8,4 @@ export { leerEnLinea, escribirEnLinea, textoDe } from './enLinea.js';
 export { desdeMarkdown } from './desdeMarkdown.js';
 export { aMarkdown, renglonesPorBloque } from './aMarkdown.js';
 export { aTextoPlano, aLocal, aGlobal } from './aTextoPlano.js';
+export { fusionar, alinearClaves, versionDeLaBase, contenidoDe } from './fusion.js';

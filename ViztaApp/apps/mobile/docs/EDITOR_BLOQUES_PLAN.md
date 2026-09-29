@@ -193,8 +193,8 @@ Hecho (2026-09-29), detrás de `editor_bloques`:
 - Medido en Node sobre 5.100 palabras / 407 bloques (`MEDIR=1 npx jest
   rendimiento`): abrir 20 ms, tecla p95 1 ms, al dejar de escribir 5 + 4 ms.
   Falta medirlo en el teléfono.
-- Pendiente para F3: el índice de la historia salta por aritmética de
-  renglones, que con bloques es aproximada.
+- ~~Pendiente para F3: el índice de la historia salta por aritmética de
+  renglones~~ — resuelto en F3: cada sección apunta a su bloque.
 
 ### F2 · Barra — STA-198
 Tres filas (referencia Craft: Heading/Body/Page/More · checkbox, toggle,
@@ -206,9 +206,50 @@ Bloque «Página» con subpágina. Índice de historia por páginas;
 `historia_partir` (base) parte por páginas. Modo «seleccionar bloques».
 Fusión por bloque al guardar.
 
+Hecho (2026-09-29), detrás de `editor_bloques`:
+- **Páginas** (`editor/estructura.js`): el editor muestra una página a la vez
+  (`estado.pagina`); `aDocumento` devuelve la abierta a `resto` y descarta las
+  páginas que ya no cuelgan de la raíz. Botón «página» en la tira: crea la
+  subpágina, la abre y pone el foco en el título. Arriba de una subpágina va
+  la vuelta a la de arriba y el título.
+- **Índice** (`bloques/indice.js`): si la nota tiene páginas, el índice son
+  sus páginas (más una entrada para lo de antes); si no, las secciones de
+  siempre, pero cada una salta a su bloque (`yDe`), no por renglones.
+- **Base**: `historia_partir_nota(texto, documento)` parte por páginas cuando
+  el documento las tiene (y si no, cae en `historia_partir`);
+  `historia_sincronizar_una` lee `details.documento`. Comprobado: salida
+  idéntica en las 87 notas existentes.
+- **Elegir bloques**: mantener apretado un bloque leyendo (o el botón de la
+  tira) entra al modo; se eligen con un toque, se arrastran de la manija y la
+  barra de abajo sube, baja, copia (markdown) o borra.
+- **Fusión por bloque** (`documento/fusion.js`): `nota_guardar_bloques(id,
+  description, documento, base)` escribe solo si la base no cambió; si cambió
+  devuelve la versión de la base y la app fusiona por `_key` (lo nuestro gana
+  si los dos tocaron el mismo bloque; lo que agregó la otra versión entra
+  después de su vecino; lo que borró se respeta salvo que lo hayamos
+  editado) y reintenta. `nota_guardar_documento` queda hasta F6.
+
 ### F4 · Bloques especiales — STA-200
 Código, fórmula (endpoint MathJax en ExtractorW, por scp/patch en el VPS),
 dibujo, tabla simple, medios en medio del texto.
+
+Hecho (2026-09-29), detrás de `editor_bloques`. **Sin dependencias nativas
+nuevas**: `highlight.js` y `perfect-freehand` son JS puro; Skia y
+`react-native-svg` ya estaban. No hace falta recompilar.
+- **Código**: `«```js »` en un renglón vacío o el botón de la tira. Se colorea
+  al salir del bloque (núcleo de `highlight.js` con 11 lenguajes).
+- **Fórmula**: `«$$ »` o el botón. El LaTeX se dibuja en ExtractorW
+  (`POST /api/latex/svg`, MathJax) y el SVG se guarda en el bloque: abrir la
+  nota no vuelve a preguntar. Con un error de TeX se ve el texto y un aviso.
+- **Dibujo**: lienzo a pantalla completa con Skia + `perfect-freehand`; los
+  trazos se guardan normalizados y simplificados.
+- **Tabla simple**: celdas editables, filas y columnas con `+`; mantener
+  apretada una celda para quitar su fila o columna.
+- **Medios en el texto**: con bloques, la foto, el audio o el documento
+  adjuntado entra en el renglón del cursor; lo que ya está en el texto no se
+  repite en las listas de abajo. Siguen guardándose en `details` como antes.
+- **Pendiente de PJ**: desplegar `vps/ExtractorW/routes/latex.js` en el VPS
+  (ver `vps/ExtractorW/LEEME.md`). Sin eso las fórmulas se ven como texto.
 
 ### F5 · Datasheet — STA-201
 Tabla simple vs datasheet conectado a un dataset real. En modo datasheet la

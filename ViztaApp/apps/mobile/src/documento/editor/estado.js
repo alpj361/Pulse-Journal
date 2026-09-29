@@ -11,16 +11,20 @@
  * tocado: el bloque cambia de objeto, los demás siguen siendo los mismos, y un
  * selector por clave se da cuenta.
  *
- *   { orden: string[], porKey: { [key]: bloque }, padre: { [key]: key | null }, resto: doc }
+ *   { orden, porKey, padre, pagina, resto }
  *
- * `resto` es el documento de origen, para devolver intactas las páginas que
- * el editor todavía no toca (F3).
+ * El editor muestra **una página a la vez** (`pagina`, la `_key` de la página
+ * abierta; la primera es la nota). `resto` es el documento entero, para
+ * devolver intactas las páginas que no se están mostrando.
  */
 
 import { crearDocumento, CON_TEXTO } from '../esquema.js';
 
-export function desdeDocumento(doc) {
+export const raizDe = (doc) => doc?.paginas?.[0]?._key ?? null;
+
+export function desdeDocumento(doc, paginaKey) {
   const base = doc?.paginas?.length ? doc : crearDocumento();
+  const pagina = base.paginas.find((p) => p._key === paginaKey) || base.paginas[0];
   const orden = [];
   const porKey = {};
   const padre = {};
@@ -41,9 +45,33 @@ export function desdeDocumento(doc) {
       }
     }
   };
-  aplanar(base.paginas[0].bloques, null);
+  aplanar(pagina.bloques, null);
 
-  return { orden, porKey, padre, resto: base };
+  return { orden, porKey, padre, pagina: pagina._key, resto: base };
+}
+
+/**
+ * Las páginas a las que se llega desde la nota, siguiendo los bloques
+ * «página» (también los que están adentro de un toggle). Una página que
+ * quedó sin bloque que la abra —se borró su bloque— ya no es parte de la
+ * nota.
+ */
+function alcanzables(doc) {
+  const porKey = new Map(doc.paginas.map((p) => [p._key, p]));
+  const vistas = new Set();
+  const visitar = (pagina) => {
+    if (!pagina || vistas.has(pagina._key)) return;
+    vistas.add(pagina._key);
+    const recorrer = (bloques) => {
+      for (const b of bloques || []) {
+        if (b._type === 'pagina') visitar(porKey.get(b.pagina));
+        if (b._type === 'toggle') recorrer(b.bloques);
+      }
+    };
+    recorrer(pagina.bloques);
+  };
+  visitar(doc.paginas[0]);
+  return vistas;
 }
 
 export function aDocumento(estado) {
@@ -60,8 +88,16 @@ export function aDocumento(estado) {
       return b._type === 'toggle' ? { ...b, bloques: armar(k) } : b;
     });
 
-  const [primera, ...otras] = resto.paginas;
-  return { ...resto, paginas: [{ ...primera, bloques: armar(null) }, ...otras] };
+  const actual = estado.pagina ?? raizDe(resto);
+  const doc = {
+    ...resto,
+    paginas: resto.paginas.map((p) => (p._key === actual ? { ...p, bloques: armar(null) } : p)),
+  };
+  const vivas = alcanzables(doc);
+  // La página abierta no se descarta aunque se haya borrado su bloque en
+  // otro lado: se está escribiendo en ella.
+  vivas.add(actual);
+  return doc.paginas.every((p) => vivas.has(p._key)) ? doc : { ...doc, paginas: doc.paginas.filter((p) => vivas.has(p._key)) };
 }
 
 export const conTexto = (b) => !!b && CON_TEXTO.includes(b._type);

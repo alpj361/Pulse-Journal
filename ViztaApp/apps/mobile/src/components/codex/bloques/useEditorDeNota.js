@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { aMarkdown, desdeMarkdown, esDocumento, validar } from '../../../documento';
+import { aMarkdown, desdeMarkdown, esDocumento, versionDeLaBase } from '../../../documento';
 import { conTexto, textoDe } from '../../../documento/editor';
 import { crearEditor } from './store';
 import useRastreoBloques, { crearRastreo } from './useRastreoBloques';
-import usePersistencia, { leerBorrador } from './persistencia';
+import usePersistencia, { coherente, leerBorrador } from './persistencia';
 import { anotar, lugaresDe, memoriaNueva, tramosDeBloque } from './rastreo';
 
 const EMITIR_MS = 300;
@@ -34,6 +34,7 @@ export default function useEditorDeNota({ activo, cuerpo, setCuerpo, notaId, ind
   const emitido = useRef(null);
   const documentoAlAbrir = useRef(null);
   const base = useRef('');
+  const baseDoc = useRef(null);
   const cargada = useRef(-1);
   const reloj = useRef(null);
   // De qué nota es lo que está en el editor. Lo fija la carga —con el id de
@@ -44,7 +45,14 @@ export default function useEditorDeNota({ activo, cuerpo, setCuerpo, notaId, ind
     idActual.current = notaId;
   }, [notaId]);
 
-  const persistencia = usePersistencia(editor, { activo, idRef: idActual, base, cargada, onError: onErrorGuardado });
+  const persistencia = usePersistencia(editor, {
+    activo,
+    idRef: idActual,
+    base,
+    baseDoc,
+    cargada,
+    onError: onErrorGuardado,
+  });
   const releer = useRastreoBloques(editor, rastreo, { activo, indice, notaId });
 
   // ── Afuera → editor ──
@@ -73,19 +81,23 @@ export default function useEditorDeNota({ activo, cuerpo, setCuerpo, notaId, ind
     documentoAlAbrir.current = null;
     const id = abriendo ? abriendo.id : notaId;
     const guardado = abriendo?.documento;
-    if (esDocumento(guardado) && validar(guardado).ok && aMarkdown(guardado).trim() === plano) doc = guardado;
+    if (esDocumento(guardado) && coherente(guardado, plano)) doc = guardado;
+    if (!doc) doc = desdeMarkdown(md);
+    // Lo que hay en la base, como documento: la base de la fusión si otro
+    // dispositivo guarda mientras se edita acá.
+    let docDeLaBase = doc;
 
     let restaurado = false;
     const borrador = leerBorrador(id);
     if (borrador && (borrador.base ?? '') === plano && aMarkdown(borrador.doc).trim() !== plano) {
+      docDeLaBase = versionDeLaBase({ description: md, documento: guardado }, borrador.doc, { coherente });
       doc = borrador.doc;
       restaurado = true;
     }
 
-    if (!doc) doc = desdeMarkdown(md);
     idActual.current = id;
     base.current = plano;
-    persistencia.cargado(doc, { yaEnLaBase: !restaurado && !!id });
+    persistencia.cargado(doc, { yaEnLaBase: !restaurado && !!id, docDeLaBase });
     editor.getState().cargar(doc);
     cargada.current = editor.getState().version;
 

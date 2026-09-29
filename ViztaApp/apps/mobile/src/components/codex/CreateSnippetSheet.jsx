@@ -98,6 +98,10 @@ import useEditorDeNota from './bloques/useEditorDeNota';
 import EditorBloques from './bloques/EditorBloques';
 import AutocompletarBloques from './bloques/AutocompletarBloques';
 import { borrarBorrador } from './bloques/persistencia';
+import BarraSeleccion from './bloques/BarraSeleccion';
+import { indiceDelDocumento } from './bloques/indice';
+import { firmaDeMedios, raizDe } from '../../documento/editor';
+import { useStore } from 'zustand';
 
 // Las tres páginas. La nota va al medio para que las otras dos estén a un
 // deslizamiento de distancia en cualquier dirección, y para que abrir la hoja
@@ -646,6 +650,25 @@ export default function CreateSnippetSheet({
     onErrorGuardado: () => setError('No se pudo guardar. Lo escrito queda en el teléfono y se vuelve a intentar.'),
   });
   const refBloques = useRef(null);
+  // Para los adjuntos, que viven en callbacks estables: si la foto nueva va
+  // en medio del texto o abajo, como siempre.
+  const bloquesActivoRef = useRef(bloquesActivo);
+  bloquesActivoRef.current = bloquesActivo;
+  const seleccionando = useStore(edicion.editor, (s) => s.seleccionando);
+  const enRaizBloques = useStore(edicion.editor, (s) => s.estado.pagina === raizDe(s.estado.resto));
+
+  // Lo que ya se ve en el texto no se repite en las listas de abajo. Con un
+  // solo adjunto de más o de menos cambia la cadena; al escribir, no.
+  const firmaMedios = useStore(edicion.editor, (s) => (bloquesActivo ? firmaDeMedios(s.estado) : ''));
+  const enElTexto = useMemo(() => new Set(firmaMedios ? firmaMedios.split('\n') : []), [firmaMedios]);
+  // Lo que el texto necesita para pintar un adjunto en su lugar. Estable
+  // mientras no cambien las listas: cada bloque especial lo lee.
+  const mediosBloques = useMemo(
+    () => ({ fotos, audios, documentos, onVerFoto: setFotoAbierta, onAbrirDocumento: (d) => abrirDocumentoRef.current?.(d) }),
+    [fotos, audios, documentos],
+  );
+  const abrirDocumentoRef = useRef(null);
+  const fuera = (...ids) => !ids.some((x) => x && enElTexto.has(x));
 
   // Estables a propósito: cada bloque es un `memo`, y una función nueva en
   // cada pintada de la hoja los volvería a pintar a todos.
@@ -929,7 +952,15 @@ export default function CreateSnippetSheet({
     ? titulo
     : (cuerpo.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 70);
 
-  const indiceHistoria = useMemo(() => (principalDe ? indiceDeHistoria(cuerpo) : null), [principalDe, cuerpo]);
+  // Con bloques, el índice sale del documento: las páginas si las hay, y
+  // cada sección apunta a su bloque. Se lee cuando cambia `cuerpo`, que el
+  // editor mantiene al día —también al renombrar una página—.
+  const indiceHistoria = useMemo(() => {
+    if (!principalDe) return null;
+    if (bloquesActivo) return enRaizBloques ? indiceDelDocumento(edicion.editor.getState().documento()) : null;
+    return indiceDeHistoria(cuerpo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [principalDe, cuerpo, bloquesActivo, enRaizBloques]);
 
   const puedeGuardar = cuerpo.trim().length > 0 && tituloEfectivo.trim().length > 0;
 
@@ -1351,6 +1382,8 @@ export default function CreateSnippetSheet({
   const adjuntar = useCallback(async ({ uri, ancho, alto }) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setFotos((f) => [...f, { id, local: uri, url: null, storage_path: null, ancho, alto, subiendo: true, error: false }]);
+    // Con bloques, la foto entra en el texto donde está el cursor, no al final.
+    if (bloquesActivoRef.current) edicion.editor.getState().insertarMedio({ tipo: 'foto', ref: id });
 
     try {
       const subida = await subirImagen(uri, { ancho, alto });
@@ -1365,6 +1398,7 @@ export default function CreateSnippetSheet({
 
       toque();
       setFotos((f) => f.map((x) => (x.id === id ? { ...x, ...subida, subiendo: false } : x)));
+      edicion.editor.getState().actualizarMedio(id, { storage_path: subida.storage_path });
       evento(EV.NOTA_FOTO_ADJUNTA, { origen: 'bandeja' });
     } catch (e) {
       // Falló: no hay archivo que borrar, y la marca de cancelada ya no tiene a
@@ -1401,6 +1435,7 @@ export default function CreateSnippetSheet({
         error: false,
       },
     ]);
+    if (bloquesActivoRef.current) edicion.editor.getState().insertarMedio({ tipo: 'audio', ref: id });
 
     try {
       const medio = await subirGrabacion(uri, { duracionMs });
@@ -1414,6 +1449,7 @@ export default function CreateSnippetSheet({
 
       toque();
       setAudios((a) => a.map((x) => (x.id === id ? { ...x, ...medio, subiendo: false } : x)));
+      edicion.editor.getState().actualizarMedio(id, { storage_path: medio.storage_path });
       evento(EV.NOTA_AUDIO_ADJUNTO, { segundos: Math.round((duracionMs || 0) / 1000) });
     } catch (e) {
       canceladas.current.delete(id);
@@ -1437,22 +1473,29 @@ export default function CreateSnippetSheet({
     const clave = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try {
       const r = await subirDocumentoNota({
-        alEmpezarSubida: ({ nombre, tamano }) =>
-          setDocumentos((d) => [...d, { clave, nombre, tamano, subiendo: true }]),
+        alEmpezarSubida: ({ nombre, tamano }) => {
+          setDocumentos((d) => [...d, { clave, nombre, tamano, subiendo: true }]);
+          if (bloquesActivoRef.current) edicion.editor.getState().insertarMedio({ tipo: 'documento', ref: clave });
+        },
       });
       if (r.cancelado) return;
       toque();
       setDocumentos((d) => d.map((x) => (x.clave === clave ? { ...x, ...r, subiendo: false } : x)));
+      edicion.editor.getState().actualizarMedio(clave, { storage_path: r.storage_path });
     } catch (e) {
       falla();
       setDocumentos((d) => d.filter((x) => x.clave !== clave));
+      edicion.editor.getState().quitarMedio(clave);
       setError(e.message || 'No se pudo subir el documento');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentos.length]);
 
   /** Quitar un documento: el recién subido se borra ya; el guardado, al guardar. */
   const quitarDocumento = useCallback((doc) => {
     setDocumentos((d) => d.filter((x) => x.clave !== doc.clave));
+    // Si también estaba en el texto, sale de ahí.
+    edicion.editor.getState().quitarMedio(doc.storage_path || doc.clave);
     if (doc.id) docsQuitados.current.push(doc);
     else if (doc.storage_path) borrarDocumentoNota(doc.storage_path);
   }, []);
@@ -1467,9 +1510,12 @@ export default function CreateSnippetSheet({
     }
   }, []);
 
+  abrirDocumentoRef.current = abrirDocumento;
+
   /** Quitar un audio. Mismo criterio que las fotos. */
   const quitarAudio = useCallback((audio) => {
     setAudios((a) => a.filter((x) => x.id !== audio.id));
+    edicion.editor.getState().quitarMedio(audio.storage_path || audio.id);
 
     if (audio.subiendo) {
       canceladas.current.add(audio.id);
@@ -1496,6 +1542,7 @@ export default function CreateSnippetSheet({
    */
   const quitar = useCallback((foto) => {
     setFotos((f) => f.filter((x) => x.id !== foto.id));
+    edicion.editor.getState().quitarMedio(foto.storage_path || foto.id);
 
     if (foto.subiendo) {
       canceladas.current.add(foto.id);
@@ -1582,7 +1629,18 @@ export default function CreateSnippetSheet({
     setGuardando(true);
     setError(null);
     try {
-      if (volcado) await edicion.esperarGuardado();
+      // Una nota que ya existe pasa primero por el guardado que junta con lo
+      // escrito en otro lado (web, otro teléfono): lo que se escribe acá
+      // abajo ya es lo junto y no pisa nada.
+      let final = volcado;
+      if (volcado) {
+        if (editandoId) {
+          await edicion.guardarYa({ comprobar: true });
+          final = edicion.volcar();
+        } else {
+          await edicion.esperarGuardado();
+        }
+      }
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
       if (!userId) throw new Error('Sin sesión activa');
@@ -1639,12 +1697,12 @@ export default function CreateSnippetSheet({
 
       // El texto como bloques, junto a su markdown. `description` sigue siendo
       // lo que leen el indexador, el rastreo y la web.
-      if (volcado) details.documento = volcado.doc;
+      if (final) details.documento = final.doc;
 
       const campos = {
         tipo: 'Snippet',
         name: titular.trim(),
-        description: texto.trim(),
+        description: (final ? final.md : texto).trim(),
         ...(etiquetas.length ? { tags: etiquetas } : {}),
         details,
         // `thumbnail_url` guarda enlaces públicos, y las fotos de las notas son
@@ -1766,7 +1824,7 @@ export default function CreateSnippetSheet({
       for (const ruta of retiradas.current) borrarMedio(ruta);
       retiradas.current.clear();
       // El guardado automático no tiene que repetir lo que ya quedó escrito.
-      if (volcado) edicion.marcarGuardado(volcado.doc, data.id);
+      if (final) edicion.marcarGuardado(final.doc, data.id);
       toque();
       onCreated?.(data);
 
@@ -2216,6 +2274,7 @@ export default function CreateSnippetSheet({
                       onMencion={alMencionBloques}
                       onDecidir={alDecidirBloques}
                       onSeleccion={alSeleccionBloques}
+                      medios={mediosBloques}
                     />
                   ) : null
                 }
@@ -2237,12 +2296,12 @@ export default function CreateSnippetSheet({
                   ) : null
                 }
                 desplazar={desplazar}
-                fotos={fotos}
+                fotos={enElTexto.size ? fotos.filter((f) => fuera(f.storage_path, f.id)) : fotos}
                 onQuitarFoto={quitar}
                 onVerFoto={setFotoAbierta}
-                audios={audios}
+                audios={enElTexto.size ? audios.filter((a) => fuera(a.storage_path, a.id)) : audios}
                 onQuitarAudio={quitarAudio}
-                documentos={documentos}
+                documentos={enElTexto.size ? documentos.filter((d) => fuera(d.storage_path, d.clave)) : documentos}
                 esHistoria={!!principalDe}
                 onAbrirDocumento={abrirDocumento}
                 onQuitarDocumento={quitarDocumento}
@@ -2384,6 +2443,18 @@ export default function CreateSnippetSheet({
               y la grabadora — y a diferencia de la grabadora, no baja el
               teclado: se formatea en medio de la frase y hay que poder seguir
               escribiendo sin volver a tocar la nota. */}
+          {/* Elegir bloques: la barra de lo que se hace con ellos ocupa el
+              mismo lugar que la de formato. No hay teclado —elegir y escribir
+              no van juntos—, así que queda sobre la cápsula de acciones. */}
+          {pagina === NOTA && bloquesActivo && seleccionando ? (
+            <Animated.View
+              pointerEvents="box-none"
+              style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomInset + 108 }, sobreTeclado]}
+            >
+              <BarraSeleccion editor={edicion.editor} />
+            </Animated.View>
+          ) : null}
+
           {pagina === NOTA && formateando && escribiendo ? (
             <Animated.View
               pointerEvents="box-none"
@@ -2799,16 +2870,28 @@ function Nota({
    * la sección es aritmética (`renglonesHasta`), y con el alto de renglón eso
    * da la altura. Los títulos miden un poco más que el cuerpo, así que puede
    * quedar un renglón corrido; se deja aire arriba para que igual se vea.
+   *
+   * Con bloques no hace falta la cuenta: cada sección apunta a su bloque, y
+   * el editor sabe dónde está. Una página se abre y se lee desde arriba.
    */
   const caja = useRef({ y: 0, ancho: 0 });
   const irA = useCallback(
-    (inicio) => {
-      const porRenglon = Math.floor(caja.current.ancho / (15 * 0.6)) || 40;
-      const y = topInset + 66 + caja.current.y + renglonesHasta(texto, inicio, porRenglon) * 27;
+    (sec) => {
+      const arriba = topInset + 66 + caja.current.y;
+      let y;
+      if (sec.pagina && refBloques?.current) {
+        refBloques.current.abrirPagina(sec.pagina);
+        y = arriba;
+      } else if (sec.bloque && refBloques?.current) {
+        y = arriba + (refBloques.current.yDe(sec.bloque) ?? 0);
+      } else {
+        const porRenglon = Math.floor(caja.current.ancho / (15 * 0.6)) || 40;
+        y = arriba + renglonesHasta(texto, sec.inicio, porRenglon) * 27;
+      }
       hoja.current?.scrollTo({ y: Math.max(0, y - 36), animated: true });
       roce();
     },
-    [texto, topInset]
+    [texto, topInset, refBloques]
   );
 
   /**
@@ -2909,8 +2992,8 @@ function Nota({
           <Animated.View entering={FadeIn.duration(200)} style={{ marginBottom: 20 }}>
             {indice.map((sec, i) => (
               <Pressable
-                key={`${i}-${sec.inicio}`}
-                onPress={() => irA(sec.inicio)}
+                key={`${i}-${sec.inicio ?? sec.bloque}`}
+                onPress={() => irA(sec)}
                 hitSlop={3}
                 style={({ pressed }) => ({ flexDirection: 'row', gap: 10, paddingVertical: 4, opacity: pressed ? 0.5 : 1 })}
                 accessibilityRole="button"

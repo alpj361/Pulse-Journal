@@ -25,6 +25,13 @@ import {
   IndentDecrease,
   Undo2,
   Redo2,
+  FileText,
+  Table,
+  Sigma,
+  Brush,
+  SquareCode,
+  Minus,
+  ListChecks,
 } from 'lucide-react-native';
 import { MONO } from './mono';
 import { roce } from '../../utils/haptics';
@@ -179,6 +186,16 @@ export default function BarraFormato({ onAccion, onCerrar, bloques = false }) {
             <Boton Icono={Quote} etiqueta="Foco" onPress={() => onAccion('cita')} />
             <Boton Icono={IndentDecrease} etiqueta="Menos sangría" onPress={() => onAccion('desangrar')} />
             <Boton Icono={IndentIncrease} etiqueta="Más sangría" onPress={() => onAccion('sangrar')} />
+            {/* Lo que no es texto: entra como un bloque propio después del
+                renglón del cursor. */}
+            <View style={{ width: 1, height: 22, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 2 }} />
+            <Boton Icono={FileText} etiqueta="Página" onPress={() => onAccion('pagina')} />
+            <Boton Icono={Table} etiqueta="Tabla" onPress={() => onAccion('tabla')} />
+            <Boton Icono={Sigma} etiqueta="Fórmula" onPress={() => onAccion('formula')} />
+            <Boton Icono={Brush} etiqueta="Dibujo" onPress={() => onAccion('dibujo')} />
+            <Boton Icono={SquareCode} etiqueta="Bloque de código" onPress={() => onAccion('bloque-codigo')} />
+            <Boton Icono={Minus} etiqueta="Separador" onPress={() => onAccion('separador')} />
+            <Boton Icono={ListChecks} etiqueta="Elegir bloques" onPress={() => onAccion('seleccionar')} />
             <View style={{ width: 1, height: 22, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 2 }} />
             <Boton Icono={Undo2} etiqueta="Deshacer" onPress={() => onAccion('deshacer')} />
             <Boton Icono={Redo2} etiqueta="Rehacer" onPress={() => onAccion('rehacer')} />

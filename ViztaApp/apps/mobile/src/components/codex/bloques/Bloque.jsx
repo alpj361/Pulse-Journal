@@ -171,6 +171,7 @@ function Bloque({
   onFoco,
   onSoltar,
   onTocarLeyendo,
+  onMantener,
   registrar,
 }) {
   const b = useStore(editor, (s) => s.estado.porKey[k]);
@@ -311,7 +312,14 @@ function Bloque({
           editor.getState().alternarAbierto(k);
         }}
       />
-      <Pressable style={{ flex: 1 }} disabled={escribiendo} onPress={() => onTocarLeyendo?.(k)}>
+      <Pressable
+        style={{ flex: 1 }}
+        disabled={escribiendo}
+        onPress={() => onTocarLeyendo?.(k)}
+        // Mantener apretado un bloque, leyendo, empieza a elegir bloques.
+        onLongPress={onMantener ? () => onMantener(k) : undefined}
+        delayLongPress={380}
+      >
         <View pointerEvents={escribiendo ? 'auto' : 'none'}>
           <TextInput
             ref={campo}

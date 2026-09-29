@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler/jestSetup';
 import { useState } from 'react';
 import { TextInput } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
@@ -16,6 +17,12 @@ jest.mock('../../../../utils/supabase', () => ({
 }));
 jest.mock('../../../../utils/haptics', () => ({ roce: jest.fn(), toque: jest.fn() }));
 jest.mock('lucide-react-native', () => new Proxy({}, { get: () => () => null }));
+// Lo nativo que usan los bloques especiales; estas pruebas son de los de texto.
+jest.mock('@shopify/react-native-skia', () => ({ Canvas: () => null, Path: () => null }));
+jest.mock('react-native-svg', () => ({ SvgXml: () => null }));
+jest.mock('../../Audios', () => ({ __esModule: true, default: () => null }));
+jest.mock('../../DocumentosNota', () => ({ __esModule: true, default: () => null }));
+jest.mock('expo-image', () => ({ Image: () => null }));
 
 const campos = (r) => r.root.findAllByType(TextInput);
 const textoDe = (input) => {

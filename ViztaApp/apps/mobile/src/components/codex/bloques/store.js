@@ -2,9 +2,27 @@ import { createStore } from 'zustand/vanilla';
 import { crearDocumento } from '../../../documento';
 import {
   aDocumento,
+  abrirPagina,
   alternarAbierto,
   alternarHecho,
   borrarAlInicio,
+  borrarBloques,
+  bloqueEspecial,
+  copiarBloques,
+  actualizarMedio,
+  agregarColumna,
+  agregarFila,
+  editarBloque,
+  editarCelda,
+  insertarBloque,
+  quitarColumna,
+  quitarFila,
+  quitarMedio,
+  moverBloques,
+  moverUnPaso,
+  nuevaPagina,
+  renombrarPagina,
+  volver,
   crearHistorial,
   desdeDocumento,
   escribir,
@@ -87,6 +105,11 @@ export function crearEditor(doc = crearDocumento()) {
       enfocado: null,
       version: 0,
       estructura: 0,
+      // Modo «seleccionar bloques»: qué bloques están elegidos.
+      seleccionando: false,
+      seleccionados: [],
+      // Cuántas veces se cargó otra nota: la lista vuelve a montarse de a poco.
+      cargas: 0,
 
       /** Reemplaza todo: otra nota, o el cuerpo cambiado desde afuera del editor. */
       cargar(nuevoDoc) {
@@ -95,12 +118,106 @@ export function crearEditor(doc = crearDocumento()) {
           estado: desdeDocumento(nuevoDoc || crearDocumento()),
           foco: null,
           seleccion: { key: null, start: 0, end: 0 },
+          seleccionando: false,
+          seleccionados: [],
           version: s.version + 1,
           estructura: s.estructura + 1,
+          cargas: s.cargas + 1,
         }));
       },
 
       documento: () => aDocumento(get().estado),
+
+      /**
+       * Lo que resultó de juntar con otra versión (ver `fusion.js`). Se queda
+       * en la página que se está mirando, y se puede deshacer como cualquier
+       * otro cambio.
+       */
+      fusionarCon: (doc) => aplicar('fusion', null, (e) => ({ estado: { ...desdeDocumento(doc, e.pagina), pendiente: null } })),
+
+      // ── Páginas ──
+      abrirPagina: (key) => {
+        historial.cortar();
+        aplicar('pagina', null, (e) => abrirPagina(e, key));
+        // Lo elegido era de la otra página.
+        set({ seleccionando: false, seleccionados: [] });
+      },
+      volver: () => {
+        historial.cortar();
+        aplicar('pagina', null, (e) => volver(e));
+        set({ seleccionando: false, seleccionados: [] });
+      },
+      /** Una página nueva después del bloque del cursor, abierta y lista para ponerle título. */
+      nuevaPagina: () => {
+        historial.cortar();
+        const { seleccion, estado } = get();
+        const despuesDe = seleccion.key && estado.porKey[seleccion.key] ? seleccion.key : estado.orden[estado.orden.length - 1];
+        aplicar('pagina', null, (e) => nuevaPagina(e, despuesDe));
+      },
+      renombrarPagina: (key, titulo) => aplicar('titulo', key, (e) => renombrarPagina(e, key, titulo)),
+
+      // ── Seleccionar bloques ──
+      entrarSeleccion: (key) => {
+        const { estado } = get();
+        set({ seleccionando: true, seleccionados: key && estado.porKey[key] ? [key] : [] });
+      },
+      salirSeleccion: () => set({ seleccionando: false, seleccionados: [] }),
+      alternarSeleccion: (key) => {
+        const { seleccionados } = get();
+        set({
+          seleccionados: seleccionados.includes(key) ? seleccionados.filter((k) => k !== key) : [...seleccionados, key],
+        });
+      },
+      moverSeleccion: (delta) => {
+        const { seleccionados } = get();
+        if (seleccionados.length) aplicar('mover', null, (e) => moverUnPaso(e, seleccionados, delta));
+      },
+      /** Soltar lo arrastrado antes de `antesDe` (o al final). */
+      soltarSeleccionEn: (keys, antesDe) => aplicar('mover', null, (e) => moverBloques(e, keys, antesDe)),
+      borrarSeleccion: () => {
+        const { seleccionados } = get();
+        if (!seleccionados.length) return;
+        aplicar('borrar', null, (e) => borrarBloques(e, seleccionados));
+        set({ seleccionados: [] });
+      },
+      /** El markdown de lo elegido, para el portapapeles. */
+      copiarSeleccion: () => copiarBloques(get().estado, get().seleccionados),
+
+      // ── Bloques especiales ──
+      /**
+       * Meter un bloque especial después del bloque del cursor: `codigo`,
+       * `formula`, `dibujo`, `tabla`, `separador`. El foco va al bloque nuevo.
+       */
+      insertar: (tipo) => {
+        historial.cortar();
+        const { seleccion, estado } = get();
+        const despuesDe = seleccion.key && estado.porKey[seleccion.key] ? seleccion.key : estado.orden[estado.orden.length - 1];
+        aplicar('insertar', null, (e) => insertarBloque(e, despuesDe, bloqueEspecial(tipo)));
+      },
+      editarBloque: (key, cambios, tipo = 'especial') => aplicar(tipo, key, (e) => editarBloque(e, key, cambios)),
+      editarCelda: (key, f, c, texto) => aplicar('escribir', `${key}:${f}:${c}`, (e) => editarCelda(e, key, f, c, texto)),
+      /** Escribir en un especial (código, LaTeX): se agrupa para deshacer como el texto. */
+      escribirEspecial: (key, cambios) => aplicar('escribir', key, (e) => editarBloque(e, key, cambios)),
+      agregarFila: (key) => aplicar('tabla', key, (e) => agregarFila(e, key)),
+      agregarColumna: (key) => aplicar('tabla', key, (e) => agregarColumna(e, key)),
+      quitarFila: (key, f) => aplicar('tabla', key, (e) => quitarFila(e, key, f)),
+      quitarColumna: (key, c) => aplicar('tabla', key, (e) => quitarColumna(e, key, c)),
+
+      /**
+       * Una foto, un audio o un documento en medio del texto, apenas se
+       * adjunta: `ref` es el id de la subida, hasta que tenga su ruta.
+       */
+      insertarMedio: (datos) => {
+        const { seleccion, estado } = get();
+        const despuesDe = seleccion.key && estado.porKey[seleccion.key] ? seleccion.key : estado.orden[estado.orden.length - 1];
+        aplicar('insertar', null, (e) => {
+          const r = insertarBloque(e, despuesDe, bloqueEspecial('medio', undefined, datos));
+          // El cursor se queda donde estaba: se sigue escribiendo.
+          return { estado: r.estado };
+        });
+      },
+      actualizarMedio: (ref, datos) => aplicar('medio', null, (e) => actualizarMedio(e, ref, datos)),
+      quitarMedio: (ref) => aplicar('medio', null, (e) => quitarMedio(e, ref)),
 
       // ── Lo que hace el teclado ──
       escribir: (key, texto) => aplicar('escribir', key, (e) => escribir(e, key, texto, sel(key))),
@@ -117,6 +234,12 @@ export function crearEditor(doc = crearDocumento()) {
       formatear: (accion) => {
         if (accion === 'deshacer') return get().deshacer();
         if (accion === 'rehacer') return get().rehacer();
+        // Lo que mete un bloque nuevo o cambia de modo no necesita cursor:
+        // sin él, va al final.
+        if (accion === 'pagina') return get().nuevaPagina();
+        const especial = { tabla: 'tabla', formula: 'formula', dibujo: 'dibujo', 'bloque-codigo': 'codigo', separador: 'separador' }[accion];
+        if (especial) return get().insertar(especial);
+        if (accion === 'seleccionar') return get().entrarSeleccion(get().seleccion?.key);
         const s = get().seleccion;
         if (!s?.key) return;
         if (accion === 'sangrar' || accion === 'desangrar') {
@@ -203,7 +326,9 @@ function cambioDeForma(antes, despues, key, tipo) {
   if (antes.orden !== despues.orden) return true;
   const a = antes.porKey[key];
   const b = despues.porKey[key];
-  if (!a || !b) return true;
+  // Escribir en una celda (`key:fila:col`) o en un bloque que no es texto
+  // no cambia la forma: se vuelve a pintar ese bloque solo.
+  if (!a || !b) return antes.orden !== despues.orden;
   if (tipoDe(a) !== tipoDe(b) || a.level !== b.level) return true;
   return !textoDe(a.children).trim() !== !textoDe(b.children).trim();
 }
