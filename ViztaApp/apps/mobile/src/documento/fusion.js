@@ -86,7 +86,14 @@ export function fusionar(base, nuestro, suyo) {
   }
   // La nota empieza siempre por la primera página nuestra.
   paginas.sort((x, y) => (x._key === nuestro.paginas[0]._key ? -1 : y._key === nuestro.paginas[0]._key ? 1 : 0));
-  return { ...nuestro, paginas };
+  // Lo del documento entero (la historia como datasheet): el nuestro si lo
+  // cambiamos, si no el de la otra versión.
+  const igual = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const datasheet = igual(nuestro.datasheet, base.datasheet) ? suyo.datasheet : nuestro.datasheet;
+  const junto = { ...nuestro, paginas };
+  if (datasheet) junto.datasheet = datasheet;
+  else delete junto.datasheet;
+  return junto;
 }
 
 /**

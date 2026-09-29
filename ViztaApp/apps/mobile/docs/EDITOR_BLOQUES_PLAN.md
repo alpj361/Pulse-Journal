@@ -258,6 +258,40 @@ nota, panel). **Definir con PJ antes de empezar.** Lectura propuesta: cada fila
 es una entrada de la historia; la nota muestra la fila abierta y el panel la
 tabla entera.
 
+Definido con PJ (2026-09-29): primero el bloque, después la historia; se
+puede editar el dataset desde la nota; una tabla simple se puede convertir
+en dataset.
+
+Hecho (2026-09-29), detrás de `editor_bloques`:
+- **Base** (migraciones `datasheet_en_la_nota` y `historia_como_datasheet`):
+  RPCs `datasheet_listar`, `datasheet_leer`, `datasheet_celda`,
+  `datasheet_fila_nueva`, `datasheet_fila_quitar`, `datasheet_columna_nueva`
+  y `datasheet_desde_tabla`. Corren como quien llama (RLS de siempre: dueño;
+  en públicos, también admins). Los 22 datasets de hoy vienen de
+  `private_datasets`/`public_datasets` (`legacy_source`), cuyo `json_data`
+  sigue siendo la fuente y cuyo trigger rearma `dataset_rows`: por eso las
+  escrituras van a la tabla vieja cuando la hay. Una celda se escribe sola
+  (`jsonb_set` de esa clave): dos personas en celdas distintas no se pisan.
+  Quitar una fila de un dataset viejo corre las de abajo (es un arreglo).
+- **Bloque «dataset»** (botón en la tira): elegir uno existente (propios
+  primero, después públicos) o crear uno nuevo; tabla editable si es propio
+  (celdas, filas, columnas); los de otra persona se leen. La tabla simple se
+  convierte con «convertir en dataset» (mantener apretada una celda): la
+  primera fila da las columnas y el bloque conserva su `_key`.
+- **La historia como datasheet**: en la nota principal de un espacio, un
+  datasheet ofrece «usar como la historia». Queda en
+  `details.documento.datasheet = { dataset_id, nombre, titulo? }` y lo escrito
+  como texto se conserva. Vistas: la **nota** muestra la fila abierta como
+  ficha (anterior/siguiente, `+` para una entrada nueva; mantener apretada
+  una etiqueta la vuelve la columna del título), el **historial** lista las
+  filas antes de las notas y el **panel** muestra la tabla entera (tocar una
+  fila la abre) y «volver a escribir la historia como texto».
+- **Base de la historia**: `historia_partir_nota` parte por filas cuando el
+  documento tiene `datasheet` (título = columna elegida o la primera;
+  contenido = «Columna: valor»; hasta 100 filas). `historia_sincronizar_nota`
+  la rearma; la app lo pide 3 s después del último cambio al dataset o al
+  modo, porque el trigger de la nota solo mira `description`.
+
 ### F6 · Cierre — STA-202
 Quitar el editor viejo y el interruptor. Documentar `vizta.doc/1` para ThePulse.
 

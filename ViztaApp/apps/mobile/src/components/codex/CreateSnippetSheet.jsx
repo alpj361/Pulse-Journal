@@ -102,6 +102,9 @@ import BarraSeleccion from './bloques/BarraSeleccion';
 import { indiceDelDocumento } from './bloques/indice';
 import { firmaDeMedios, raizDe } from '../../documento/editor';
 import { useStore } from 'zustand';
+import { TablaDeDataset } from './bloques/Datasheet';
+import { FilaDeHistoria, FilasDeHistoria } from './bloques/HistoriaDatasheet';
+import { datasheets } from './bloques/datasheets';
 
 // Las tres páginas. La nota va al medio para que las otras dos estén a un
 // deslizamiento de distancia en cualquier dirección, y para que abrir la hoja
@@ -663,9 +666,58 @@ export default function CreateSnippetSheet({
   const enElTexto = useMemo(() => new Set(firmaMedios ? firmaMedios.split('\n') : []), [firmaMedios]);
   // Lo que el texto necesita para pintar un adjunto en su lugar. Estable
   // mientras no cambien las listas: cada bloque especial lo lee.
+  // ── La historia como datasheet (F5) ──
+  // Va en el documento de la nota principal de un espacio: cada fila del
+  // dataset es una entrada. La nota muestra la fila abierta, el panel la
+  // tabla y el historial las filas.
+  const historiaDs = useStore(edicion.editor, (s) => (bloquesActivo ? s.estado.resto?.datasheet ?? null : null));
+  const esHistoriaDs = !!(principalDe && historiaDs?.dataset_id);
+  const [filaAbierta, setFilaAbierta] = useState(null);
+  useEffect(() => setFilaAbierta(null), [historiaDs?.dataset_id, editandoId]);
+  const usarComoHistoria = useCallback(
+    (id, nombre) => edicion.editor.getState().historiaComoDatasheet(id ? { dataset_id: id, nombre } : null),
+    [edicion.editor],
+  );
+
+  // La base parte la historia por filas, pero el trigger de la nota solo
+  // mira el texto: al cambiar el dataset (o el modo) se le pide que la
+  // rearme, unos segundos después del último cambio.
+  const escritosHistoria = useStore(datasheets, (s) => (historiaDs?.dataset_id ? s.cambios[historiaDs.dataset_id] || 0 : 0));
+  const rearmarDesde = useRef(null);
+  useEffect(() => {
+    if (!editandoId || !principalDe?.id) return undefined;
+    const firma = `${historiaDs?.dataset_id || ''}:${historiaDs?.titulo || ''}:${escritosHistoria}`;
+    // Al abrir la nota no hay nada que rearmar: se anota dónde se empezó.
+    if (rearmarDesde.current?.nota !== editandoId) {
+      rearmarDesde.current = { nota: editandoId, firma };
+      return undefined;
+    }
+    if (rearmarDesde.current.firma === firma) return undefined;
+    const t = setTimeout(async () => {
+      rearmarDesde.current = { nota: editandoId, firma };
+      try {
+        await edicion.guardarYa();
+        await supabase.rpc('historia_sincronizar_nota', { p_nota: editandoId });
+      } catch (e) {
+        console.warn('[historia] no se pudo rearmar', e?.message || e);
+      }
+    }, 3000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editandoId, principalDe?.id, historiaDs?.dataset_id, historiaDs?.titulo, escritosHistoria]);
+
   const mediosBloques = useMemo(
-    () => ({ fotos, audios, documentos, onVerFoto: setFotoAbierta, onAbrirDocumento: (d) => abrirDocumentoRef.current?.(d) }),
-    [fotos, audios, documentos],
+    () => ({
+      fotos,
+      audios,
+      documentos,
+      onVerFoto: setFotoAbierta,
+      onAbrirDocumento: (d) => abrirDocumentoRef.current?.(d),
+      esHistoria: !!principalDe,
+      historiaDataset: historiaDs?.dataset_id || null,
+      usarComoHistoria,
+    }),
+    [fotos, audios, documentos, principalDe, historiaDs?.dataset_id, usarComoHistoria],
   );
   const abrirDocumentoRef = useRef(null);
   const fuera = (...ids) => !ids.some((x) => x && enElTexto.has(x));
@@ -2254,6 +2306,18 @@ export default function CreateSnippetSheet({
                 // misma ficha que se abre desde un chip de la nota, y de paso
                 // se hidrata sola — ver `aHidratar`.
                 onAbrirItem={setItemAbierto}
+                arriba={
+                  esHistoriaDs ? (
+                    <FilasDeHistoria
+                      historia={historiaDs}
+                      filaId={filaAbierta}
+                      onAbrir={(id) => {
+                        setFilaAbierta(id);
+                        irA(NOTA);
+                      }}
+                    />
+                  ) : null
+                }
               />
             </View>
 
@@ -2261,7 +2325,14 @@ export default function CreateSnippetSheet({
               <Nota
                 campo={campo}
                 bloques={
-                  bloquesActivo ? (
+                  esHistoriaDs ? (
+                    <FilaDeHistoria
+                      historia={historiaDs}
+                      filaId={filaAbierta}
+                      onFila={setFilaAbierta}
+                      onTitulo={(c) => edicion.editor.getState().historiaComoDatasheet({ ...historiaDs, titulo: c })}
+                    />
+                  ) : bloquesActivo ? (
                     <EditorBloques
                       ref={refBloques}
                       editor={edicion.editor}
@@ -2310,7 +2381,7 @@ export default function CreateSnippetSheet({
                 marcador={marcador}
                 // La historia de un espacio se parte sola en secciones; el
                 // índice sigue al texto mientras se escribe.
-                indice={principalDe ? indiceHistoria : null}
+                indice={principalDe && !esHistoriaDs ? indiceHistoria : null}
                 texto={cuerpo}
                 destino={
                   principalDe?.name
@@ -2374,6 +2445,35 @@ export default function CreateSnippetSheet({
                 detalles={preguntando ? <PromptSistema /> : null}
                 fotos={fotos}
                 onVerFoto={setFotoAbierta}
+                arriba={
+                  esHistoriaDs && !preguntando ? (
+                    <View style={{ marginBottom: 34 }}>
+                      <TablaDeDataset
+                        id={historiaDs.dataset_id}
+                        nombre={historiaDs.nombre}
+                        editor={edicion.editor}
+                        escribiendo={false}
+                        filaAbierta={filaAbierta}
+                        onAbrirFila={(id) => {
+                          roce();
+                          setFilaAbierta(id);
+                          irA(NOTA);
+                        }}
+                      />
+                      <Pressable
+                        onPress={() => {
+                          roce();
+                          usarComoHistoria(null);
+                        }}
+                        hitSlop={6}
+                        style={({ pressed }) => ({ alignSelf: 'flex-start', paddingVertical: 6, opacity: pressed ? 0.5 : 1 })}
+                        accessibilityRole="button"
+                      >
+                        <Text style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(28,43,34,0.45)' }}>volver a escribir la historia como texto</Text>
+                      </Pressable>
+                    </View>
+                  ) : null
+                }
                 topInset={topInset}
                 bottomInset={bottomInset}
               />

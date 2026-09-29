@@ -5,6 +5,7 @@ import { Database, Plus, RefreshCw } from 'lucide-react-native';
 import { INK } from '../../theme';
 import { MONO } from '../mono';
 import { datasetDesdeTabla, datasheets, listarDatasets, textoDeCelda } from './datasheets';
+import { useMedios } from './contexto';
 import { roce, toque } from '../../../utils/haptics';
 
 const CUERPO = 15;
@@ -151,7 +152,13 @@ function ElegirDataset({ k, editor, escribiendo, onElegir }) {
 
 // ── La tabla ────────────────────────────────────────────────────────────────
 
-function TablaDeDataset({ k, id, nombre, editor, escribiendo, onSoltar }) {
+/**
+ * La tabla de un dataset. Se usa en el bloque y, sin editar, en el panel de
+ * una historia datasheet: ahí `onAbrirFila` hace que tocar una fila la abra
+ * en la nota, y `filaAbierta` la marca.
+ */
+export function TablaDeDataset({ k, id, nombre, editor, escribiendo, onSoltar, onAbrirFila, filaAbierta }) {
+  const { esHistoria, historiaDataset, usarComoHistoria } = useMedios();
   const entrada = useStore(datasheets, (s) => s.porId[id]);
   const datos = entrada?.datos;
   const [mostrar, setMostrar] = useState(PRIMERAS);
@@ -167,7 +174,7 @@ function TablaDeDataset({ k, id, nombre, editor, escribiendo, onSoltar }) {
 
   // Con el foco pedido (recién insertado o conectado), a escribir en la
   // primera celda.
-  const pedido = useStore(editor, (s) => (s.foco?.key === k ? s.foco : null));
+  const pedido = useStore(editor, (s) => (k && s.foco?.key === k ? s.foco : null));
   useEffect(() => {
     if (!pedido) return;
     editor.getState().focoCumplido(pedido.n);
@@ -292,14 +299,21 @@ function TablaDeDataset({ k, id, nombre, editor, escribiendo, onSoltar }) {
             </View>
 
             {filas.slice(0, mostrar).map((fila) => (
-              <View key={fila.id} style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: RAYA }}>
+              <View
+                key={fila.id}
+                style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: RAYA, backgroundColor: fila.id === filaAbierta ? 'rgba(75,79,166,0.07)' : 'transparent' }}
+              >
                 {columnas.map((c, i) => {
                   const esta = editando && editando.fila === fila.id && editando.col === c;
                   return (
                     <Pressable
                       key={c}
-                      disabled={!puede || esta}
-                      onPress={() => setEditando({ fila: fila.id, col: c, texto: textoDeCelda(fila.valores?.[c]) })}
+                      disabled={(!puede && !onAbrirFila) || esta}
+                      onPress={() =>
+                        puede
+                          ? setEditando({ fila: fila.id, col: c, texto: textoDeCelda(fila.valores?.[c]) })
+                          : onAbrirFila?.(fila.id)
+                      }
                       onLongPress={() => opciones(fila)}
                       delayLongPress={380}
                       style={{ width: ANCHO_CELDA, minHeight: 36, paddingHorizontal: 8, paddingVertical: 8, borderRightWidth: i < columnas.length - 1 ? 1 : 0, borderColor: RAYA }}
@@ -344,6 +358,21 @@ function TablaDeDataset({ k, id, nombre, editor, escribiendo, onSoltar }) {
         ) : null}
       </View>
 
+      {/* En la nota principal de un espacio, este dataset puede ser la
+          historia entera: cada fila, una entrada. */}
+      {escribiendo && esHistoria && usarComoHistoria && historiaDataset !== id ? (
+        <Pressable
+          onPress={() => {
+            toque();
+            usarComoHistoria(id, titulo);
+          }}
+          hitSlop={6}
+          style={({ pressed }) => ({ paddingVertical: 6, opacity: pressed ? 0.5 : 1, alignSelf: 'flex-start' })}
+          accessibilityRole="button"
+        >
+          <Text style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(75,79,166,0.85)' }}>usar como la historia</Text>
+        </Pressable>
+      ) : null}
       {escribiendo && datos && !datos.propio ? (
         <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginTop: 2 }}>Este dataset es de otra persona: se lee, no se cambia.</Text>
       ) : null}

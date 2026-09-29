@@ -195,6 +195,20 @@ export function crearEditor(doc = crearDocumento()) {
         const despuesDe = seleccion.key && estado.porKey[seleccion.key] ? seleccion.key : estado.orden[estado.orden.length - 1];
         aplicar('insertar', null, (e) => insertarBloque(e, despuesDe, bloqueEspecial(tipo)));
       },
+      /**
+       * La historia entera como datasheet (`{ dataset_id, nombre, titulo }`),
+       * o de vuelta a texto con `null`. Va en el documento, no en un bloque:
+       * lo escrito como texto se conserva por si se vuelve.
+       */
+      historiaComoDatasheet: (datos) =>
+        aplicar('historia', null, (e) => {
+          const nuevo = datos || null;
+          if (JSON.stringify(e.resto.datasheet ?? null) === JSON.stringify(nuevo)) return { estado: e };
+          const resto = { ...e.resto };
+          if (nuevo) resto.datasheet = nuevo;
+          else delete resto.datasheet;
+          return { estado: { ...e, resto } };
+        }),
       /** El datasheet elige su dataset (o la tabla simple pasa a ser uno). */
       conectarDataset: (key, dataset_id, nombre) =>
         aplicar('especial', key, (e) => {

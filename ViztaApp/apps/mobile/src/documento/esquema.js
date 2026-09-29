@@ -129,6 +129,11 @@ export function validar(doc) {
     vistas.add(k);
   };
 
+  // La historia como datasheet (F5): cuál dataset y qué columna titula.
+  if (doc.datasheet != null && (typeof doc.datasheet !== 'object' || typeof doc.datasheet.dataset_id !== 'string')) {
+    err('documento', 'datasheet sin dataset_id');
+  }
+
   const paginas = new Set(doc.paginas.map((p) => p?._key));
 
   const validarBloques = (bloques, donde) => {

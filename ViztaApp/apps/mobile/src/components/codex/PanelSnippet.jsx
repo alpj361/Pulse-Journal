@@ -70,6 +70,8 @@ export default function PanelSnippet({
    */
   fotos = [],
   onVerFoto,
+  /** Lo que va antes de los mencionados: la tabla de una historia datasheet. */
+  arriba = null,
   topInset = 0,
   bottomInset = 0,
 }) {
@@ -79,6 +81,7 @@ export default function PanelSnippet({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
+      {arriba}
       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)' }}>mencionados</Text>
 
       {items.length === 0 ? (

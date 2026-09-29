@@ -24,6 +24,9 @@ export const datasheets = createStore((set, get) => {
     if (e?.datos) poner(id, { datos: fn(e.datos) });
   };
   const enVuelo = new Map();
+  // Cuántas veces se escribió en cada dataset desde acá: la hoja lo mira
+  // para rearmar la historia cuando la historia es ese dataset.
+  const escrito = (id) => set((s) => ({ cambios: { ...s.cambios, [id]: (s.cambios[id] || 0) + 1 } }));
 
   const cargar = async (id, { forzar = false } = {}) => {
     if (!id) return null;
@@ -53,6 +56,7 @@ export const datasheets = createStore((set, get) => {
 
   return {
     porId: {},
+    cambios: {},
     cargar,
     releer,
 
@@ -73,6 +77,7 @@ export const datasheets = createStore((set, get) => {
         releer(id);
         throw error || new Error('No se pudo guardar la celda.');
       }
+      escrito(id);
       // La base puede haberlo guardado como número.
       conDatos(id, (d) => ({
         ...d,
@@ -89,6 +94,7 @@ export const datasheets = createStore((set, get) => {
         throw error || new Error('No se pudo agregar la fila.');
       }
       conDatos(id, (d) => ({ ...d, total: (d.total || 0) + 1, filas: [...d.filas, data] }));
+      escrito(id);
       return data;
     },
 
@@ -98,6 +104,7 @@ export const datasheets = createStore((set, get) => {
       // En los datasets de siempre, quitar corre las de abajo: se relee igual.
       releer(id);
       if (error) throw error;
+      escrito(id);
     },
 
     async columnaNueva(id, nombre) {
@@ -110,6 +117,7 @@ export const datasheets = createStore((set, get) => {
       }
       if (data?.ok === false && data.motivo === 'existe') throw new Error('Ya hay una columna con ese nombre.');
       if (data?.columnas) conDatos(id, (d) => ({ ...d, columnas: data.columnas }));
+      escrito(id);
     },
   };
 });
