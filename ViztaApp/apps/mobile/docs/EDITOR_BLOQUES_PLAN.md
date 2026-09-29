@@ -163,6 +163,39 @@ cursiva `*` → `_` (15), viñeta `*` → `-` (1), `****` → `---` (1), `>` →
 - Metas: < 16 ms por tecla; abrir nota de 5.000 palabras < 300 ms. Medir.
 - El editor viejo sigue detrás del interruptor.
 
+Hecho (2026-09-29), detrás de `editor_bloques`:
+- **Núcleo puro** (`src/documento/editor/`): estado plano (`orden`, `porKey`,
+  `padre` para los hijos de un toggle), operaciones inmutables (escribir con
+  diff + atajos `# `/`- `/`1. `/`[] `/`> `/`>> `, Enter, borrar al inicio,
+  pegar markdown, tipos, marcas con «pendiente» en blanco, sangría, to-do,
+  toggle) y deshacer por estados, agrupando teclas seguidas ~500 ms.
+- **UI** (`src/components/codex/bloques/`): store zustand por hoja, un
+  `TextInput` por bloque con `submitBehavior="submit"` (Enter parte sin meter
+  un salto), formato pintado sin marcadores, montaje de a poco (40 + 80 por
+  cuadro), `KeyboardAwareScrollView` para que el bloque nuevo quede a la vista.
+  Leer sigue siendo el estado natural (dos toques para escribir; casillas y
+  flechas responden leyendo). La tira de formato suma, solo con bloques,
+  listas, to-do, toggle, cita, sangría y deshacer/rehacer — provisoria hasta F2.
+- **Rastreo por bloque**: `codex_resolver_bloques` (base) resuelve tramos de
+  bloques seguidos con los renglones vecinos como contexto; se manda el
+  renglón **en markdown** (para `codex_tokens` un `**` es corte de frase).
+  Probado contra `codex_resolver_texto` con la nota entera: 308 renglones,
+  mismas 50 menciones, mismo veredicto, motivo y firma. La caché es por
+  renglón + contexto; solo se pregunta por bloques con algún nombre.
+- **Guardado**: automático a 1,5 s y al salir para notas que ya existen, con
+  `nota_guardar_documento` (base), que fusiona `details.documento` en vez de
+  pisar `details`. Borrador local en `expo-sqlite/kv-store`. Al abrir se
+  prefiere: borrador de esta misma versión › `details.documento` si coincide
+  con `description` › `description`. «Guardar» sigue creando las notas nuevas
+  y ahora escribe también `details.documento`.
+- **Modo Vizta** sigue con el campo simple (es la pregunta, no la nota); al
+  salir, el editor se recarga desde el cuerpo con la conversación plegada.
+- Medido en Node sobre 5.100 palabras / 407 bloques (`MEDIR=1 npx jest
+  rendimiento`): abrir 20 ms, tecla p95 1 ms, al dejar de escribir 5 + 4 ms.
+  Falta medirlo en el teléfono.
+- ~~Pendiente para F3: el índice de la historia salta por aritmética de
+  renglones~~ — resuelto en F3: cada sección apunta a su bloque.
+
 ### F2 · Barra — STA-198
 Tres filas (referencia Craft: Heading/Body/Page/More · checkbox, toggle,
 viñetas, numeración, sangría −/+ · Focus, Block, color, …). Tira sobre el
@@ -173,9 +206,50 @@ Bloque «Página» con subpágina. Índice de historia por páginas;
 `historia_partir` (base) parte por páginas. Modo «seleccionar bloques».
 Fusión por bloque al guardar.
 
+Hecho (2026-09-29), detrás de `editor_bloques`:
+- **Páginas** (`editor/estructura.js`): el editor muestra una página a la vez
+  (`estado.pagina`); `aDocumento` devuelve la abierta a `resto` y descarta las
+  páginas que ya no cuelgan de la raíz. Botón «página» en la tira: crea la
+  subpágina, la abre y pone el foco en el título. Arriba de una subpágina va
+  la vuelta a la de arriba y el título.
+- **Índice** (`bloques/indice.js`): si la nota tiene páginas, el índice son
+  sus páginas (más una entrada para lo de antes); si no, las secciones de
+  siempre, pero cada una salta a su bloque (`yDe`), no por renglones.
+- **Base**: `historia_partir_nota(texto, documento)` parte por páginas cuando
+  el documento las tiene (y si no, cae en `historia_partir`);
+  `historia_sincronizar_una` lee `details.documento`. Comprobado: salida
+  idéntica en las 87 notas existentes.
+- **Elegir bloques**: mantener apretado un bloque leyendo (o el botón de la
+  tira) entra al modo; se eligen con un toque, se arrastran de la manija y la
+  barra de abajo sube, baja, copia (markdown) o borra.
+- **Fusión por bloque** (`documento/fusion.js`): `nota_guardar_bloques(id,
+  description, documento, base)` escribe solo si la base no cambió; si cambió
+  devuelve la versión de la base y la app fusiona por `_key` (lo nuestro gana
+  si los dos tocaron el mismo bloque; lo que agregó la otra versión entra
+  después de su vecino; lo que borró se respeta salvo que lo hayamos
+  editado) y reintenta. `nota_guardar_documento` queda hasta F6.
+
 ### F4 · Bloques especiales — STA-200
 Código, fórmula (endpoint MathJax en ExtractorW, por scp/patch en el VPS),
 dibujo, tabla simple, medios en medio del texto.
+
+Hecho (2026-09-29), detrás de `editor_bloques`. **Sin dependencias nativas
+nuevas**: `highlight.js` y `perfect-freehand` son JS puro; Skia y
+`react-native-svg` ya estaban. No hace falta recompilar.
+- **Código**: `«```js »` en un renglón vacío o el botón de la tira. Se colorea
+  al salir del bloque (núcleo de `highlight.js` con 11 lenguajes).
+- **Fórmula**: `«$$ »` o el botón. El LaTeX se dibuja en ExtractorW
+  (`POST /api/latex/svg`, MathJax) y el SVG se guarda en el bloque: abrir la
+  nota no vuelve a preguntar. Con un error de TeX se ve el texto y un aviso.
+- **Dibujo**: lienzo a pantalla completa con Skia + `perfect-freehand`; los
+  trazos se guardan normalizados y simplificados.
+- **Tabla simple**: celdas editables, filas y columnas con `+`; mantener
+  apretada una celda para quitar su fila o columna.
+- **Medios en el texto**: con bloques, la foto, el audio o el documento
+  adjuntado entra en el renglón del cursor; lo que ya está en el texto no se
+  repite en las listas de abajo. Siguen guardándose en `details` como antes.
+- **Pendiente de PJ**: desplegar `vps/ExtractorW/routes/latex.js` en el VPS
+  (ver `vps/ExtractorW/LEEME.md`). Sin eso las fórmulas se ven como texto.
 
 ### F5 · Datasheet — STA-201
 Tabla simple vs datasheet conectado a un dataset real. En modo datasheet la
@@ -183,6 +257,40 @@ historia entera es el datasheet, respetando las vistas de la nota (historial,
 nota, panel). **Definir con PJ antes de empezar.** Lectura propuesta: cada fila
 es una entrada de la historia; la nota muestra la fila abierta y el panel la
 tabla entera.
+
+Definido con PJ (2026-09-29): primero el bloque, después la historia; se
+puede editar el dataset desde la nota; una tabla simple se puede convertir
+en dataset.
+
+Hecho (2026-09-29), detrás de `editor_bloques`:
+- **Base** (migraciones `datasheet_en_la_nota` y `historia_como_datasheet`):
+  RPCs `datasheet_listar`, `datasheet_leer`, `datasheet_celda`,
+  `datasheet_fila_nueva`, `datasheet_fila_quitar`, `datasheet_columna_nueva`
+  y `datasheet_desde_tabla`. Corren como quien llama (RLS de siempre: dueño;
+  en públicos, también admins). Los 22 datasets de hoy vienen de
+  `private_datasets`/`public_datasets` (`legacy_source`), cuyo `json_data`
+  sigue siendo la fuente y cuyo trigger rearma `dataset_rows`: por eso las
+  escrituras van a la tabla vieja cuando la hay. Una celda se escribe sola
+  (`jsonb_set` de esa clave): dos personas en celdas distintas no se pisan.
+  Quitar una fila de un dataset viejo corre las de abajo (es un arreglo).
+- **Bloque «dataset»** (botón en la tira): elegir uno existente (propios
+  primero, después públicos) o crear uno nuevo; tabla editable si es propio
+  (celdas, filas, columnas); los de otra persona se leen. La tabla simple se
+  convierte con «convertir en dataset» (mantener apretada una celda): la
+  primera fila da las columnas y el bloque conserva su `_key`.
+- **La historia como datasheet**: en la nota principal de un espacio, un
+  datasheet ofrece «usar como la historia». Queda en
+  `details.documento.datasheet = { dataset_id, nombre, titulo? }` y lo escrito
+  como texto se conserva. Vistas: la **nota** muestra la fila abierta como
+  ficha (anterior/siguiente, `+` para una entrada nueva; mantener apretada
+  una etiqueta la vuelve la columna del título), el **historial** lista las
+  filas antes de las notas y el **panel** muestra la tabla entera (tocar una
+  fila la abre) y «volver a escribir la historia como texto».
+- **Base de la historia**: `historia_partir_nota` parte por filas cuando el
+  documento tiene `datasheet` (título = columna elegida o la primera;
+  contenido = «Columna: valor»; hasta 100 filas). `historia_sincronizar_nota`
+  la rearma; la app lo pide 3 s después del último cambio al dataset o al
+  modo, porque el trigger de la nota solo mira `description`.
 
 ### F6 · Cierre — STA-202
 Quitar el editor viejo y el interruptor. Documentar `vizta.doc/1` para ThePulse.

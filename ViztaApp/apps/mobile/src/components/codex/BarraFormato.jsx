@@ -7,7 +7,33 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { Bold, Italic, Highlighter, Code, Heading1, Heading2, ChevronDown, Type } from 'lucide-react-native';
+import {
+  Bold,
+  Italic,
+  Highlighter,
+  Code,
+  Heading1,
+  Heading2,
+  ChevronDown,
+  Type,
+  List,
+  ListOrdered,
+  ListTodo,
+  ListCollapse,
+  Quote,
+  IndentIncrease,
+  IndentDecrease,
+  Undo2,
+  Redo2,
+  FileText,
+  Table,
+  Sigma,
+  Brush,
+  SquareCode,
+  Minus,
+  ListChecks,
+  Database,
+} from 'lucide-react-native';
 import { MONO } from './mono';
 import { roce } from '../../utils/haptics';
 
@@ -59,7 +85,12 @@ function Boton({ Icono, etiqueta, onPress, ancho = 44 }) {
   );
 }
 
-export default function BarraFormato({ onAccion, onCerrar }) {
+/**
+ * `bloques`: con el editor de bloques la tira suma lo que ese editor sabe
+ * hacer y la nota vieja no —listas, to-do, toggle, cita, sangría, deshacer—.
+ * Es provisoria: la barra de tres filas llega con la F2.
+ */
+export default function BarraFormato({ onAccion, onCerrar, bloques = false }) {
   /**
    * Cómo entra.
    *
@@ -145,6 +176,33 @@ export default function BarraFormato({ onAccion, onCerrar }) {
         <Boton Icono={Italic} etiqueta="Cursiva" onPress={() => onAccion('cursiva')} />
         <Boton Icono={Highlighter} etiqueta="Resaltar" onPress={() => onAccion('resaltado')} />
         <Boton Icono={Code} etiqueta="Código" onPress={() => onAccion('codigo')} />
+
+        {bloques ? (
+          <>
+            <View style={{ width: 1, height: 22, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 2 }} />
+            <Boton Icono={List} etiqueta="Viñetas" onPress={() => onAccion('vineta')} />
+            <Boton Icono={ListOrdered} etiqueta="Numerada" onPress={() => onAccion('numerada')} />
+            <Boton Icono={ListTodo} etiqueta="Por hacer" onPress={() => onAccion('todo')} />
+            <Boton Icono={ListCollapse} etiqueta="Plegable" onPress={() => onAccion('toggle')} />
+            <Boton Icono={Quote} etiqueta="Foco" onPress={() => onAccion('cita')} />
+            <Boton Icono={IndentDecrease} etiqueta="Menos sangría" onPress={() => onAccion('desangrar')} />
+            <Boton Icono={IndentIncrease} etiqueta="Más sangría" onPress={() => onAccion('sangrar')} />
+            {/* Lo que no es texto: entra como un bloque propio después del
+                renglón del cursor. */}
+            <View style={{ width: 1, height: 22, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 2 }} />
+            <Boton Icono={FileText} etiqueta="Página" onPress={() => onAccion('pagina')} />
+            <Boton Icono={Table} etiqueta="Tabla" onPress={() => onAccion('tabla')} />
+            <Boton Icono={Database} etiqueta="Dataset" onPress={() => onAccion('datasheet')} />
+            <Boton Icono={Sigma} etiqueta="Fórmula" onPress={() => onAccion('formula')} />
+            <Boton Icono={Brush} etiqueta="Dibujo" onPress={() => onAccion('dibujo')} />
+            <Boton Icono={SquareCode} etiqueta="Bloque de código" onPress={() => onAccion('bloque-codigo')} />
+            <Boton Icono={Minus} etiqueta="Separador" onPress={() => onAccion('separador')} />
+            <Boton Icono={ListChecks} etiqueta="Elegir bloques" onPress={() => onAccion('seleccionar')} />
+            <View style={{ width: 1, height: 22, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 2 }} />
+            <Boton Icono={Undo2} etiqueta="Deshacer" onPress={() => onAccion('deshacer')} />
+            <Boton Icono={Redo2} etiqueta="Rehacer" onPress={() => onAccion('rehacer')} />
+          </>
+        ) : null}
       </ScrollView>
     </Animated.View>
   );

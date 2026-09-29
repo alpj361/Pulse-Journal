@@ -59,6 +59,9 @@ export const TIPOS_DE_BLOQUE = [
   'pagina',
 ];
 
+/** Los bloques cuyo texto está en `children` de spans y se edita en línea. */
+export const CON_TEXTO = ['block', 'todo', 'toggle'];
+
 // ── Claves ──────────────────────────────────────────────────────────────────
 
 const LETRAS = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -125,6 +128,11 @@ export function validar(doc) {
     if (vistas.has(k)) err(donde, `_key repetida «${k}»`);
     vistas.add(k);
   };
+
+  // La historia como datasheet (F5): cuál dataset y qué columna titula.
+  if (doc.datasheet != null && (typeof doc.datasheet !== 'object' || typeof doc.datasheet.dataset_id !== 'string')) {
+    err('documento', 'datasheet sin dataset_id');
+  }
 
   const paginas = new Set(doc.paginas.map((p) => p?._key));
 

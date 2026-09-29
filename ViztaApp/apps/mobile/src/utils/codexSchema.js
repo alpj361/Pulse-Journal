@@ -480,6 +480,11 @@ export function collectFields(item, schema, tipoCanonico) {
   const extra = [];
   for (const [k, v] of Object.entries(raw)) {
     if (usadas.has(k) || INTERNAL_KEYS.has(k.toLowerCase())) continue;
+    // El texto de una nota como bloques (`details.documento`, `vizta.doc/1`).
+    // La nota lo pinta como texto; en la ficha sería un objeto sin sentido.
+    // Se mira el valor y no la clave: un campo de investigación puede
+    // llamarse «Documento».
+    if (v && typeof v === 'object' && v._type === 'vizta.doc') continue;
 
     const def = schema?.porKey?.get(k) || schema?.porStorage?.get(k.toLowerCase()) || null;
     // Sin definición, el tipo sale de la forma del valor: un vínculo guardado en
