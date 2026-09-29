@@ -26,6 +26,9 @@ export function bloqueEspecial(tipo, clave = nuevaClave, datos = {}) {
       return { _type: 'separador', _key, estilo: 'fina', ...datos };
     case 'medio':
       return { _type: 'medio', _key, tipo: 'foto', ...datos };
+    case 'datasheet':
+      // Sin `dataset_id` todavía: el bloque pregunta cuál conectar.
+      return { _type: 'datasheet', _key, dataset_id: null, vista: 'tabla', ...datos };
     default:
       return null;
   }
@@ -65,6 +68,17 @@ export function editarBloque(estado, key, cambios) {
   if (!b || conTexto(b)) return { estado };
   if (Object.entries(cambios).every(([k, v]) => b[k] === v)) return { estado };
   return { estado: { ...estado, porKey: { ...estado.porKey, [key]: { ...b, ...cambios } } } };
+}
+
+/**
+ * Cambiar un bloque especial por otro en el mismo lugar y con la misma
+ * clave: la tabla simple que pasa a ser un datasheet sigue siendo «ese»
+ * bloque para la fusión y para deshacer.
+ */
+export function reemplazarEspecial(estado, key, nuevo) {
+  const b = estado.porKey[key];
+  if (!b || conTexto(b) || !nuevo) return { estado };
+  return { estado: { ...estado, porKey: { ...estado.porKey, [key]: { ...nuevo, _key: key } } } };
 }
 
 // ── Tabla ───────────────────────────────────────────────────────────────────

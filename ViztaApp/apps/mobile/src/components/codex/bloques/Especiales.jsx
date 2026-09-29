@@ -15,6 +15,8 @@ import { dibujarFormula } from './formula';
 import { caminoDeTrazo } from './trazos';
 import { useMedios } from './contexto';
 import LienzoDibujo from './LienzoDibujo';
+import Datasheet from './Datasheet';
+import { datasetDesdeTabla } from './datasheets';
 import { roce, toque } from '../../../utils/haptics';
 
 const CUERPO = 15;
@@ -48,6 +50,8 @@ function Especial({ k, editor, escribiendo, nivel = 0, onSoltar }) {
         return <Medio b={b} />;
       case 'pagina':
         return <Pagina k={k} b={b} editor={editor} />;
+      case 'datasheet':
+        return <Datasheet {...props} />;
       default:
         return null;
     }
@@ -289,8 +293,30 @@ function Tabla({ k, b, editor, escribiendo, onSoltar }) {
     Alert.alert('Tabla', null, [
       { text: 'quitar fila', onPress: () => editor.getState().quitarFila(k, f) },
       { text: 'quitar columna', onPress: () => editor.getState().quitarColumna(k, c) },
+      { text: 'convertir en dataset', onPress: convertir },
       { text: 'cancelar', style: 'cancel' },
     ]);
+  };
+
+  /**
+   * La tabla pasa a ser un dataset propio: la fila de encabezado da las
+   * columnas y el resto, las filas. Se llama como el título más cercano de
+   * arriba, que suele ser de qué trata la tabla.
+   */
+  const convertir = async () => {
+    const { estado } = editor.getState();
+    let nombre = '';
+    for (let i = estado.orden.indexOf(k) - 1; i >= 0 && !nombre; i--) {
+      const x = estado.porKey[estado.orden[i]];
+      if (['h1', 'h2', 'h3'].includes(x?.style)) nombre = textoDe(x.children).trim();
+    }
+    try {
+      const id = await datasetDesdeTabla(nombre || 'Tabla sin título', b.filas || [], { encabezado: b.encabezado !== false });
+      toque();
+      editor.getState().conectarDataset(k, id, nombre || 'Tabla sin título');
+    } catch {
+      Alert.alert('No se pudo convertir la tabla', 'Queda como estaba. Probá de nuevo en un rato.');
+    }
   };
 
   return (

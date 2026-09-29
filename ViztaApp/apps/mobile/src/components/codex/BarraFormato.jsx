@@ -32,6 +32,7 @@ import {
   SquareCode,
   Minus,
   ListChecks,
+  Database,
 } from 'lucide-react-native';
 import { MONO } from './mono';
 import { roce } from '../../utils/haptics';
@@ -191,6 +192,7 @@ export default function BarraFormato({ onAccion, onCerrar, bloques = false }) {
             <View style={{ width: 1, height: 22, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 2 }} />
             <Boton Icono={FileText} etiqueta="Página" onPress={() => onAccion('pagina')} />
             <Boton Icono={Table} etiqueta="Tabla" onPress={() => onAccion('tabla')} />
+            <Boton Icono={Database} etiqueta="Dataset" onPress={() => onAccion('datasheet')} />
             <Boton Icono={Sigma} etiqueta="Fórmula" onPress={() => onAccion('formula')} />
             <Boton Icono={Brush} etiqueta="Dibujo" onPress={() => onAccion('dibujo')} />
             <Boton Icono={SquareCode} etiqueta="Bloque de código" onPress={() => onAccion('bloque-codigo')} />

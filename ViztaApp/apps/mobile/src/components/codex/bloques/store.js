@@ -13,6 +13,7 @@ import {
   agregarColumna,
   agregarFila,
   editarBloque,
+  reemplazarEspecial,
   editarCelda,
   insertarBloque,
   quitarColumna,
@@ -194,6 +195,15 @@ export function crearEditor(doc = crearDocumento()) {
         const despuesDe = seleccion.key && estado.porKey[seleccion.key] ? seleccion.key : estado.orden[estado.orden.length - 1];
         aplicar('insertar', null, (e) => insertarBloque(e, despuesDe, bloqueEspecial(tipo)));
       },
+      /** El datasheet elige su dataset (o la tabla simple pasa a ser uno). */
+      conectarDataset: (key, dataset_id, nombre) =>
+        aplicar('especial', key, (e) => {
+          const b = e.porKey[key];
+          if (b?._type === 'tabla') {
+            return reemplazarEspecial(e, key, { _type: 'datasheet', dataset_id, nombre, vista: 'tabla' });
+          }
+          return editarBloque(e, key, { dataset_id, nombre });
+        }),
       editarBloque: (key, cambios, tipo = 'especial') => aplicar(tipo, key, (e) => editarBloque(e, key, cambios)),
       editarCelda: (key, f, c, texto) => aplicar('escribir', `${key}:${f}:${c}`, (e) => editarCelda(e, key, f, c, texto)),
       /** Escribir en un especial (código, LaTeX): se agrupa para deshacer como el texto. */
@@ -237,7 +247,7 @@ export function crearEditor(doc = crearDocumento()) {
         // Lo que mete un bloque nuevo o cambia de modo no necesita cursor:
         // sin él, va al final.
         if (accion === 'pagina') return get().nuevaPagina();
-        const especial = { tabla: 'tabla', formula: 'formula', dibujo: 'dibujo', 'bloque-codigo': 'codigo', separador: 'separador' }[accion];
+        const especial = { tabla: 'tabla', formula: 'formula', dibujo: 'dibujo', 'bloque-codigo': 'codigo', separador: 'separador', datasheet: 'datasheet' }[accion];
         if (especial) return get().insertar(especial);
         if (accion === 'seleccionar') return get().entrarSeleccion(get().seleccion?.key);
         const s = get().seleccion;
