@@ -6,5 +6,5 @@
 export * from './esquema.js';
 export { leerEnLinea, escribirEnLinea, textoDe } from './enLinea.js';
 export { desdeMarkdown } from './desdeMarkdown.js';
-export { aMarkdown } from './aMarkdown.js';
+export { aMarkdown, renglonesPorBloque } from './aMarkdown.js';
 export { aTextoPlano, aLocal, aGlobal } from './aTextoPlano.js';

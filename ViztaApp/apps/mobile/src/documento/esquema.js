@@ -59,6 +59,9 @@ export const TIPOS_DE_BLOQUE = [
   'pagina',
 ];
 
+/** Los bloques cuyo texto está en `children` de spans y se edita en línea. */
+export const CON_TEXTO = ['block', 'todo', 'toggle'];
+
 // ── Claves ──────────────────────────────────────────────────────────────────
 
 const LETRAS = 'abcdefghijklmnopqrstuvwxyz0123456789';

@@ -163,6 +163,39 @@ cursiva `*` → `_` (15), viñeta `*` → `-` (1), `****` → `---` (1), `>` →
 - Metas: < 16 ms por tecla; abrir nota de 5.000 palabras < 300 ms. Medir.
 - El editor viejo sigue detrás del interruptor.
 
+Hecho (2026-09-29), detrás de `editor_bloques`:
+- **Núcleo puro** (`src/documento/editor/`): estado plano (`orden`, `porKey`,
+  `padre` para los hijos de un toggle), operaciones inmutables (escribir con
+  diff + atajos `# `/`- `/`1. `/`[] `/`> `/`>> `, Enter, borrar al inicio,
+  pegar markdown, tipos, marcas con «pendiente» en blanco, sangría, to-do,
+  toggle) y deshacer por estados, agrupando teclas seguidas ~500 ms.
+- **UI** (`src/components/codex/bloques/`): store zustand por hoja, un
+  `TextInput` por bloque con `submitBehavior="submit"` (Enter parte sin meter
+  un salto), formato pintado sin marcadores, montaje de a poco (40 + 80 por
+  cuadro), `KeyboardAwareScrollView` para que el bloque nuevo quede a la vista.
+  Leer sigue siendo el estado natural (dos toques para escribir; casillas y
+  flechas responden leyendo). La tira de formato suma, solo con bloques,
+  listas, to-do, toggle, cita, sangría y deshacer/rehacer — provisoria hasta F2.
+- **Rastreo por bloque**: `codex_resolver_bloques` (base) resuelve tramos de
+  bloques seguidos con los renglones vecinos como contexto; se manda el
+  renglón **en markdown** (para `codex_tokens` un `**` es corte de frase).
+  Probado contra `codex_resolver_texto` con la nota entera: 308 renglones,
+  mismas 50 menciones, mismo veredicto, motivo y firma. La caché es por
+  renglón + contexto; solo se pregunta por bloques con algún nombre.
+- **Guardado**: automático a 1,5 s y al salir para notas que ya existen, con
+  `nota_guardar_documento` (base), que fusiona `details.documento` en vez de
+  pisar `details`. Borrador local en `expo-sqlite/kv-store`. Al abrir se
+  prefiere: borrador de esta misma versión › `details.documento` si coincide
+  con `description` › `description`. «Guardar» sigue creando las notas nuevas
+  y ahora escribe también `details.documento`.
+- **Modo Vizta** sigue con el campo simple (es la pregunta, no la nota); al
+  salir, el editor se recarga desde el cuerpo con la conversación plegada.
+- Medido en Node sobre 5.100 palabras / 407 bloques (`MEDIR=1 npx jest
+  rendimiento`): abrir 20 ms, tecla p95 1 ms, al dejar de escribir 5 + 4 ms.
+  Falta medirlo en el teléfono.
+- Pendiente para F3: el índice de la historia salta por aritmética de
+  renglones, que con bloques es aproximada.
+
 ### F2 · Barra — STA-198
 Tres filas (referencia Craft: Heading/Body/Page/More · checkbox, toggle,
 viñetas, numeración, sangría −/+ · Focus, Block, color, …). Tira sobre el

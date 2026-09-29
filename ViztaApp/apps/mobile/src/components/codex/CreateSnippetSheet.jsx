@@ -49,7 +49,7 @@ import { INK, MOTION } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
 import { PAPEL } from './Papel';
 import { MONO } from './mono';
-import { TYPE_ACCENT, normalizeTipo } from './tipos';
+import { colorDe, tinta } from './tinta';
 import { segmentar } from './menciones';
 import useIndiceCodex from './useIndiceCodex';
 import useItemsHidratados from './useItemsHidratados';
@@ -92,6 +92,12 @@ import { borrarDocumentoNota, firmarDocumentoNota, subirDocumentoNota } from '..
 import { useEspacioElegidoStore } from '../../state/espacioElegidoStore';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { LinearGradient } from 'expo-linear-gradient';
+import { KeyboardAwareScrollView, KeyboardProvider } from 'react-native-keyboard-controller';
+import { useEditorBloques } from '../../utils/editorBloques';
+import useEditorDeNota from './bloques/useEditorDeNota';
+import EditorBloques from './bloques/EditorBloques';
+import AutocompletarBloques from './bloques/AutocompletarBloques';
+import { borrarBorrador } from './bloques/persistencia';
 
 // Las tres páginas. La nota va al medio para que las otras dos estén a un
 // deslizamiento de distancia en cualquier dirección, y para que abrir la hoja
@@ -621,11 +627,57 @@ export default function CreateSnippetSheet({
   // El índice puede llegar vacío (sin sesión, o si falla la carga); en ese caso
   // `segmentar` devuelve un solo tramo sin color y la nota funciona igual.
   const { indice, refrescar } = useIndiceCodex();
-  const tramosReconocidos = useMemo(() => segmentar(cuerpo, indice), [cuerpo, indice]);
+
+  /**
+   * El editor de bloques (STA-190), para quien tiene el interruptor.
+   *
+   * Reemplaza al campo único de la nota, salvo en el modo Vizta: ahí el campo
+   * es la pregunta que se va a mandar, no la nota, y sigue siendo el simple.
+   * La hoja sigue leyendo `cuerpo`; el editor lo mantiene al día.
+   */
+  const conBloques = useEditorBloques();
+  const bloquesActivo = conBloques && !preguntando;
+  const edicion = useEditorDeNota({
+    activo: bloquesActivo,
+    cuerpo,
+    setCuerpo,
+    notaId: editandoId,
+    indice,
+    onErrorGuardado: () => setError('No se pudo guardar. Lo escrito queda en el teléfono y se vuelve a intentar.'),
+  });
+  const refBloques = useRef(null);
+
+  // Estables a propósito: cada bloque es un `memo`, y una función nueva en
+  // cada pintada de la hoja los volvería a pintar a todos.
+  const alEscribirBloques = useCallback((v) => setEscribiendo(v !== false), []);
+  const alMencionBloques = useCallback((item) => {
+    evento(EV.MENCION_TOCADA, { tipo: item?.tipo || null });
+    setItemAbierto(item);
+  }, []);
+  const alSeleccionBloques = useCallback((t) => setSeleccionado(t), []);
+  const alDecidirBloques = useCallback((t, contexto) => {
+    setDecidiendo({
+      candidatos: t.candidatos?.length ? t.candidatos : [t.item],
+      escrito: t.texto,
+      contexto,
+      firma: t.firma,
+      firmaCorta: t.firmaCorta,
+    });
+  }, []);
+
+  // Con bloques, el rastreo va por bloque (`useRastreoBloques`): el de la
+  // nota entera se apaga para no preguntar dos veces lo mismo.
+  const textoRastreado = bloquesActivo ? '' : cuerpo;
+  const tramosReconocidos = useMemo(() => segmentar(textoRastreado, indice), [textoRastreado, indice]);
   // Y lo que cada nombre es según su contexto: «Vamos» el partido o el verbo.
   // Lo decide la base con las mismas reglas que cuentan las menciones en todos
   // lados; lo dudoso se pinta tenue y se decide con un toque.
-  const { tramos, releer: releerVeredictos } = useVeredictos(cuerpo, tramosReconocidos, indice, editandoId);
+  const { tramos: tramosCampo, releer: releerCampo } = useVeredictos(textoRastreado, tramosReconocidos, indice, editandoId);
+  const tramos = bloquesActivo ? edicion.tramos : tramosCampo;
+  const releerVeredictos = useCallback(() => {
+    releerCampo();
+    edicion.releer();
+  }, [releerCampo, edicion.releer]);
   const [decidiendo, setDecidiendo] = useState(null);
 
   /** Lo que hace falta para preguntar por una mención dudosa. */
@@ -633,7 +685,10 @@ export default function CreateSnippetSheet({
     (t, desde) => ({
       candidatos: t.candidatos?.length ? t.candidatos : [t.item],
       escrito: t.texto,
-      contexto: desde == null ? null : cuerpo.slice(Math.max(0, desde - 140), desde + t.texto.length + 140),
+      // Los tramos del editor de bloques traen su frase; los del campo único
+      // se cortan del cuerpo.
+      contexto:
+        t.contexto ?? (desde == null ? null : cuerpo.slice(Math.max(0, desde - 140), desde + t.texto.length + 140)),
       firma: t.firma,
       firmaCorta: t.firmaCorta,
     }),
@@ -986,6 +1041,9 @@ export default function CreateSnippetSheet({
   const abrirNota = useCallback(
     (nota, { principal = null } = {}) => {
       const cargar = async () => {
+        // El editor de bloques necesita saber qué nota es y su documento
+        // antes de ver el cuerpo nuevo: la hoja fija el id más abajo.
+        edicion.alAbrir(nota);
         setCuerpo(nota.description || '');
         // El nombre guardado manda sobre la primera línea: si alguien le puso
         // un título propio, deducirlo de nuevo se lo pisaría.
@@ -1048,6 +1106,7 @@ export default function CreateSnippetSheet({
         // una nota anterior. `Keyboard.dismiss()` bajaría el teclado dejando el
         // foco puesto, y el primer toque en cualquier parte lo devolvería.
         campo.current?.blur();
+        refBloques.current?.soltarFoco();
       };
 
       // Cargar encima de un borrador sin guardar lo borraría sin aviso.
@@ -1063,7 +1122,15 @@ export default function CreateSnippetSheet({
             : 'Si abrís esta, se pierde lo que escribiste.',
           [
             { text: 'Cancelar', style: 'cancel' },
-            { text: 'Descartar y abrir', style: 'destructive', onPress: cargar },
+            {
+              text: 'Descartar y abrir',
+              style: 'destructive',
+              onPress: () => {
+                // Descartada a propósito: el borrador local no la tiene que devolver.
+                borrarBorrador(null);
+                cargar();
+              },
+            },
           ]
         );
         return;
@@ -1071,7 +1138,7 @@ export default function CreateSnippetSheet({
       cargar();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cuerpo, editandoId, fotos, audios, documentos]
+    [cuerpo, editandoId, fotos, audios, documentos, edicion.alAbrir]
   );
 
   /**
@@ -1460,6 +1527,13 @@ export default function CreateSnippetSheet({
    * vieja y sigue nombrándolas.
    */
   const cerrar = useCallback(() => {
+    // Con el editor de bloques, una nota que ya existe se guarda sola al
+    // salir: es lo que promete el guardado automático. Una nueva que nunca se
+    // guardó se descarta como siempre, y su borrador local con ella.
+    if (bloquesActivo) {
+      if (editandoId) edicion.guardarYa();
+      else borrarBorrador(null);
+    }
     soltarFotos([...fotos, ...audios]);
     soltarDocumentos(documentos);
     setEspacioDestino(null);
@@ -1470,7 +1544,7 @@ export default function CreateSnippetSheet({
     // abandonar una nota, lo segundo es solo salir.
     evento(EV.NOTA_DESCARTADA, { tenia_texto: cuerpo.trim().length > 0 });
     onClose();
-  }, [fotos, audios, documentos, cuerpo, onClose, soltarFotos, soltarDocumentos]);
+  }, [fotos, audios, documentos, cuerpo, onClose, soltarFotos, soltarDocumentos, bloquesActivo, editandoId, edicion]);
 
   /**
    * Poner dónde estoy.
@@ -1497,10 +1571,18 @@ export default function CreateSnippetSheet({
       setError('Esperá a que termine de subir lo adjunto.');
       return;
     }
-    if (!puedeGuardar) return;
+    // Con bloques, el cuerpo de este instante —el de la hoja puede ir unos
+    // milisegundos atrás de lo que se acaba de escribir— y su documento.
+    const volcado = bloquesActivo ? edicion.volcar() : null;
+    const texto = volcado ? volcado.md : cuerpo;
+    const titular = tituloTocado
+      ? titulo
+      : (texto.split('\n').find((l) => l.trim()) || '').replace(/^#+\s*/, '').slice(0, 70);
+    if (!texto.trim() || !titular.trim()) return;
     setGuardando(true);
     setError(null);
     try {
+      if (volcado) await edicion.esperarGuardado();
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
       if (!userId) throw new Error('Sin sesión activa');
@@ -1555,10 +1637,14 @@ export default function CreateSnippetSheet({
         };
       }
 
+      // El texto como bloques, junto a su markdown. `description` sigue siendo
+      // lo que leen el indexador, el rastreo y la web.
+      if (volcado) details.documento = volcado.doc;
+
       const campos = {
         tipo: 'Snippet',
-        name: tituloEfectivo.trim(),
-        description: cuerpo.trim(),
+        name: titular.trim(),
+        description: texto.trim(),
         ...(etiquetas.length ? { tags: etiquetas } : {}),
         details,
         // `thumbnail_url` guarda enlaces públicos, y las fotos de las notas son
@@ -1666,7 +1752,7 @@ export default function CreateSnippetSheet({
       // Se manda el tamaño y la cantidad de menciones, nunca el texto.
       evento(EV.NOTA_GUARDADA, {
         editada: !!editandoId,
-        caracteres: cuerpo.trim().length,
+        caracteres: texto.trim().length,
         menciones: mencionados.length,
         con_detalles: !!(fuente.trim() || tags.trim() || fecha.trim()),
       });
@@ -1679,6 +1765,8 @@ export default function CreateSnippetSheet({
       // menciona, así que el archivo dejó de tener quién lo referencie.
       for (const ruta of retiradas.current) borrarMedio(ruta);
       retiradas.current.clear();
+      // El guardado automático no tiene que repetir lo que ya quedó escrito.
+      if (volcado) edicion.marcarGuardado(volcado.doc, data.id);
       toque();
       onCreated?.(data);
 
@@ -1842,6 +1930,7 @@ export default function CreateSnippetSheet({
                       onPress={() => {
                         roce();
                         campo.current?.blur();
+                        refBloques.current?.soltarFoco();
                         Keyboard.dismiss();
                         setEscribiendo(false);
                         setSwitchPedido(true);
@@ -2113,6 +2202,24 @@ export default function CreateSnippetSheet({
             <View style={{ width: W }}>
               <Nota
                 campo={campo}
+                bloques={
+                  bloquesActivo ? (
+                    <EditorBloques
+                      ref={refBloques}
+                      editor={edicion.editor}
+                      rastreo={edicion.rastreo}
+                      indice={indice}
+                      escribiendo={escribiendo}
+                      onEscribir={alEscribirBloques}
+                      buscando={buscando}
+                      marcador={marcador}
+                      onMencion={alMencionBloques}
+                      onDecidir={alDecidirBloques}
+                      onSeleccion={alSeleccionBloques}
+                    />
+                  ) : null
+                }
+                refBloques={refBloques}
                 tramos={tramosPintados}
                 onChangeText={escribir}
                 onSelectionChange={alSeleccionar}
@@ -2232,17 +2339,26 @@ export default function CreateSnippetSheet({
                 sobreTeclado,
               ]}
             >
-              <AutocompletarCodex
-                indice={indice}
-                texto={cuerpo}
-                cursor={seleccion.start}
-                onCompletar={completarCon}
-                onAbrirItem={(item) => {
-                  evento(EV.MENCION_TOCADA, { tipo: item?.tipo || null });
-                  setItemAbierto(item);
-                }}
-                bottomInset={bottomInset}
-              />
+              {bloquesActivo ? (
+                <AutocompletarBloques
+                  editor={edicion.editor}
+                  indice={indice}
+                  onAbrirItem={alMencionBloques}
+                  bottomInset={bottomInset}
+                />
+              ) : (
+                <AutocompletarCodex
+                  indice={indice}
+                  texto={cuerpo}
+                  cursor={seleccion.start}
+                  onCompletar={completarCon}
+                  onAbrirItem={(item) => {
+                    evento(EV.MENCION_TOCADA, { tipo: item?.tipo || null });
+                    setItemAbierto(item);
+                  }}
+                  bottomInset={bottomInset}
+                />
+              )}
             </Animated.View>
           ) : null}
 
@@ -2276,7 +2392,11 @@ export default function CreateSnippetSheet({
                 sobreTeclado,
               ]}
             >
-              <BarraFormato onAccion={formatear} onCerrar={() => setFormateando(false)} />
+              <BarraFormato
+                onAccion={bloquesActivo ? (a) => edicion.editor.getState().formatear(a) : formatear}
+                onCerrar={() => setFormateando(false)}
+                bloques={bloquesActivo}
+              />
             </Animated.View>
           ) : null}
 
@@ -2638,6 +2758,8 @@ export default function CreateSnippetSheet({
  */
 function Nota({
   campo,
+  bloques = null,
+  refBloques = null,
   tramos,
   onChangeText,
   onSelectionChange,
@@ -2744,13 +2866,19 @@ function Nota({
     return () => clearTimeout(t);
   }, [desplazar]);
 
-  return (
-    <ScrollView
+  // Con bloques, cada Enter crea un campo nuevo más abajo, y ese campo tiene
+  // que quedar a la vista por encima del teclado y de lo que flota sobre él.
+  // El `ScrollView` de siempre no lo hace solo; el de keyboard-controller sí.
+  const Hoja = bloques ? KeyboardAwareScrollView : ScrollView;
+
+  const hojaEntera = (
+    <Hoja
       ref={hoja}
       contentContainerStyle={{ flexGrow: 1, paddingTop: topInset + 66, paddingBottom: bottomInset + 70 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
+      {...(bloques ? { bottomOffset: reservaPie + 24 } : null)}
     >
       {/* Medida angosta y centrada en la pantalla; el texto, a la izquierda
           dentro de la columna. */}
@@ -2810,6 +2938,10 @@ function Nota({
             caja.current = { y: e.nativeEvent.layout.y, ancho: e.nativeEvent.layout.width };
           }}
         >
+          {/* Con el interruptor del editor de bloques, el cuerpo son bloques;
+              leen y escriben con las mismas reglas (ver `EditorBloques`). */}
+          {bloques || (
+          <>
           <TextInput
             ref={campo}
             // Leyendo, el campo no es editable: así ningún toque pone el cursor
@@ -2902,6 +3034,8 @@ function Nota({
               accessibilityLabel="Tocá dos veces para escribir"
             />
           ) : null}
+          </>
+          )}
         </View>
 
         {/* El aire, **antes** del pie y no después.
@@ -2916,7 +3050,9 @@ function Nota({
           * Dos toques acá también entran a escribir: la página entera es la
           * nota, no solo el renglón donde está el cursor. */}
         <Pressable
-          onPress={escribiendo ? () => campo.current?.focus() : tocar}
+          onPress={
+            bloques ? () => refBloques?.current?.tocarFinal() : escribiendo ? () => campo.current?.focus() : tocar
+          }
           style={{ flex: 1, minHeight: 40 }}
         />
 
@@ -2970,8 +3106,10 @@ function Nota({
           * quedar debajo. */}
         <Reserva alto={reservaPie} />
       </View>
-    </ScrollView>
+    </Hoja>
   );
+
+  return bloques ? <KeyboardProvider>{hojaEntera}</KeyboardProvider> : hojaEntera;
 }
 
 /**
@@ -3027,23 +3165,6 @@ function motivoDe(e, respaldo) {
   return /límite|almacenamiento|tu plan|créditos|cupo/i.test(m) ? m : respaldo;
 }
 
-function colorDe(item) {
-  return TYPE_ACCENT[normalizeTipo(item?.tipo)] || '#4B4FA6';
-}
-
-/**
- * El color de una mención con cierta presencia, mezclado con la tinta del
- * texto y no con transparencia: mientras entra, el nombre pasa del negro del
- * resto de la nota a su color, sin verse nunca más claro que las palabras de
- * al lado.
- */
-function tinta(hex, presencia) {
-  const p = Math.max(0, Math.min(1, presencia));
-  const a = [0x1c, 0x2b, 0x22]; // INK.title
-  const b = [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
-  const c = a.map((x, k) => Math.round(x + (b[k] - x) * p));
-  return `#${c.map((x) => x.toString(16).padStart(2, '0')).join('')}`;
-}
 
 /**
  * Las tres formas de decir dónde.
