@@ -69,52 +69,69 @@ export function contadorDeListas() {
   };
 }
 
+/**
+ * `escribirEnLinea`, recordado por spans. El editor no modifica spans: cuando
+ * cambia un bloque, cambia su lista de spans y el resto sigue siendo el mismo
+ * objeto. Así, pasar a markdown una nota larga después de escribir en un
+ * renglón cuesta ese renglón.
+ */
+const lineasRecordadas = new WeakMap();
+function enLineaDe(children, markDefs) {
+  if (!children) return escribirEnLinea(children, markDefs);
+  const r = lineasRecordadas.get(children);
+  if (r && r.defs === markDefs) return r.texto;
+  const texto = escribirEnLinea(children, markDefs);
+  lineasRecordadas.set(children, { defs: markDefs, texto });
+  return texto;
+}
+
 function bloques(lista, doc, salida, visitadas) {
   const numero = contadorDeListas();
 
   for (const b of lista || []) {
     const n = numero(b);
     const sangria = '  '.repeat(Math.max(0, (b.level || 1) - 1));
-    const enLinea = () => escribirEnLinea(b.children, b.markDefs);
+    const enLinea = () => enLineaDe(b.children, b.markDefs);
     // Un salto dentro de un bloque —un renglón partido con Shift+Enter, o
     // lo que venga de la web— tiene que seguir dentro del mismo bloque al
     // releerlo: se le repite el prefijo o la sangría.
     const conPrefijo = (prefijo, continuacion) => prefijo + enLinea().split('\n').join(`\n${continuacion}`);
+    const poner = (texto) => salida.push({ key: b._key, texto });
 
     switch (b._type) {
       case 'block': {
-        if (b.listItem === 'number') salida.push(conPrefijo(`${sangria}${n}. `, `${sangria}   `));
-        else if (b.listItem) salida.push(conPrefijo(`${sangria}- `, `${sangria}  `));
-        else if (/^h[1-6]$/.test(b.style)) salida.push(`${'#'.repeat(Number(b.style[1]))} ${enLinea()}`);
-        else if (b.style === 'cita') salida.push(conPrefijo('> ', '> '));
-        else salida.push(enLinea());
+        if (b.listItem === 'number') poner(conPrefijo(`${sangria}${n}. `, `${sangria}   `));
+        else if (b.listItem) poner(conPrefijo(`${sangria}- `, `${sangria}  `));
+        else if (/^h[1-6]$/.test(b.style)) poner(`${'#'.repeat(Number(b.style[1]))} ${enLinea()}`);
+        else if (b.style === 'cita') poner(conPrefijo('> ', '> '));
+        else poner(enLinea());
         break;
       }
       case 'todo':
-        salida.push(conPrefijo(`${sangria}- [${b.hecho ? 'x' : ' '}] `, `${sangria}  `));
+        poner(conPrefijo(`${sangria}- [${b.hecho ? 'x' : ' '}] `, `${sangria}  `));
         break;
       case 'toggle':
-        salida.push(enLinea());
+        poner(enLinea());
         bloques(b.bloques, doc, salida, visitadas);
         break;
       case 'separador':
-        salida.push('---');
+        poner('---');
         break;
       case 'codigo':
-        salida.push(`\`\`\`${b.lenguaje || ''}`, ...(b.texto ? [b.texto] : []), '```');
+        poner([`\`\`\`${b.lenguaje || ''}`, ...(b.texto ? [b.texto] : []), '```'].join('\n'));
         break;
       case 'formula':
-        salida.push(`$$${b.latex || ''}$$`);
+        poner(`$$${b.latex || ''}$$`);
         break;
       case 'tabla':
-        if (b.filas?.length) salida.push(tabla(b));
+        if (b.filas?.length) poner(tabla(b));
         break;
       case 'pagina': {
         // Una página que se contiene a sí misma daría una vuelta infinita.
         const p = doc.paginas.find((x) => x._key === b.pagina);
         if (!p || visitadas.has(p._key)) break;
         visitadas.add(p._key);
-        if (p.titulo) salida.push(`# ${p.titulo}`);
+        if (p.titulo) poner(`# ${p.titulo}`);
         bloques(p.bloques, doc, salida, visitadas);
         break;
       }
@@ -124,11 +141,23 @@ function bloques(lista, doc, salida, visitadas) {
   }
 }
 
-/** El documento como markdown. La primera página es la raíz; las otras se alcanzan por sus bloques «página». */
-export function aMarkdown(doc) {
+/**
+ * El markdown de cada bloque, en orden: `[{ key, texto }]`. Es lo que manda
+ * el rastreo a la base —el renglón tal como queda en `description`, con sus
+ * marcas y su número de lista— para que las reglas vean lo mismo que ve el
+ * indexador. Los bloques que no escriben nada no aparecen.
+ */
+export function renglonesPorBloque(doc) {
   const raiz = doc?.paginas?.[0];
-  if (!raiz) return '';
+  if (!raiz) return [];
   const salida = [];
   bloques(raiz.bloques, doc, salida, new Set([raiz._key]));
-  return salida.join('\n');
+  return salida;
+}
+
+/** El documento como markdown. La primera página es la raíz; las otras se alcanzan por sus bloques «página». */
+export function aMarkdown(doc) {
+  return renglonesPorBloque(doc)
+    .map((r) => r.texto)
+    .join('\n');
 }
