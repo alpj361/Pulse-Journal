@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   FadeIn,
@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
-import { ChevronLeft, FilePlus2, Layers, Maximize2, NotebookText, Plus } from 'lucide-react-native';
+import { ChevronLeft, FilePlus2, Layers, Maximize2, NotebookText, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { INK, MOTION, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { TENUE, RESALTADOR } from './piezasCarpeta';
@@ -17,7 +17,9 @@ import { TYPE_ACCENT, TYPE_ORDER, normalizeTipo } from './tipos';
 import SpaceCarousel from './SpaceCarousel';
 import GrafoEspacio from './GrafoEspacio';
 import AgregarAlEspacio from './AgregarAlEspacio';
+import BuscarEnEspacio from './BuscarEnEspacio';
 import GrafoPantallaCompleta from './GrafoPantallaCompleta';
+import OpcionesEspacio from './OpcionesEspacio';
 import useGrafoEspacio from './useGrafoEspacio';
 import { portadaDe } from './PortadaEspacio';
 import { addItemsToSpace, listSpaces } from '../../utils/codexSpaces';
@@ -56,11 +58,12 @@ export default function Espacios({
   onAbrirItem,
   onAbrirNota,
   recarga = 0,
-  // La lupa de la hoja: en Espacios busca en el Codex para sumar al espacio
-  // abierto. El panel vive acá porque acá está el espacio.
+  // Los dos botones de arriba, en un espacio abierto: «+» suma algo del Codex
+  // (`'agregar'`) y la lupa busca entre lo que ya está (`'buscar'`). Los
+  // paneles viven acá porque acá está el espacio.
   indice = null,
-  buscando = false,
-  onCerrarBusqueda,
+  panel = null,
+  onCerrarPanel,
   // Avisa hacia arriba qué espacio está abierto: la lupa solo tiene sentido
   // adentro de uno.
   onElegido,
@@ -70,6 +73,14 @@ export default function Espacios({
   const [espacios, setEspacios] = useState(null); // null = cargando
   const [error, setError] = useState(null);
   const [elegido, setElegido] = useState(null);
+  // Las opciones del espacio abierto: portada y tipo.
+  const [opciones, setOpciones] = useState(false);
+
+  /** Lo que cambió en las opciones, reflejado acá y en el carrusel. */
+  const alCambiarOpciones = (parcial) => {
+    setElegido((e) => (e ? { ...e, ...parcial } : e));
+    setEspacios((lista) => (lista || []).map((x) => (x.id === elegido?.id ? { ...x, ...parcial } : x)));
+  };
   const [filtro, setFiltro] = useState('todo');
 
   // Dónde estaba la carátula, para que el color salga de ahí y no de la nada.
@@ -110,6 +121,9 @@ export default function Espacios({
     recarga
   );
   const [completo, setCompleto] = useState(false);
+  // Para abrir conceptos: el mismo grafo, armado otra vez con uno abierto.
+  // Estable, porque si cambiara en cada render el grafo se reacomodaría.
+  const armarCon = useCallback((opciones) => armarPara(marco, opciones), [armarPara, marco.ancho, marco.alto]);
   const asociados = elegido
     ? (items || []).filter((it) => normalizeTipo(it.tipo) !== 'Post')
     : [];
@@ -273,10 +287,12 @@ export default function Espacios({
             entering={FadeIn.duration(260).delay(120)}
             style={{ paddingHorizontal: 30, marginBottom: 22, minHeight: 34, justifyContent: 'center' }}
           >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <Pressable
               onPress={volver}
               hitSlop={10}
               style={({ pressed }) => ({
+                flex: 1,
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 8,
@@ -294,6 +310,19 @@ export default function Espacios({
               </Text>
               <ChevronLeft size={15} color="rgba(28,43,34,0.34)" />
             </Pressable>
+            <Pressable
+              onPress={() => {
+                roce();
+                setOpciones(true);
+              }}
+              hitSlop={10}
+              style={({ pressed }) => ({ padding: 2, opacity: pressed ? 0.5 : 1 })}
+              accessibilityRole="button"
+              accessibilityLabel={`Opciones de ${elegido.name}`}
+            >
+              <SlidersHorizontal size={16} color="rgba(28,43,34,0.45)" />
+            </Pressable>
+            </View>
           </Animated.View>
         ) : (
           /* El saludo. Es lo único de la app que habla en voz alta, y por eso
@@ -319,6 +348,7 @@ export default function Espacios({
               alto={marco.alto}
               cargando={armando}
               error={errorGrafo}
+              armarCon={armarCon}
               {...accionesGrafo}
             />
             {/* Agrandar: el mismo grafo en toda la pantalla. Arriba a la
@@ -473,6 +503,15 @@ export default function Espacios({
         />
       ) : null}
 
+      {opciones && elegido ? (
+        <OpcionesEspacio
+          espacio={elegido}
+          bottomInset={bottomInset}
+          onCambio={alCambiarOpciones}
+          onClose={() => setOpciones(false)}
+        />
+      ) : null}
+
       <GrafoPantallaCompleta
         visible={completo && !!elegido}
         espacio={elegido}
@@ -483,14 +522,29 @@ export default function Espacios({
 
       {/* La lupa, arriba: el teclado sube desde abajo, y así el campo y los
           resultados quedan a la vista mientras se escribe. */}
-      {buscando && elegido ? (
+      {panel && elegido ? (
         <View style={{ position: 'absolute', top: 6, left: 20, right: 20 }}>
-          <AgregarAlEspacio
-            indice={indice}
-            espacio={elegido}
-            onAgregar={sumarAlEspacio}
-            onCerrar={onCerrarBusqueda}
-          />
+          {panel === 'agregar' ? (
+            <AgregarAlEspacio
+              indice={indice}
+              espacio={elegido}
+              onAgregar={sumarAlEspacio}
+              onCerrar={onCerrarPanel}
+            />
+          ) : (
+            <BuscarEnEspacio
+              espacio={elegido}
+              items={items}
+              onCerrar={onCerrarPanel}
+              // Igual que la lista «en este espacio»: una nota se abre en la
+              // hoja; todo lo demás, en su ficha.
+              onAbrir={(it) => {
+                onCerrarPanel?.();
+                if (normalizeTipo(it.tipo) === 'Snippet') onAbrirNota?.(it);
+                else onAbrirItem?.(it);
+              }}
+            />
+          )}
         </View>
       ) : null}
     </View>

@@ -6,8 +6,8 @@ import { supabase } from '../utils/supabase';
  *
  * Tres áreas y nada más —posts, espacios, almacenamiento—, que es lo que la
  * base resuelve en `get_my_usage`. Cada una trae lo usado, su tope y el
- * porcentaje; un admin no tiene tope y viene en null, así que se muestra el
- * número pelado en vez de una barra que nunca se llena.
+ * porcentaje. Un área sin tope viene en null, y se muestra el número pelado
+ * en vez de una barra que nunca se llena. Los admins tienen los mismos topes.
  *
  * Sirve para dos cosas distintas: mostrar la pantalla de uso, y frenar antes de
  * crear algo que no va a entrar. Por eso el dato se refresca solo cuando está
@@ -65,7 +65,8 @@ const SIN_CUPO = {
  */
 export async function asegurarCupo(clave, extra = 1) {
   const uso = await refrescarUso();
-  if (!uso || uso.admin) return true;
+  // Los admins también tienen límites: se revisa igual para todos.
+  if (!uso) return true;
 
   const area = areaDeUso(uso, clave);
   if (!area || area.limite == null) return true;

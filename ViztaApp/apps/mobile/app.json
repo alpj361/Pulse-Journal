@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vizta",
     "slug": "vibecode",
-    "version": "0.0.9.4",
+    "version": "0.0.9.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "28",
+      "buildNumber": "29",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiresFullScreen": true,

@@ -12,8 +12,8 @@ import { useUsoStore, refrescarUso } from '../../state/usoStore';
  * «Almacenamiento», cada uno con su barra. La base ya decide cuáles aplican —a
  * quien no tiene Posts no le aparece esa fila— y de dónde sale cada número.
  *
- * Un admin no tiene tope, así que ve el número y no una barra: una barra que
- * nunca se llena no dice nada.
+ * Un área sin tope muestra el número y no una barra: una barra que nunca se
+ * llena no dice nada. Los admins tienen los mismos topes que cualquiera.
  */
 
 const NOMBRE = { posts: 'Posts', espacios: 'Espacios', almacenamiento: 'Almacenamiento' };

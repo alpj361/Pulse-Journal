@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +28,7 @@ export default function GrafoPantallaCompleta({ visible, espacio, armarPara, onC
     [width, height, insets.top, insets.bottom]
   );
   const grafo = useMemo(() => (visible ? armarPara?.(marco) : null), [visible, armarPara, marco]);
+  const armarCon = useCallback((opciones) => armarPara?.(marco, opciones), [armarPara, marco]);
 
   if (!visible) return null;
 
@@ -58,7 +59,16 @@ export default function GrafoPantallaCompleta({ visible, espacio, armarPara, onC
         </View>
 
         <Animated.View entering={FadeIn.duration(260)} style={{ flex: 1 }}>
-          <GrafoEspacio grafo={grafo} ancho={marco.ancho} alto={marco.alto} cargando={!grafo} {...acciones} />
+          <GrafoEspacio
+            grafo={grafo}
+            ancho={marco.ancho}
+            alto={marco.alto}
+            cargando={!grafo}
+            armarCon={armarCon}
+            // Acá un dedo no desplaza nada: orbita en 3D.
+            orbitar
+            {...acciones}
+          />
         </Animated.View>
       </View>
     </Modal>

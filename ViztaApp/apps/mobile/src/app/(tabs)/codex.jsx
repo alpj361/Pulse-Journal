@@ -3165,6 +3165,13 @@ export default function CodexScreen() {
   const [showAgregar, setShowAgregar] = useState(false);
   const [showCreateSnippet, setShowCreateSnippet] = useState(false);
   const [crearTipo, setCrearTipo] = useState('Actor');
+  // Lo que se acaba de crear desde «nuevo». Crear no cierra la ficha: queda
+  // abierta mostrando el item ya guardado, y desde ahí se sigue editando.
+  const [itemCreado, setItemCreado] = useState(null);
+  const borradorItem = useMemo(
+    () => ({ tipo: crearTipo, name: '', description: '', details: {} }),
+    [crearTipo]
+  );
   const [subiendoDoc, setSubiendoDoc] = useState(null); // { nombre } mientras sube
   const [showCreateSpace, setShowCreateSpace] = useState(false);
 
@@ -3540,10 +3547,21 @@ export default function CodexScreen() {
     // inserta. Tener dos pantallas distintas para el mismo objeto obligaba a
     // mantener dos veces el catálogo, los tipos de dato y el guardado.
     <ItemDetailSheet
-      item={{ tipo: crearTipo, name: '', description: '', details: {} }}
-      creando
-      onClose={() => setShowCreateItem(false)}
-      onSaved={(nuevo) => registrarNuevo(nuevo)}
+      item={itemCreado || borradorItem}
+      creando={!itemCreado}
+      onClose={() => {
+        setShowCreateItem(false);
+        setItemCreado(null);
+      }}
+      onSaved={(guardado) => {
+        const listo = { ...guardado, _source: 'universe' };
+        if (!itemCreado) registrarNuevo(guardado);
+        else {
+          const mismo = (w) => (w._sourceId || w.id) === (listo._sourceId || listo.id);
+          setWikiItems((prev) => prev.map((w) => (mismo(w) ? { ...w, ...listo } : w)));
+        }
+        setItemCreado(listo);
+      }}
       bottomInset={insets.bottom}
     />
   ) : null;

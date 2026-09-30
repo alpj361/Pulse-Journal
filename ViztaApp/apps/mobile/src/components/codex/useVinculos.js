@@ -25,6 +25,7 @@ export default function useVinculos(dbId) {
   const [progresiones, setProgresiones] = useState(null);
   const [relaciones, setRelaciones] = useState(null);
   const [menciones, setMenciones] = useState(null);
+  const [porConfirmar, setPorConfirmar] = useState([]);
   const [borrados, setBorrados] = useState({ prog: [], rel: [] });
   const [error, setError] = useState(null);
 
@@ -81,8 +82,14 @@ export default function useVinculos(dbId) {
    */
   const cargarMenciones = useCallback(async () => {
     if (!dbId) return setMenciones([]);
-    const { data, error: e } = await supabase.rpc('codex_menciones', { p_item_id: dbId });
+    // Las que cuentan y, aparte, las que la base no supo decidir: esas no
+    // cuentan hasta que alguien diga si son este item.
+    const [{ data, error: e }, { data: dudas }] = await Promise.all([
+      supabase.rpc('codex_menciones', { p_item_id: dbId }),
+      supabase.rpc('codex_menciones_por_confirmar', { p_item_id: dbId }),
+    ]);
     setMenciones(e ? [] : data || []);
+    setPorConfirmar(dudas || []);
   }, [dbId]);
 
   // ─── Edición local ──────────────────────────────────────────────────────────
@@ -239,6 +246,7 @@ export default function useVinculos(dbId) {
     progresiones,
     relaciones,
     menciones,
+    porConfirmar,
     cargarProgresiones,
     cargarRelaciones,
     cargarMenciones,

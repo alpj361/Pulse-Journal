@@ -93,6 +93,10 @@ export const EV = {
   POST_ANALIZADO: 'post_analizado',
 
   FEED_NOTICIA_ABIERTA: 'feed_noticia_abierta',
+
+  // El seguro del grafo tuvo que rehacer el acomodo. Si aparece, hay un caso
+  // que la prueba no cubre.
+  GRAFO_RESCATADO: 'grafo_rescatado',
 };
 
 /** Manda un evento. Nunca lanza: la analítica no puede romper la app. */
