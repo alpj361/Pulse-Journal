@@ -37,7 +37,7 @@ function Especial({ k, editor, escribiendo, nivel = 0, onSoltar }) {
   const contenido = (() => {
     switch (b._type) {
       case 'separador':
-        return <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.14)', marginVertical: 13 }} />;
+        return <Separador estilo={b.estilo} />;
       case 'codigo':
         return <Codigo {...props} />;
       case 'formula':
@@ -60,6 +60,50 @@ function Especial({ k, editor, escribiendo, nivel = 0, onSoltar }) {
 }
 
 export default memo(Especial);
+
+// ── Separador ───────────────────────────────────────────────────────────────
+
+const RAYA = 'rgba(28,43,34,0.16)';
+
+/**
+ * Las cinco formas de cortar: tres puntos, punteado, corte de sección, línea
+ * fina y línea gruesa. Un separador viejo sin `estilo` es la línea fina, que
+ * es como se veía antes.
+ */
+export function Separador({ estilo = 'fina', compacto = false }) {
+  const alto = compacto ? 0 : 13;
+  switch (estilo) {
+    case 'puntos':
+      return (
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: compacto ? 5 : 10, marginVertical: alto }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.3)' }} />
+          ))}
+        </View>
+      );
+    case 'punteado':
+      // Puntos a mano: iOS no dibuja un borde punteado de un solo lado.
+      return (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', overflow: 'hidden', marginVertical: alto }}>
+          {Array.from({ length: compacto ? 9 : 48 }, (_, i) => (
+            <View key={i} style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: 'rgba(28,43,34,0.34)' }} />
+          ))}
+        </View>
+      );
+    case 'corte':
+      // Un corte de sección: aire arriba y abajo, y la línea partida al medio.
+      return (
+        <View style={{ flexDirection: 'row', gap: compacto ? 4 : 8, marginVertical: compacto ? 0 : 22 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: RAYA }} />
+          <View style={{ flex: 1, height: 1, backgroundColor: RAYA }} />
+        </View>
+      );
+    case 'gruesa':
+      return <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.28)', marginVertical: alto }} />;
+    default:
+      return <View style={{ height: 1, backgroundColor: RAYA, marginVertical: alto }} />;
+  }
+}
 
 /** Foco y desenfoque de un campo adentro de un especial, avisados al editor. */
 const avisos = (editor, k, onSoltar, extra) => ({

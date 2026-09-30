@@ -201,6 +201,32 @@ Tres filas (referencia Craft: Heading/Body/Page/More · checkbox, toggle,
 viñetas, numeración, sangría −/+ · Focus, Block, color, …). Tira sobre el
 teclado personalizable. 5 separadores. Resaltado con color. `+` para insertar.
 
+**Hecho (2026-09-30, local con PJ):**
+- **Dos puertas separadas en la cápsula** (con bloques): **T** = formato del
+  texto (`bloques/PanelFormato.jsx`) y **+** = agregar a la nota
+  (`bloques/PanelInsertar.jsx`). Cámara, documento y micrófono salen de la
+  cápsula y viven en `+` con su nombre. La tira vieja (`BarraFormato`) queda
+  solo para el editor viejo.
+- **Todo a la vista, sin scroll horizontal** (PJ no encontraba los botones
+  escondidos a la derecha). T: fila de estilo (Título, Subtítulo, Cuerpo, Foco,
+  con el actual marcado), fila en línea (negrita, cursiva, subrayado, tachado,
+  resaltado, código), fila de listas y sangría; deshacer/rehacer arriba. `+`:
+  grilla con nombre (Página, Tabla, Dataset, Código, Fórmula, Dibujo, Foto,
+  Audio, Documento), fila de 5 separadores elegidos por cómo se ven, y
+  «ordenar bloques».
+- **Teclado o menú, nunca los dos (como Craft):** abrir T o `+` baja el
+  teclado; el panel toma el lugar de la cápsula y se esconden la cápsula y la
+  píldora «crear». Cuando un bloque toma el foco, el panel se cierra (se
+  escucha `enfocado` del store, no `keyboardWillShow`, que iOS dispara también
+  con teclado físico). Formatear con el panel abierto limpia `foco` para no
+  traer el teclado.
+- Separador con `estilo` (`puntos|punteado|corte|fina|gruesa`); `insertar(tipo, datos)`.
+
+**Falta de F2:** `+` junto al renglón vacío; manija visible en el bloque
+activo; color del resaltado; estilo «Bloque» (tarjeta, no existe en
+`TIPOS_DE_TEXTO`); elegir qué botones quedan a mano. Probar en el iPhone real
+el cambio teclado ↔ menú (en el simulador el teclado es el de la Mac).
+
 ### F3 · Páginas y capítulos — STA-199
 Bloque «Página» con subpágina. Índice de historia por páginas;
 `historia_partir` (base) parte por páginas. Modo «seleccionar bloques».

@@ -188,12 +188,13 @@ export function crearEditor(doc = crearDocumento()) {
       /**
        * Meter un bloque especial después del bloque del cursor: `codigo`,
        * `formula`, `dibujo`, `tabla`, `separador`. El foco va al bloque nuevo.
+       * `datos` completa el bloque: el `estilo` de un separador, por ejemplo.
        */
-      insertar: (tipo) => {
+      insertar: (tipo, datos) => {
         historial.cortar();
         const { seleccion, estado } = get();
         const despuesDe = seleccion.key && estado.porKey[seleccion.key] ? seleccion.key : estado.orden[estado.orden.length - 1];
-        aplicar('insertar', null, (e) => insertarBloque(e, despuesDe, bloqueEspecial(tipo)));
+        aplicar('insertar', null, (e) => insertarBloque(e, despuesDe, bloqueEspecial(tipo, undefined, datos)));
       },
       /**
        * La historia entera como datasheet (`{ dataset_id, nombre, titulo }`),

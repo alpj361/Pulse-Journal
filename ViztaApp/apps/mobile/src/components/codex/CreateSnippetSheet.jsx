@@ -99,6 +99,8 @@ import EditorBloques from './bloques/EditorBloques';
 import AutocompletarBloques from './bloques/AutocompletarBloques';
 import { borrarBorrador } from './bloques/persistencia';
 import BarraSeleccion from './bloques/BarraSeleccion';
+import PanelFormato from './bloques/PanelFormato';
+import PanelInsertar from './bloques/PanelInsertar';
 import { indiceDelDocumento } from './bloques/indice';
 import { firmaDeMedios, raizDe } from '../../documento/editor';
 import { useStore } from 'zustand';
@@ -322,6 +324,8 @@ export default function CreateSnippetSheet({
   // La tira de formato. Vive donde la bandeja y la grabadora, y como ellas, es
   // excluyente: las tres ocupan el mismo hueco sobre el teclado.
   const [formateando, setFormateando] = useState(false);
+  // El panel de `+`: lo que se agrega a la nota (solo con el editor de bloques).
+  const [insertando, setInsertando] = useState(false);
   const [grabando, setGrabando] = useState(false);
 
   const marcarPista = usePistasStore((s) => s.marcar);
@@ -725,6 +729,25 @@ export default function CreateSnippetSheet({
   // Estables a propósito: cada bloque es un `memo`, y una función nueva en
   // cada pintada de la hoja los volvería a pintar a todos.
   const alEscribirBloques = useCallback((v) => setEscribiendo(v !== false), []);
+
+  /**
+   * Teclado o menú, nunca los dos, como en Craft: con un panel abierto (Aa o
+   * `+`) el teclado se va y la pantalla queda para el panel; al volver a
+   * escribir, el panel se va. Así ninguno tapa al otro.
+   */
+  const panelAbierto = bloquesActivo && (formateando || insertando);
+  // Se vuelve a escribir cuando un bloque toma el foco (tocar el texto, o el
+  // bloque nuevo que se acaba de agregar). No se escucha al teclado: iOS avisa
+  // «se muestra» también con teclado físico y cerraba el panel al abrirlo.
+  useEffect(() => {
+    if (!bloquesActivo) return undefined;
+    return edicion.editor.subscribe((s, antes) => {
+      if (s.enfocado && s.enfocado !== antes.enfocado) {
+        setFormateando(false);
+        setInsertando(false);
+      }
+    });
+  }, [bloquesActivo, edicion.editor]);
   const alMencionBloques = useCallback((item) => {
     evento(EV.MENCION_TOCADA, { tipo: item?.tipo || null });
     setItemAbierto(item);
@@ -2401,7 +2424,7 @@ export default function CreateSnippetSheet({
                  * es el piso: sin eso, la estampa del mapa quedaba justo debajo
                  * y se veía a medias por detrás de los glifos.
                  */
-                reservaPie={72 + (mostrandoFotos ? 104 : grabando ? 96 : formateando ? 56 : 0)}
+                reservaPie={72 + (mostrandoFotos ? 104 : grabando ? 96 : insertando ? 250 : formateando ? (bloquesActivo ? 196 : 56) : 0)}
                 // `false` explícito viene del `onBlur` del campo; sin argumento
                 // es el doble toque pidiendo entrar.
                 onEscribir={(v) => setEscribiendo(v !== false)}
@@ -2555,18 +2578,42 @@ export default function CreateSnippetSheet({
             </Animated.View>
           ) : null}
 
-          {pagina === NOTA && formateando && escribiendo ? (
+          {pagina === NOTA && formateando && (escribiendo || bloquesActivo) ? (
             <Animated.View
               pointerEvents="box-none"
               style={[
-                { position: 'absolute', left: 0, right: 0, bottom: bottomInset + 108 },
+                { position: 'absolute', left: 0, right: 0, bottom: bottomInset + (bloquesActivo ? 16 : 108) },
                 sobreTeclado,
               ]}
             >
-              <BarraFormato
-                onAccion={bloquesActivo ? (a) => edicion.editor.getState().formatear(a) : formatear}
-                onCerrar={() => setFormateando(false)}
-                bloques={bloquesActivo}
+              {bloquesActivo ? (
+                <PanelFormato editor={edicion.editor} onCerrar={() => setFormateando(false)} />
+              ) : (
+                <BarraFormato onAccion={formatear} onCerrar={() => setFormateando(false)} />
+              )}
+            </Animated.View>
+          ) : null}
+
+          {/* `+`: lo que se agrega a la nota. Mismo anclaje que el formato. */}
+          {pagina === NOTA && bloquesActivo && insertando ? (
+            <Animated.View
+              pointerEvents="box-none"
+              style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomInset + (bloquesActivo ? 16 : 108) }, sobreTeclado]}
+            >
+              <PanelInsertar
+                editor={edicion.editor}
+                onCerrar={() => setInsertando(false)}
+                onMedio={(tipo) => {
+                  if (tipo === 'foto') {
+                    setMostrandoFotos(true);
+                  } else if (tipo === 'audio') {
+                    Keyboard.dismiss();
+                    setGrabando(true);
+                  } else {
+                    Keyboard.dismiss();
+                    agregarDocumento();
+                  }
+                }}
               />
             </Animated.View>
           ) : null}
@@ -2631,7 +2678,7 @@ export default function CreateSnippetSheet({
             * que hacen Notas y Bear— y la fila puede crecer sin pelearse con
             * nada: lo que se abre (la bandeja, el formato, la grabadora) sale
             * **encima** de esta tira, no en su lugar. */}
-          {enNotas && pagina === NOTA ? (
+          {enNotas && pagina === NOTA && !panelAbierto ? (
             <Animated.View
               pointerEvents="box-none"
               style={[
@@ -2639,11 +2686,11 @@ export default function CreateSnippetSheet({
                 sobreTeclado,
               ]}
             >
-              <Capsula atenuada={mostrandoFotos || formateando || grabando}>
+              <Capsula atenuada={mostrandoFotos || formateando || grabando || insertando}>
           {/* Fotos. Solo mientras se escribe una nota: en modo chat no va,
               porque lo que se le manda a Vizta es texto — adjuntar una foto
               ahí prometería que la va a mirar, y no la mira. */}
-          {enNotas && pagina === NOTA && !preguntando ? (
+          {enNotas && pagina === NOTA && !preguntando && !bloquesActivo ? (
             <Glifo
               Icono={Camera}
               activo={mostrandoFotos}
@@ -2653,13 +2700,14 @@ export default function CreateSnippetSheet({
                 // mismo lugar sobre el teclado; no pueden estar los tres.
                 setBuscando(false);
                 setFormateando(false);
+                setInsertando(false);
               }}
             />
           ) : null}
 
           {/* Un documento: PDF, Word o texto. En una historia el servidor lo
               lee y entra a su memoria; en una nota normal queda de apoyo. */}
-          {enNotas && pagina === NOTA && !preguntando ? (
+          {enNotas && pagina === NOTA && !preguntando && !bloquesActivo ? (
             <Glifo
               Icono={FileText}
               activo={false}
@@ -2688,7 +2736,29 @@ export default function CreateSnippetSheet({
               Icono={Type}
               activo={formateando}
               onPress={() => {
+                // Con bloques el panel toma el lugar del teclado.
+                if (bloquesActivo) Keyboard.dismiss();
                 setFormateando((f) => !f);
+                setInsertando(false);
+                setMostrandoFotos(false);
+                setGrabando(false);
+                setBuscando(false);
+              }}
+            />
+          ) : null}
+
+          {/* `+`: agregar a la nota —página, tabla, dataset, código, fórmula,
+              dibujo, separadores, foto, audio, documento—. Con el editor de
+              bloques reemplaza a la cámara, el documento y el micrófono, que
+              pasan a estar adentro con su nombre. */}
+          {enNotas && pagina === NOTA && !preguntando && bloquesActivo ? (
+            <Glifo
+              Icono={Plus}
+              activo={insertando}
+              onPress={() => {
+                Keyboard.dismiss();
+                setInsertando((v) => !v);
+                setFormateando(false);
                 setMostrandoFotos(false);
                 setGrabando(false);
                 setBuscando(false);
@@ -2744,7 +2814,7 @@ export default function CreateSnippetSheet({
               Micrófono propio y no un casillero dentro de la bandeja de
               fotos: grabar no es elegir un archivo, y meterlo ahí lo dejaba
               pareciendo un tipo más de imagen. */}
-          {enNotas && pagina === NOTA && !preguntando ? (
+          {enNotas && pagina === NOTA && !preguntando && !bloquesActivo ? (
             <Glifo
               Icono={Mic}
               activo={grabando}
@@ -2754,6 +2824,7 @@ export default function CreateSnippetSheet({
                 // mismo lugar sobre el teclado; no pueden estar las tres.
                 setMostrandoFotos(false);
                 setFormateando(false);
+                setInsertando(false);
                 setBuscando(false);
                 Keyboard.dismiss();
               }}
@@ -2765,9 +2836,10 @@ export default function CreateSnippetSheet({
           ) : null}
 
           <Animated.View
-            pointerEvents="box-none"
+            pointerEvents={panelAbierto ? 'none' : 'box-none'}
             style={[
               { position: 'absolute', left: 0, right: 0, bottom: bottomInset + 16, alignItems: 'center' },
+              panelAbierto && { opacity: 0 },
               sobreTeclado,
             ]}
           >
