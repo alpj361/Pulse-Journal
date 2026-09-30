@@ -104,7 +104,25 @@ const recortar = (t, max = LARGO_MAX) => {
  * nadie— y entonces el peso sale solo de los lazos. Es un grado menos de
  * información, no un error: el grafo sigue mostrando qué hay y qué se conecta.
  */
-export function armar({ items = [], relaciones = [], aristas = [], menciones = new Map(), nota = null }) {
+// Cuántas líneas de parecido muestra cada nodo: las más fuertes. Con todas,
+// una historia de ochenta ideas era una maraña de trescientas líneas.
+const LINEAS_POR_NODO = 4;
+
+const plano = (t) =>
+  String(t || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+export function armar({
+  items = [],
+  relaciones = [],
+  aristas = [],
+  menciones = new Map(),
+  nota = null,
+  expandido = null,
+}) {
   const nodos = items
     .filter((it) => it?.id && it?.name)
     .map((it) => ({
@@ -118,26 +136,42 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
       ...(nota?.externos?.has(it.id) ? { externo: true } : {}),
     }));
 
-  // La historia entra como dos clases de nodo. Las ideas —cada oración— son
-  // puntos sin nombre: se leen tocándolas. Los conceptos son lo que las agrupa
-  // y llevan el nombre que el indexador sacó del texto. Los ids llevan prefijo
-  // porque viven en otras tablas y no pueden confundirse con un elemento.
-  //
-  // Un documento no se dibuja fragmento por fragmento: treinta páginas serían
-  // cientos de puntos. Se dibuja él, como un nodo, con sus conceptos colgando.
-  // Cada fragmento se representa por su concepto —o por el documento, si no
-  // quedó en ninguno—, y sus líneas salen de ahí.
-  const alNodo = new Map();
+  /**
+   * La historia, en dos niveles.
+   *
+   * **Al entrar** se ven los conceptos —cada uno más grande cuantas más ideas
+   * junta—, los documentos y los elementos del espacio. Las ideas no se
+   * dibujan: sus líneas y menciones se suman a su concepto. Es lo que deja leer
+   * un espacio con cien ideas: en vez de cien puntos, quince conceptos.
+   *
+   * **Al tocar un concepto** (`expandido`) aparecen sus ideas alrededor. Las de
+   * los demás siguen plegadas.
+   *
+   * Un concepto que se llama igual que un elemento del grafo —el concepto
+   * «Walter Mazariegos» y el actor Walter Mazariegos— no se dibuja aparte: es
+   * ese mismo nodo. Dos etiquetas iguales en lugares distintos no se entienden.
+   */
+  const porItem = new Map(nodos.map((n) => [n.id, n]));
+  const porNombre = new Map(nodos.map((n) => [plano(n.item?.name), n]));
+  const nodoDeConcepto = new Map();
+  const conceptoDeIdea = new Map();
   for (const c of nota?.conceptos || []) {
-    if (!c.documento) continue;
-    for (const id of c.ideas || []) alNodo.set(id, `con:${c.id}`);
-  }
-  for (const i of nota?.ideas || []) {
-    if (i.documento) {
-      if (!alNodo.has(i.id)) alNodo.set(i.id, `doc:${i.documento}`);
-      continue;
+    if (!c.ideas?.length) continue;
+    const mismo = (c.item?.id && porItem.get(c.item.id)) || porNombre.get(plano(c.nombre));
+    if (mismo && !mismo.concepto) {
+      mismo.concepto = c;
+      nodoDeConcepto.set(c.id, mismo.id);
+    } else {
+      nodoDeConcepto.set(c.id, `con:${c.id}`);
+      nodos.push({
+        id: `con:${c.id}`,
+        concepto: c,
+        texto: recortar(c.nombre, LARGO_CONCEPTO),
+        tipo: 'Concepto',
+        veces: 0,
+      });
     }
-    nodos.push({ id: `idea:${i.id}`, idea: i, texto: '', tipo: 'Idea', veces: 0 });
+    for (const id of c.ideas) conceptoDeIdea.set(id, c);
   }
   for (const d of nota?.documentos || []) {
     nodos.push({
@@ -148,21 +182,37 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
       veces: 0,
     });
   }
-  for (const c of nota?.conceptos || []) {
-    if (!c.ideas?.length) continue;
+
+  // Las ideas que se ven: solo las del concepto abierto. Una historia que
+  // todavía se está procesando entra entera cuando esté.
+  const visibles = new Set();
+  for (const i of nota?.ideas || []) {
+    if (nota.enCamino?.has(i.historia)) continue;
+    const c = conceptoDeIdea.get(i.id);
+    if (!c || c.id !== expandido) continue;
+    visibles.add(i.id);
     nodos.push({
-      id: `con:${c.id}`,
-      concepto: c,
-      texto: recortar(c.nombre, LARGO_CONCEPTO),
-      tipo: 'Concepto',
+      id: `idea:${i.id}`,
+      idea: i,
+      texto: '',
+      tipo: 'Idea',
       veces: 0,
+      // Arranca donde está su concepto: abrirlo no desordena el resto.
+      cerca: nodoDeConcepto.get(c.id),
     });
   }
-  // Dónde cae una idea en el dibujo: ella misma, o lo que representa a su
-  // fragmento.
+
+  // Dónde cae una idea en el dibujo: ella misma si está abierta; si no, su
+  // concepto; si no tiene, su documento. Si no queda en ninguno, no se dibuja
+  // y sus líneas tampoco.
   const nodoDe = (idNodo) => {
     if (!idNodo?.startsWith('idea:')) return idNodo;
-    return alNodo.get(idNodo.slice(5)) || idNodo;
+    const id = idNodo.slice(5);
+    if (visibles.has(id)) return idNodo;
+    const c = conceptoDeIdea.get(id);
+    if (c) return nodoDeConcepto.get(c.id);
+    const i = (nota?.ideas || []).find((x) => x.id === id);
+    return i?.documento ? `doc:${i.documento}` : null;
   };
 
   const porId = new Map(nodos.map((n) => [n.id, n]));
@@ -215,17 +265,47 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
   //    elemento del espacio. Es probable, y pesa lo que se parecen.
   // Van en ese orden porque `agregar` se queda con el primero de cada pareja.
   for (const c of nota?.conceptos || []) {
-    // Los conceptos de un documento cuelgan del documento; los de lo escrito,
-    // de sus ideas.
-    if (c.documento) agregar(`con:${c.id}`, `doc:${c.documento}`, 'miembro', 1);
-    else for (const id of c.ideas || []) agregar(`idea:${id}`, `con:${c.id}`, 'miembro', 1);
+    const nodoC = nodoDeConcepto.get(c.id);
+    if (!nodoC) continue;
+    // Los conceptos de un documento cuelgan del documento; las ideas abiertas,
+    // de su concepto.
+    if (c.documento) agregar(nodoC, `doc:${c.documento}`, 'miembro', 1);
+    for (const id of c.ideas || []) if (visibles.has(id)) agregar(`idea:${id}`, nodoC, 'miembro', 1);
   }
   for (const i of nota?.ideas || []) {
     for (const id of i.menciona || []) agregar(nodoDe(`idea:${i.id}`), id, 'menciona', 1);
   }
+
+  // Parecidos: muchos llegan a la misma pareja una vez plegados —dos conceptos
+  // con varias ideas parecidas entre sí—; queda el más fuerte. Después cada
+  // nodo se queda con sus `LINEAS_POR_NODO` más fuertes: una línea sobrevive si
+  // es de las mejores de cualquiera de sus dos puntas.
+  const parecidos = new Map();
   for (const l of nota?.lazos || []) {
-    agregar(nodoDe(l.a), nodoDe(l.b), l.tipo === 'mentions' ? 'menciona' : 'parecido', l.peso);
+    const x = nodoDe(l.a);
+    const y = nodoDe(l.b);
+    if (!x || !y || x === y) continue;
+    if (l.tipo === 'mentions') {
+      agregar(x, y, 'menciona', 1);
+      continue;
+    }
+    const clave = x < y ? `${x}|${y}` : `${y}|${x}`;
+    const previo = parecidos.get(clave);
+    if (!previo || previo.peso < l.peso) parecidos.set(clave, { a: x, b: y, peso: Number(l.peso) || 0 });
   }
+  const mejores = new Map();
+  for (const par of parecidos.values()) {
+    for (const punta of [par.a, par.b]) {
+      if (!mejores.has(punta)) mejores.set(punta, []);
+      mejores.get(punta).push(par);
+    }
+  }
+  const quedan = new Set();
+  for (const lista of mejores.values()) {
+    lista.sort((u, v) => v.peso - u.peso);
+    for (const par of lista.slice(0, LINEAS_POR_NODO)) quedan.add(par);
+  }
+  for (const par of quedan) agregar(par.a, par.b, 'parecido', par.peso);
 
   // Grado: cuántos lazos toca cada nodo.
   for (const l of lazos) {
@@ -245,8 +325,8 @@ export function armar({ items = [], relaciones = [], aristas = [], menciones = n
  * cuántas veces lo nombraste. Así lo más conectado nunca se queda sin dibujar
  * por tener un nombre que nadie escribe entero.
  */
-export function construir({ items, relaciones, aristas, menciones, marco, nota = null }) {
-  const base = armar({ items, relaciones, aristas, menciones, nota });
+export function construir({ items, relaciones, aristas, menciones, marco, nota = null, expandido = null, iniciales = null }) {
+  const base = armar({ items, relaciones, aristas, menciones, nota, expandido });
   if (!base.nodos.length || !marco?.ancho || !marco?.alto) {
     return { ...base, etiquetas: [], ocultos: 0 };
   }
@@ -282,10 +362,12 @@ export function construir({ items, relaciones, aristas, menciones, marco, nota =
     const peso = pesoDe(n);
     // Un concepto tiene tamaño fijo: es el centro de su racimo. Una idea crece
     // poco, lo justo para que la que se une con más cosas se note.
+    // Un concepto crece con las ideas que junta: es lo que dice, sin abrirlo,
+    // cuánto habla la historia de eso.
     const r = n.documento
       ? 9
-      : n.concepto
-      ? 7.5
+      : n.concepto && !n.item
+      ? 5.5 + Math.min(6, Math.sqrt(n.concepto.ideas?.length || 1) * 1.3)
       : n.idea
         ? 3 + Math.min(3, (n.grado || 0) * 0.45)
         : R_MIN + (R_MAX - R_MIN) * Math.sqrt(peso / techo);
@@ -294,8 +376,116 @@ export function construir({ items, relaciones, aristas, menciones, marco, nota =
     return { ...n, peso, cuerpo: r, radio: r + 7, ancho: r * 2, alto: r * 2 };
   });
 
-  const nodos = acomodar(puntos, lazos, marco);
-  return { nodos, lazos, etiquetas: etiquetar(nodos, marco), ocultos };
+  /**
+   * El seguro. Acomodar es una simulación y, aunque tiene frenos, un caso que
+   * nadie previó puede terminar con un nodo lejísimos y el resto aplastado en
+   * una esquina. Se mide el resultado y, si tiene ese síntoma, se vuelve a
+   * acomodar arrancando distinto; si tampoco, se encuadra ignorando al que se
+   * escapó. `rescate` dice si hizo falta, para enterarnos si pasa de verdad.
+   */
+  let nodos = acomodar(puntos, lazos, marco, { iniciales });
+  let rescate = null;
+  for (let sal = 1; sal <= 2 && !bienRepartido(nodos, marco); sal++) {
+    nodos = acomodar(puntos, lazos, marco, { sal });
+    rescate = 'reintento';
+  }
+  if (!bienRepartido(nodos, marco)) {
+    nodos = recortarEscapados(nodos, marco);
+    rescate = 'recorte';
+  }
+  nodos = conProfundidad(nodos, lazos, marco);
+  return { nodos, lazos, etiquetas: etiquetar(nodos, marco), ocultos, rescate };
+}
+
+/**
+ * La profundidad de cada nodo, para verlo en 3D al orbitar.
+ *
+ * Es el mismo acomodo por fuerzas, en una sola dimensión y sin tocar el plano:
+ * lo conectado se atrae —queda a profundidad parecida, y al girar el racimo se
+ * mueve junto— y lo que cae cerca en el plano se separa hacia adelante o hacia
+ * atrás, para que al girar no queden nodos encimados. Determinista, como el
+ * resto: el mismo espacio tiene siempre el mismo volumen.
+ */
+function conProfundidad(nodos, lazos, marco) {
+  const n = nodos.length;
+  if (n < 2) return nodos.map((nd) => ({ ...nd, z: 0 }));
+  const R = Math.min(marco.ancho, marco.alto) * 0.3;
+  const indice = new Map(nodos.map((nd, i) => [nd.id, i]));
+  const z = nodos.map((nd) => (((hash(`${nd.id}#z`) % 2000) / 1000) - 1) * R * 0.5);
+  const v = new Array(n).fill(0);
+  const pares = lazos
+    .map((l) => [indice.get(l.a), indice.get(l.b)])
+    .filter(([a, b]) => a !== undefined && b !== undefined);
+
+  for (let paso = 0; paso < 120; paso++) {
+    const temple = 1 - paso / 120;
+    for (let i = 0; i < n; i++) {
+      let f = -z[i] * 0.01; // hacia el plano medio, flojo
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const dxy = Math.hypot(nodos[i].x - nodos[j].x, nodos[i].y - nodos[j].y);
+        if (dxy > 70) continue; // solo se separan los que en el plano están cerca
+        const dz = z[i] - z[j] || (i < j ? 0.5 : -0.5);
+        f += (Math.sign(dz) * 60) / (Math.abs(dz) + 6) * (1 - dxy / 70);
+      }
+      v[i] = (v[i] + f) * 0.8;
+    }
+    for (const [a, b] of pares) {
+      const tira = (z[b] - z[a]) * 0.04;
+      v[a] += tira;
+      v[b] -= tira;
+    }
+    for (let i = 0; i < n; i++) z[i] += Math.max(-8, Math.min(8, v[i])) * temple;
+  }
+
+  const tope = Math.max(...z.map(Math.abs)) || 1;
+  return nodos.map((nd, i) => ({ ...nd, z: (z[i] / tope) * R }));
+}
+
+/**
+ * Si el dibujo quedó repartido: nada fuera del marco, nada inválido, y ningún
+ * nodo mucho más lejos que el resto. El síntoma de un acomodo que explotó es
+ * justamente ese: la mitad de los nodos a dos píxeles del centro y uno a
+ * trescientos.
+ */
+function bienRepartido(nodos, marco) {
+  if (nodos.length < 4) return true;
+  if (nodos.some((n) => !Number.isFinite(n.x) || !Number.isFinite(n.y))) return false;
+  const cx = nodos.reduce((a, n) => a + n.x, 0) / nodos.length;
+  const cy = nodos.reduce((a, n) => a + n.y, 0) / nodos.length;
+  const d = nodos.map((n) => Math.hypot(n.x - cx, n.y - cy)).sort((a, b) => a - b);
+  const mediana = d[Math.floor(d.length / 2)];
+  const minimo = Math.min(marco.ancho, marco.alto) * 0.06;
+  return mediana >= minimo && d[d.length - 1] <= Math.max(mediana * 8, minimo * 4);
+}
+
+/**
+ * Último recurso: se encuadra lo que está en el grueso del dibujo y lo que se
+ * escapó se trae al borde. Se pierde la distancia exacta de esos pocos, pero
+ * el resto vuelve a verse.
+ */
+function recortarEscapados(nodos, marco) {
+  const validos = nodos.filter((n) => Number.isFinite(n.x) && Number.isFinite(n.y));
+  if (!validos.length) return nodos;
+  const xs = validos.map((n) => n.x).sort((a, b) => a - b);
+  const ys = validos.map((n) => n.y).sort((a, b) => a - b);
+  const q = (arr, t) => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(t * (arr.length - 1))))];
+  const x0 = q(xs, 0.05);
+  const x1 = q(xs, 0.95);
+  const y0 = q(ys, 0.05);
+  const y1 = q(ys, 0.95);
+  const margen = 16;
+  const ex = (marco.ancho - margen * 2) / Math.max(x1 - x0, 1);
+  const ey = (marco.alto - margen * 2) / Math.max(y1 - y0, 1);
+  return nodos.map((n) => {
+    const x = Number.isFinite(n.x) ? n.x : (x0 + x1) / 2;
+    const y = Number.isFinite(n.y) ? n.y : (y0 + y1) / 2;
+    return {
+      ...n,
+      x: Math.min(marco.ancho - margen, Math.max(margen, margen + (x - x0) * ex)),
+      y: Math.min(marco.alto - margen, Math.max(margen, margen + (y - y0) * ey)),
+    };
+  });
 }
 
 /**
@@ -310,7 +500,7 @@ export function construir({ items, relaciones, aristas, menciones, marco, nota =
  * Probar cuatro lugares en vez de uno es casi todo el resultado: con uno solo
  * entraban 2 de 33 nombres; con cuatro, 23.
  */
-function etiquetar(nodos, marco) {
+export function etiquetar(nodos, marco) {
   const ocupado = nodos.map((p) => ({
     id: p.id,
     x0: p.x - p.cuerpo,
@@ -448,7 +638,7 @@ export function idsIndiceMostrados(aristas = [], lazos = []) {
  * mueven mucho y los últimos casi nada, así que el dibujo se congela en vez de
  * quedar vibrando.
  */
-export function acomodar(nodos, lazos, { ancho, alto }) {
+export function acomodar(nodos, lazos, { ancho, alto }, { sal = 0, iniciales = null } = {}) {
   const n = nodos.length;
   if (!n) return [];
 
@@ -459,9 +649,23 @@ export function acomodar(nodos, lazos, { ancho, alto }) {
   // por su id. No importa dónde arranque —las fuerzas lo llevan— pero sí que
   // arranque siempre en el mismo lado, porque de eso depende que el dibujo sea
   // el mismo cada vez.
+  //
+  // `sal` cambia ese punto de arranque, siempre de forma determinista: es lo que
+  // usa el seguro para reintentar un acomodo que salió mal.
+  //
+  // `iniciales` son las posiciones del dibujo anterior. Lo que ya estaba
+  // arranca donde estaba, y lo nuevo —las ideas de un concepto que se abre—
+  // junto a su concepto: abrir o cerrar no desordena lo que ya se miraba.
   const p = nodos.map((nodo, i) => {
-    const h = hash(nodo.id);
+    const h = hash(sal ? `${nodo.id}#${sal}` : nodo.id);
     const ang = ((h % 3600) / 3600) * Math.PI * 2;
+    const previo = iniciales?.get(nodo.id);
+    if (previo) return { x: previo.x, y: previo.y, vx: 0, vy: 0, i };
+    const ancla = nodo.cerca ? iniciales?.get(nodo.cerca) : null;
+    if (ancla) {
+      const r = 8 + ((h >> 7) % 12);
+      return { x: ancla.x + Math.cos(ang) * r, y: ancla.y + Math.sin(ang) * r, vx: 0, vy: 0, i };
+    }
     const r = 20 + ((h >> 7) % 100) * (Math.min(ancho, alto) / 420);
     return { x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r, vx: 0, vy: 0, i };
   });
@@ -488,9 +692,15 @@ export function acomodar(nodos, lazos, { ancho, alto }) {
   // Más resorte que esto vuelve a empeorar —los grupos se contraen tanto que el
   // encuadre los agranda a todos por igual— y además empieza a apretar nodos.
   const REPULSION = (area / n) * 0.6;
+  const CERCA = 5;
+  const pasoMax = Math.max(ancho, alto) * 0.06;
+
+  // Partiendo de un dibujo anterior, la simulación arranca tibia: lo que ya
+  // estaba en su lugar apenas se mueve, y lo nuevo se acomoda alrededor.
+  const calor = iniciales ? 0.3 : 1;
 
   for (let paso = 0; paso < PASOS; paso++) {
-    const temple = 1 - paso / PASOS;
+    const temple = calor * (1 - paso / PASOS);
 
     for (let i = 0; i < n; i++) {
       let fx = 0;
@@ -508,8 +718,13 @@ export function acomodar(nodos, lazos, { ancho, alto }) {
           dy = ((hash(nodos[j].id + nodos[i].id) % 100) - 50) / 100;
           d2 = 0.01;
         }
-        const f = REPULSION / d2;
         const d = Math.sqrt(d2);
+        // La repulsión es inversa al cuadrado de la distancia, y dos nodos que
+        // arrancan casi encima —con cien nodos, pasa— se empujaban con una
+        // fuerza miles de veces mayor que la normal: uno salía disparado, el
+        // encuadre achicaba todo para que entrara y el grafo quedaba aplastado
+        // en una esquina. Por debajo de `CERCA` la fuerza deja de crecer.
+        const f = REPULSION / Math.max(d2, CERCA * CERCA);
         fx += (dx / d) * f;
         fy += (dy / d) * f;
       }
@@ -538,7 +753,15 @@ export function acomodar(nodos, lazos, { ancho, alto }) {
       p[r.b].vy -= uy;
     }
 
+    // Ningún nodo se mueve más que `pasoMax` por paso. Es el segundo freno: un
+    // nodo con muchas líneas —un actor mencionado veinte veces— suma la
+    // fuerza de todas, y sin tope se pasa de largo, rebota y se escapa.
     for (let i = 0; i < n; i++) {
+      const v = Math.sqrt(p[i].vx * p[i].vx + p[i].vy * p[i].vy);
+      if (v > pasoMax) {
+        p[i].vx = (p[i].vx / v) * pasoMax;
+        p[i].vy = (p[i].vy / v) * pasoMax;
+      }
       p[i].x += p[i].vx * temple;
       p[i].y += p[i].vy * temple;
     }

@@ -586,7 +586,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const traerCompleto = useCallback(async (id) => {
     const { data, error } = await supabase
       .from('codex_universe_items')
-      .select('id, name, tipo, description, tags, aliases, details, geo, folder_id')
+      .select('id, name, tipo, description, tags, aliases, details, geo, folder_id, rastreo')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -608,7 +608,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('codex_universe_items')
-        .select('id, name, tipo, description, tags, aliases, details, geo, folder_id')
+        .select('id, name, tipo, description, tags, aliases, details, geo, folder_id, rastreo')
         .in('tipo', ['Snippet', 'snippet'])
         .not('geo', 'is', null);
       if (error) throw error;
@@ -2029,7 +2029,8 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             item={detalle}
             bottomInset={bottomInset}
             onClose={() => setDetalle(null)}
-            onSaved={() => {
+            onSaved={(guardado) => {
+              setDetalle((prev) => (prev ? { ...prev, ...guardado } : prev));
               // Lo editado en el detalle cambia lo que el mapa dibuja —nombre,
               // geo, tipo—, así que la consulta de items tiene que volver a
               // correr. Sin esto, se guarda y el pin sigue con el nombre viejo.

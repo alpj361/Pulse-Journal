@@ -62,7 +62,45 @@ export function normalizar(texto) {
   return salida;
 }
 
+/**
+ * Sin tildes pero **con sus mayúsculas**, y también sin cambiar el largo. Es la
+ * forma contra la que se compara un item que pide mayúsculas exactas: «VAMOS»
+ * el partido, no «vamos» el verbo.
+ */
+export function sinTildes(texto) {
+  const t = String(texto || '');
+  let salida = '';
+  for (const c of t) {
+    const sinTilde = ACENTOS[c];
+    if (!sinTilde) {
+      salida += c;
+      continue;
+    }
+    const mayuscula = c !== c.toLowerCase();
+    salida += mayuscula ? sinTilde.toUpperCase() : sinTilde;
+  }
+  return salida;
+}
+
+/**
+ * Cómo se rastrea un item. Las claves que falten valen lo de siempre: se lo
+ * busca, también por sus alias, sin importar mayúsculas. Es la misma lectura que
+ * hace `codex_terminos_de` en la base.
+ */
+export function rastreoDe(item) {
+  const r = item?.rastreo && typeof item.rastreo === 'object' ? item.rastreo : {};
+  return {
+    activo: r.activo !== false,
+    alias: r.alias !== false,
+    mayusculas: r.mayusculas === true,
+  };
+}
+
 const PALABRA = /[a-z0-9]+/g;
+const PALABRA_EXACTA = /[A-Za-z0-9]+/g;
+
+// Lo que corta un nombre en dos: puntuación de corte, coma, dos puntos, viñetas.
+const SEPARA = /[.!?;\n\r|•*>,:]|\s-\s/;
 
 export function palabrasDe(textoNormalizado) {
   return textoNormalizado.match(PALABRA) || [];
@@ -103,7 +141,13 @@ export function construirIndice(items) {
   for (const item of items || []) {
     if (!item?.name) continue;
 
-    const crudos = [item.name, ...(Array.isArray(item.aliases) ? item.aliases : [])];
+    const rastreo = rastreoDe(item);
+    if (!rastreo.activo) continue;
+
+    const crudos = [
+      item.name,
+      ...(rastreo.alias && Array.isArray(item.aliases) ? item.aliases : []),
+    ];
     const vistos = new Set();
 
     for (const crudo of crudos) {
@@ -115,9 +159,13 @@ export function construirIndice(items) {
       if (vistos.has(clave)) continue;
       vistos.add(clave);
 
+      // Con mayúsculas exactas, además de las palabras normalizadas —que
+      // ubican al candidato— se guardan tal como están escritas, sin tildes.
+      const exactas = rastreo.mayusculas ? sinTildes(crudo).match(PALABRA_EXACTA) || null : null;
+
       const primera = palabras[0];
       if (!porPrimeraPalabra.has(primera)) porPrimeraPalabra.set(primera, []);
-      porPrimeraPalabra.get(primera).push({ palabras, item });
+      porPrimeraPalabra.get(primera).push({ palabras, exactas, item });
     }
   }
 
@@ -145,6 +193,8 @@ export function segmentar(texto, indice) {
   }
 
   const norm = normalizar(original);
+  // Mismo largo que `norm`: los offsets de un token sirven para las dos.
+  let exacto = null;
 
   // Tokens con posición, para poder volver al texto original.
   const tokens = [];
@@ -171,6 +221,28 @@ export function segmentar(texto, indice) {
           if (tokens[i + k].palabra !== cand.palabras[k]) {
             coincide = false;
             break;
+          }
+        }
+        // Un nombre de varias palabras no cruza comas ni cortes: «Valor,
+        // Unionista» son dos partidos, no la ficha «Valor Unionista». Es la
+        // misma regla que usa la base (`codex_tokens`).
+        if (coincide) {
+          for (let k = 1; k < n; k++) {
+            const hueco = original.slice(tokens[i + k - 1].hasta, tokens[i + k].desde);
+            if (SEPARA.test(hueco)) {
+              coincide = false;
+              break;
+            }
+          }
+        }
+        if (coincide && cand.exactas) {
+          if (exacto === null) exacto = sinTildes(original);
+          for (let k = 0; k < n; k++) {
+            const tk = tokens[i + k];
+            if (exacto.slice(tk.desde, tk.hasta) !== cand.exactas[k]) {
+              coincide = false;
+              break;
+            }
           }
         }
         if (coincide) {

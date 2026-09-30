@@ -69,9 +69,10 @@ async function normalizar(uri, ancho, alto) {
  * @param uri  archivo local (`file://`). Un `ph://` del carrete **no** sirve:
  *             hay que resolverlo antes con `MediaLibrary.getAssetInfoAsync`,
  *             que es lo que hace la bandeja.
+ * @param carpeta dónde, dentro de la carpeta de la persona: `notas` o `espacios`.
  * @returns    `{ url, storage_path, ancho, alto, tamano }`
  */
-export async function subirImagen(uri, { ancho, alto } = {}) {
+export async function subirImagen(uri, { ancho, alto, carpeta = 'notas' } = {}) {
   const { data: sesion } = await supabase.auth.getSession();
   const userId = sesion?.session?.user?.id;
   if (!userId) throw new Error('Sin sesión activa');
@@ -84,7 +85,7 @@ export async function subirImagen(uri, { ancho, alto } = {}) {
   // Lo que pesa de verdad, contra lo que queda del plan.
   await asegurarCupo('almacenamiento', bytes.length);
 
-  const storagePath = `${userId}/movil/notas/${Date.now()}_${Math.random()
+  const storagePath = `${userId}/movil/${carpeta}/${Date.now()}_${Math.random()
     .toString(36)
     .slice(2, 8)}.jpg`;
 

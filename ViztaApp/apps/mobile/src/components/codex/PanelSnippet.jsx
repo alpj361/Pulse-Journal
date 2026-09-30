@@ -32,6 +32,12 @@ import usePortada from '../../utils/portada';
 export default function PanelSnippet({
   items,
   onAbrirItem,
+  /**
+   * Los nombres que la nota no sabe si son ellos («Vamos» ¿el partido?).
+   * Van aparte y apagados; tocarlos pregunta.
+   */
+  porConfirmar = [],
+  onDecidir,
   titulo,
   tituloPlaceholder,
   onTitulo,
@@ -64,6 +70,8 @@ export default function PanelSnippet({
    */
   fotos = [],
   onVerFoto,
+  /** Lo que va antes de los mencionados: la tabla de una historia datasheet. */
+  arriba = null,
   topInset = 0,
   bottomInset = 0,
 }) {
@@ -73,6 +81,7 @@ export default function PanelSnippet({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
+      {arriba}
       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)' }}>mencionados</Text>
 
       {items.length === 0 ? (
@@ -89,6 +98,39 @@ export default function PanelSnippet({
           ))}
         </Animated.View>
       )}
+
+      {porConfirmar.length ? (
+        <Animated.View layout={LinearTransition.springify().damping(22)} style={{ marginTop: 22 }}>
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)' }}>¿son ellos?</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            {porConfirmar.map((m) => (
+              <Pressable
+                key={m.firma}
+                onPress={() => onDecidir?.(m)}
+                style={({ pressed }) => ({
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999,
+                  borderWidth: 1, borderStyle: 'dashed', borderColor: 'rgba(28,43,34,0.22)',
+                  opacity: pressed ? 0.5 : 1,
+                })}
+                accessibilityRole="button"
+                accessibilityLabel={`¿${m.escrito} es ${m.candidatos[0]?.name}?`}
+              >
+                <View
+                  style={{
+                    width: 6, height: 6, borderRadius: 3,
+                    backgroundColor: TYPE_ACCENT[normalizeTipo(m.candidatos[0]?.tipo)] || TYPE_ACCENT.Artefacto,
+                    opacity: 0.6,
+                  }}
+                />
+                <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 12, color: 'rgba(28,43,34,0.6)', maxWidth: 180 }}>
+                  {m.escrito}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Animated.View>
+      ) : null}
 
       <View style={{ height: 42 }} />
 

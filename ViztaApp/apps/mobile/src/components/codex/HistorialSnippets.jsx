@@ -85,7 +85,11 @@ const FUERA = '("Snippet","Post","Fact")';
  * Mantener presionado es el clic derecho del teléfono: lo peligroso vive ahí,
  * escondido hasta que lo pedís, y la lista queda limpia.
  */
-export default function HistorialSnippets({ onAbrir, onAbrirItem, topInset = 0, bottomInset = 0 }) {
+/**
+ * `arriba`: lo que va antes de las notas. Con la historia como datasheet,
+ * sus filas: el historial de esa historia son sus entradas.
+ */
+export default function HistorialSnippets({ onAbrir, onAbrirItem, topInset = 0, bottomInset = 0, arriba = null }) {
   const { width: W, height: H } = useWindowDimensions();
 
   const [notas, setNotas] = useState(null); // null = cargando
@@ -411,6 +415,7 @@ export default function HistorialSnippets({ onAbrir, onAbrirItem, topInset = 0, 
         showsVerticalScrollIndicator={false}
         scrollEnabled={!menu && !nombrando}
       >
+        {arriba && !abierta ? arriba : null}
         {abierta ? (
           <Pressable
             onPress={() => {
