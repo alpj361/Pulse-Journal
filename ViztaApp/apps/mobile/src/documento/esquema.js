@@ -40,6 +40,20 @@ export const TIPOS_DE_MARCA = ['resaltado', 'link'];
  */
 export const RESALTADO_AMARILLO = { _key: 'h-amarillo', _type: 'resaltado', color: '#F5C842' };
 
+/**
+ * Los colores del resaltado (F2). Cinco, suaves, que se leen sobre el papel
+ * y no compiten con el color de los nombres del Codex. Claves fijas, como el
+ * amarillo: dos resaltados del mismo color comparten definición. En
+ * markdown todos se escriben `==así==` (el color vive en el documento).
+ */
+export const RESALTADOS = [
+  RESALTADO_AMARILLO,
+  { _key: 'h-verde', _type: 'resaltado', color: '#8FD19E' },
+  { _key: 'h-azul', _type: 'resaltado', color: '#8DB8F2' },
+  { _key: 'h-rosa', _type: 'resaltado', color: '#F2A7C3' },
+  { _key: 'h-naranja', _type: 'resaltado', color: '#F7B267' },
+];
+
 export const ESTILOS_DE_SEPARADOR = ['puntos', 'punteado', 'corte', 'fina', 'gruesa'];
 
 export const TIPOS_DE_MEDIO = ['foto', 'audio', 'documento'];

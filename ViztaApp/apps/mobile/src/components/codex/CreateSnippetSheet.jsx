@@ -101,6 +101,7 @@ import { borrarBorrador } from './bloques/persistencia';
 import BarraSeleccion from './bloques/BarraSeleccion';
 import PanelFormato from './bloques/PanelFormato';
 import PanelInsertar from './bloques/PanelInsertar';
+import { ACCIONES as ACCIONES_A_MANO, useAMano } from './bloques/aMano';
 import { indiceDelDocumento } from './bloques/indice';
 import { firmaDeMedios, raizDe } from '../../documento/editor';
 import { useStore } from 'zustand';
@@ -729,6 +730,16 @@ export default function CreateSnippetSheet({
   // Estables a propósito: cada bloque es un `memo`, y una función nueva en
   // cada pintada de la hoja los volvería a pintar a todos.
   const alEscribirBloques = useCallback((v) => setEscribiendo(v !== false), []);
+  // El `+` del renglón vacío abre el mismo panel que el de la cápsula. El
+  // cursor sigue marcando ese renglón, así que lo agregado va ahí.
+  const alAgregarBloques = useCallback(() => {
+    Keyboard.dismiss();
+    setInsertando(true);
+    setFormateando(false);
+    setMostrandoFotos(false);
+    setGrabando(false);
+    setBuscando(false);
+  }, []);
 
   /**
    * Teclado o menú, nunca los dos, como en Craft: con un panel abierto (Aa o
@@ -736,6 +747,7 @@ export default function CreateSnippetSheet({
    * escribir, el panel se va. Así ninguno tapa al otro.
    */
   const panelAbierto = bloquesActivo && (formateando || insertando);
+  const aManoLista = useAMano();
   // Se vuelve a escribir cuando un bloque toma el foco (tocar el texto, o el
   // bloque nuevo que se acaba de agregar). No se escucha al teclado: iOS avisa
   // «se muestra» también con teclado físico y cerraba el panel al abrirlo.
@@ -2369,6 +2381,7 @@ export default function CreateSnippetSheet({
                       onDecidir={alDecidirBloques}
                       onSeleccion={alSeleccionBloques}
                       medios={mediosBloques}
+                      onAgregar={alAgregarBloques}
                     />
                   ) : null
                 }
@@ -2765,6 +2778,17 @@ export default function CreateSnippetSheet({
               }}
             />
           ) : null}
+
+          {/* Lo que quedó a mano (ver `bloques/aMano.js`): mientras se
+              escribe, al lado de Aa y `+`, actúa sin bajar el teclado. */}
+          {enNotas && pagina === NOTA && !preguntando && bloquesActivo && escribiendo && !panelAbierto
+            ? aManoLista.map((a) => {
+                const def = ACCIONES_A_MANO[a];
+                return def ? (
+                  <Glifo key={a} entrando Icono={def.Icono} onPress={() => edicion.editor.getState().formatear(a)} />
+                ) : null;
+              })
+            : null}
 
           {/* Dónde pasó.
             *

@@ -148,6 +148,15 @@ export function alternarMarca(children, desde, hasta, marca, clave = nuevaClave)
   return normalizar([...antes, ...cambiado, ...despues], clave);
 }
 
+/** Sacar unas marcas de `[desde, hasta)`, estén o no en todo el tramo. */
+export function quitarMarcas(children, desde, hasta, marcas, clave = nuevaClave) {
+  if (desde >= hasta || !marcas.length) return children;
+  const [antes, resto] = cortar(children, desde, clave);
+  const [medio, despues] = cortar(resto, hasta - desde, clave);
+  const limpio = medio.map((s) => ({ ...s, marks: (s.marks || []).filter((m) => !marcas.includes(m)) }));
+  return normalizar([...antes, ...limpio, ...despues], clave);
+}
+
 /**
  * Qué cambió entre dos textos: un solo reemplazo `[desde, hasta)` del viejo
  * por `insertado`.

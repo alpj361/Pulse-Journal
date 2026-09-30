@@ -50,7 +50,7 @@ const TENUE = 'rgba(28,43,34,0.38)';
  * (`estructura`); al escribir se pinta el bloque tocado.
  */
 function EditorBloques(
-  { editor, rastreo, indice, escribiendo, onEscribir, buscando, marcador, onMencion, onDecidir, onSeleccion, medios },
+  { editor, rastreo, indice, escribiendo, onEscribir, buscando, marcador, onMencion, onDecidir, onSeleccion, medios, onAgregar },
   ref,
 ) {
   useStore(editor, (s) => s.estructura);
@@ -248,6 +248,7 @@ function EditorBloques(
                   onSoltar={onSoltar}
                   onTocarLeyendo={tocarLeyendo}
                   onMantener={entrarSeleccion}
+                  onAgregar={onAgregar}
                   registrar={registrar}
                 />
               ) : (
@@ -270,6 +271,10 @@ const MEDIOS_VACIOS = { fotos: [], audios: [], documentos: [] };
 const Fila = memo(function Fila({ k, editor, posiciones, escribiendo, onMantener, onSoltarArrastre, children }) {
   const seleccionando = useStore(editor, (s) => s.seleccionando);
   const elegido = useStore(editor, (s) => s.seleccionados.includes(k));
+  // El bloque donde se está escribiendo muestra su manija: se puede mover
+  // sin entrar al modo de elegir.
+  const activo = useStore(editor, (s) => s.enfocado === k);
+  const conManija = seleccionando || activo;
   const dy = useSharedValue(0);
   const [arrastrando, setArrastrando] = useState(false);
 
@@ -340,7 +345,7 @@ const Fila = memo(function Fila({ k, editor, posiciones, escribiendo, onMantener
         )}
       </View>
 
-      {seleccionando ? (
+      {conManija ? (
         <GestureDetector gesture={arrastre}>
           <View style={{ paddingLeft: 10, paddingVertical: 6 }} accessibilityLabel="Arrastrar para mover">
             <GripVertical size={16} color={TENUE} />

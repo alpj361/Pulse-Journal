@@ -222,10 +222,26 @@ teclado personalizable. 5 separadores. Resaltado con color. `+` para insertar.
   traer el teclado.
 - Separador con `estilo` (`puntos|punteado|corte|fina|gruesa`); `insertar(tipo, datos)`.
 
-**Falta de F2:** `+` junto al renglón vacío; manija visible en el bloque
-activo; color del resaltado; estilo «Bloque» (tarjeta, no existe en
-`TIPOS_DE_TEXTO`); elegir qué botones quedan a mano. Probar en el iPhone real
-el cambio teclado ↔ menú (en el simulador el teclado es el de la Mac).
+**Hecho (2026-09-30, segunda parte):**
+- **Color del resaltado:** cinco colores (`RESALTADOS` en `esquema.js`:
+  amarillo, verde, azul, rosa, naranja) y «sin color», en una fila del panel
+  T. Un tramo tiene un solo color: poner otro reemplaza al anterior y tocar
+  el mismo lo apaga. En `description` todos se escriben `==así==`.
+- **Estilo «Bloque»:** `tarjeta` entra en `TIPOS_DE_TEXTO` y en la primera
+  fila del panel; se pinta como una tarjeta con fondo. En markdown es un
+  párrafo.
+- **`+` junto al renglón vacío:** en el renglón vacío donde está el cursor
+  aparece un `+` que abre el panel de agregar; lo agregado va en ese renglón.
+- **Manija en el bloque activo:** el bloque donde se escribe muestra la
+  manija para arrastrarlo sin entrar a «ordenar bloques».
+- **A mano** (`bloques/aMano.js`): mantener apretado un botón de T o de `+`
+  lo pone o lo saca de la cápsula, donde queda al lado de Aa y `+` mientras
+  se escribe y actúa sin bajar el teclado. Hasta 4, en el orden en que se
+  eligieron (si no hay lugar sale el más viejo). De entrada: negrita,
+  resaltado, por hacer y deshacer. Se guarda en el teléfono.
+
+**Falta:** probar en el iPhone real el cambio teclado ↔ menú (en el simulador
+el teclado es el de la Mac).
 
 ### F3 · Páginas y capítulos — STA-199
 Bloque «Página» con subpágina. Índice de historia por páginas;
