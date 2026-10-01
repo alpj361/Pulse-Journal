@@ -15,7 +15,8 @@ import {
 } from 'lucide-react-native';
 import { INK } from '../../theme';
 import { Separador } from './Especiales';
-import { estilos } from './PanelFormato';
+import { estilos, fijar, Punto } from './PanelFormato';
+import { useAMano } from './aMano';
 import { roce } from '../../../utils/haptics';
 
 const TINTA = 'rgba(28,43,34,0.78)';
@@ -50,6 +51,7 @@ const MEDIOS = [
 const SEPARADORES = ['puntos', 'punteado', 'corte', 'fina', 'gruesa'];
 
 export default function PanelInsertar({ editor, onCerrar, onMedio }) {
+  const fijadas = useAMano();
   const agregar = (accion, datos) => {
     roce();
     if (accion === 'separador') editor.getState().insertar('separador', datos);
@@ -82,7 +84,14 @@ export default function PanelInsertar({ editor, onCerrar, onMedio }) {
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         {COSAS.map(({ accion, Icono, nombre }) => (
-          <Tarjeta key={accion} Icono={Icono} nombre={nombre} onPress={() => agregar(accion)} />
+          <Tarjeta
+            key={accion}
+            Icono={Icono}
+            nombre={nombre}
+            fijada={fijadas.includes(accion)}
+            onPress={() => agregar(accion)}
+            onLongPress={() => fijar(accion)}
+          />
         ))}
         {MEDIOS.map(({ tipo, Icono, nombre }) => (
           <Tarjeta
@@ -118,10 +127,11 @@ export default function PanelInsertar({ editor, onCerrar, onMedio }) {
   );
 }
 
-function Tarjeta({ Icono, nombre, onPress }) {
+function Tarjeta({ Icono, nombre, onPress, onLongPress, fijada }) {
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       style={({ pressed }) => [
         {
           width: '32%',
@@ -140,6 +150,7 @@ function Tarjeta({ Icono, nombre, onPress }) {
     >
       <Icono size={19} color={TINTA} />
       <Text style={{ fontSize: 12, color: INK.body }}>{nombre}</Text>
+      {fijada ? <Punto /> : null}
     </Pressable>
   );
 }

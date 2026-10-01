@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useStore } from 'zustand';
-import { Check, ChevronRight } from 'lucide-react-native';
+import { Check, ChevronRight, Plus } from 'lucide-react-native';
 import { INK } from '../../theme';
 import { MONO } from '../mono';
 import { colorDe, tinta } from '../tinta';
@@ -19,6 +19,14 @@ const PASO_MS = 60;
  * hoja no deja los títulos sueltos. Son los mismos saltos que `estiloDePieza`
  * en `formato.js`, más uno para el título chico.
  */
+const TARJETA = {
+  backgroundColor: 'rgba(28,43,34,0.05)',
+  borderRadius: 12,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  marginVertical: 4,
+};
+
 function estiloDeBloque(tipo) {
   switch (tipo) {
     case 'h1':
@@ -172,9 +180,11 @@ function Bloque({
   onSoltar,
   onTocarLeyendo,
   onMantener,
+  onAgregar,
   registrar,
 }) {
   const b = useStore(editor, (s) => s.estado.porKey[k]);
+  const enfocado = useStore(editor, (s) => s.enfocado === k);
   const pedido = useStore(editor, (s) => (s.foco?.key === k ? s.foco : null));
   const hash = useStore(rastreo, (s) => s.hashPorKey[k]);
   const textoRastreado = useStore(rastreo, (s) => s.textoPorKey[k]);
@@ -297,6 +307,9 @@ function Bloque({
         alignItems: 'flex-start',
         paddingLeft: ((b.level || 1) - 1) * SANGRIA + nivelVisual * SANGRIA,
         marginTop: tipo === 'h1' ? 8 : tipo === 'h2' ? 4 : 0,
+        // «Bloque»: el renglón como una tarjeta, para lo que tiene que
+        // separarse del resto sin ser un título (un dato, una cita larga).
+        ...(tipo === 'tarjeta' ? TARJETA : null),
       }}
     >
       <Marcador
@@ -368,6 +381,22 @@ function Bloque({
           </TextInput>
         </View>
       </Pressable>
+      {/* En un renglón vacío, lo que se puede agregar ahí mismo: sin ir a
+          buscar el `+` de la cápsula. */}
+      {escribiendo && enfocado && onAgregar && tipo === 'normal' && !texto ? (
+        <Pressable
+          onPress={() => {
+            roce();
+            onAgregar(k);
+          }}
+          hitSlop={10}
+          style={{ paddingLeft: 8, height: RENGLON, justifyContent: 'center' }}
+          accessibilityRole="button"
+          accessibilityLabel="Agregar acá"
+        >
+          <Plus size={16} color="rgba(28,43,34,0.35)" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

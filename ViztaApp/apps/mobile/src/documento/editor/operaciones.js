@@ -13,7 +13,7 @@
  * renglón («# », «- », «1. », «[] », «> ») cambian el tipo del bloque.
  */
 
-import { nuevaClave, RESALTADO_AMARILLO } from '../esquema.js';
+import { nuevaClave, RESALTADOS } from '../esquema.js';
 import { desdeMarkdown } from '../desdeMarkdown.js';
 import { leerEnLinea } from '../enLinea.js';
 import { anteriorVisible, conTexto, finDeRama } from './estado.js';
@@ -25,8 +25,10 @@ import {
   marcasEn,
   normalizar,
   palabraEn,
+  quitarMarcas,
   reemplazar,
   textoDe,
+  tieneMarca,
   unirDefs,
 } from './spans.js';
 
@@ -44,7 +46,7 @@ export function tipoDe(b) {
   return b.listItem || b.style || 'normal';
 }
 
-export const TIPOS_DE_TEXTO = ['normal', 'h1', 'h2', 'h3', 'cita', 'bullet', 'number', 'todo', 'toggle'];
+export const TIPOS_DE_TEXTO = ['normal', 'h1', 'h2', 'h3', 'cita', 'tarjeta', 'bullet', 'number', 'todo', 'toggle'];
 
 /** El mismo bloque, con otro tipo. Conserva la clave, el texto y el formato. */
 export function conTipo(b, tipo) {
@@ -225,9 +227,24 @@ export function escribir(estado, key, nuevo, sel, { clave = nuevaClave } = {}) {
   return { estado: { ...siguiente, pendiente: null }, foco };
 }
 
-/** Si los spans usan el resaltado amarillo, su definición tiene que estar. */
-const marcasResaltado = (b) =>
-  (b.children || []).some((s) => (s.marks || []).includes(RESALTADO_AMARILLO._key)) ? [{ ...RESALTADO_AMARILLO }] : [];
+/** Si los spans usan un color de resaltado, su definición tiene que estar. */
+const marcasResaltado = (b) => {
+  const usadas = new Set((b.children || []).flatMap((s) => s.marks || []));
+  return RESALTADOS.filter((r) => usadas.has(r._key)).map((r) => ({ ...r }));
+};
+const CLAVES_RESALTADO = RESALTADOS.map((r) => r._key);
+
+/**
+ * La marca de una acción de resaltado: `resaltado` es el amarillo de
+ * siempre, `resaltado:verde` un color de la paleta y `resaltado:ninguno`
+ * sacar cualquier color.
+ */
+const resaltadoDe = (accion) => {
+  if (!accion.startsWith('resaltado')) return undefined;
+  const color = accion.split(':')[1] || 'amarillo';
+  if (color === 'ninguno') return null;
+  return RESALTADOS.find((r) => r._key === `h-${color}`)?._key;
+};
 
 /** Reemplazar un rango del texto de un bloque. Lo usa el autocompletado. */
 export function reemplazarRango(estado, key, desde, hasta, nuevoTexto, { clave = nuevaClave } = {}) {
@@ -449,8 +466,12 @@ const MARCA_DE_ACCION = { negrita: 'strong', cursiva: 'em', codigo: 'code', tach
 export function marcar(estado, key, desde, hasta, accion, { clave = nuevaClave } = {}) {
   const b = estado.porKey[key];
   if (!conTexto(b)) return { estado };
-  const marca = accion === 'resaltado' ? RESALTADO_AMARILLO._key : MARCA_DE_ACCION[accion];
-  if (!marca) return { estado };
+  const color = resaltadoDe(accion);
+  const sinColor = color === null;
+  const marca = color || MARCA_DE_ACCION[accion];
+  if (!marca && !sinColor) return { estado };
+  // Un tramo tiene un solo color de resaltado: poner uno saca los otros.
+  const otros = color !== undefined ? CLAVES_RESALTADO.filter((k) => k !== marca) : [];
 
   let a = desde;
   let z = hasta;
@@ -461,8 +482,14 @@ export function marcar(estado, key, desde, hasta, accion, { clave = nuevaClave }
       const previo = estado.pendiente?.key === key && estado.pendiente?.pos === a ? estado.pendiente : null;
       const agregar = new Set(previo?.agregar || []);
       const sacar = new Set(previo?.quitar || []);
+      for (const k of otros) {
+        agregar.delete(k);
+        if (marcasEn(b.children, a, b.markDefs).includes(k)) sacar.add(k);
+      }
       // Tocar dos veces el mismo botón en blanco lo apaga.
-      if (agregar.has(marca)) agregar.delete(marca);
+      if (sinColor) {
+        // nada más que sacar los colores
+      } else if (agregar.has(marca)) agregar.delete(marca);
       else if (sacar.has(marca)) sacar.delete(marca);
       else if (hay) sacar.add(marca);
       else agregar.add(marca);
@@ -475,8 +502,10 @@ export function marcar(estado, key, desde, hasta, accion, { clave = nuevaClave }
     z = palabra.hasta;
   }
 
-  const children = alternarMarca(b.children, a, z, marca, clave);
-  const markDefs = defsUsadas(children, unirDefs(b.markDefs, marca === RESALTADO_AMARILLO._key ? [{ ...RESALTADO_AMARILLO }] : []));
+  let children = b.children;
+  if (otros.length && !(marca && tieneMarca(children, a, z, marca))) children = quitarMarcas(children, a, z, otros, clave);
+  if (marca) children = alternarMarca(children, a, z, marca, clave);
+  const markDefs = defsUsadas(children, unirDefs(b.markDefs, marcasResaltado({ children })));
   return {
     estado: { ...conBloque(estado, { ...b, children, markDefs }), pendiente: null },
     foco: desde === hasta ? { key, pos: desde } : { key, pos: hasta, desde },

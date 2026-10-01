@@ -271,7 +271,7 @@ export function crearEditor(doc = crearDocumento()) {
           aplicar('sangria', s.key, (e) => sangrar(e, s.key, accion === 'sangrar' ? 1 : -1));
           return;
         }
-        const tipo = { h1: 'h1', h2: 'h2', h3: 'h3', cuerpo: 'normal', cita: 'cita', vineta: 'bullet', numerada: 'number', todo: 'todo', toggle: 'toggle' }[accion];
+        const tipo = { h1: 'h1', h2: 'h2', h3: 'h3', cuerpo: 'normal', cita: 'cita', bloque: 'tarjeta', vineta: 'bullet', numerada: 'number', todo: 'todo', toggle: 'toggle' }[accion];
         if (tipo) {
           // «Cuerpo» no es un interruptor: siempre deja el bloque como párrafo.
           const actual = tipoDe(get().estado.porKey[s.key]);
