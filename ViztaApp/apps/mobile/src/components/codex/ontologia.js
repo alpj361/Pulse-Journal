@@ -5,9 +5,8 @@
  * política, o híbrido (varios a la vez). Se guarda en `spaces.metadata`
  * (`aspectos` + `hibrido`, ver `espacio_ajustar`).
  *
- * Por ahora es solo el dato: nada de la app cambia de nombre todavía. El mapa
- * vive acá para que, cuando se use, haya un solo lugar que diga cómo se llama
- * cada tipo según el espacio.
+ * El mapa vive acá para que haya un solo lugar que diga cómo se llama cada
+ * cosa según el espacio: los tipos del Codex y los niveles de la historia.
  */
 
 export const ASPECTOS = [
@@ -46,3 +45,53 @@ export function nombreEnEspacio(tipo, aspectos = []) {
   }
   return null;
 }
+
+/**
+ * Cómo se llaman los niveles de la historia de un espacio (Task 8.1):
+ * cada snippet que es historia, sus partes (páginas o títulos) y sus
+ * párrafos. La estructura es la misma en todos; cambia el nombre.
+ */
+export const NIVELES = {
+  ficcion: [
+    ['capítulo', 'capítulos'],
+    ['escena', 'escenas'],
+    ['párrafo', 'párrafos'],
+  ],
+  legal: [
+    ['expediente', 'expedientes'],
+    ['capítulo', 'capítulos'],
+    ['artículo', 'artículos'],
+  ],
+  investigacion: [
+    ['parte', 'partes'],
+    ['sección', 'secciones'],
+    ['hallazgo', 'hallazgos'],
+  ],
+  politica: [
+    ['eje', 'ejes'],
+    ['tema', 'temas'],
+    ['punto', 'puntos'],
+  ],
+};
+
+const NIVELES_DE_SIEMPRE = [
+  ['parte', 'partes'],
+  ['sección', 'secciones'],
+  ['párrafo', 'párrafos'],
+];
+
+/**
+ * Los nombres de los tres niveles para un espacio. Con un solo aspecto, los
+ * suyos; sin aspecto o híbrido, los de siempre: mezclar «capítulos» con
+ * «artículos» confundiría más de lo que ayuda.
+ *
+ * @returns `[[singular, plural], [singular, plural], [singular, plural]]`
+ */
+export function nivelesDe(aspectos = [], hibrido = false) {
+  const lista = Array.isArray(aspectos) ? aspectos : [];
+  if (hibrido || lista.length !== 1) return NIVELES_DE_SIEMPRE;
+  return NIVELES[lista[0]] || NIVELES_DE_SIEMPRE;
+}
+
+/** «1 capítulo», «16 escenas». */
+export const contar = (n, [uno, varios]) => `${n} ${n === 1 ? uno : varios}`;
