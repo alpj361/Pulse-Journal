@@ -11,6 +11,7 @@ import { conTexto, paginaMadre, raizDe, textoDe, visible } from '../../../docume
 import Bloque, { CUERPO } from './Bloque';
 import Especial from './Especiales';
 import { MediosContexto } from './contexto';
+import { contiene } from '../historiaArbol';
 import { roce, toque } from '../../../utils/haptics';
 
 // Cuántos bloques se montan de una vez. Una nota de 5.000 palabras tiene unos
@@ -178,6 +179,14 @@ function EditorBloques(
       /** Dónde empieza un bloque, desde arriba del editor. */
       yDe: (k) => posiciones.current.get(k)?.y ?? null,
       abrirPagina: (k) => editor.getState().abrirPagina(k),
+      /**
+       * El primer bloque de la página abierta que empieza (o contiene) ese
+       * comienzo, para llegar a un párrafo desde el índice de la historia.
+       */
+      buscar: (comienzo) => {
+        const { estado: e } = editor.getState();
+        return e.orden.find((x) => conTexto(e.porKey[x]) && contiene(textoDe(e.porKey[x].children), comienzo)) || null;
+      },
     }),
     [tocarFinal, soltarFoco, editor],
   );

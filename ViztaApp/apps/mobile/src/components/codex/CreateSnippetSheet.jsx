@@ -83,6 +83,8 @@ import MiniMapa from './MiniMapa';
 import BuscarLugar from '../mapa/BuscarLugar';
 import { addItemsToSpace, agregarHistoria, listSpaces, notaPrincipalDe, quitarHistoria } from '../../utils/codexSpaces';
 import { indiceDeHistoria, renglonesHasta } from './historia';
+import IndiceHistoria from './IndiceHistoria';
+import { comienzoDe, contiene, entradaDeSeccion, leerArbol } from './historiaArbol';
 import DocumentosNota from './DocumentosNota';
 import { borrarDocumentoNota, firmarDocumentoNota, subirDocumentoNota } from '../../utils/subirDocumento';
 import { useEspacioElegidoStore } from '../../state/espacioElegidoStore';
@@ -1302,6 +1304,57 @@ export default function CreateSnippetSheet({
     setPrincipalDe(marca);
   };
 
+  // ── La historia del espacio en árbol (Task 8.1) ──
+  // Todos los snippets que son historia del espacio, con sus partes, como
+  // los parte la base. Se vuelve a leer al abrir otra nota y un rato después
+  // de dejar de escribir: la base rearma las secciones al guardar.
+  const [arbol, setArbol] = useState(null);
+  const [salto, setSalto] = useState(null);
+  const saltos = useRef(0);
+  const espacioDelArbol = principalDe?.id || null;
+  useEffect(() => {
+    if (!espacioDelArbol) {
+      setArbol(null);
+      return undefined;
+    }
+    let vivo = true;
+    const leer = () =>
+      leerArbol(espacioDelArbol)
+        .then((a) => vivo && setArbol(a))
+        .catch((e) => console.warn('[historia] no se pudo leer el índice', e?.message || e));
+    if (escribiendo) return () => {
+      vivo = false;
+    };
+    // El de otro espacio no sirve ni un instante: se pide ya.
+    const t = setTimeout(leer, arbol?.espacio?.id === espacioDelArbol ? 3000 : 0);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [espacioDelArbol, editandoId, escribiendo]);
+
+  /** Ir a otro snippet de la historia desde el árbol, y a su parte. */
+  const irEnHistoria = useCallback(
+    async (destinoArbol) => {
+      if (!destinoArbol?.nota || !principalDe?.id) return;
+      try {
+        const { data: nota } = await supabase
+          .from('codex_universe_items')
+          .select('id, name, tipo, description, tags, aliases, details, geo, created_at, thumbnail_url')
+          .eq('id', destinoArbol.nota)
+          .maybeSingle();
+        if (!nota) return;
+        abrirNota(nota, { principal: { id: principalDe.id, name: principalDe.name } });
+        if (destinoArbol.seccion || destinoArbol.idea) setSalto({ ...destinoArbol, n: ++saltos.current });
+      } catch (e) {
+        console.warn('[historia] no se pudo abrir la parte', e?.message || e);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [principalDe?.id, principalDe?.name]
+  );
+
   // Pedida desde afuera —la pestaña del Codex al abrir un espacio—.
   useEffect(() => {
     if (espacioPrincipal?.id) abrirPrincipal(espacioPrincipal);
@@ -2393,6 +2446,10 @@ export default function CreateSnippetSheet({
                 // La historia de un espacio se parte sola en secciones; el
                 // índice sigue al texto mientras se escribe.
                 indice={principalDe && !esHistoriaDs ? indiceHistoria : null}
+                arbol={!esHistoriaDs && arbol?.espacio?.id === principalDe?.id ? arbol : null}
+                notaActual={editandoId}
+                onIrEnHistoria={irEnHistoria}
+                salto={salto}
                 texto={cuerpo}
                 destino={
                   principalDe?.name
@@ -2939,6 +2996,11 @@ export default function CreateSnippetSheet({
  * <Text> con su color, y el resto sigue siendo texto normal — todo dentro del
  * mismo campo editable, sin capas superpuestas que se desalineen al scrollear.
  */
+const conArbol = (arbol) => {
+  const h = arbol?.historias || [];
+  return h.length > 1 || (h[0]?.secciones?.length || 0) >= 2;
+};
+
 function Nota({
   campo,
   bloques = null,
@@ -2967,6 +3029,10 @@ function Nota({
   marcador,
   destino,
   indice,
+  arbol = null,
+  notaActual = null,
+  onIrEnHistoria,
+  salto = null,
   texto,
   lugar,
   onLugar,
@@ -3005,6 +3071,56 @@ function Nota({
     },
     [texto, topInset, refBloques]
   );
+
+  /**
+   * Llegar a un lugar del árbol de la historia dentro de esta nota: una
+   * sección (por su título, ver `entradaDeSeccion`) o un párrafo (por su
+   * comienzo). Si el párrafo está en una página, primero se abre la página.
+   */
+  const saltar = useCallback(
+    (destinoArbol) => {
+      const entrada = destinoArbol?.seccion ? entradaDeSeccion(indice, destinoArbol.seccion) : null;
+      const comienzo = destinoArbol?.idea ? comienzoDe(destinoArbol.idea.texto) : '';
+      if (!comienzo) {
+        if (entrada) irA(entrada);
+        else hoja.current?.scrollTo({ y: 0, animated: true });
+        return;
+      }
+      if (refBloques?.current) {
+        if (entrada?.pagina) refBloques.current.abrirPagina(entrada.pagina);
+        // La página recién abierta se pinta en el cuadro siguiente.
+        setTimeout(() => {
+          const k = refBloques.current?.buscar(comienzo);
+          if (k) irA({ bloque: k });
+          else if (entrada) irA(entrada);
+        }, entrada?.pagina ? 120 : 0);
+        return;
+      }
+      // El campo simple: el párrafo es una posición en el texto.
+      const lineas = String(texto || '').split('\n');
+      let pos = 0;
+      for (const l of lineas) {
+        if (contiene(l, comienzo)) {
+          irA({ inicio: pos });
+          return;
+        }
+        pos += l.length + 1;
+      }
+      if (entrada) irA(entrada);
+    },
+    [indice, irA, refBloques, texto]
+  );
+
+  // Un salto pedido desde el árbol hacia esta nota, que recién se abrió: se
+  // hace cuando el índice de esta nota ya está armado.
+  const saltoHecho = useRef(null);
+  useEffect(() => {
+    if (!salto || salto.n === saltoHecho.current) return;
+    if (salto.nota !== notaActual || !indice) return;
+    saltoHecho.current = salto.n;
+    const t = setTimeout(() => saltar(salto), 250);
+    return () => clearTimeout(t);
+  }, [salto, notaActual, indice, saltar]);
 
   /**
    * Doble toque para escribir.
@@ -3100,7 +3216,17 @@ function Nota({
         {/* El índice de la historia: solo leyendo, y solo si tiene más de una
             parte. Mientras se escribe no hace falta, y ocuparía el lugar del
             texto. */}
-        {indice?.length >= 2 && !escribiendo ? (
+        {/* La historia del espacio en árbol: todos sus snippets, con sus
+            partes. Reemplaza al índice plano de esta sola nota. */}
+        {/* Con una sola historia de una sola parte no hay nada que navegar:
+            ahí no se muestra, como el índice de antes. */}
+        {conArbol(arbol) && !escribiendo ? (
+          <IndiceHistoria
+            arbol={arbol}
+            notaActual={notaActual}
+            onIr={(d) => (d.nota === notaActual ? saltar(d) : onIrEnHistoria?.(d))}
+          />
+        ) : indice?.length >= 2 && !escribiendo ? (
           <Animated.View entering={FadeIn.duration(200)} style={{ marginBottom: 20 }}>
             {indice.map((sec, i) => (
               <Pressable
