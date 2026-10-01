@@ -35,14 +35,11 @@ import {
   Search,
   Send,
   ChevronDown,
-  Camera,
   LocateFixed,
-  Mic,
   MapPin,
   Type,
   Layers,
   Check,
-  FileText,
 } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { INK, MOTION } from '../theme';
@@ -67,8 +64,7 @@ import GlassButton from '../GlassButton';
 import PanelSnippet from './PanelSnippet';
 import PromptSistema from './PromptSistema';
 import BandejaFotos from './BandejaFotos';
-import { conFormato, estiloDePieza, aplicarFormato } from './formato';
-import BarraFormato from './BarraFormato';
+import { conFormato, estiloDePieza } from './formato';
 import Adjuntas, { VisorFoto } from './Adjuntas';
 import { subirImagen, subirGrabacion, borrarMedio, firmarMedio } from '../../utils/subirMedio';
 import { Audios } from './Audios';
@@ -93,7 +89,6 @@ import { useEspacioElegidoStore } from '../../state/espacioElegidoStore';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView, KeyboardProvider } from 'react-native-keyboard-controller';
-import { useEditorBloques } from '../../utils/editorBloques';
 import useEditorDeNota from './bloques/useEditorDeNota';
 import EditorBloques from './bloques/EditorBloques';
 import AutocompletarBloques from './bloques/AutocompletarBloques';
@@ -647,8 +642,7 @@ export default function CreateSnippetSheet({
    * es la pregunta que se va a mandar, no la nota, y sigue siendo el simple.
    * La hoja sigue leyendo `cuerpo`; el editor lo mantiene al día.
    */
-  const conBloques = useEditorBloques();
-  const bloquesActivo = conBloques && !preguntando;
+  const bloquesActivo = !preguntando;
   const edicion = useEditorDeNota({
     activo: bloquesActivo,
     cuerpo,
@@ -983,25 +977,6 @@ export default function CreateSnippetSheet({
       }
     },
     [cuerpo, buscando, tramos, mencionParaDecidir]
-  );
-
-  /**
-   * Aplicar formato a lo seleccionado, desde la tira.
-   *
-   * Escribe por el mismo camino que el autocompletado —texto nuevo más cursor
-   * impuesto— porque es el único que deja el cursor donde corresponde después
-   * de cambiar el contenido. Sin eso, envolver una palabra en negrita mandaba
-   * el cursor al final de la nota.
-   */
-  const formatear = useCallback(
-    (accion) => {
-      const r = aplicarFormato(cuerpo, seleccion, accion);
-      setCuerpo(r.texto);
-      setSeleccionado('');
-      setSeleccion({ start: r.cursor, end: r.cursor });
-      setCursorImpuesto({ start: r.cursor, end: r.cursor });
-    },
-    [cuerpo, seleccion]
   );
 
   const escribir = useCallback((t) => {
@@ -2437,7 +2412,7 @@ export default function CreateSnippetSheet({
                  * es el piso: sin eso, la estampa del mapa quedaba justo debajo
                  * y se veía a medias por detrás de los glifos.
                  */
-                reservaPie={72 + (mostrandoFotos ? 104 : grabando ? 96 : insertando ? 250 : formateando ? (bloquesActivo ? 196 : 56) : 0)}
+                reservaPie={72 + (mostrandoFotos ? 104 : grabando ? 96 : insertando ? 250 : formateando ? 196 : 0)}
                 // `false` explícito viene del `onBlur` del campo; sin argumento
                 // es el doble toque pidiendo entrar.
                 onEscribir={(v) => setEscribiendo(v !== false)}
@@ -2591,19 +2566,15 @@ export default function CreateSnippetSheet({
             </Animated.View>
           ) : null}
 
-          {pagina === NOTA && formateando && (escribiendo || bloquesActivo) ? (
+          {pagina === NOTA && bloquesActivo && formateando ? (
             <Animated.View
               pointerEvents="box-none"
               style={[
-                { position: 'absolute', left: 0, right: 0, bottom: bottomInset + (bloquesActivo ? 16 : 108) },
+                { position: 'absolute', left: 0, right: 0, bottom: bottomInset + 16 },
                 sobreTeclado,
               ]}
             >
-              {bloquesActivo ? (
-                <PanelFormato editor={edicion.editor} onCerrar={() => setFormateando(false)} />
-              ) : (
-                <BarraFormato onAccion={formatear} onCerrar={() => setFormateando(false)} />
-              )}
+              <PanelFormato editor={edicion.editor} onCerrar={() => setFormateando(false)} />
             </Animated.View>
           ) : null}
 
@@ -2611,7 +2582,7 @@ export default function CreateSnippetSheet({
           {pagina === NOTA && bloquesActivo && insertando ? (
             <Animated.View
               pointerEvents="box-none"
-              style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomInset + (bloquesActivo ? 16 : 108) }, sobreTeclado]}
+              style={[{ position: 'absolute', left: 0, right: 0, bottom: bottomInset + 16 }, sobreTeclado]}
             >
               <PanelInsertar
                 editor={edicion.editor}
@@ -2700,40 +2671,7 @@ export default function CreateSnippetSheet({
               ]}
             >
               <Capsula atenuada={mostrandoFotos || formateando || grabando || insertando}>
-          {/* Fotos. Solo mientras se escribe una nota: en modo chat no va,
-              porque lo que se le manda a Vizta es texto — adjuntar una foto
-              ahí prometería que la va a mirar, y no la mira. */}
-          {enNotas && pagina === NOTA && !preguntando && !bloquesActivo ? (
-            <Glifo
-              Icono={Camera}
-              activo={mostrandoFotos}
-              onPress={() => {
-                setMostrandoFotos((m) => !m);
-                // La bandeja, el autocompletado y la tira de formato ocupan el
-                // mismo lugar sobre el teclado; no pueden estar los tres.
-                setBuscando(false);
-                setFormateando(false);
-                setInsertando(false);
-              }}
-            />
-          ) : null}
-
-          {/* Un documento: PDF, Word o texto. En una historia el servidor lo
-              lee y entra a su memoria; en una nota normal queda de apoyo. */}
-          {enNotas && pagina === NOTA && !preguntando && !bloquesActivo ? (
-            <Glifo
-              Icono={FileText}
-              activo={false}
-              onPress={() => {
-                Keyboard.dismiss();
-                setMostrandoFotos(false);
-                setGrabando(false);
-                agregarDocumento();
-              }}
-            />
-          ) : null}
-
-          {/* Cómo se ve lo que se escribe.
+                              {/* Cómo se ve lo que se escribe.
 
               Solo mientras se escribe, y por eso cuelga de `escribiendo` y no
               de la página: leyendo una nota no hay nada que formatear, y un
@@ -2833,29 +2771,7 @@ export default function CreateSnippetSheet({
             />
           ) : null}
 
-          {/* Grabar una nota de voz.
-          
-              Micrófono propio y no un casillero dentro de la bandeja de
-              fotos: grabar no es elegir un archivo, y meterlo ahí lo dejaba
-              pareciendo un tipo más de imagen. */}
-          {enNotas && pagina === NOTA && !preguntando && !bloquesActivo ? (
-            <Glifo
-              Icono={Mic}
-              activo={grabando}
-              onPress={() => {
-                setGrabando((g) => !g);
-                // La grabadora, la bandeja y la tira de formato ocupan el
-                // mismo lugar sobre el teclado; no pueden estar las tres.
-                setMostrandoFotos(false);
-                setFormateando(false);
-                setInsertando(false);
-                setBuscando(false);
-                Keyboard.dismiss();
-              }}
-            />
-          ) : null}
-
-              </Capsula>
+                        </Capsula>
             </Animated.View>
           ) : null}
 

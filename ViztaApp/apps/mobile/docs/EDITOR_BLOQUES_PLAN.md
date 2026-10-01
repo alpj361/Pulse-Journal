@@ -334,8 +334,22 @@ Hecho (2026-09-29), detrás de `editor_bloques`:
   la rearma; la app lo pide 3 s después del último cambio al dataset o al
   modo, porque el trigger de la nota solo mira `description`.
 
-### F6 · Cierre — STA-202
+### F6 · Cierre — STA-202 (hecho)
 Quitar el editor viejo y el interruptor. Documentar `vizta.doc/1` para ThePulse.
+
+**Hecho (2026-10-01):**
+- Sin interruptor: `bloquesActivo = !preguntando`. El editor de bloques es el
+  de todas las notas. Se borraron `utils/editorBloques.js` y la lectura de
+  `editor_bloques` (los overrides en `profile_limits` quedan sin efecto).
+- El campo único sigue **solo para el modo Vizta** (la pregunta), que no es una
+  nota. Se borraron la tira vieja (`BarraFormato.jsx`), `aplicarFormato` y el
+  camino de formato con marcadores, y los glifos de cámara, documento y
+  micrófono de la cápsula (viven en `+`).
+- Formato documentado en `docs/VIZTA_DOC_1.md`.
+- Verificado antes de quitarlo: una nota creada con bloques tiene
+  `details.documento` válido en la base, y `nota_guardar_bloques` guarda
+  (probado como el usuario dentro de una transacción deshecha). **Falta ver en
+  el teléfono** el guardado automático al editar una nota que ya existe.
 
 ## Archivos de hoy que importan
 
