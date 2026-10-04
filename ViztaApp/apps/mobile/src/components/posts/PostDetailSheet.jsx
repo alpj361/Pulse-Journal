@@ -33,7 +33,7 @@ import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './ca
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, TiposPost, partirHechos } from './SeccionesAnalisis';
+import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, partirHechos } from './SeccionesAnalisis';
 import { supabase } from '../../utils/supabase';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
@@ -469,9 +469,6 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
             ) : null}
           </View>
 
-          {/* De qué tipo es, con su número. Se sabe desde que el post llega. */}
-          <TiposPost clasificacion={d.clasificacion} />
-
           {/* Quién está a cámara, cuando la cuenta es de un grupo. Debajo del
               autor porque es la misma clase de dato: quién publicó y quién
               habla. Solo se dibuja con el flag del reconocimiento prendido. */}
@@ -651,7 +648,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
 
                   {[['hechos', comprobables], ['afirmaciones', afirmaciones]].map(([titulo, lista]) =>
                     lista.length ? (
-                      <Bloque key={titulo} titulo={titulo}>
+                      <Bloque key={titulo} titulo={titulo} icono={titulo}>
                         {lista.map((h, i) => (
                           <FilaHecho
                             key={`${i}-${h.texto}`}
@@ -666,7 +663,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                   )}
 
                   {relaciones.length ? (
-                    <Bloque titulo="relaciones">
+                    <Bloque titulo="relaciones" icono="relaciones">
                       {relaciones.map((r, i) => (
                         <FilaRelacion
                           key={`${i}-${claveRelacion(r)}`}
@@ -680,7 +677,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                   ) : null}
 
                   {temas.length ? (
-                    <Bloque titulo="temas">
+                    <Bloque titulo="temas" icono="temas">
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                         {temas.map((t) => (
                           <View

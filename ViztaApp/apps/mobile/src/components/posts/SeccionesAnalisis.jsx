@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
+import { ChefHat, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, Waypoints } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
@@ -7,8 +8,7 @@ import { MATERIAL } from '../codex/materiales';
 import { roce } from '../../utils/haptics';
 
 /**
- * Las secciones del análisis de un post que no son menciones: de qué tipo es,
- * qué se ve, las cifras, lo que enseña, las listas y las recetas.
+ * Las secciones del análisis de un post que no son menciones: qué se ve, las cifras, lo que enseña, las listas y las recetas.
  *
  * Cada una se dibuja solo si el post la trae. Un reel a cámara sin números no
  * muestra «cifras» vacía: no la muestra. Así la ficha de un baile y la de una
@@ -18,67 +18,43 @@ import { roce } from '../../utils/haptics';
 const TENUE = 'rgba(28,43,34,0.35)';
 const RAYA = 'rgba(28,43,34,0.07)';
 
-export function Bloque({ titulo, children }) {
-  return (
-    <View style={{ marginTop: 28 }}>
-      <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)', marginBottom: 10 }}>
-        {titulo}
-      </Text>
-      {children}
-    </View>
-  );
-}
-
-const TIPO = {
-  opinion: 'opinión',
-  informacion: 'información',
-  aprendizaje: 'enseña',
-  hechos: 'hechos',
-  comedia: 'comedia',
-  narrativa: 'historia',
-  baile_tendencia: 'tendencia',
-  lista: 'lista',
+// Un ícono por sección: es lo que deja reconocerla de un vistazo al bajar por
+// la ficha, antes de leer el título.
+const ICONO = {
+  vista: ScanEye,
+  cifras: Hash,
+  aprender: GraduationCap,
+  lista: ListOrdered,
+  receta: ChefHat,
+  hechos: CircleCheck,
+  afirmaciones: MessageSquareQuote,
+  relaciones: Waypoints,
+  temas: Tag,
 };
 
-// Por debajo de esto el tipo no se nombra: un 0,12 de «comedia» no dice nada.
-const PISO_TIPO = 0.3;
-
-/**
- * Cuánto tiene el post de cada tipo, en una línea.
- *
- * Está desde que el post llega, antes de tocar el ojo: es lo primero que se
- * sabe de él. El número es de 0 a 100 y un post puede tener varios altos.
- */
-export function TiposPost({ clasificacion }) {
-  const p = clasificacion?.probabilidades;
-  if (!p) return null;
-  const tipos = Object.entries(p)
-    .filter(([k, v]) => TIPO[k] && v >= PISO_TIPO)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4);
-  if (!tipos.length) return null;
+export function Bloque({ titulo, icono, children }) {
+  const Icono = icono ? ICONO[icono] : null;
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, marginTop: 10 }}>
-      {tipos.map(([k, v]) => (
-        <View key={k} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-          <Text style={{ fontFamily: MONO, fontSize: 12, color: v >= 0.6 ? INK.title : INK.meta }}>{TIPO[k]}</Text>
-          <Text style={{ fontFamily: MONO, fontSize: 10.5, color: TENUE }}>{Math.round(v * 100)}</Text>
-        </View>
-      ))}
+    <View style={{ marginTop: 28 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        {Icono ? <Icono size={13} color="rgba(28,43,34,0.42)" strokeWidth={1.8} /> : null}
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)' }}>{titulo}</Text>
+      </View>
+      {children}
     </View>
   );
 }
 
 const RELACION = { escena: 'es una escena', audio: 'suena de fondo' };
 
-/** Lo que salió de mirar: qué se ve, qué dice la pantalla y la obra, si es una. */
+/** La transcripción visual: qué se ve, qué dice la pantalla y la obra, si es una. */
 export function LoQueSeVe({ vistazo }) {
   if (!vistazo) return null;
   const obra = vistazo.obra_identificada;
   const enPantalla = typeof vistazo.texto_en_pantalla === 'string' ? vistazo.texto_en_pantalla.trim() : '';
   if (!vistazo.que_se_ve && !obra && !enPantalla) return null;
   return (
-    <Bloque titulo="lo que se ve">
+    <Bloque titulo="transcripción visual" icono="vista">
       {vistazo.que_se_ve ? (
         <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{vistazo.que_se_ve}</Text>
       ) : null}
@@ -115,33 +91,67 @@ export function LoQueSeVe({ vistazo }) {
   );
 }
 
-/** Las cifras: el número grande y, al lado, qué mide. */
+const COLOR_CIFRA = '#0F766E';
+
+/**
+ * Las cifras, como relaciones: **cifra · variable → hacia**.
+ *
+ * «240 millones · quetzales → ruta de Villa Canales». La cifra es el número
+ * (con su % si lo es), la variable es lo que se cuenta, y «hacia» es a qué o a
+ * quién corresponde. Va en piezas y no en una frase porque así se puede
+ * comparar una cifra con otra — y, más adelante, graficarlas.
+ *
+ * Un análisis anterior trae la cifra con una frase (`que_representa`): se
+ * muestra igual, con la frase en el lugar de la variable.
+ */
 export function Cifras({ cantidades }) {
   if (!cantidades?.length) return null;
   return (
-    <Bloque titulo="cifras">
-      {cantidades.map((c, i) => (
-        <View
-          key={`${i}-${c.valor}`}
-          style={{
-            flexDirection: 'row',
-            gap: 14,
-            paddingVertical: 11,
-            borderBottomWidth: i === cantidades.length - 1 ? 0 : 1,
-            borderBottomColor: RAYA,
-          }}
-        >
-          <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, width: '36%', lineHeight: 20 }}>{c.valor}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 19 }}>{c.que_representa}</Text>
-            {c.de || c.periodo ? (
-              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 3 }}>
-                {[c.de, c.periodo].filter(Boolean).join(' · ')}
+    <Bloque titulo="cifras" icono="cifras">
+      {cantidades.map((c, i) => {
+        const variable = c.variable || c.que_representa || '';
+        const hacia = c.hacia || (c.variable ? null : c.de) || null;
+        return (
+          <View
+            key={`${i}-${c.valor}`}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: 12,
+              paddingVertical: 10,
+              borderBottomWidth: i === cantidades.length - 1 ? 0 : 1,
+              borderBottomColor: RAYA,
+            }}
+          >
+            <View
+              style={{
+                minWidth: 74,
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderRadius: RADIUS.sm,
+                backgroundColor: 'rgba(15,118,110,0.09)',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontFamily: MONO, fontSize: 14, fontWeight: '700', color: COLOR_CIFRA }}>{c.valor}</Text>
+            </View>
+            <View style={{ flex: 1, paddingTop: 4 }}>
+              <Text style={{ fontFamily: MONO, fontSize: 13, lineHeight: 20 }}>
+                <Text style={{ color: INK.title }}>{variable}</Text>
+                {hacia ? (
+                  <>
+                    <Text style={{ color: TENUE }}>{' → '}</Text>
+                    <Text style={{ color: COLOR_CIFRA }}>{hacia}</Text>
+                  </>
+                ) : null}
               </Text>
-            ) : null}
+              {c.periodo ? (
+                <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 2 }}>{c.periodo}</Text>
+              ) : null}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </Bloque>
   );
 }
@@ -158,7 +168,7 @@ export function Aprender({ aprender }) {
   const conceptos = aprender.conceptos || [];
   const pasos = aprender.pasos || [];
   return (
-    <Bloque titulo="para entender más">
+    <Bloque titulo="para entender más" icono="aprender">
       {aprender.idea ? (
         <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{aprender.idea}</Text>
       ) : null}
@@ -226,7 +236,7 @@ export function Listas({ listas, menciones = [], colorDe, onElegir }) {
   return (
     <>
       {listas.map((l, n) => (
-        <Bloque key={`${n}-${l.titulo}`} titulo={l.titulo ? l.titulo.toLowerCase() : 'lista'}>
+        <Bloque key={`${n}-${l.titulo}`} titulo={l.titulo ? l.titulo.toLowerCase() : 'lista'} icono="lista">
           {l.items.map((it, i) => {
             const m = it.mencion ? menciones.find((x) => x.texto === it.mencion) : null;
             return (
@@ -272,7 +282,7 @@ export function Recetas({ recetas }) {
   return (
     <>
       {recetas.map((r) => (
-        <Bloque key={r.titulo} titulo="receta">
+        <Bloque key={r.titulo} titulo="receta" icono="receta">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 }}>
             <IconoMaterial material="food" size={13} />
             <Text style={{ fontFamily: MONO, fontSize: 14, color: MATERIAL.food.color }}>{r.titulo}</Text>

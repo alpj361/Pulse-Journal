@@ -5,7 +5,7 @@
  * en cada clase de post sin traer ni analizar nada: no salen del teléfono y no
  * cuestan. Cada uno tiene dos momentos, igual que un post de verdad:
  *
- *  · **traído**: lo que hay apenas llega (texto, transcripción y tipos).
+ *  · **traído**: lo que hay apenas llega (texto y transcripción).
  *  · **visto**: lo que se suma al tocar el ojo (`_muestra.alVer`).
  *
  * La forma es la misma que escribe el servidor en `details` (`analysis`,
@@ -26,7 +26,7 @@ const ref = (texto, material, pista = null, identidad = null) => m(texto, 'Ref',
 const h = (texto, verificable, cita = null, menciones = []) => ({
   texto, cita, cita_en_texto: !!cita, cifra: null, menciones, verificable,
 });
-const q = (valor, que_representa, de = null, periodo = null) => ({ valor, que_representa, de, periodo, cita: null, cita_en_texto: false });
+const q = (valor, variable, hacia = null, periodo = null) => ({ valor, variable, hacia, periodo, cita: null, cita_en_texto: false });
 const item = (texto, detalle = null, mencion = null) => ({ texto, detalle, mencion });
 
 const VACIO = {
@@ -69,9 +69,9 @@ export const CASOS = [
         h('La ruta de Villa Canales arranca obras el próximo mes.', 0.93, 'la ruta de Villa Canales arranca obras el próximo mes', ['Villa Canales']),
       ],
       cantidades: [
-        q('12 kilómetros', 'tramo ya terminado de la ruta norte', 'ruta norte'),
-        q('60 por ciento', 'avance de la obra', 'ruta sur'),
-        q('240 millones de quetzales', 'inversión en la obra', 'ruta de Villa Canales'),
+        q('12', 'kilómetros terminados', 'ruta norte'),
+        q('60%', 'avance de obra', 'ruta sur'),
+        q('240 millones', 'quetzales de inversión', 'ruta de Villa Canales'),
       ],
       listas: [{ titulo: 'Rutas nuevas', items: [item('Ruta norte', 'opera desde marzo'), item('Ruta sur', 'va al 60 por ciento'), item('Ruta de Villa Canales', 'arranca obras el próximo mes', 'Villa Canales')] }],
       temas: ['transporte público', 'obra pública'],
@@ -105,7 +105,7 @@ export const CASOS = [
       narrativa: 'Reclamo por el alza de los alquileres en Berlín: responsabiliza al gobierno de la ciudad por no cumplir el tope prometido.',
       menciones: [m('Berlin', 'Territorio'), m('Senat', 'Entidad', { pista: 'gobierno de la ciudad de Berlín' }), m('Alemania', 'Territorio', { en_texto: false, pista: 'país donde ocurre' })],
       hechos: [h('Los alquileres en Berlín subieron 40 por ciento en cinco años.', 0.96, 'Die Mieten in Berlin sind in fünf Jahren um 40 Prozent gestiegen', ['Berlin'])],
-      cantidades: [q('40 Prozent', 'aumento de los alquileres', 'Berlín', 'en cinco años')],
+      cantidades: [q('40%', 'aumento de alquileres', 'Berlín', 'en cinco años')],
       temas: ['vivienda', 'alquileres'],
     },
     vistazo: { que_se_ve: 'Una mujer habla a cámara en un apartamento.', personas: 1 },
@@ -120,7 +120,7 @@ export const CASOS = [
       narrativa: 'Conversación explicativa: la invitada dimensiona el peso de las remesas y advierte sobre la dependencia que generan.',
       menciones: [m('Carla Ruiz', 'Actor', { pista: 'economista, invitada' }), ref('La economía que se fue', 'book', 'libro de Carla Ruiz')],
       hechos: [h('Las remesas equivalen a casi el 20 por ciento del PIB.', 0.95, 'las remesas ya son casi el 20 por ciento del PIB', ['Carla Ruiz'])],
-      cantidades: [q('casi el 20 por ciento', 'peso de las remesas en la economía', 'PIB')],
+      cantidades: [q('20%', 'remesas', 'PIB')],
       aprender: {
         idea: 'Por qué las remesas sostienen la economía y a la vez la vuelven dependiente.',
         conceptos: [
@@ -146,7 +146,7 @@ export const CASOS = [
         h('Un deslizamiento afectó la aldea El Carmen tras las lluvias.', 0.95, 'Las lluvias de anoche provocaron un deslizamiento en la aldea El Carmen', ['El Carmen']),
         h('Conred reporta 40 familias evacuadas y tres viviendas destruidas.', 0.97, 'Conred reporta 40 familias evacuadas y tres viviendas destruidas', ['Conred']),
       ],
-      cantidades: [q('40 familias', 'familias evacuadas', 'aldea El Carmen'), q('tres viviendas', 'viviendas destruidas', 'aldea El Carmen')],
+      cantidades: [q('40', 'familias evacuadas', 'aldea El Carmen'), q('3', 'viviendas destruidas', 'aldea El Carmen')],
       temas: ['emergencia', 'lluvias'],
     },
     vistazo: { que_se_ve: 'Tomas aéreas de una ladera con casas cubiertas de lodo y brigadas trabajando.', personas: 6, texto_en_pantalla: 'ÚLTIMA HORA · El Carmen, San Marcos' },
@@ -162,9 +162,9 @@ export const CASOS = [
       menciones: [m('INE', 'Source', { pista: 'Instituto Nacional de Estadística', rol: 'de_paso' })],
       hechos: [h('La canasta básica costó 3,850 quetzales en septiembre, según el INE.', 0.98, 'la canasta básica costó 3,850 quetzales en septiembre', ['INE'])],
       cantidades: [
-        q('3,850 quetzales', 'costo de la canasta básica', null, 'septiembre'),
-        q('210 quetzales', 'aumento de la canasta básica', null, 'en un año'),
-        q('3,400 quetzales', 'salario mínimo mensual'),
+        q('3,850', 'quetzales', 'canasta básica', 'septiembre'),
+        q('210', 'quetzales de aumento', 'canasta básica', 'en un año'),
+        q('3,400', 'quetzales', 'salario mínimo', 'al mes'),
       ],
       temas: ['costo de vida'],
     },
@@ -253,7 +253,7 @@ export const CASOS = [
         ref('tonkotsu', 'food', 'ramen de caldo de cerdo'),
         ref('gyozas', 'food'),
       ],
-      cantidades: [q('85 quetzales', 'precio del plato', 'tonkotsu en Kodama')],
+      cantidades: [q('85', 'quetzales', 'tonkotsu en Kodama')],
       temas: ['comida', 'restaurantes'],
     },
     vistazo: { que_se_ve: 'Un tazón de ramen humeante y después la fachada del local.', personas: 1, texto_en_pantalla: 'KODAMA · 4 Grados Norte' },
@@ -387,7 +387,7 @@ export const CASOS = [
       narrativa: 'Explicación en láminas del proceso de elección de magistrados, con una crítica al final.',
       menciones: [m('Congreso', 'Entidad', { en_texto: false }), m('comisiones de postulación', 'Historia', { en_texto: false })],
       hechos: [h('El Congreso elige a los magistrados cada cinco años.', 0.96), h('Las comisiones de postulación arman la lista de candidatos.', 0.9)],
-      cantidades: [q('cada 5 años', 'cada cuánto se renuevan las cortes'), q('13 magistrados', 'integrantes de la Corte Suprema')],
+      cantidades: [q('5', 'años', 'renovación de las cortes'), q('13', 'magistrados', 'Corte Suprema')],
       aprender: {
         idea: 'Quién elige a los magistrados y en qué pasos.',
         conceptos: [{ termino: 'comisión de postulación', explicacion: 'Un grupo de decanos, abogados y jueces que revisa a los aspirantes y le manda una lista al Congreso.' }],
@@ -440,11 +440,11 @@ export const CASOS = [
       menciones: [m('impuesto sobre la renta', 'Historia', { rol: 'de_paso' })],
       hechos: [h('Los inmuebles de menos de 70 mil quetzales no pagan el impuesto.', 0.95, 'Los inmuebles de menos de 70 mil quetzales no pagan')],
       cantidades: [
-        q('9 por millar', 'tasa del impuesto', 'inmuebles de más de 70 mil quetzales', 'al año'),
-        q('4,500 quetzales', 'lo que paga al año una casa de 500 mil quetzales', 'ejemplo'),
-        q('70 mil quetzales', 'valor por debajo del cual no se paga', 'inmuebles'),
-        q('200 mil quetzales', 'ganancia al vender en 700 mil una casa de 500 mil', 'ejemplo'),
-        q('10 por ciento', 'impuesto sobre esa ganancia', 'impuesto sobre la renta'),
+        q('9‰', 'tasa del impuesto', 'inmuebles de más de 70 mil quetzales', 'al año'),
+        q('4,500', 'quetzales de impuesto', 'casa de 500 mil quetzales', 'al año'),
+        q('70 mil', 'quetzales', 'valor desde el que se paga'),
+        q('200 mil', 'quetzales de ganancia', 'venta de una casa'),
+        q('10%', 'impuesto', 'ganancia de la venta'),
       ],
       aprender: {
         idea: 'Cómo se calcula el impuesto de una casa y qué pasa al venderla.',
@@ -468,7 +468,7 @@ export const CASOS = [
       narrativa: 'Clase breve de historia: qué pasó, quiénes y qué dejó.',
       menciones: [m('Federico Ponce Vaides', 'Actor'), m('Revolución de 1944', 'Evento', { en_texto: false }), m('Código de Trabajo', 'Objeto')],
       hechos: [h('En octubre de 1944 fue derrocado Federico Ponce Vaides.', 0.97, 'derrocó a Federico Ponce Vaides', ['Federico Ponce Vaides'])],
-      cantidades: [q('diez años', 'duración de la primavera democrática', null, '1944 a 1954')],
+      cantidades: [q('10', 'años', 'primavera democrática', '1944 a 1954')],
       aprender: {
         idea: 'Qué fue la Revolución de 1944 y por qué se la recuerda.',
         conceptos: [
