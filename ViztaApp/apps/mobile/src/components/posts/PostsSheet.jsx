@@ -35,12 +35,14 @@ import {
   Search,
   Trash2,
   X,
+  FlaskConical,
 } from 'lucide-react-native';
 import { INK, MOTION, RADIUS } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
 import { Nombrador, Opcion, TENUE, etiquetaConteo } from '../codex/piezasCarpeta';
 import PostDetailSheet from './PostDetailSheet';
+import CasosDeMuestra from './CasosDeMuestra';
 import agregarPost, { enlaceDePost } from './agregarPost';
 import usePostsEnCurso from './usePostsEnCurso';
 import AnalizandoImagen, { TextoAnalizando } from './AnalizandoImagen';
@@ -105,6 +107,7 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const activos = Object.values(seleccion).filter(Boolean).length;
   const [abierta, setAbierta] = useState(null); // carpeta abierta
   const [abierto, setAbierto] = useState(null); // post abierto
+  const [muestras, setMuestras] = useState(false); // galería de casos (solo en desarrollo)
 
   const [agregando, setAgregando] = useState(false); // caja de enlace abierta
   const [enlace, setEnlace] = useState('');
@@ -471,6 +474,19 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             <Search size={18} color={buscando ? INK.title : INK.faint} />
           </Pressable>
 
+          {/* Casos de muestra del análisis: solo en desarrollo. */}
+          {__DEV__ ? (
+            <Pressable
+              onPress={() => setMuestras(true)}
+              hitSlop={12}
+              style={{ padding: 6, marginRight: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel="Casos de muestra"
+            >
+              <FlaskConical size={17} color={INK.faint} />
+            </Pressable>
+          ) : null}
+
           <Pressable
             onPress={abrirAlta}
             hitSlop={12}
@@ -785,6 +801,10 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           />
         ) : null}
       </View>
+
+      {muestras ? (
+        <CasosDeMuestra onClose={() => setMuestras(false)} topInset={topInset} bottomInset={bottomInset} />
+      ) : null}
 
       {abierto ? (
         <PostDetailSheet

@@ -17,7 +17,10 @@ import { EXTRACTORW_URL } from '../../utils/servicios';
  */
 export default async function pedirAnalisis(post) {
   const texto = post?.details?.transcription || post?.description || post?.name || '';
-  if (texto.trim().length < 10) throw new Error('Este post no tiene texto para analizar.');
+  // Un carrusel sin texto igual se puede mirar: lo que dice está en las fotos.
+  if (texto.trim().length < 10 && !post?.details?.cuadros?.length) {
+    throw new Error('Este post no tiene texto para analizar.');
+  }
 
   const { data: sesion } = await supabase.auth.getSession();
   const token = sesion?.session?.access_token;
