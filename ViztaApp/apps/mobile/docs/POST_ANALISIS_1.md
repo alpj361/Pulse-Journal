@@ -46,6 +46,8 @@ contenido y transmite un discurso.
 | `fuentes` | `[{ nombre, tipo, cita }]`: lo que el post cita. Pesa en la confianza; no citar también dice algo. |
 | `hablantes` | `[{ id, autor_id, es_autor, rol }]`, rol: anfitrión, invitado, narrador, voz en off. Lo que dice un invitado no suma a la huella del anfitrión; entrevistarlo sí. |
 | `linea_tiempo` | `[{ desde, hasta, tipo, hablante, texto }]`, tipo: escena, habla, texto en pantalla. |
+| `cantidades` | `[{ valor, que_representa, de, periodo, cita, cita_en_texto }]`: las cifras que da el post y qué mide cada una. Sin años sueltos ni medidas de recetas. |
+| `aprender` | `{ idea, conceptos: [{ termino, explicacion, en_texto }], pasos }` si el post enseña algo; si no, `null` y la sección no aparece. Lo decide Jev (0,25 o más de «aprendizaje»). |
 | `modelo`, `costo_microusd` | Con qué se hizo y cuánto costó. |
 
 ### `post_afirmaciones` — muchas por post
@@ -53,17 +55,37 @@ Lo verificable: `texto` (redactado), `cita` (literal) y `cita_en_texto`,
 `cifra`, `momento_seg`, `hablante` (quien lo dice no siempre es el autor),
 `sobre_codex_ids` (de quién o qué habla) y `fuente`.
 
-### `post_guardables`
-Lo que la gente guarda de un reel: `tipo` (lugar, lista, pelicula, serie,
-libro, producto, receta, musica, otro), `titulo`, `datos` (dirección, ítems de
-la lista, año…), `codex_item_id` y `guardado`.
+### `post_guardables` — la lista de lo mencionado
+Todo lo que el post nombra y vale la pena guardar. Se rehace en cada análisis;
+lo que la persona ya guardó (`guardado = true`) no se toca ni se repite.
+
+| `tipo` | De dónde sale | Se confirma contra |
+|---|---|---|
+| `pelicula`, `serie` | Mención con material, o la obra que identificó el vistazo | TMDB |
+| `libro` | Mención con material | Open Library |
+| `musica` | Mención con material | MusicBrainz |
+| `lugar` | Mención con material | Apple Maps |
+| `videojuego`, `podcast`, `sitio`, `herramienta`, `producto`, `comida` | Mención con material | nada todavía |
+| `lista` | Lo que el post enumera | — |
+| `receta` | Cómo preparar algo | — |
+
+`datos` siempre trae `origen` (`analisis` o `vistazo`). Según el tipo:
+
+- De una mención: `confirmado` (si una base de afuera la encontró), `identidad`
+  (año, imagen, url…), `como_aparece`, `pista`, `rol`, `en_texto`.
+- De una obra vista: `relacion` (`escena` o `audio`), `anio`, `url`, `imagen`.
+- `lista`: `items: [{ texto, detalle, mencion }]`; `mencion` ata el ítem a la
+  mención que trae la identidad.
+- `receta`: `ingredientes` y `pasos`.
+
+Los **hechos** no van acá: son `post_afirmaciones`.
 
 ## Lo que todavía no está
 
 - La **huella** (`autor_huellas`) y los **pulgares** con comentario son de la
   2.5: se diseñan aparte, con las decisiones de PJ en STA-207.
-- `tipos`, `ejes`, `fuentes`, `hablantes`, `linea_tiempo` y `guardables`
-  existen en la tabla pero se llenan desde la 2.2 a la 2.4.
+- `ejes`, `fuentes`, `hablantes` y `linea_tiempo` existen en la tabla pero
+  todavía no se llenan (2.3 y 2.4). `tipos` y `guardables` ya se llenan.
 - El set de prueba etiquetado a mano (los 93 posts).
 
 ## Estado al crearlas (2026-10-03)
