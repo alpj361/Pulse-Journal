@@ -39,31 +39,57 @@ contenido y transmite un discurso.
 | `contenido_clave` | `plataforma:clave` (`instagram:Dd90cFJFNxF`). El servidor puede reutilizar el análisis de un reel que otra persona ya pagó. |
 | `nivel` | `basico` (solo texto y transcripción) o `avanzado` (la escalera de ver y oír, 2.2 y 2.3). |
 | `publicado_en` | Fecha del post: **el tiempo cuenta** para la huella. Hoy no se captura; hay que traerla al cargar el post. |
-| `tipos` | `[{ tipo, confianza }]`: opinion, informacion, aprendizaje, hechos, comedia, narrativa, baile_tendencia, lista. Puede haber varios. |
+| `tipos` | `[{ tipo, confianza, cuenta }]`: **los ocho tipos**, cada uno con su número de 0 a 1 (cuánto tiene el post de cada uno), de mayor a menor. `cuenta` dice si pasa 0,6. Tipos: opinion, informacion, aprendizaje, hechos, comedia, narrativa, baile_tendencia, lista. Los da Jev. |
 | `narrativa` | `{ resumen, discurso, ejes: [{ eje, postura, confianza }] }`. Ejes: político, económico, social, cultural o específicos; uno, varios o ninguno. |
 | `paises` | `[{ nombre, boundary_id, rol, veces }]`, con la red sin IA del catálogo (STA-217). |
 | `temas`, `menciones`, `relaciones` | Como el análisis v2 (las menciones con su vínculo al Codex). |
 | `fuentes` | `[{ nombre, tipo, cita }]`: lo que el post cita. Pesa en la confianza; no citar también dice algo. |
 | `hablantes` | `[{ id, autor_id, es_autor, rol }]`, rol: anfitrión, invitado, narrador, voz en off. Lo que dice un invitado no suma a la huella del anfitrión; entrevistarlo sí. |
 | `linea_tiempo` | `[{ desde, hasta, tipo, hablante, texto }]`, tipo: escena, habla, texto en pantalla. |
+| `cantidades` | `[{ valor, que_representa, de, periodo, cita, cita_en_texto }]`: las cifras que da el post y qué mide cada una. Sin años sueltos ni medidas de recetas. |
+| `aprender` | `{ idea, conceptos: [{ termino, explicacion, en_texto }], pasos }` si el post enseña algo; si no, `null` y la sección no aparece. Lo decide Jev (0,25 o más de «aprendizaje»). |
+| `calidad` | `{ reintentos, avisos, hechos, hechos_con_cita, hechos_descartados, contiene: { cifras, receta, guardables } }`. `contiene` es lo que Jev dice que el post trae (0 a 1). Si esperaba cifras o una lista (0,6 o más) y el análisis no las trajo, se vuelven a pedir una vez (`reintentos`); lo que sigue faltando queda en `avisos`: `sin_cifras`, `sin_lista`, `sin_receta`, `sin_guardables`, `citas_no_literales`. |
 | `modelo`, `costo_microusd` | Con qué se hizo y cuánto costó. |
 
 ### `post_afirmaciones` — muchas por post
+`verificable` es un número de 0 a 1 que pone Jev a cada una: desde 0,6 es un
+hecho, entre 0,3 y 0,6 una afirmación, y por debajo de 0,3 no se guarda.
+
 Lo verificable: `texto` (redactado), `cita` (literal) y `cita_en_texto`,
 `cifra`, `momento_seg`, `hablante` (quien lo dice no siempre es el autor),
 `sobre_codex_ids` (de quién o qué habla) y `fuente`.
 
-### `post_guardables`
-Lo que la gente guarda de un reel: `tipo` (lugar, lista, pelicula, serie,
-libro, producto, receta, musica, otro), `titulo`, `datos` (dirección, ítems de
-la lista, año…), `codex_item_id` y `guardado`.
+### `post_guardables` — la lista de lo mencionado
+Todo lo que el post nombra y vale la pena guardar. Se rehace en cada análisis;
+lo que la persona ya guardó (`guardado = true`) no se toca ni se repite.
+
+| `tipo` | De dónde sale | Se confirma contra |
+|---|---|---|
+| `pelicula`, `serie` | Mención con material, o la obra que identificó el vistazo | TMDB |
+| `libro` | Mención con material | Open Library |
+| `musica` | Mención con material | MusicBrainz |
+| `lugar` | Mención con material | Apple Maps |
+| `videojuego`, `podcast`, `sitio`, `herramienta`, `producto`, `comida` | Mención con material | nada todavía |
+| `lista` | Lo que el post enumera | — |
+| `receta` | Cómo preparar algo | — |
+
+`datos` siempre trae `origen` (`analisis` o `vistazo`). Según el tipo:
+
+- De una mención: `confirmado` (si una base de afuera la encontró), `identidad`
+  (año, imagen, url…), `como_aparece`, `pista`, `rol`, `en_texto`.
+- De una obra vista: `relacion` (`escena` o `audio`), `anio`, `url`, `imagen`.
+- `lista`: `items: [{ texto, detalle, mencion }]`; `mencion` ata el ítem a la
+  mención que trae la identidad.
+- `receta`: `ingredientes` y `pasos`.
+
+Los **hechos** no van acá: son `post_afirmaciones`.
 
 ## Lo que todavía no está
 
 - La **huella** (`autor_huellas`) y los **pulgares** con comentario son de la
   2.5: se diseñan aparte, con las decisiones de PJ en STA-207.
-- `tipos`, `ejes`, `fuentes`, `hablantes`, `linea_tiempo` y `guardables`
-  existen en la tabla pero se llenan desde la 2.2 a la 2.4.
+- `ejes`, `fuentes`, `hablantes` y `linea_tiempo` existen en la tabla pero
+  todavía no se llenan (2.3 y 2.4). `tipos` y `guardables` ya se llenan.
 - El set de prueba etiquetado a mano (los 93 posts).
 
 ## Estado al crearlas (2026-10-03)

@@ -33,6 +33,7 @@ import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './ca
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
+import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, TiposPost, partirHechos } from './SeccionesAnalisis';
 import { supabase } from '../../utils/supabase';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
@@ -100,6 +101,10 @@ const NOMBRE_FUENTE = { tmdb: 'TMDB', openlibrary: 'Open Library', musicbrainz: 
 export default function PostDetailSheet({ post, onClose, onActualizado, topInset = 0, bottomInset = 0 }) {
   const { width: W } = useWindowDimensions();
 
+  // Un caso de muestra (`casosDeMuestra`): nada sale del teléfono. El ojo
+  // devuelve lo que el caso trae guardado, sin pedir ni cobrar nada.
+  const muestra = post?._muestra || null;
+
   const [rota, setRota] = useState(false);
   /**
    * El análisis lo trae el servidor, no esta pantalla.
@@ -114,7 +119,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
     error: errorRemoto,
     hablante: hablanteRemoto,
     reconocimiento: reconocimientoRemoto,
-  } = useAnalisisPost(post?.id, post?.details);
+  } = useAnalisisPost(muestra ? null : post?.id, post?.details);
 
   /**
    * Lo que se acaba de guardar desde acá, mientras llega por la fila en vivo.
@@ -194,6 +199,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   // Un análisis viejo guarda los hechos como texto suelto: sin cita ni forma de
   // guardarlos, así que solo la forma nueva los muestra.
   const hechos = (analisis?.hechos || []).filter((h) => h && typeof h === 'object');
+  const { comprobables, afirmaciones } = useMemo(() => partirHechos(hechos), [analisis]); // eslint-disable-line react-hooks/exhaustive-deps
   const relaciones = analisis?.relaciones || [];
   const temas = (analisis?.temas || []).filter((t) => typeof t === 'string');
   const narrativa = analisis?.narrativa || analisis?.contexto || analisis?.resumen || '';
@@ -209,6 +215,15 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
     }
     setPidiendo(true);
     setError(null);
+    if (muestra) {
+      setTimeout(() => {
+        toque();
+        setParche({ ...d, ...muestra.alVer });
+        setVista('organizado');
+        setPidiendo(false);
+      }, 900);
+      return;
+    }
     try {
       await pedirAnalisis(post);
       toque();
@@ -227,7 +242,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   // El análisis que llegó solo se avisa hacia arriba, para que la lista lo
   // tenga sin volver a consultarlo.
   useEffect(() => {
-    if (analisis) onActualizado?.({ ...post, details: { ...d, analysis: analisis } });
+    if (analisis && !muestra) onActualizado?.({ ...post, details: { ...d, analysis: analisis } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analisis]);
 
@@ -273,7 +288,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
    * que no es material no hace nada todavía.
    */
   const sostener = async (m) => {
-    if (!materialDe(m)) return;
+    if (!materialDe(m) || muestra) return;
     agarre();
     setElegida(m.texto);
     const previo = detalles[m.texto];
@@ -290,7 +305,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
 
   /** Guardar un material en el Codex: como Ref, o como el tipo que se pide. */
   const guardarRef = async (mencion, comoTipo = null) => {
-    if (ocupado) return;
+    if (ocupado || muestra) return;
     setOcupado(`material:${mencion.texto}`);
     setErrorAccion(null);
     try {
@@ -306,7 +321,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   };
 
   const guardarHecho = async (hecho) => {
-    if (ocupado) return;
+    if (ocupado || muestra) return;
     if (hecho.fact_id) {
       abrirEnCodex({ id: hecho.fact_id });
       return;
@@ -326,7 +341,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   };
 
   const conectar = async (relacion) => {
-    if (ocupado || relacion.relation_id) return;
+    if (ocupado || muestra || relacion.relation_id) return;
     setOcupado(claveRelacion(relacion));
     setErrorAccion(null);
     try {
@@ -454,6 +469,9 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
             ) : null}
           </View>
 
+          {/* De qué tipo es, con su número. Se sabe desde que el post llega. */}
+          <TiposPost clasificacion={d.clasificacion} />
+
           {/* Quién está a cámara, cuando la cuenta es de un grupo. Debajo del
               autor porque es la misma clase de dato: quién publicó y quién
               habla. Solo se dibuja con el flag del reconocimiento prendido. */}
@@ -490,7 +508,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
               «anotado» la repetía entera debajo. Ahora «anotado» es el texto:
               sin análisis se ve limpio, y con análisis el mismo texto trae lo
               reconocido pintado y aparece «organizado» al lado. */}
-          {textoBase || analisis ? (
+          {textoBase || analisis || d.vistazo ? (
             <Animated.View layout={LinearTransition.springify().damping(22)} entering={FadeIn.duration(260)}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 28, marginBottom: 4 }}>
                 <Solapa activa={vistaReal === 'anotado'} onPress={() => { roce(); setVista('anotado'); }}>
@@ -577,6 +595,19 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                     </Text>
                   ) : null}
 
+                  {/* Lo propio de este post: solo las secciones que trae. El
+                      margen de arriba compensa el de la primera, que ya viene
+                      separada de la narrativa. */}
+                  {d.vistazo || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
+                    <View style={{ marginTop: narrativa ? -28 : 0, marginBottom: 22 }}>
+                      <LoQueSeVe vistazo={d.vistazo} />
+                      <Cifras cantidades={analisis?.cantidades} />
+                      <Aprender aprender={analisis?.aprender} />
+                      <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
+                      <Recetas recetas={analisis?.recetas} />
+                    </View>
+                  ) : null}
+
                   {tiposPresentes.map((t) => (
                     <View key={t} style={{ marginBottom: 20 }}>
                       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 9 }}>{PLURAL[t]}</Text>
@@ -618,19 +649,21 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                     </View>
                   ) : null}
 
-                  {hechos.length ? (
-                    <Bloque titulo="hechos">
-                      {hechos.map((h, i) => (
-                        <FilaHecho
-                          key={`${i}-${h.texto}`}
-                          hecho={h}
-                          ultima={i === hechos.length - 1}
-                          ocupado={ocupado === `hecho:${h.texto}`}
-                          onGuardar={() => guardarHecho(h)}
-                        />
-                      ))}
-                    </Bloque>
-                  ) : null}
+                  {[['hechos', comprobables], ['afirmaciones', afirmaciones]].map(([titulo, lista]) =>
+                    lista.length ? (
+                      <Bloque key={titulo} titulo={titulo}>
+                        {lista.map((h, i) => (
+                          <FilaHecho
+                            key={`${i}-${h.texto}`}
+                            hecho={h}
+                            ultima={i === lista.length - 1}
+                            ocupado={ocupado === `hecho:${h.texto}`}
+                            onGuardar={() => guardarHecho(h)}
+                          />
+                        ))}
+                      </Bloque>
+                    ) : null
+                  )}
 
                   {relaciones.length ? (
                     <Bloque titulo="relaciones">
@@ -1055,17 +1088,6 @@ function OjoBoton({ onPress, cargando, activo }) {
         )}
       </Animated.View>
     </Pressable>
-  );
-}
-
-function Bloque({ titulo, children }) {
-  return (
-    <View style={{ marginTop: 28 }}>
-      <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)', marginBottom: 10 }}>
-        {titulo}
-      </Text>
-      {children}
-    </View>
   );
 }
 
