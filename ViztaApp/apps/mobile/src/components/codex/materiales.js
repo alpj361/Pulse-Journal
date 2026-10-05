@@ -20,6 +20,8 @@ export const MATERIAL = {
   music: { etiqueta: 'música', plural: 'música', color: '#C026D3' },
   podcast: { etiqueta: 'podcast', plural: 'podcasts', color: '#65A30D' },
   website: { etiqueta: 'sitio web', plural: 'sitios web', color: '#475569' },
+  tool: { etiqueta: 'herramienta', plural: 'herramientas', color: '#0F766E' },
+  product: { etiqueta: 'producto', plural: 'productos', color: '#B45309' },
 };
 
 export const ORDEN_MATERIALES = Object.keys(MATERIAL);

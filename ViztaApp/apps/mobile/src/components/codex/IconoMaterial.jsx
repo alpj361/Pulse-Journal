@@ -1,4 +1,4 @@
-import { BookOpen, Clapperboard, Gamepad2, Globe, MapPin, Music, Podcast, Tv, UtensilsCrossed } from 'lucide-react-native';
+import { BookOpen, Clapperboard, Gamepad2, Globe, MapPin, Music, Package, Podcast, Tv, UtensilsCrossed, Wrench } from 'lucide-react-native';
 import { MATERIAL } from './materiales';
 
 const ICONO = {
@@ -11,6 +11,8 @@ const ICONO = {
   music: Music,
   podcast: Podcast,
   website: Globe,
+  tool: Wrench,
+  product: Package,
 };
 
 /**
