@@ -93,13 +93,21 @@ export function LoQueSeVe({ vistazo }) {
 
 const COLOR_CIFRA = '#0F766E';
 
+/** 0 a 1 si la cifra es un porcentaje entre 0 y 100; si no, null. */
+function fraccion(c) {
+  if (!/%/.test(c.valor || '')) return null;
+  const n = typeof c.numero === 'number' ? c.numero : parseFloat(String(c.valor).replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n / 100 : null;
+}
+
 /**
- * Las cifras, como relaciones: **cifra · variable → hacia**.
+ * Las cifras, en fichas: **cifra · variable → hacia**.
  *
- * «240 millones · quetzales → ruta de Villa Canales». La cifra es el número
- * (con su % si lo es), la variable es lo que se cuenta, y «hacia» es a qué o a
- * quién corresponde. Va en piezas y no en una frase porque así se puede
- * comparar una cifra con otra — y, más adelante, graficarlas.
+ * Cada cifra es una ficha con el número grande arriba, lo que se cuenta debajo
+ * y a qué o a quién corresponde al pie. Van de a dos por fila, como un tablero:
+ * se comparan de un vistazo, que es para lo que sirve un número. Un porcentaje
+ * lleva además su barra. La ficha que no entra en media fila —«110,000
+ * millones»— ocupa la fila entera.
  *
  * Un análisis anterior trae la cifra con una frase (`que_representa`): se
  * muestra igual, con la frase en el lugar de la variable.
@@ -108,73 +116,101 @@ export function Cifras({ cantidades }) {
   if (!cantidades?.length) return null;
   return (
     <Bloque titulo="cifras" icono="cifras">
-      {cantidades.map((c, i) => {
-        const variable = c.variable || c.que_representa || '';
-        const hacia = c.hacia || (c.variable ? null : c.de) || null;
-        return (
-          <View
-            key={`${i}-${c.valor}`}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
-              gap: 12,
-              paddingVertical: 10,
-              borderBottomWidth: i === cantidades.length - 1 ? 0 : 1,
-              borderBottomColor: RAYA,
-            }}
-          >
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {cantidades.map((c, i) => {
+          const variable = c.variable || c.que_representa || '';
+          const hacia = c.hacia || (c.variable ? null : c.de) || null;
+          const f = fraccion(c);
+          const ancha = String(c.valor).length > 7 || variable.length > 26 || (hacia || '').length > 26;
+          return (
             <View
+              key={`${i}-${c.valor}`}
               style={{
-                minWidth: 74,
-                paddingHorizontal: 9,
-                paddingVertical: 5,
-                borderRadius: RADIUS.sm,
-                backgroundColor: 'rgba(15,118,110,0.09)',
-                alignItems: 'center',
+                flexBasis: ancha ? '100%' : '47%',
+                flexGrow: 1,
+                paddingHorizontal: 14,
+                paddingTop: 12,
+                paddingBottom: 13,
+                borderRadius: RADIUS.md,
+                borderWidth: 1,
+                borderColor: 'rgba(28,43,34,0.09)',
+                backgroundColor: 'rgba(255,255,255,0.55)',
               }}
             >
-              <Text style={{ fontFamily: MONO, fontSize: 14, fontWeight: '700', color: COLOR_CIFRA }}>{c.valor}</Text>
-            </View>
-            <View style={{ flex: 1, paddingTop: 4 }}>
-              <Text style={{ fontFamily: MONO, fontSize: 13, lineHeight: 20 }}>
-                <Text style={{ color: INK.title }}>{variable}</Text>
-                {hacia ? (
-                  <>
-                    <Text style={{ color: TENUE }}>{' → '}</Text>
-                    <Text style={{ color: COLOR_CIFRA }}>{hacia}</Text>
-                  </>
-                ) : null}
-              </Text>
+              <Text style={{ fontSize: 26, fontWeight: '700', letterSpacing: -0.6, color: INK.title }}>{c.valor}</Text>
+              {f !== null ? (
+                <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(15,118,110,0.14)', marginTop: 7 }}>
+                  <View style={{ height: 3, borderRadius: 2, width: `${Math.max(2, f * 100)}%`, backgroundColor: COLOR_CIFRA }} />
+                </View>
+              ) : null}
+              <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 18, marginTop: 8 }}>{variable}</Text>
+              {hacia ? (
+                <Text style={{ fontFamily: MONO, fontSize: 12.5, color: COLOR_CIFRA, lineHeight: 18, marginTop: 2 }}>
+                  <Text style={{ color: TENUE }}>→ </Text>
+                  {hacia}
+                </Text>
+              ) : null}
               {c.periodo ? (
-                <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 2 }}>{c.periodo}</Text>
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, lineHeight: 16, marginTop: 5 }}>{c.periodo}</Text>
               ) : null}
             </View>
-          </View>
-        );
-      })}
+          );
+        })}
+      </View>
     </Bloque>
   );
 }
 
 /**
- * Para entender más: la idea, los términos y los pasos.
+ * Para entender más: una lección corta sobre lo que el post explica.
  *
- * Los conceptos van plegados: se lee el término y se toca para abrir la
- * explicación. Con seis explicaciones abiertas la sección tapaba todo lo demás.
+ * No es un glosario. Va lo que el post enseña, punto por punto; después el
+ * contexto que el post da por sabido —de dónde viene el tema, por qué importa—,
+ * marcado aparte porque eso no lo dijo el post; y al final los términos, plegados.
+ * Un análisis anterior solo trae idea y términos, y se muestra con eso.
  */
 export function Aprender({ aprender }) {
   const [abierto, setAbierto] = useState(null);
   if (!aprender) return null;
   const conceptos = aprender.conceptos || [];
   const pasos = aprender.pasos || [];
+  const puntos = aprender.puntos || [];
   return (
     <Bloque titulo="para entender más" icono="aprender">
       {aprender.idea ? (
-        <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{aprender.idea}</Text>
+        <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22 }}>{aprender.idea}</Text>
+      ) : null}
+
+      {puntos.length ? (
+        <View style={{ marginTop: 12 }}>
+          {puntos.map((t, i) => (
+            <View key={`${i}-${t}`} style={{ flexDirection: 'row', gap: 10, paddingVertical: 6 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(28,43,34,0.3)', marginTop: 8 }} />
+              <Text style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{t}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {pasos.length ? <Numerada items={pasos} arriba={12} /> : null}
+
+      {aprender.contexto ? (
+        <View
+          style={{
+            marginTop: 16,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            borderRadius: RADIUS.md,
+            backgroundColor: 'rgba(75,79,166,0.06)',
+          }}
+        >
+          <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(75,79,166,0.75)', marginBottom: 6 }}>contexto</Text>
+          <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>{aprender.contexto}</Text>
+        </View>
       ) : null}
 
       {conceptos.length ? (
-        <View style={{ marginTop: 12 }}>
+        <View style={{ marginTop: 14 }}>
           {conceptos.map((c, i) => {
             const esta = abierto === i;
             return (
@@ -207,7 +243,16 @@ export function Aprender({ aprender }) {
         </View>
       ) : null}
 
-      {pasos.length ? <Numerada items={pasos} arriba={14} /> : null}
+      {aprender.preguntas?.length ? (
+        <View style={{ marginTop: 14 }}>
+          <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginBottom: 4 }}>para seguir</Text>
+          {aprender.preguntas.map((t, i) => (
+            <Text key={`${i}-${t}`} style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20, paddingVertical: 3 }}>
+              {t}
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </Bloque>
   );
 }

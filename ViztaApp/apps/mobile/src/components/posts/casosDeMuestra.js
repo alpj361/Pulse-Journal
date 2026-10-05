@@ -123,6 +123,12 @@ export const CASOS = [
       cantidades: [q('20%', 'remesas', 'PIB')],
       aprender: {
         idea: 'Por qué las remesas sostienen la economía y a la vez la vuelven dependiente.',
+        puntos: [
+          'Las remesas ya equivalen a casi una quinta parte de todo lo que produce el país.',
+          'Entra más dinero por remesas que por todas las exportaciones juntas.',
+          'Sostienen el consumo de las familias, pero dependen de la economía de otro país.',
+        ],
+        contexto: 'La mayor parte de las remesas llega de personas que trabajan en Estados Unidos, así que una crisis o un cambio de política migratoria allá se siente de inmediato acá.',
         conceptos: [
           { termino: 'remesas', explicacion: 'El dinero que mandan a sus familias las personas que trabajan en otro país.' },
           { termino: 'PIB', explicacion: 'El valor de todo lo que un país produce en un año. Sirve para comparar el tamaño de una cosa contra el de la economía entera.' },
@@ -390,6 +396,7 @@ export const CASOS = [
       cantidades: [q('5', 'años', 'renovación de las cortes'), q('13', 'magistrados', 'Corte Suprema')],
       aprender: {
         idea: 'Quién elige a los magistrados y en qué pasos.',
+        puntos: ['A los magistrados no los elige la gente: los elige el Congreso.', 'El Congreso solo puede votar por quienes están en la lista de la comisión.', 'Todas las cortes se renuevan al mismo tiempo, cada cinco años.'],
         conceptos: [{ termino: 'comisión de postulación', explicacion: 'Un grupo de decanos, abogados y jueces que revisa a los aspirantes y le manda una lista al Congreso.' }],
         pasos: ['Se convoca a los aspirantes.', 'La comisión de postulación arma la lista.', 'El Congreso vota.'],
       },
@@ -448,6 +455,13 @@ export const CASOS = [
       ],
       aprender: {
         idea: 'Cómo se calcula el impuesto de una casa y qué pasa al venderla.',
+        puntos: [
+          'El impuesto se cobra sobre el valor del inmueble: 9 quetzales por cada mil.',
+          'Una casa de 500 mil quetzales paga 4,500 al año.',
+          'Los inmuebles de menos de 70 mil quetzales no pagan.',
+          'Al vender, se paga 10 por ciento sobre la ganancia, no sobre el precio.',
+        ],
+        contexto: 'El impuesto a los inmuebles lo cobran las municipalidades y es una de sus principales fuentes de ingresos propios. El impuesto sobre la ganancia al vender es aparte y va al gobierno central.',
         conceptos: [
           { termino: 'por millar', explicacion: 'Cuánto se paga por cada mil. Nueve por millar es 9 quetzales por cada 1,000 del valor.' },
           { termino: 'ganancia de capital', explicacion: 'La diferencia entre lo que pagaste por algo y el precio al que lo vendés.' },
@@ -471,6 +485,13 @@ export const CASOS = [
       cantidades: [q('10', 'años', 'primavera democrática', '1944 a 1954')],
       aprender: {
         idea: 'Qué fue la Revolución de 1944 y por qué se la recuerda.',
+        puntos: [
+          'En octubre de 1944, estudiantes, maestros y militares jóvenes sacaron del poder a Federico Ponce Vaides.',
+          'Con eso empezaron diez años de gobiernos electos, conocidos como la primavera democrática.',
+          'De ese período salieron el Código de Trabajo y el seguro social.',
+        ],
+        contexto: 'Ponce Vaides había quedado en el poder tras la renuncia de Jorge Ubico, que gobernó catorce años. Los dos gobiernos que siguieron fueron los de Juan José Arévalo y Jacobo Árbenz; el período terminó en 1954 con el derrocamiento de Árbenz.',
+        preguntas: ['¿Qué cambió el Código de Trabajo para quienes trabajaban en fincas?', '¿Por qué terminó la primavera democrática?'],
         conceptos: [
           { termino: 'primavera democrática', explicacion: 'Los diez años, de 1944 a 1954, en que Guatemala tuvo gobiernos electos y reformas sociales.' },
           { termino: 'seguro social', explicacion: 'Un sistema en el que trabajadores y patronos aportan para cubrir salud y jubilación.' },
