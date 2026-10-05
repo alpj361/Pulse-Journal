@@ -71,7 +71,7 @@ export const CASOS = [
       cantidades: [
         q('12', 'kilómetros terminados', 'ruta norte'),
         q('60%', 'avance de obra', 'ruta sur'),
-        q('240 millones', 'quetzales de inversión', 'ruta de Villa Canales'),
+        q('Q240 millones', 'inversión', 'ruta de Villa Canales'),
       ],
       listas: [{ titulo: 'Rutas nuevas', items: [item('Ruta norte', 'opera desde marzo'), item('Ruta sur', 'va al 60 por ciento'), item('Ruta de Villa Canales', 'arranca obras el próximo mes', 'Villa Canales')] }],
       temas: ['transporte público', 'obra pública'],
@@ -168,9 +168,9 @@ export const CASOS = [
       menciones: [m('INE', 'Source', { pista: 'Instituto Nacional de Estadística', rol: 'de_paso' })],
       hechos: [h('La canasta básica costó 3,850 quetzales en septiembre, según el INE.', 0.98, 'la canasta básica costó 3,850 quetzales en septiembre', ['INE'])],
       cantidades: [
-        q('3,850', 'quetzales', 'canasta básica', 'septiembre'),
-        q('210', 'quetzales de aumento', 'canasta básica', 'en un año'),
-        q('3,400', 'quetzales', 'salario mínimo', 'al mes'),
+        q('Q3,850', 'canasta básica', null, 'septiembre'),
+        q('Q210', 'aumento', 'canasta básica', 'en un año'),
+        q('Q3,400', 'salario mínimo', null, 'al mes'),
       ],
       temas: ['costo de vida'],
     },
@@ -259,7 +259,7 @@ export const CASOS = [
         ref('tonkotsu', 'food', 'ramen de caldo de cerdo'),
         ref('gyozas', 'food'),
       ],
-      cantidades: [q('85', 'quetzales', 'tonkotsu en Kodama')],
+      cantidades: [q('Q85', 'tonkotsu', 'Kodama')],
       temas: ['comida', 'restaurantes'],
     },
     vistazo: { que_se_ve: 'Un tazón de ramen humeante y después la fachada del local.', personas: 1, texto_en_pantalla: 'KODAMA · 4 Grados Norte' },
@@ -448,9 +448,9 @@ export const CASOS = [
       hechos: [h('Los inmuebles de menos de 70 mil quetzales no pagan el impuesto.', 0.95, 'Los inmuebles de menos de 70 mil quetzales no pagan')],
       cantidades: [
         q('9‰', 'tasa del impuesto', 'inmuebles de más de 70 mil quetzales', 'al año'),
-        q('4,500', 'quetzales de impuesto', 'casa de 500 mil quetzales', 'al año'),
-        q('70 mil', 'quetzales', 'valor desde el que se paga'),
-        q('200 mil', 'quetzales de ganancia', 'venta de una casa'),
+        q('Q4,500', 'impuesto', 'casa de Q500 mil', 'al año'),
+        q('Q70 mil', 'valor desde el que se paga'),
+        q('Q200 mil', 'ganancia', 'venta de una casa'),
         q('10%', 'impuesto', 'ganancia de la venta'),
       ],
       aprender: {
