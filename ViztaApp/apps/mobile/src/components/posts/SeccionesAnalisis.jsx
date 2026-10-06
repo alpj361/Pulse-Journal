@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
-import { ChefHat, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, Waypoints } from 'lucide-react-native';
+import { AudioLines, ChefHat, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, Waypoints } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
@@ -22,6 +22,7 @@ const RAYA = 'rgba(28,43,34,0.07)';
 // la ficha, antes de leer el título.
 const ICONO = {
   vista: ScanEye,
+  voces: AudioLines,
   cifras: Hash,
   aprender: GraduationCap,
   lista: ListOrdered,
@@ -42,6 +43,81 @@ export function Bloque({ titulo, icono, children }) {
       </View>
       {children}
     </View>
+  );
+}
+
+const ROL = {
+  anfitrion: 'conduce',
+  invitado: 'invitado',
+  narrador: 'narra',
+  voz_en_off: 'voz en off',
+  personaje: 'fragmento',
+  otro: 'otra voz',
+};
+
+/** Cómo se nombra una voz: su nombre si se dijo, si no su papel. */
+export function nombreDeVoz(v) {
+  if (!v) return null;
+  return v.nombre || ROL[v.rol] || 'otra voz';
+}
+
+/**
+ * Quién habla, cuando hay más de una voz.
+ *
+ * Una fila por voz, con cuánto del post es suyo. La de la cuenta que publicó va
+ * marcada: es la que cuenta como su discurso. Las voces de un renglón —el
+ * fragmento de un noticiero metido en el reel— se juntan al final para que no
+ * tapen a quienes de verdad conversan.
+ */
+export function Voces({ hablantes }) {
+  if (!hablantes || hablantes.length < 2) return null;
+  const total = hablantes.reduce((n, v) => n + (v.palabras || 0), 0) || 1;
+  const orden = [...hablantes].sort((a, b) => (b.palabras || 0) - (a.palabras || 0));
+  const principales = orden.filter((v) => (v.palabras || 0) / total >= 0.05).slice(0, 4);
+  const resto = orden.length - principales.length;
+  return (
+    <Bloque titulo="quién habla" icono="voces">
+      {principales.map((v, i) => {
+        const parte = (v.palabras || 0) / total;
+        return (
+          <View
+            key={v.id}
+            style={{
+              paddingVertical: 10,
+              borderBottomWidth: i === principales.length - 1 && !resto ? 0 : 1,
+              borderBottomColor: RAYA,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>{nombreDeVoz(v)}</Text>
+              {v.es_autor ? (
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(75,79,166,0.85)' }}>la cuenta</Text>
+              ) : null}
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE }}>{Math.round(parte * 100)}%</Text>
+            </View>
+            <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.07)', marginTop: 7 }}>
+              <View
+                style={{
+                  height: 3,
+                  borderRadius: 2,
+                  width: `${Math.max(2, parte * 100)}%`,
+                  backgroundColor: v.es_autor ? 'rgba(75,79,166,0.7)' : 'rgba(28,43,34,0.3)',
+                }}
+              />
+            </View>
+            {v.descripcion ? (
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 6 }}>{v.descripcion}</Text>
+            ) : null}
+          </View>
+        );
+      })}
+      {resto ? (
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginTop: 10 }}>
+          y {resto} {resto === 1 ? 'voz más, de un fragmento' : 'voces más, de fragmentos'}
+        </Text>
+      ) : null}
+    </Bloque>
   );
 }
 

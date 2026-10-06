@@ -44,7 +44,7 @@ contenido y transmite un discurso.
 | `paises` | `[{ nombre, boundary_id, rol, veces }]`, con la red sin IA del catálogo (STA-217). |
 | `temas`, `menciones`, `relaciones` | Como el análisis v2 (las menciones con su vínculo al Codex). |
 | `fuentes` | `[{ nombre, tipo, cita }]`: lo que el post cita. Pesa en la confianza; no citar también dice algo. |
-| `hablantes` | `[{ id, autor_id, es_autor, rol }]`, rol: anfitrión, invitado, narrador, voz en off. Lo que dice un invitado no suma a la huella del anfitrión; entrevistarlo sí. |
+| `hablantes` | `[{ id, rol, nombre, descripcion, turnos, palabras, es_autor, seguro }]`, solo si hablan dos o más voces. `id` es `H1`, `H2`… en el orden en que hablan; `rol`: anfitrion, invitado, narrador, voz_en_off, personaje (un fragmento ajeno), otro. `es_autor` dice si esa voz es la cuenta que publicó (`null` si no se sabe) y `seguro`, si salió de un nombre dicho en voz alta o solo del papel. Lo que dice un invitado no suma a la huella del anfitrión; entrevistarlo sí. Los turnos crudos están en `details.turnos` del post (`[{ h, t, texto }]`). |
 | `linea_tiempo` | `[{ desde, hasta, tipo, hablante, texto }]`, tipo: escena, habla, texto en pantalla. |
 | `cantidades` | `[{ valor, numero, variable, hacia, periodo, cita, cita_en_texto }]`: las cifras en piezas, **valor · variable → hacia** («240 millones · quetzales de inversión → ruta de Villa Canales», «20% · remesas → PIB»). `valor` es el número como se muestra (con `%`, `‰`, `mil` o `millones`, y con el símbolo de la moneda si es dinero: `Q3,850`, `€20`; solo se aclara cuál cuando varias comparten símbolo: `US$`, `MX$`); `moneda`, su código (`GTQ`, `USD`…) o `null`; `numero`, el mismo ya leído como número, para comparar o graficar; `variable`, lo que se cuenta; `hacia`, a qué o a quién corresponde. Sin años sueltos ni medidas de recetas. Un análisis anterior al 2026-10-04 trae `que_representa` y `de` en vez de `variable` y `hacia`. |
 | `aprender` | `{ idea, puntos, contexto, conceptos: [{ termino, explicacion, en_texto }], pasos, preguntas }` si el post enseña algo; si no, `null` y la sección no aparece. Es una lección corta: `puntos` es lo que el post explica (solo lo que dice); `contexto`, lo único que va más allá del post, y por eso se muestra aparte. Lo decide Jev (0,25 o más de «aprendizaje»). |
@@ -56,7 +56,7 @@ contenido y transmite un discurso.
 hecho, entre 0,3 y 0,6 una afirmación, y por debajo de 0,3 no se guarda.
 
 Lo verificable: `texto` (redactado), `cita` (literal) y `cita_en_texto`,
-`cifra`, `momento_seg`, `hablante` (quien lo dice no siempre es el autor),
+`cifra`, `momento_seg`, `hablante` (el `id` de la voz que lo dice, `H2`, o vacío si habla una sola persona o la cita no se encontró en ningún turno),
 `sobre_codex_ids` (de quién o qué habla) y `fuente`.
 
 ### `post_guardables` — la lista de lo mencionado

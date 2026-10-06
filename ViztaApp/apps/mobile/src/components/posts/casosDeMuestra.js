@@ -119,7 +119,11 @@ export const CASOS = [
     alVer: {
       narrativa: 'Conversación explicativa: la invitada dimensiona el peso de las remesas y advierte sobre la dependencia que generan.',
       menciones: [m('Carla Ruiz', 'Actor', { pista: 'economista, invitada' }), ref('La economía que se fue', 'book', 'libro de Carla Ruiz')],
-      hechos: [h('Las remesas equivalen a casi el 20 por ciento del PIB.', 0.95, 'las remesas ya son casi el 20 por ciento del PIB', ['Carla Ruiz'])],
+      hablantes: [
+        { id: 'H1', rol: 'anfitrion', nombre: null, descripcion: 'hombre, hace las preguntas', palabras: 12, turnos: 2, es_autor: true, seguro: false },
+        { id: 'H2', rol: 'invitado', nombre: 'Carla Ruiz', descripcion: 'mujer, explica el tema', palabras: 41, turnos: 2, es_autor: false, seguro: true },
+      ],
+      hechos: [{ ...h('Las remesas equivalen a casi el 20 por ciento del PIB.', 0.95, 'las remesas ya son casi el 20 por ciento del PIB', ['Carla Ruiz']), hablante: 'H2' }],
       cantidades: [q('20%', 'remesas', 'PIB')],
       aprender: {
         idea: 'Por qué las remesas sostienen la economía y a la vez la vuelven dependiente.',

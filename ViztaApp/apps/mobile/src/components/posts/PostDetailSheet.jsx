@@ -33,7 +33,7 @@ import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './ca
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, partirHechos } from './SeccionesAnalisis';
+import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, Voces, nombreDeVoz, partirHechos } from './SeccionesAnalisis';
 import { supabase } from '../../utils/supabase';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
@@ -595,9 +595,10 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                   {/* Lo propio de este post: solo las secciones que trae. El
                       margen de arriba compensa el de la primera, que ya viene
                       separada de la narrativa. */}
-                  {d.vistazo || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
+                  {d.vistazo || analisis?.hablantes?.length > 1 || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
                     <View style={{ marginTop: narrativa ? -28 : 0, marginBottom: 22 }}>
                       <LoQueSeVe vistazo={d.vistazo} />
+                      <Voces hablantes={analisis?.hablantes} />
                       <Cifras cantidades={analisis?.cantidades} />
                       <Aprender aprender={analisis?.aprender} />
                       <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
@@ -653,6 +654,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                           <FilaHecho
                             key={`${i}-${h.texto}`}
                             hecho={h}
+                            voz={h.hablante ? (analisis?.hablantes || []).find((v) => v.id === h.hablante) : null}
                             ultima={i === lista.length - 1}
                             ocupado={ocupado === `hecho:${h.texto}`}
                             onGuardar={() => guardarHecho(h)}
@@ -951,7 +953,7 @@ function ChipMencion({ mencion, elegida, onPress, onLongPress }) {
  * modelo reescribió no es una cita, y mostrarla entre comillas diría lo
  * contrario. Guardado, el marcador se llena y tocarlo abre el Fact en el Codex.
  */
-function FilaHecho({ hecho, ultima, ocupado, onGuardar }) {
+function FilaHecho({ hecho, voz = null, ultima, ocupado, onGuardar }) {
   return (
     <View
       style={{
@@ -968,6 +970,13 @@ function FilaHecho({ hecho, ultima, ocupado, onGuardar }) {
         {hecho.cita && hecho.cita_en_texto ? (
           <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE, lineHeight: 18, marginTop: 6 }}>
             «{hecho.cita}»
+          </Text>
+        ) : null}
+        {/* Quién lo dijo, cuando en el post habla más de una persona. */}
+        {voz ? (
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: voz.es_autor ? 'rgba(75,79,166,0.85)' : TENUE, marginTop: 6 }}>
+            — {nombreDeVoz(voz)}
+            {voz.es_autor ? ' · la cuenta' : ''}
           </Text>
         ) : null}
       </View>
