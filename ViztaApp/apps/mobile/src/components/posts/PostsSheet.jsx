@@ -371,6 +371,43 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     );
   };
 
+  /**
+   * Borrar un post, con confirmación. Lo que cuelga de él —vínculos con
+   * fichas, menciones, fuentes— se va con él en la base (ON DELETE CASCADE),
+   * y el video y las fotos son enlaces de la red social, no archivos nuestros:
+   * no queda nada suelto que limpiar.
+   */
+  const borrarPost = (post) => {
+    setMenu(null);
+    Alert.alert('Eliminar post', 'Se borra de tus posts junto con su transcripción y su análisis.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          const antes = posts;
+          setPosts((ps) => (ps || []).filter((x) => x.id !== post.id));
+          if (abierto?.id === post.id) setAbierto(null);
+          try {
+            // Con `select` se sabe si de verdad se borró: si la base no lo
+            // deja, `delete` no da error, solo no borra nada.
+            const { data, error } = await supabase
+              .from('codex_universe_items')
+              .delete()
+              .eq('id', post.id)
+              .select('id');
+            if (error || !data?.length) throw error || new Error('sin filas');
+            toque();
+          } catch {
+            falla();
+            setPosts(antes);
+            setError('No se pudo eliminar el post.');
+          }
+        },
+      },
+    ]);
+  };
+
   const confirmarNombre = async (texto) => {
     const destino = nombrando;
     setNombrando(null);
@@ -782,6 +819,12 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
                       onPress={() => mover(menu.item, null)}
                     />
                   ) : null}
+                  <Opcion
+                    icono={<Trash2 size={15} color="#B91C1C" />}
+                    texto="eliminar post"
+                    peligro
+                    onPress={() => borrarPost(menu.item)}
+                  />
                 </>
               )}
             </Animated.View>
