@@ -33,7 +33,7 @@ import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './ca
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, Voces, nombreDeVoz, partirHechos } from './SeccionesAnalisis';
+import { Apoyo, Aprender, Bloque, Cifras, Listas, LoQueSeVe, Postura, Recetas, Voces, nombreDeVoz, partirHechos } from './SeccionesAnalisis';
 import { supabase } from '../../utils/supabase';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
@@ -65,7 +65,7 @@ const esRef = (m) => tipoDe(m) === 'Ref';
 // material se nota en el ícono.
 const colorDe = (m) => (esRef(m) && materialDe(m) ? MATERIAL[m.material].color : TYPE_ACCENT[tipoDe(m)] || INK.body);
 
-const NOMBRE_FUENTE = { tmdb: 'TMDB', openlibrary: 'Open Library', musicbrainz: 'MusicBrainz', apple_maps: 'Apple Maps' };
+const NOMBRE_FUENTE = { tmdb: 'TMDB', openlibrary: 'Open Library', musicbrainz: 'MusicBrainz', apple_maps: 'Apple Maps', wikidata: 'Wikidata' };
 
 /**
  * Ficha de un post.
@@ -595,10 +595,11 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                   {/* Lo propio de este post: solo las secciones que trae. El
                       margen de arriba compensa el de la primera, que ya viene
                       separada de la narrativa. */}
-                  {d.vistazo || analisis?.hablantes?.length > 1 || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
+                  {d.vistazo || analisis?.ejes?.length || analisis?.hablantes?.length > 1 || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
                     <View style={{ marginTop: narrativa ? -28 : 0, marginBottom: 22 }}>
                       <LoQueSeVe vistazo={d.vistazo} />
                       <Voces hablantes={analisis?.hablantes} />
+                      <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} />
                       <Cifras cantidades={analisis?.cantidades} />
                       <Aprender aprender={analisis?.aprender} />
                       <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
@@ -663,6 +664,10 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                       </Bloque>
                     ) : null
                   )}
+
+                  {/* Solo en análisis que ya traen fuentes: en uno anterior, «sin
+                      citar» sería decir algo que no se midió. */}
+                  {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={analisis.fuentes} afirma={comprobables.length > 0} /> : null}
 
                   {relaciones.length ? (
                     <Bloque titulo="relaciones" icono="relaciones">
