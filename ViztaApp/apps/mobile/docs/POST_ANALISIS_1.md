@@ -45,7 +45,7 @@ contenido y transmite un discurso.
 | `temas`, `menciones`, `relaciones` | Como el análisis v2 (las menciones con su vínculo al Codex). |
 | `fuentes` | `[{ nombre, tipo, cita, cita_en_texto }]`: a quién invoca el post para sostener lo que dice. `tipo`: medio, institucion, persona, documento, estudio, dato_oficial, otro. Solo entran las que están nombradas en el texto. Pesa en la confianza; no citar también dice algo. |
 | `hablantes` | `[{ id, rol, nombre, descripcion, turnos, palabras, es_autor, seguro }]`, solo si hablan dos o más voces. `id` es `H1`, `H2`… en el orden en que hablan; `rol`: anfitrion, invitado, narrador, voz_en_off, personaje (un fragmento ajeno), otro. `es_autor` dice si esa voz es la cuenta que publicó (`null` si no se sabe) y `seguro`, si salió de un nombre dicho en voz alta o solo del papel. Lo que dice un invitado no suma a la huella del anfitrión; entrevistarlo sí. Los turnos crudos están en `details.turnos` del post (`[{ h, t, texto }]`). |
-| `linea_tiempo` | `[{ desde, hasta, tipo, hablante, texto }]`, tipo: escena, habla, texto en pantalla. |
+| `linea_tiempo` | `[{ desde, hasta, tipo, hablante, texto, aprox }]`, tipo: `habla`, `escena`, `texto_en_pantalla`. Lo dicho sale de `details.tramos` y sus segundos son aproximados (`aprox: true`: los pone el modelo que transcribe); lo visto y lo escrito salen de lo que el vistazo anotó de cada cuadro, en el segundo exacto de ese cuadro. Solo en reels mirados. |
 | `cantidades` | `[{ valor, numero, variable, hacia, periodo, cita, cita_en_texto }]`: las cifras en piezas, **valor · variable → hacia** («240 millones · quetzales de inversión → ruta de Villa Canales», «20% · remesas → PIB»). `valor` es el número como se muestra (con `%`, `‰`, `mil` o `millones`, y con el símbolo de la moneda si es dinero: `Q3,850`, `€20`; solo se aclara cuál cuando varias comparten símbolo: `US$`, `MX$`); `moneda`, su código (`GTQ`, `USD`…) o `null`; `numero`, el mismo ya leído como número, para comparar o graficar; `variable`, lo que se cuenta; `hacia`, a qué o a quién corresponde. Sin años sueltos ni medidas de recetas. Un análisis anterior al 2026-10-04 trae `que_representa` y `de` en vez de `variable` y `hacia`. |
 | `aprender` | `{ idea, puntos, contexto, conceptos: [{ termino, explicacion, en_texto }], pasos, preguntas }` si el post enseña algo; si no, `null` y la sección no aparece. Es una lección corta: `puntos` es lo que el post explica (solo lo que dice); `contexto`, lo único que va más allá del post, y por eso se muestra aparte. Lo decide Jev (0,25 o más de «aprendizaje»). |
 | `calidad` | `{ reintentos, avisos, hechos, hechos_con_cita, hechos_descartados, contiene: { cifras, receta, guardables } }`. `contiene` es lo que Jev dice que el post trae (0 a 1). Si esperaba cifras o una lista (0,6 o más) y el análisis no las trajo, se vuelven a pedir una vez (`reintentos`); lo que sigue faltando queda en `avisos`: `sin_cifras`, `sin_lista`, `sin_receta`, `sin_guardables`, `citas_no_literales`. |
@@ -89,8 +89,8 @@ Los **hechos** no van acá: son `post_afirmaciones`.
 
 - La **huella** (`autor_huellas`) y los **pulgares** con comentario son de la
   2.5: se diseñan aparte, con las decisiones de PJ en STA-207.
-- `linea_tiempo` existe en la tabla pero todavía no se llena (STA-229). Todo lo
-  demás ya se llena.
+- Un reel traído antes del 2026-10-03 no tiene cuadros, usuario real ni fecha:
+  se completa solo la primera vez que se toca su ojo (`details.completado_en`).
 - El set de prueba etiquetado a mano (los 93 posts).
 
 ## Estado al crearlas (2026-10-03)

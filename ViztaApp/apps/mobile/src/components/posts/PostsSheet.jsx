@@ -42,6 +42,7 @@ import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
 import { Nombrador, Opcion, TENUE, etiquetaConteo } from '../codex/piezasCarpeta';
 import PostDetailSheet from './PostDetailSheet';
+import { avisoDeBorrado, fichasHijas, limpiarLienzos } from './borrarPost';
 import CasosDeMuestra from './CasosDeMuestra';
 import agregarPost, { enlaceDePost } from './agregarPost';
 import usePostsEnCurso from './usePostsEnCurso';
@@ -374,12 +375,16 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   /**
    * Borrar un post, con confirmación. Lo que cuelga de él —vínculos con
    * fichas, menciones, fuentes— se va con él en la base (ON DELETE CASCADE),
-   * y el video y las fotos son enlaces de la red social, no archivos nuestros:
-   * no queda nada suelto que limpiar.
+   * y el video y las fotos son enlaces de la red social, no archivos nuestros.
+   * Lo único que la base no limpia son los lienzos, que guardan ids dentro de
+   * un JSON: eso lo hace `limpiarLienzos`.
    */
-  const borrarPost = (post) => {
+  const borrarPost = async (post) => {
     setMenu(null);
-    Alert.alert('Eliminar post', 'Se borra de tus posts junto con su transcripción y su análisis.', [
+    // Las fichas hijas se cuentan antes de preguntar: se van con el post, y
+    // eso se dice en la confirmación, no después.
+    const hijas = await fichasHijas(post.id);
+    Alert.alert('Eliminar post', avisoDeBorrado(hijas.length), [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Eliminar',
@@ -398,6 +403,8 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               .select('id');
             if (error || !data?.length) throw error || new Error('sin filas');
             toque();
+            // Lo que quedaba apuntando al post o a sus fichas en los lienzos.
+            limpiarLienzos([post.id, ...hijas]);
           } catch {
             falla();
             setPosts(antes);
