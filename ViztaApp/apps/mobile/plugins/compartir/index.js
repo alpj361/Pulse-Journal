@@ -75,7 +75,9 @@ function conArchivos(config, { equipo, servidor }) {
         path.join(carpeta, 'Info.plist'),
         infoPlist({
           nombre: c.name || 'Vizta',
-          version: c.version || '1.0',
+          // La misma que termina en el Info.plist de la app: Expo usa
+          // `ios.version` si está, y si no la general.
+          version: c.ios?.version || c.version || '1.0',
           build: String(c.ios?.buildNumber || '1'),
           grupo,
           servidor,
