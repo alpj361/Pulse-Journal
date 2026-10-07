@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -43,6 +43,7 @@ import { MONO } from '../codex/mono';
 import { Nombrador, Opcion, TENUE, etiquetaConteo } from '../codex/piezasCarpeta';
 import PostDetailSheet from './PostDetailSheet';
 import { avisoDeBorrado, fichasHijas, limpiarLienzos } from './borrarPost';
+import { registrarAvisos } from '../../utils/notificaciones';
 import CasosDeMuestra from './CasosDeMuestra';
 import agregarPost, { enlaceDePost } from './agregarPost';
 import usePostsEnCurso from './usePostsEnCurso';
@@ -91,7 +92,7 @@ const MENU_ANCHO = 190;
  * consulta: el caso normal es entrar y recorrer, y un campo de texto siempre
  * abierto ocupa una línea permanente para algo que se usa de vez en cuando.
  */
-export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
+export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bottomInset = 0 }) {
   const { width: W, height: H } = useWindowDimensions();
 
   const [posts, setPosts] = useState(null); // null = cargando
@@ -126,6 +127,17 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const hayEnCurso = (posts || []).some((p) => p?.details?.carga === 'procesando');
 
   const marcarPista = usePistasStore((s) => s.marcar);
+
+  // Se llegó tocando un aviso: se abre ese post apenas está en la lista.
+  const abiertoPorAviso = useRef(null);
+  useEffect(() => {
+    if (!abrirId || !posts || abiertoPorAviso.current === abrirId) return;
+    const post = posts.find((x) => x.id === abrirId);
+    if (post) {
+      abiertoPorAviso.current = abrirId;
+      setAbierto(post);
+    }
+  }, [abrirId, posts]);
 
   usePostsEnCurso(posts, (fila) => {
     setPosts((prev) => (prev || []).map((p) => (p.id === fila.id ? { ...p, ...fila } : p)));
@@ -195,6 +207,8 @@ export default function PostsSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       // Vuelve a medio llenar, con `details.carga === 'procesando'`. Se pinta
       // ya mismo y `usePostsEnCurso` la ve completarse.
       const nuevo = await agregarPost(enlace);
+      // Traerlo tarda: es el momento de ofrecer el aviso de cuando esté.
+      registrarAvisos();
       // La plataforma sale del propio enlace; el enlace no se manda.
       evento(EV.POST_AGREGADO, {
         plataforma: /x\.com|twitter\.com/.test(enlace) ? 'x' : 'instagram',
@@ -1023,6 +1037,7 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
   const carga = post.details?.carga;
   const trayendo = carga === 'procesando';
   const fallado = carga === 'error';
+  const analizando = !trayendo && post.details?.analysis_estado === 'procesando';
 
   const uri = post.thumbnail_url || post.details?.thumbnail_url || post.details?.images?.[0];
 
@@ -1140,6 +1155,30 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
               </Text>
             </View>
           )}
+
+          {/* Analizándose. La tarjeta sigue mostrando el post y arriba va la
+              marca: el análisis corre aunque se cierre la hoja o la app, y al
+              volver la marca ya no está. Sin esto, salir del post a mitad se
+              sentía como cancelarlo. */}
+          {analizando ? (
+            <View
+              style={{
+                position: 'absolute',
+                left: 8,
+                bottom: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 9,
+                paddingVertical: 5,
+                borderRadius: RADIUS.pill,
+                backgroundColor: 'rgba(253,252,247,0.94)',
+              }}
+            >
+              <MorphingInfinity size={12} color={INK.title} />
+              <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.title }}>analizando</Text>
+            </View>
+          ) : null}
         </View>
 
         {autor ? (

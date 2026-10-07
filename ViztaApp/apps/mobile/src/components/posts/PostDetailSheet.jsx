@@ -35,6 +35,7 @@ import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
 import { Apoyo, Aprender, Bloque, Cifras, Listas, LoQueSeVe, Postura, Recetas, Voces, nombreDeVoz, partirHechos } from './SeccionesAnalisis';
 import { supabase } from '../../utils/supabase';
+import { registrarAvisos } from '../../utils/notificaciones';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
 
@@ -227,6 +228,11 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
     try {
       await pedirAnalisis(post);
       toque();
+      // La lista tiene que saber que este post quedó analizándose: así lo
+      // sigue escuchando y lo muestra terminado aunque se cierre esta hoja.
+      onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando' } });
+      // Y es el momento de ofrecer el aviso de cuando esté.
+      registrarAvisos();
       // Se manda al pedirlo y no al terminar: el final puede llegar con la app
       // cerrada, y un evento que solo se emite cuando alguien está mirando
       // contaría de menos justo los análisis largos.
@@ -242,7 +248,9 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   // El análisis que llegó solo se avisa hacia arriba, para que la lista lo
   // tenga sin volver a consultarlo.
   useEffect(() => {
-    if (analisis && !muestra) onActualizado?.({ ...post, details: { ...d, analysis: analisis } });
+    // Con el análisis ya llegado, la marca de «analizándose» se va con él: si
+    // quedara, la tarjeta de la lista seguiría diciendo que está en curso.
+    if (analisis && !muestra) onActualizado?.({ ...post, details: { ...d, analysis: analisis, analysis_estado: null } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analisis]);
 

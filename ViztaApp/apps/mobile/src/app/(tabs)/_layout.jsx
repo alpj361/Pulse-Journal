@@ -6,6 +6,10 @@ import AppBackground from '../../components/AppBackground';
 import NavOrb from '../../components/NavOrb';
 import CreateSnippetSheet from '../../components/codex/CreateSnippetSheet';
 import PostsSheet from '../../components/posts/PostsSheet';
+import { alTocarAvisoDePost, prepararNotificaciones } from '../../utils/notificaciones';
+
+// Una vez, al cargar: con la app abierta, un post que termina no saca cartel.
+prepararNotificaciones();
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { useCapacidadesStore, refrescarCapacidades } from '../../state/capacidadesStore';
 import {
@@ -43,6 +47,17 @@ function BarraOrbe() {
   const insets = useSafeAreaInsets();
   const [escribiendo, setEscribiendo] = useState(false);
   const [viendoPosts, setViendoPosts] = useState(false);
+  // El post del aviso que se tocó: la hoja de Posts lo abre al cargar.
+  const [postDelAviso, setPostDelAviso] = useState(null);
+
+  useEffect(
+    () =>
+      alTocarAvisoDePost((postId) => {
+        setPostDelAviso(postId);
+        setViendoPosts(true);
+      }),
+    []
+  );
 
   // Qué nota tiene la hoja cargada, para poder volver a ella. La hoja lo avisa
   // porque el id es suyo: nace cuando se abre una del historial.
@@ -171,7 +186,11 @@ function BarraOrbe() {
 
       {viendoPosts && (
         <PostsSheet
-          onClose={() => setViendoPosts(false)}
+          abrirId={postDelAviso}
+          onClose={() => {
+            setViendoPosts(false);
+            setPostDelAviso(null);
+          }}
           topInset={insets.top}
           bottomInset={insets.bottom}
         />
