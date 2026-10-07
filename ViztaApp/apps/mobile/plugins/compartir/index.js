@@ -20,11 +20,13 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { withDangerousMod, withEntitlementsPlist, withXcodeProject } = require('@expo/config-plugins');
+const { IOSConfig, withDangerousMod, withEntitlementsPlist, withXcodeProject } = require('@expo/config-plugins');
 const plist = require('@expo/plist').default;
 
 const NOMBRE = 'ViztaCompartir';
 const FUENTE = 'ShareViewController.swift';
+// La serif de los titulares de la app: la hoja la lleva en su propio paquete.
+const TIPOGRAFIA = 'InstrumentSerif-Regular.ttf';
 // Tienen que coincidir con `src/utils/compartir.js`.
 const SERVICIO_LLAVERO = 'vizta.compartir';
 const CLAVE_LLAVERO = 'llave';
@@ -68,6 +70,7 @@ function conArchivos(config, { equipo, servidor }) {
       const carpeta = path.join(c.modRequest.platformProjectRoot, NOMBRE);
       fs.mkdirSync(carpeta, { recursive: true });
       fs.copyFileSync(path.join(__dirname, FUENTE), path.join(carpeta, FUENTE));
+      fs.copyFileSync(path.join(c.modRequest.projectRoot, 'assets', 'fonts', TIPOGRAFIA), path.join(carpeta, TIPOGRAFIA));
 
       const bundleId = c.ios?.bundleIdentifier;
       const grupo = `${equipo}.${sufijoDeGrupo(bundleId)}`;
@@ -109,14 +112,38 @@ function conLlavero(config) {
   });
 }
 
+/** La tipografía, como recurso de la extensión. No hace nada si ya está. */
+function conTipografia(proyecto, targetUuid) {
+  const refs = proyecto.pbxFileReferenceSection();
+  const esLaFuente = (r) => r && typeof r === 'object' && String(r.name || r.path || '').replace(/"/g, '') === TIPOGRAFIA;
+  if (Object.values(refs).some(esLaFuente)) return;
+  IOSConfig.XcodeUtils.addResourceFileToGroup({
+    filepath: `${NOMBRE}/${TIPOGRAFIA}`,
+    groupName: NOMBRE,
+    project: proyecto,
+    isBuildFile: true,
+    targetUuid,
+  });
+  // El grupo ya apunta a la carpeta de la extensión: la referencia va con el
+  // nombre solo, o Xcode la busca en `ViztaCompartir/ViztaCompartir/`.
+  for (const r of Object.values(refs)) {
+    if (esLaFuente(r)) r.path = `"${TIPOGRAFIA}"`;
+  }
+}
+
 function conTarget(config, { equipo }) {
   return withXcodeProject(config, (c) => {
     const proyecto = c.modResults;
     // Ya está: `prebuild` sin `--clean` vuelve a pasar por acá con el proyecto
     // de la vez anterior. La librería guarda el nombre a veces con comillas.
     const targets = proyecto.pbxNativeTargetSection();
-    const yaEsta = Object.values(targets).some((t) => t && typeof t === 'object' && String(t.name).replace(/"/g, '') === NOMBRE);
-    if (yaEsta) return c;
+    const existente = Object.entries(targets).find(([, t]) => t && typeof t === 'object' && String(t.name).replace(/"/g, '') === NOMBRE);
+    if (existente) {
+      // El target ya estaba: solo se le suma lo que una versión anterior de
+      // este plugin no traía.
+      conTipografia(proyecto, existente[0]);
+      return c;
+    }
 
     const bundleId = `${c.ios?.bundleIdentifier}.compartir`;
     const objetos = proyecto.hash.project.objects;
@@ -133,6 +160,7 @@ function conTarget(config, { equipo }) {
     const target = proyecto.addTarget(NOMBRE, 'app_extension', NOMBRE, bundleId);
     proyecto.addBuildPhase([FUENTE], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     proyecto.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
+    conTipografia(proyecto, target.uuid);
     proyecto.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
 
     const configuraciones = proyecto.pbxXCBuildConfigurationSection();
