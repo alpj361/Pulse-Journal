@@ -35,6 +35,13 @@
     "plugins": [
       "./plugins/escenas",
       [
+        "./plugins/compartir",
+        {
+          "equipo": "4THD987397",
+          "servidor": "https://server.standatpd.com"
+        }
+      ],
+      [
         "expo-router",
         {
           "sitemap": false
