@@ -19,9 +19,9 @@ import { INK, GLASS, chipStyle } from "../../components/theme";
 import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
-import TarjetaCongreso from "../../components/feed/TarjetaCongreso";
+import { PinNoticiero, TituloCongreso } from "../../components/feed/FilasCongreso";
 import SelectorFeed from "../../components/feed/SelectorFeed";
-import { nombreDelDia, traerCongreso } from "../../components/feed/congreso";
+import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
 import { categoriaDe, temaDe } from "../../components/feed/temas";
@@ -858,17 +858,29 @@ export default function Index() {
                         {nombreDelDia(dia.fecha).toUpperCase()}
                       </Text>
                     ) : null}
-                    {dia.items.map((item) => (
-                      <TarjetaCongreso
-                        key={item.id}
-                        item={item}
-                        onPress={() => {
-                          evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
-                          if (item.url) Linking.openURL(item.url).catch(() => {});
-                        }}
-                        style={{ marginBottom: 22 }}
-                      />
-                    ))}
+                    {/* El noticiero es un salto a YouTube; lo demás, los
+                        títulos de lo que se vio ese día, sin enlace. */}
+                    {dia.items
+                      .filter((item) => item.tipo === "noticiero")
+                      .map((item) => (
+                        <PinNoticiero
+                          key={item.id}
+                          item={item}
+                          onPress={() => {
+                            evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                            const destino = enYouTube(item);
+                            if (destino) Linking.openURL(destino).catch(() => {});
+                          }}
+                          style={{ marginBottom: 6 }}
+                        />
+                      ))}
+                    <View style={{ marginBottom: 22 }}>
+                      {dia.items
+                        .filter((item) => item.tipo !== "noticiero")
+                        .map((item, i, lista) => (
+                          <TituloCongreso key={item.id} item={item} ultimo={i === lista.length - 1} />
+                        ))}
+                    </View>
                   </View>
                 ))
               )

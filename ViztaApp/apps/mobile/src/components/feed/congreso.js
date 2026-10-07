@@ -9,7 +9,7 @@ import { supabase } from '../../utils/supabase';
 const COLUMNAS =
   'id, digest_date, tipo, titulo, url, coverage_status, thumbnail_url, tweet_urls, tweet_count, iniciativa_numero, iniciativa_titulo, iniciativa_estado, iniciativa_url, norma_titulo, norma_decreto, video_id';
 
-/** Los últimos días con algo, cada uno con sus tarjetas. */
+/** Los últimos días con algo, cada uno con su noticiero y sus títulos. */
 export async function traerCongreso() {
   const { data, error } = await supabase
     .from('congreso_items_app_view')
@@ -42,7 +42,7 @@ export async function traerCongreso() {
  * gritando uno abajo del otro. Las siglas cortas se respetan.
  */
 export function titular(crudo) {
-  const t = String(crudo || '').trim().replace(/\s*\.\.\.$/, '…').replace(/^#\w+:\s*/, '');
+  const t = String(crudo || '').trim().replace(/\\/g, '').replace(/\s*\.\.\.$/, '…').replace(/^#\w+:\s*/, '');
   const letras = t.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g, '');
   const gritando = letras.length > 6 && letras === letras.toUpperCase();
   if (!gritando) return t;
@@ -65,10 +65,8 @@ export function nombreDelDia(fecha) {
   return dia.toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-/** Lo que dice la línea de abajo de la tarjeta: de dónde sale. */
-export function origen(item) {
-  if (item.tipo === 'noticiero') return 'Noticiero legislativo';
-  const n = item.tweet_count || 0;
-  if (n > 0) return n === 1 ? '1 publicación del Congreso en X' : `${n} publicaciones del Congreso en X`;
-  return 'En el sitio del Congreso';
+/** A dónde lleva el noticiero: su video en YouTube. */
+export function enYouTube(item) {
+  if (item.video_id) return `https://www.youtube.com/watch?v=${item.video_id}`;
+  return /youtu\.?be/.test(item.url || '') ? item.url : null;
 }
