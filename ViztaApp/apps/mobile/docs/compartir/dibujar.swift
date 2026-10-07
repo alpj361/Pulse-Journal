@@ -34,6 +34,7 @@ struct Fondo: View {
 
 @MainActor func todo() {
   Fuentes.cargar(URL(fileURLWithPath: "assets/fonts/InstrumentSerif-Regular.ttf"))
+  Movimiento.activo = false
   let enlace = "www.instagram.com/reel/DeKLXC-jO5W/"
   let carpetas = [Carpeta(id: "1", nombre: "Muni Guate"), Carpeta(id: "2", nombre: "OJ Sistema"), Carpeta(id: "3", nombre: "Contexto Int")]
   func hoja(_ e: Estado, _ d: String? = enlace, c: [Carpeta] = [], elegida: String? = nil, analizar: Bool = false, cuenta: Double? = nil) -> Hoja {

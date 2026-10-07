@@ -107,21 +107,89 @@ struct Hundido: ButtonStyle {
   }
 }
 
+/// Para dibujar la hoja quieta (`docs/compartir/dibujar.swift`): sin esto, lo
+/// que entra con una animación saldría en la imagen antes de haber entrado.
+enum Movimiento {
+  static var activo = true
+}
+
+/**
+ Una carpeta chica. Al elegirla, una hoja se asoma por arriba: es el post
+ entrando ahí. La hoja está siempre, detrás de la tapa; elegir la carpeta la
+ sube con un resorte que rebota un poco, como papel.
+ */
+struct IconoCarpeta: View {
+  let abierta: Bool
+  let color: Color
+
+  var body: some View {
+    ZStack(alignment: .bottom) {
+      // El fondo de la carpeta, con su pestaña.
+      FormaCarpeta().fill(color.opacity(0.32))
+
+      // La hoja.
+      RoundedRectangle(cornerRadius: 1.6, style: .continuous)
+        .fill(Color.white)
+        .overlay(
+          VStack(alignment: .leading, spacing: 1.8) {
+            Capsule().fill(color.opacity(0.55)).frame(width: 6.5, height: 1.1)
+            Capsule().fill(color.opacity(0.35)).frame(width: 4.5, height: 1.1)
+          }
+          .padding(.top, 2.6).padding(.leading, 2.2),
+          alignment: .topLeading
+        )
+        .overlay(RoundedRectangle(cornerRadius: 1.6, style: .continuous).strokeBorder(color.opacity(0.28), lineWidth: 0.6))
+        .frame(width: 12, height: 11)
+        .rotationEffect(.degrees(abierta ? -7 : 0), anchor: .bottom)
+        .offset(y: abierta ? -6.5 : -1)
+        .opacity(abierta ? 1 : 0)
+
+      // La tapa de adelante: tapa la hoja mientras está guardada.
+      RoundedRectangle(cornerRadius: 2.4, style: .continuous)
+        .fill(color.opacity(abierta ? 1 : 0.62))
+        .frame(width: 17, height: 9.5)
+    }
+    .frame(width: 17, height: 17, alignment: .bottom)
+    .animation(Movimiento.activo ? .spring(response: 0.34, dampingFraction: 0.52) : nil, value: abierta)
+  }
+}
+
+struct FormaCarpeta: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    let alto: CGFloat = 13
+    let y0 = r.maxY - alto
+    // La pestaña a la izquierda y el cuerpo.
+    p.addRoundedRect(in: CGRect(x: r.minX, y: y0, width: 8, height: 5), cornerSize: CGSize(width: 2, height: 2))
+    p.addRoundedRect(in: CGRect(x: r.minX, y: y0 + 2.4, width: r.width, height: alto - 2.4), cornerSize: CGSize(width: 2.4, height: 2.4))
+    return p
+  }
+}
+
 struct Chip: View {
   let texto: String
   let elegido: Bool
+  /// `false` en «Sin carpeta»: no hay carpeta que dibujar.
+  var conCarpeta = true
   let alTocar: () -> Void
   var body: some View {
     Button(action: alTocar) {
-      Text(texto)
-        .font(.system(size: 13.5, weight: elegido ? .semibold : .regular))
-        .foregroundColor(elegido ? Tema.indigo : Tema.cuerpo)
-        .lineLimit(1)
-        .fixedSize()
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(elegido ? Tema.indigo.opacity(0.10) : Tema.titulo.opacity(0.05)))
-        .overlay(Capsule().strokeBorder(elegido ? Tema.indigo.opacity(0.28) : Tema.titulo.opacity(0.07), lineWidth: 1))
+      HStack(spacing: 7) {
+        if conCarpeta {
+          IconoCarpeta(abierta: elegido, color: elegido ? Tema.indigo : Tema.meta)
+        }
+        Text(texto)
+          .font(.system(size: 13.5, weight: elegido ? .semibold : .regular))
+          .foregroundColor(elegido ? Tema.indigo : Tema.cuerpo)
+          .lineLimit(1)
+          .fixedSize()
+      }
+      .padding(.leading, conCarpeta ? 11 : 14)
+      .padding(.trailing, 14)
+      // Alto fijo: la hoja se asoma por encima de la carpeta sin mover la pastilla.
+      .frame(height: 36)
+      .background(Capsule().fill(elegido ? Tema.indigo.opacity(0.10) : Tema.titulo.opacity(0.05)))
+      .overlay(Capsule().strokeBorder(elegido ? Tema.indigo.opacity(0.28) : Tema.titulo.opacity(0.07), lineWidth: 1))
     }
     .buttonStyle(Hundido())
   }
@@ -148,18 +216,110 @@ struct Interruptor: View {
   }
 }
 
-/// El círculo que dice en qué va: girando, hecho, o con un problema.
+/**
+ El loader de Vizta (`MorphingInfinity`): un anillo que se pliega en infinito y
+ vuelve, mientras un trazo lo recorre. Los mismos dos ciclos con períodos que no
+ son múltiplos —2,4 s el pliegue, 1,7 s el trazo—, así que no se vuelve un
+ bucle reconocible.
+ */
+struct AnilloInfinito: Shape {
+  /// 0 = anillo, 1 = infinito (lemniscata de Gerono).
+  var pliegue: Double
+
+  func path(in r: CGRect) -> Path {
+    let lado = min(r.width, r.height)
+    let radio = lado / 2 - lado * 0.11
+    let n = 96
+    var p = Path()
+    for i in 0..<n {
+      let t = Double(i) / Double(n) * .pi * 2
+      let x = r.midX + CGFloat(cos(t)) * radio
+      let y = r.midY + CGFloat(sin(t) * (1 - pliegue) + sin(t) * cos(t) * pliegue) * radio
+      if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+    }
+    p.closeSubpath()
+    return p
+  }
+}
+
+struct Cargando: View {
+  var lado: CGFloat = 38
+  var color: Color = Tema.titulo
+
+  private static func suave(_ t: Double) -> Double { t * t * (3 - 2 * t) }
+
+  var body: some View {
+    TimelineView(.animation) { linea in
+      // Quieto (al dibujarlo a una imagen) se muestra a medio plegar.
+      let ms = Movimiento.activo ? linea.date.timeIntervalSinceReferenceDate * 1000 : 760
+      // Coseno y no rampa: se demora en el anillo y en el infinito.
+      let f = ms.truncatingRemainder(dividingBy: 2400) / 2400
+      let pliegue = (1 - cos(f * .pi * 2)) / 2
+      // El trazo se dibuja en la primera mitad y se borra en la segunda.
+      let g = ms.truncatingRemainder(dividingBy: 1700) / 1700
+      let desde = g < 0.5 ? 0 : Self.suave((g - 0.5) * 2)
+      let hasta = g < 0.5 ? Self.suave(g * 2) : 1
+      let estilo = StrokeStyle(lineWidth: max(2, lado * 0.055), lineCap: .round, lineJoin: .round)
+      ZStack {
+        // La pista, siempre visible: sin ella, cuando el trazo termina de
+        // borrarse no quedaría nada y parecería colgado.
+        AnilloInfinito(pliegue: pliegue).stroke(color.opacity(0.18), style: estilo)
+        AnilloInfinito(pliegue: pliegue).trim(from: desde, to: hasta).stroke(color, style: estilo)
+      }
+    }
+    .frame(width: lado, height: lado)
+  }
+}
+
+struct FormaCheque: Shape {
+  func path(in r: CGRect) -> Path {
+    var p = Path()
+    p.move(to: CGPoint(x: r.minX + r.width * 0.29, y: r.minY + r.height * 0.53))
+    p.addLine(to: CGPoint(x: r.minX + r.width * 0.44, y: r.minY + r.height * 0.67))
+    p.addLine(to: CGPoint(x: r.minX + r.width * 0.72, y: r.minY + r.height * 0.36))
+    return p
+  }
+}
+
+/**
+ El cheque de «enviado». Llega en tres tiempos: el círculo verde salta desde
+ chico con un rebote, el cheque se dibuja de un trazo, y una onda sale del
+ círculo y se pierde. Es la confirmación; tiene que sentirse, no solo verse.
+ */
+struct Cheque: View {
+  var lado: CGFloat = 38
+  @State private var llego = !Movimiento.activo
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .strokeBorder(Tema.orbe.opacity(llego ? 0 : 0.5), lineWidth: 2)
+        .scaleEffect(llego ? 1.9 : 1)
+        .animation(Movimiento.activo ? .easeOut(duration: 0.7).delay(0.12) : nil, value: llego)
+      Circle()
+        .fill(Tema.orbe)
+        .scaleEffect(llego ? 1 : 0.3)
+        .animation(Movimiento.activo ? .spring(response: 0.38, dampingFraction: 0.5) : nil, value: llego)
+      FormaCheque()
+        .trim(from: 0, to: llego ? 1 : 0)
+        .stroke(Color.white, style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
+        .animation(Movimiento.activo ? .easeOut(duration: 0.3).delay(0.16) : nil, value: llego)
+    }
+    .frame(width: lado, height: lado)
+    .onAppear { llego = true }
+  }
+}
+
+/// El círculo que dice en qué va: cargando, hecho, o con un problema.
 struct Marca: View {
   let estado: Estado
   var body: some View {
     ZStack {
       switch estado {
       case .enviando:
-        Circle().strokeBorder(Tema.titulo.opacity(0.10), lineWidth: 2.5)
-        Giro()
+        Cargando()
       case .enviado:
-        Circle().fill(Tema.orbe)
-        Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundColor(.white)
+        Cheque()
       case .fallo:
         Circle().fill(Tema.rojo.opacity(0.09))
         Circle().strokeBorder(Tema.rojo.opacity(0.35), lineWidth: 1.5)
@@ -167,20 +327,7 @@ struct Marca: View {
       }
     }
     .frame(width: 38, height: 38)
-    .transition(.scale(scale: 0.6).combined(with: .opacity))
     .id(estado == .enviando ? 0 : estado == .enviado ? 1 : 2)
-  }
-}
-
-struct Giro: View {
-  @State private var vuelta = false
-  var body: some View {
-    Circle()
-      .trim(from: 0.08, to: 0.62)
-      .stroke(Tema.orbe, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-      .rotationEffect(.degrees(vuelta ? 360 : 0))
-      .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: vuelta)
-      .onAppear { vuelta = true }
   }
 }
 
@@ -276,7 +423,7 @@ struct Hoja: View {
           .padding(.top, 24).padding(.bottom, 10)
         ScrollView(.horizontal, showsIndicators: false) {
           HStack(spacing: 7) {
-            Chip(texto: "Sin carpeta", elegido: carpetaElegida == nil) { alElegirCarpeta(nil) }
+            Chip(texto: "Sin carpeta", elegido: carpetaElegida == nil, conCarpeta: false) { alElegirCarpeta(nil) }
             ForEach(carpetas) { c in
               Chip(texto: c.nombre, elegido: carpetaElegida == c.id) { alElegirCarpeta(c.id) }
             }
