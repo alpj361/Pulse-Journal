@@ -33,8 +33,9 @@ import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './ca
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Aprender, Bloque, Cifras, Listas, LoQueSeVe, Recetas, partirHechos } from './SeccionesAnalisis';
+import { Apoyo, Aprender, Bloque, Cifras, Listas, LoQueSeVe, Postura, Recetas, Voces, nombreDeVoz, partirHechos } from './SeccionesAnalisis';
 import { supabase } from '../../utils/supabase';
+import { registrarAvisos } from '../../utils/notificaciones';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
 
@@ -65,7 +66,7 @@ const esRef = (m) => tipoDe(m) === 'Ref';
 // material se nota en el ícono.
 const colorDe = (m) => (esRef(m) && materialDe(m) ? MATERIAL[m.material].color : TYPE_ACCENT[tipoDe(m)] || INK.body);
 
-const NOMBRE_FUENTE = { tmdb: 'TMDB', openlibrary: 'Open Library', musicbrainz: 'MusicBrainz', apple_maps: 'Apple Maps' };
+const NOMBRE_FUENTE = { tmdb: 'TMDB', openlibrary: 'Open Library', musicbrainz: 'MusicBrainz', apple_maps: 'Apple Maps', wikidata: 'Wikidata' };
 
 /**
  * Ficha de un post.
@@ -227,6 +228,11 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
     try {
       await pedirAnalisis(post);
       toque();
+      // La lista tiene que saber que este post quedó analizándose: así lo
+      // sigue escuchando y lo muestra terminado aunque se cierre esta hoja.
+      onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando' } });
+      // Y es el momento de ofrecer el aviso de cuando esté.
+      registrarAvisos();
       // Se manda al pedirlo y no al terminar: el final puede llegar con la app
       // cerrada, y un evento que solo se emite cuando alguien está mirando
       // contaría de menos justo los análisis largos.
@@ -242,7 +248,9 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   // El análisis que llegó solo se avisa hacia arriba, para que la lista lo
   // tenga sin volver a consultarlo.
   useEffect(() => {
-    if (analisis && !muestra) onActualizado?.({ ...post, details: { ...d, analysis: analisis } });
+    // Con el análisis ya llegado, la marca de «analizándose» se va con él: si
+    // quedara, la tarjeta de la lista seguiría diciendo que está en curso.
+    if (analisis && !muestra) onActualizado?.({ ...post, details: { ...d, analysis: analisis, analysis_estado: null } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analisis]);
 
@@ -595,9 +603,11 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                   {/* Lo propio de este post: solo las secciones que trae. El
                       margen de arriba compensa el de la primera, que ya viene
                       separada de la narrativa. */}
-                  {d.vistazo || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
+                  {d.vistazo || analisis?.ejes?.length || analisis?.hablantes?.length > 1 || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
                     <View style={{ marginTop: narrativa ? -28 : 0, marginBottom: 22 }}>
                       <LoQueSeVe vistazo={d.vistazo} />
+                      <Voces hablantes={analisis?.hablantes} />
+                      <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} />
                       <Cifras cantidades={analisis?.cantidades} />
                       <Aprender aprender={analisis?.aprender} />
                       <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
@@ -653,6 +663,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                           <FilaHecho
                             key={`${i}-${h.texto}`}
                             hecho={h}
+                            voz={h.hablante ? (analisis?.hablantes || []).find((v) => v.id === h.hablante) : null}
                             ultima={i === lista.length - 1}
                             ocupado={ocupado === `hecho:${h.texto}`}
                             onGuardar={() => guardarHecho(h)}
@@ -661,6 +672,10 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                       </Bloque>
                     ) : null
                   )}
+
+                  {/* Solo en análisis que ya traen fuentes: en uno anterior, «sin
+                      citar» sería decir algo que no se midió. */}
+                  {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={analisis.fuentes} afirma={comprobables.length > 0} /> : null}
 
                   {relaciones.length ? (
                     <Bloque titulo="relaciones" icono="relaciones">
@@ -951,7 +966,7 @@ function ChipMencion({ mencion, elegida, onPress, onLongPress }) {
  * modelo reescribió no es una cita, y mostrarla entre comillas diría lo
  * contrario. Guardado, el marcador se llena y tocarlo abre el Fact en el Codex.
  */
-function FilaHecho({ hecho, ultima, ocupado, onGuardar }) {
+function FilaHecho({ hecho, voz = null, ultima, ocupado, onGuardar }) {
   return (
     <View
       style={{
@@ -968,6 +983,13 @@ function FilaHecho({ hecho, ultima, ocupado, onGuardar }) {
         {hecho.cita && hecho.cita_en_texto ? (
           <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE, lineHeight: 18, marginTop: 6 }}>
             «{hecho.cita}»
+          </Text>
+        ) : null}
+        {/* Quién lo dijo, cuando en el post habla más de una persona. */}
+        {voz ? (
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: voz.es_autor ? 'rgba(75,79,166,0.85)' : TENUE, marginTop: 6 }}>
+            — {nombreDeVoz(voz)}
+            {voz.es_autor ? ' · la cuenta' : ''}
           </Text>
         ) : null}
       </View>

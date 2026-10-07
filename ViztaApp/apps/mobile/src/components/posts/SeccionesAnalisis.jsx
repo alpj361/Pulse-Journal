@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
-import { ChefHat, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, Waypoints } from 'lucide-react-native';
+import { AudioLines, BookMarked, ChefHat, Compass, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, Waypoints } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
@@ -22,6 +22,9 @@ const RAYA = 'rgba(28,43,34,0.07)';
 // la ficha, antes de leer el título.
 const ICONO = {
   vista: ScanEye,
+  voces: AudioLines,
+  postura: Compass,
+  apoyo: BookMarked,
   cifras: Hash,
   aprender: GraduationCap,
   lista: ListOrdered,
@@ -42,6 +45,180 @@ export function Bloque({ titulo, icono, children }) {
       </View>
       {children}
     </View>
+  );
+}
+
+const EJE = {
+  politico: { nombre: 'político', color: '#4B4FA6' },
+  economico: { nombre: 'económico', color: '#0F766E' },
+  social: { nombre: 'social', color: '#BE123C' },
+  cultural: { nombre: 'cultural', color: '#A16207' },
+  especifico: { nombre: null, color: '#475569' },
+};
+
+const SENTIDO = { a_favor: 'a favor de', en_contra: 'contra', informa: 'sobre', mixto: 'a favor y en contra de' };
+
+/**
+ * Desde dónde habla el post: un renglón por terreno en el que toma posición.
+ *
+ * Arriba el terreno y el asunto; después lo que sostiene, que es lo que
+ * importa; y al pie hacia quién va y en qué sentido. Un post que no toma
+ * posición —un baile, una receta— no tiene esta sección.
+ */
+export function Postura({ ejes, hablantes }) {
+  if (!ejes?.length) return null;
+  return (
+    <Bloque titulo="desde dónde habla" icono="postura">
+      {ejes.map((e, i) => {
+        const x = EJE[e.eje] || EJE.especifico;
+        const voz = e.hablante ? (hablantes || []).find((v) => v.id === e.hablante) : null;
+        return (
+          <View
+            key={`${i}-${e.eje}-${e.tema}`}
+            style={{
+              paddingVertical: 12,
+              borderBottomWidth: i === ejes.length - 1 ? 0 : 1,
+              borderBottomColor: RAYA,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: x.color }} />
+              <Text style={{ fontFamily: MONO, fontSize: 12, color: x.color }}>
+                {[x.nombre, e.tema].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+            <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{e.postura}</Text>
+            {e.hacia && e.sentido ? (
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 6 }}>
+                {SENTIDO[e.sentido]} {e.hacia}
+                {voz && !voz.es_autor ? ` · lo dice ${nombreDeVoz(voz)}` : ''}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
+    </Bloque>
+  );
+}
+
+const TIPO_FUENTE = {
+  medio: 'medio',
+  institucion: 'institución',
+  persona: 'persona',
+  documento: 'documento',
+  estudio: 'estudio',
+  dato_oficial: 'dato oficial',
+  otro: null,
+};
+
+/**
+ * En qué se apoya: a quién invoca el post para sostener lo que dice.
+ *
+ * Si afirma cosas comprobables y no invoca a nadie, se dice: no citar también
+ * es un dato, y es de los que más pesan al leer a una cuenta en el tiempo.
+ */
+export function Apoyo({ fuentes, afirma = false }) {
+  if (!fuentes?.length && !afirma) return null;
+  return (
+    <Bloque titulo="en qué se apoya" icono="apoyo">
+      {fuentes?.length ? (
+        fuentes.map((f, i) => (
+          <View
+            key={f.nombre}
+            style={{ paddingVertical: 10, borderBottomWidth: i === fuentes.length - 1 ? 0 : 1, borderBottomColor: RAYA }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title }}>{f.nombre}</Text>
+              {TIPO_FUENTE[f.tipo] ? (
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE }}>{TIPO_FUENTE[f.tipo]}</Text>
+              ) : null}
+            </View>
+            {f.cita && f.cita_en_texto ? (
+              <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE, lineHeight: 18, marginTop: 5 }}>«{f.cita}»</Text>
+            ) : null}
+          </View>
+        ))
+      ) : (
+        <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>
+          Afirma hechos sin citar de dónde salen.
+        </Text>
+      )}
+    </Bloque>
+  );
+}
+
+const ROL = {
+  anfitrion: 'conduce',
+  invitado: 'invitado',
+  narrador: 'narra',
+  voz_en_off: 'voz en off',
+  personaje: 'fragmento',
+  otro: 'otra voz',
+};
+
+/** Cómo se nombra una voz: su nombre si se dijo, si no su papel. */
+export function nombreDeVoz(v) {
+  if (!v) return null;
+  return v.nombre || ROL[v.rol] || 'otra voz';
+}
+
+/**
+ * Quién habla, cuando hay más de una voz.
+ *
+ * Una fila por voz, con cuánto del post es suyo. La de la cuenta que publicó va
+ * marcada: es la que cuenta como su discurso. Las voces de un renglón —el
+ * fragmento de un noticiero metido en el reel— se juntan al final para que no
+ * tapen a quienes de verdad conversan.
+ */
+export function Voces({ hablantes }) {
+  if (!hablantes || hablantes.length < 2) return null;
+  const total = hablantes.reduce((n, v) => n + (v.palabras || 0), 0) || 1;
+  const orden = [...hablantes].sort((a, b) => (b.palabras || 0) - (a.palabras || 0));
+  const principales = orden.filter((v) => (v.palabras || 0) / total >= 0.05).slice(0, 4);
+  const resto = orden.length - principales.length;
+  return (
+    <Bloque titulo="quién habla" icono="voces">
+      {principales.map((v, i) => {
+        const parte = (v.palabras || 0) / total;
+        return (
+          <View
+            key={v.id}
+            style={{
+              paddingVertical: 10,
+              borderBottomWidth: i === principales.length - 1 && !resto ? 0 : 1,
+              borderBottomColor: RAYA,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>{nombreDeVoz(v)}</Text>
+              {v.es_autor ? (
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(75,79,166,0.85)' }}>la cuenta</Text>
+              ) : null}
+              <View style={{ flex: 1 }} />
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE }}>{Math.round(parte * 100)}%</Text>
+            </View>
+            <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.07)', marginTop: 7 }}>
+              <View
+                style={{
+                  height: 3,
+                  borderRadius: 2,
+                  width: `${Math.max(2, parte * 100)}%`,
+                  backgroundColor: v.es_autor ? 'rgba(75,79,166,0.7)' : 'rgba(28,43,34,0.3)',
+                }}
+              />
+            </View>
+            {v.descripcion ? (
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 6 }}>{v.descripcion}</Text>
+            ) : null}
+          </View>
+        );
+      })}
+      {resto ? (
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginTop: 10 }}>
+          y {resto} {resto === 1 ? 'voz más, de un fragmento' : 'voces más, de fragmentos'}
+        </Text>
+      ) : null}
+    </Bloque>
   );
 }
 

@@ -28,10 +28,12 @@ const h = (texto, verificable, cita = null, menciones = []) => ({
 });
 const q = (valor, variable, hacia = null, periodo = null) => ({ valor, variable, hacia, periodo, cita: null, cita_en_texto: false });
 const item = (texto, detalle = null, mencion = null) => ({ texto, detalle, mencion });
+const eje = (e, tema, postura, sentido, hacia = null) => ({ eje: e, tema, postura, sentido, hacia, cita: null, cita_en_texto: false, confianza: 0.9 });
+const fuente = (nombre, tipo, cita = null) => ({ nombre, tipo, cita, cita_en_texto: !!cita });
 
 const VACIO = {
   version: 2, menciones: [], hechos: [], relaciones: [], temas: [], narrativa: '',
-  listas: [], recetas: [], cantidades: [], aprender: null, analyzed_at: '2026-10-03T12:00:00.000Z',
+  listas: [], recetas: [], cantidades: [], aprender: null, ejes: [], fuentes: [], analyzed_at: '2026-10-03T12:00:00.000Z',
 };
 
 function caso({ n, titulo, cuenta, texto = '', dicho = null, carrusel = false, alTraer, alVer = {}, vistazo = null, tiposAlVer = null }) {
@@ -63,6 +65,7 @@ export const CASOS = [
     alTraer: { informacion: 0.96, hechos: 0.97, lista: 0.8 },
     alVer: {
       narrativa: 'Anuncio institucional: informa el avance de tres obras de transporte, con fechas y montos, sin confrontar a nadie.',
+      ejes: [eje('politico', 'obra pública', 'Presenta el avance de las rutas como un logro de su gestión.', 'a_favor', 'su propia gestión')],
       menciones: [m('Villa Canales', 'Territorio'), m('Ministerio de Comunicaciones', 'Entidad', { rol: 'de_paso' })],
       hechos: [
         h('La ruta norte tiene 12 kilómetros terminados y empieza a operar en marzo.', 0.97, 'La ruta norte ya tiene 12 kilómetros terminados y empieza a operar en marzo'),
@@ -86,6 +89,10 @@ export const CASOS = [
     alTraer: { opinion: 0.97, hechos: 0.71, informacion: 0.34 },
     alVer: {
       narrativa: 'Crítica directa al aumento del pasaje: lo presenta como una decisión tomada a espaldas de la gente y pide congelar la tarifa.',
+      ejes: [
+        eje('politico', 'decisión del Concejo', 'El Concejo aprobó el aumento sin escuchar a nadie.', 'en_contra', 'el Concejo Municipal'),
+        eje('economico', 'tarifa del pasaje', 'La tarifa debería congelarse hasta que mejore el servicio.', 'en_contra', 'el aumento al pasaje'),
+      ],
       menciones: [m('Concejo Municipal', 'Entidad')],
       hechos: [
         h('El Concejo Municipal aprobó el aumento al pasaje el martes.', 0.94, 'El Concejo Municipal aprobó el aumento el martes', ['Concejo Municipal']),
@@ -118,8 +125,13 @@ export const CASOS = [
     alTraer: { informacion: 0.74, hechos: 0.9, aprendizaje: 0.41, opinion: 0.52 },
     alVer: {
       narrativa: 'Conversación explicativa: la invitada dimensiona el peso de las remesas y advierte sobre la dependencia que generan.',
+      ejes: [{ ...eje('economico', 'remesas', 'Las remesas sostienen la economía, pero la vuelven dependiente.', 'mixto', 'la dependencia de las remesas'), hablante: 'H2' }],
       menciones: [m('Carla Ruiz', 'Actor', { pista: 'economista, invitada' }), ref('La economía que se fue', 'book', 'libro de Carla Ruiz')],
-      hechos: [h('Las remesas equivalen a casi el 20 por ciento del PIB.', 0.95, 'las remesas ya son casi el 20 por ciento del PIB', ['Carla Ruiz'])],
+      hablantes: [
+        { id: 'H1', rol: 'anfitrion', nombre: null, descripcion: 'hombre, hace las preguntas', palabras: 12, turnos: 2, es_autor: true, seguro: false },
+        { id: 'H2', rol: 'invitado', nombre: 'Carla Ruiz', descripcion: 'mujer, explica el tema', palabras: 41, turnos: 2, es_autor: false, seguro: true },
+      ],
+      hechos: [{ ...h('Las remesas equivalen a casi el 20 por ciento del PIB.', 0.95, 'las remesas ya son casi el 20 por ciento del PIB', ['Carla Ruiz']), hablante: 'H2' }],
       cantidades: [q('20%', 'remesas', 'PIB')],
       aprender: {
         idea: 'Por qué las remesas sostienen la economía y a la vez la vuelven dependiente.',
@@ -165,6 +177,8 @@ export const CASOS = [
     alTraer: { informacion: 0.97, hechos: 0.98 },
     alVer: {
       narrativa: 'Dato duro con fuente: compara el costo de la canasta con el salario mínimo y deja que el contraste hable.',
+      ejes: [eje('economico', 'costo de vida', 'La canasta básica ya cuesta más que el salario mínimo.', 'informa', 'el salario mínimo')],
+      fuentes: [fuente('INE', 'dato_oficial', 'Según el INE, la canasta básica costó 3,850 quetzales en septiembre')],
       menciones: [m('INE', 'Source', { pista: 'Instituto Nacional de Estadística', rol: 'de_paso' })],
       hechos: [h('La canasta básica costó 3,850 quetzales en septiembre, según el INE.', 0.98, 'la canasta básica costó 3,850 quetzales en septiembre', ['INE'])],
       cantidades: [
@@ -318,7 +332,13 @@ export const CASOS = [
     alTraer: { lista: 0.97, aprendizaje: 0.62 },
     alVer: {
       narrativa: 'Recomendación práctica: cinco herramientas y para qué sirve cada una.',
-      menciones: [ref('Notion', 'tool'), ref('Claude', 'tool'), ref('Perplexity', 'tool'), ref('ElevenLabs', 'tool'), ref('CapCut', 'tool')],
+      menciones: [
+        ref('Notion', 'tool', null, { fuente: 'wikidata', titulo: 'Notion', descripcion: 'herramienta para tomar notas en línea' }),
+        ref('Claude', 'tool'),
+        ref('Perplexity', 'tool', null, { fuente: 'wikidata', titulo: 'Perplexity', descripcion: 'buscador web impulsado por inteligencia artificial' }),
+        ref('ElevenLabs', 'tool'),
+        ref('CapCut', 'tool', null, { fuente: 'wikidata', titulo: 'CapCut', descripcion: 'aplicación para editar videos' }),
+      ],
       listas: [{
         titulo: 'Herramientas de IA',
         items: [
@@ -444,6 +464,7 @@ export const CASOS = [
     alTraer: { informacion: 0.94, hechos: 0.97, aprendizaje: 0.88 },
     alVer: {
       narrativa: 'Explicación con ejemplos de cuánto se paga con la reforma; informa más que opina.',
+      ejes: [eje('economico', 'impuesto a inmuebles', 'Explica cuánto se paga con la reforma, sin defenderla ni atacarla.', 'informa', 'la reforma')],
       menciones: [m('impuesto sobre la renta', 'Historia', { rol: 'de_paso' })],
       hechos: [h('Los inmuebles de menos de 70 mil quetzales no pagan el impuesto.', 0.95, 'Los inmuebles de menos de 70 mil quetzales no pagan')],
       cantidades: [
