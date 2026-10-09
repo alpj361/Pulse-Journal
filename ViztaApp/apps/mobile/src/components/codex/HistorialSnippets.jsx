@@ -16,6 +16,7 @@ import { INK, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { PAPEL } from './Papel';
 import { supabase } from '../../utils/supabase';
+import { ponerFila, useEnVivo, useFilasEnVivo } from '../../utils/enVivo';
 import {
   NOTA,
   crearCarpeta,
@@ -50,6 +51,8 @@ const CAMPOS_ITEM = 'id, name, tipo, description, aliases, created_at, folder_id
 // sus propias carpetas. Es el mismo recorte que hace el índice de menciones.
 // Los Facts tampoco: son sub-items de un post y se ven adentro de ese post.
 const FUERA = '("Snippet","Post","Fact")';
+// Lo mismo que `FUERA`, para decidir sobre una fila que llega en vivo.
+const NO_CODEX = new Set(['Snippet', 'Post', 'Fact']);
 
 /**
  * Historial de notas — la página de la izquierda.
@@ -105,6 +108,7 @@ export default function HistorialSnippets({ onAbrir, onAbrirItem, topInset = 0, 
   const [menu, setMenu] = useState(null); // { clase, item, x, y, vista }
   const [nombrando, setNombrando] = useState(null); // { modo, carpeta?, fila? }
   const [espacios, setEspacios] = useState(null); // null = todavía no se pidieron
+  const [recarga, setRecarga] = useState(0); // se sube para volver a pedir todo
 
   useEffect(() => {
     let vivo = true;
@@ -150,7 +154,22 @@ export default function HistorialSnippets({ onAbrir, onAbrirItem, topInset = 0, 
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [recarga]);
+
+  // Una nota nueva, un título que cambió, algo que se borró o se movió de
+  // carpeta: entra a la lista al momento, venga de acá o de otro lado.
+  useFilasEnVivo(
+    'codex_universe_items',
+    CAMPOS_NOTA,
+    ({ id, fila }) => {
+      setNotas((prev) => (prev ? ponerFila(prev, id, fila, (f) => f.tipo === 'Snippet') : prev));
+      setItems((prev) => ponerFila(prev, id, fila, (f) => !NO_CODEX.has(f.tipo)));
+    },
+    () => setRecarga((n) => n + 1)
+  );
+  useEnVivo(['post_folders'], () => {
+    listarCarpetas(NOTA).then(setCarpetas).catch(() => {});
+  });
 
   /** Cuánto tiene cada carpeta, separado por naturaleza para poder nombrarlo. */
   const conteo = useMemo(() => {

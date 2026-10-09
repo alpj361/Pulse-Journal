@@ -56,6 +56,7 @@ import { usePistasStore, PISTA } from '../../state/pistasStore';
 import * as Clipboard from 'expo-clipboard';
 import MorphingInfinity from '../MorphingInfinity';
 import { supabase } from '../../utils/supabase';
+import { ponerFila, useEnVivo, useFilasEnVivo } from '../../utils/enVivo';
 import {
   POST,
   crearCarpeta,
@@ -68,6 +69,7 @@ import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
 
 const MENU_ANCHO = 190;
+const CAMPOS_POST = 'id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id';
 
 /**
  * Posts — la página que aparece al empujar el orbe hacia arriba.
@@ -96,6 +98,7 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
   const { width: W, height: H } = useWindowDimensions();
 
   const [posts, setPosts] = useState(null); // null = cargando
+  const [recarga, setRecarga] = useState(0); // se sube para volver a pedir todo
   const [carpetas, setCarpetas] = useState([]);
   const [error, setError] = useState(null);
 
@@ -247,7 +250,7 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
         const [{ data, error: e }, cs] = await Promise.all([
           supabase
             .from('codex_universe_items')
-            .select('id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id')
+            .select(CAMPOS_POST)
             .eq('tipo', 'post')
             .order('created_at', { ascending: false })
             .limit(200),
@@ -267,7 +270,22 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [recarga]);
+
+  // Un post que llega desde «Compartir» o desde otro teléfono, uno que se
+  // borra o cambia de carpeta: aparece acá sin volver a abrir.
+  useFilasEnVivo(
+    'codex_universe_items',
+    CAMPOS_POST,
+    ({ id, fila }) => {
+      setPosts((prev) => (prev ? ponerFila(prev, id, fila, (f) => f.tipo === 'post') : prev));
+      if (fila) setAbierto((a) => (a?.id === id ? { ...a, ...fila } : a));
+    },
+    () => setRecarga((n) => n + 1)
+  );
+  useEnVivo(['post_folders'], () => {
+    listarCarpetas(POST).then(setCarpetas).catch(() => {});
+  });
 
   const conteo = useMemo(() => {
     const m = new Map();
