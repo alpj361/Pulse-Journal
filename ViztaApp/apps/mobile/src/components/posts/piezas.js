@@ -48,12 +48,21 @@ const palabras = (s) => norm(s).split(' ').filter((p) => p.length >= 4 && !PARAD
 
 const numeros = (s) => (String(s || '').match(/\d[\d.,]*\d|\d/g) || []).map((n) => n.replace(/[.,]/g, ''));
 
-/** La misma cita, o una dentro de la otra. */
+/**
+ * La misma cita: una dentro de la otra, o dos recortes del mismo pasaje.
+ *
+ * El análisis recorta la misma frase en lugares distintos según para qué la
+ * cita («Según el Banco, entraron 21 mil millones» y «entraron 21 mil millones
+ * de dólares»). Si casi todas las palabras de la más corta están en la otra,
+ * es el mismo pasaje.
+ */
 function mismaCita(a, b) {
   const x = norm(a);
   const y = norm(b);
   if (x.length < 12 || y.length < 12) return false;
-  return x.includes(y) || y.includes(x);
+  if (x.includes(y) || y.includes(x)) return true;
+  const [corta_, larga] = x.length <= y.length ? [x, y] : [y, x];
+  return palabras(corta_).length >= 3 && cubre(corta_, larga) >= 0.75;
 }
 
 /** Cuánto de las palabras de `a` está en `b`, de 0 a 1. */
