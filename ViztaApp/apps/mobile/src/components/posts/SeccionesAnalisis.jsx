@@ -128,7 +128,7 @@ function Termometro({ eje, color }) {
  * importa; y al pie hacia quién va y en qué sentido. Un post que no toma
  * posición —un baile, una receta— no tiene esta sección.
  */
-export function Postura({ ejes, hablantes, quienDe, quienDeVoz }) {
+export function Postura({ ejes, hablantes, quienDe, quienDeVoz, resolver }) {
   if (!ejes?.length) return null;
   return (
     <Bloque titulo="desde dónde habla" icono="postura">
@@ -166,6 +166,8 @@ export function Postura({ ejes, hablantes, quienDe, quienDeVoz }) {
               </View>
             ) : null}
             {voz && !voz.es_autor ? <LoDice voz={voz} quienDeVoz={quienDeVoz} antes="lo dice" /> : null}
+            {/* En qué hechos y cifras se sostiene: se leen en su sección. */}
+            <Refs ids={resolver?.(e.apoyos)} arriba={9} />
           </View>
         );
       })}
@@ -584,8 +586,10 @@ export function Aprender({ aprender, piezas }) {
   // Los puntos que no son ya una pieza se leen; los que sí, se señalan.
   const propios = [];
   const yaContado = [];
-  for (const t of aprender.puntos || []) {
-    const ids = piezas?.dondeAparece(t) || [];
+  for (const [i, t] of (aprender.puntos || []).entries()) {
+    // Lo que enlazó el servidor, o lo que se lee igual en el texto.
+    const delServidor = piezas?.resolver?.([aprender.puntos_en?.[i]]) || [];
+    const ids = delServidor.length ? delServidor : piezas?.dondeAparece(t) || [];
     if (ids.length) yaContado.push(...ids);
     else propios.push(t);
   }
@@ -601,7 +605,7 @@ export function Aprender({ aprender, piezas }) {
         <View key={c.termino} style={{ marginTop: i || aprender.idea ? 16 : 0 }}>
           <Text style={{ fontFamily: MONO, fontSize: 13.5, color: INK.title, marginBottom: 8 }}>{c.termino}</Text>
           <Explicacion>{c.explicacion}</Explicacion>
-          <EnEstaNota ids={piezas?.dondeSeNombra(c.termino)} />
+          <EnEstaNota ids={[...(piezas?.resolver?.(c.en) || []), ...(piezas?.dondeSeNombra(c.termino) || [])]} />
         </View>
       ))}
 
@@ -650,6 +654,9 @@ export function Aprender({ aprender, piezas }) {
 function Comparacion({ visual }) {
   return (
     <View style={{ marginTop: 16, paddingVertical: 14, paddingHorizontal: 14, borderRadius: RADIUS.md, borderWidth: 1, borderColor: 'rgba(28,43,34,0.09)', backgroundColor: 'rgba(255,255,255,0.55)' }}>
+      {visual.titulo ? (
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 12 }}>{visual.titulo}</Text>
+      ) : null}
       {visual.filas.map((f, i) => (
         <View key={f.id} style={{ marginTop: i ? 14 : 0 }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>

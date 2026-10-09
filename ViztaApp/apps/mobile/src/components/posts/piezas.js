@@ -15,10 +15,23 @@
  * En las demás secciones la pieza se nombra con una referencia, sin repetir el
  * texto ni la cita.
  *
- * Los cruces son solo los que se pueden leer en el texto: la misma cita, el
- * mismo número, el mismo nombre. Nada se une por parecido de sentido: una
- * referencia mal puesta diría que el post apoya una cosa en otra que no dijo.
+ * Hay dos fuentes de cruces, y se suman:
+ *
+ *  · los que manda el servidor (`enlazarPiezas`): cada pieza trae un id corto
+ *    —`h0`, `c1`, `f0`— y punteros a otras. Son los que encuentran lo dicho
+ *    con otras palabras («una quinta parte» y «20%»), y solo ellos saben qué
+ *    sostiene cada postura;
+ *  · los que se leen en el texto acá mismo: la misma cita, el mismo número, el
+ *    mismo nombre. Cubren los análisis anteriores y lo que al servidor se le
+ *    pasó.
+ *
+ * Nada se une por parecido de sentido en la app: una referencia mal puesta
+ * diría que el post apoya una cosa en otra que no dijo.
  */
+
+// El id corto del servidor, como id de pieza de la app: «c1» → «cifra:1».
+const CLASE_ID = { h: 'hecho:', c: 'cifra:', f: 'fuente:' };
+const local = (sid) => (typeof sid === 'string' && CLASE_ID[sid[0]] ? `${CLASE_ID[sid[0]]}${sid.slice(1)}` : null);
 
 const PARADA = new Set(['para', 'como', 'entre', 'sobre', 'desde', 'hasta', 'este', 'esta', 'esto', 'pero', 'cada', 'todo', 'toda', 'todos', 'tiene', 'tienen', 'está', 'están', 'será', 'según', 'donde', 'cuando', 'porque', 'también', 'millones', 'ciento']);
 
@@ -102,6 +115,25 @@ function medida(c) {
   return { n, unidad };
 }
 
+/** La visualización que propuso el servidor, armada con las cifras que nombra. */
+function visualDelServidor(v, porCifra) {
+  if (!v || !Array.isArray(v.cifras)) return null;
+  const filas = v.cifras
+    .map((sid) => porCifra.get(local(sid)))
+    .filter(Boolean)
+    .map((c) => ({ c, m: medida(c) }))
+    .filter((x) => x.m && x.m.n > 0)
+    .map(({ c, m }) => ({ id: c.id, valor: c.valor, n: m.n, de: [c.variable || c.que_representa, c.hacia].filter(Boolean).join(' · ') }));
+  if (v.tipo === 'proporcion' && filas.length === 1 && filas[0].n <= 100) {
+    return { tipo: 'proporcion', titulo: v.titulo || null, filas: [{ ...filas[0], parte: filas[0].n / 100 }] };
+  }
+  if (v.tipo === 'comparacion' && filas.length >= 2) {
+    const tope = Math.max(...filas.map((x) => x.n));
+    return { tipo: 'comparacion', titulo: v.titulo || null, filas: filas.map((x) => ({ ...x, parte: x.n / tope })) };
+  }
+  return null;
+}
+
 /**
  * Una visualización para entender, si las cifras del post la permiten.
  *
@@ -144,8 +176,17 @@ export function armarPiezas(analisis, menciones = [], tipoDe = (m) => m?.tipo) {
 
   // Un hecho que cuenta una cifra se va con ella. Cada cifra se queda con un
   // solo hecho, el primero que la cuenta: dos frases sobre el mismo número son
-  // dos hechos, y el segundo se queda en su sección.
+  // dos hechos, y el segundo se queda en su sección. Primero lo que enlazó el
+  // servidor; después lo que se lee en el texto.
   for (const h of hechos) {
+    const c = cifras.find((x) => x.id === local(h.cifra) && !x.hecho);
+    if (c) {
+      c.hecho = h;
+      h.enCifra = c.id;
+    }
+  }
+  for (const h of hechos) {
+    if (h.enCifra) continue;
     const c = cifras.find((x) => !x.hecho && cuentaLaCifra(h, x));
     if (c) {
       c.hecho = h;
@@ -172,7 +213,29 @@ export function armarPiezas(analisis, menciones = [], tipoDe = (m) => m?.tipo) {
       f.citaPropia = false;
     }
   }
-  for (const c of cifras) if (c.hecho) c.fuentes = c.hecho.fuentes;
+  // Lo que el servidor dijo que cada fuente sostiene.
+  const porHecho = new Map(hechos.map((h) => [h.id, h]));
+  const porCifra = new Map(cifras.map((c) => [c.id, c]));
+  /** Dónde vive hoy una pieza: un hecho que se fue a una cifra es esa cifra. */
+  const destino = (sid) => {
+    const id = local(sid);
+    if (!id) return null;
+    if (porCifra.has(id)) return id;
+    const h = porHecho.get(id);
+    return h ? h.enCifra || h.id : null;
+  };
+  for (const f of fuentes) {
+    for (const sid of f.sostiene || []) {
+      const id = destino(sid);
+      if (!id) continue;
+      if (!f.piezas.includes(id)) f.piezas.push(id);
+      const pieza = porCifra.get(id) || porHecho.get(id);
+      if (!pieza.fuentes.includes(f.id)) pieza.fuentes.push(f.id);
+      // La cita de la fuente ya se lee en la pieza, o en el hecho que vive en ella.
+      if (f.cita && [pieza.cita, pieza.hecho?.cita].some((c) => c && mismaCita(f.cita, c))) f.citaPropia = false;
+    }
+  }
+  for (const c of cifras) if (c.hecho) c.fuentes = [...new Set([...c.fuentes, ...c.hecho.fuentes])];
 
   // Quién aparece: las personas y organizaciones nombradas, cada una con su voz
   // si habla y con las relaciones que salen de ella.
@@ -219,6 +282,8 @@ export function armarPiezas(analisis, menciones = [], tipoDe = (m) => m?.tipo) {
   for (const f of fuentes) porId.set(f.id, { clase: 'apoyo', etiqueta: f.nombre });
   for (const q of quienes) if (q.nombre) porId.set(q.id, { clase: 'quien', etiqueta: q.nombre });
 
+  const resolver = (sids) => [...new Set((sids || []).map(destino).filter(Boolean))];
+
   /** Las piezas del post que hablan de esto: mismo número, o casi la misma frase. */
   const dondeAparece = (texto) => {
     const ids = [];
@@ -254,7 +319,9 @@ export function armarPiezas(analisis, menciones = [], tipoDe = (m) => m?.tipo) {
     fuentes,
     quienes,
     relacionesSueltas: sueltas,
-    visual: compararCifras(cifras),
+    visual: visualDelServidor(a.aprender?.visual, porCifra) || compararCifras(cifras),
+    // Los ids cortos del servidor, llevados a donde vive hoy cada pieza.
+    resolver,
     porId,
     quienDe: (nombre) => quienes.find((q) => q.nombre && mismoNombre(q.nombre, nombre)) || null,
     // La fila de quien habla, si tiene nombre: para señalarla en vez de repetirlo.

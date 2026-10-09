@@ -655,7 +655,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                         />
                       )}
                     />
-                    <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} quienDe={piezas.quienDe} quienDeVoz={piezas.quienDeVoz} />
+                    <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} quienDe={piezas.quienDe} quienDeVoz={piezas.quienDeVoz} resolver={piezas.resolver} />
                     <Cifras cifras={piezas.cifras} hablantes={analisis?.hablantes} quienDeVoz={piezas.quienDeVoz} ocupado={ocupado} onGuardar={guardarHecho} />
 
                     {[['hechos', comprobables], ['afirmaciones', afirmaciones]].map(([titulo, lista]) =>
