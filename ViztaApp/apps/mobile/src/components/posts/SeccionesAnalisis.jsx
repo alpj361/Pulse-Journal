@@ -1,14 +1,17 @@
-import { useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
-import { AudioLines, BookMarked, ChefHat, Compass, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, Waypoints } from 'lucide-react-native';
+import { BookMarked, Bookmark, BookmarkCheck, ChefHat, Compass, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, UsersRound } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL } from '../codex/materiales';
-import { roce } from '../../utils/haptics';
+import MorphingInfinity from '../MorphingInfinity';
+import { ChipRef, Pieza, Refs } from './Saltos';
 
 /**
- * Las secciones del análisis de un post que no son menciones: qué se ve, las cifras, lo que enseña, las listas y las recetas.
+ * Las secciones del análisis de un post.
+ *
+ * Cada dato tiene una sola sección dueña (`piezas.js`): ahí se lee entero. En
+ * las demás va una referencia que lleva hasta él, sin repetir el texto.
  *
  * Cada una se dibuja solo si el post la trae. Un reel a cámara sin números no
  * muestra «cifras» vacía: no la muestra. Así la ficha de un baile y la de una
@@ -22,7 +25,7 @@ const RAYA = 'rgba(28,43,34,0.07)';
 // la ficha, antes de leer el título.
 const ICONO = {
   vista: ScanEye,
-  voces: AudioLines,
+  quien: UsersRound,
   postura: Compass,
   apoyo: BookMarked,
   cifras: Hash,
@@ -31,7 +34,6 @@ const ICONO = {
   receta: ChefHat,
   hechos: CircleCheck,
   afirmaciones: MessageSquareQuote,
-  relaciones: Waypoints,
   temas: Tag,
 };
 
@@ -65,13 +67,14 @@ const SENTIDO = { a_favor: 'a favor de', en_contra: 'contra', informa: 'sobre', 
  * importa; y al pie hacia quién va y en qué sentido. Un post que no toma
  * posición —un baile, una receta— no tiene esta sección.
  */
-export function Postura({ ejes, hablantes }) {
+export function Postura({ ejes, hablantes, quienDe, quienDeVoz }) {
   if (!ejes?.length) return null;
   return (
     <Bloque titulo="desde dónde habla" icono="postura">
       {ejes.map((e, i) => {
         const x = EJE[e.eje] || EJE.especifico;
         const voz = e.hablante ? (hablantes || []).find((v) => v.id === e.hablante) : null;
+        const quien = e.hacia ? quienDe?.(e.hacia) : null;
         return (
           <View
             key={`${i}-${e.eje}-${e.tema}`}
@@ -89,11 +92,17 @@ export function Postura({ ejes, hablantes }) {
             </View>
             <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{e.postura}</Text>
             {e.hacia && e.sentido ? (
-              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 6 }}>
-                {SENTIDO[e.sentido]} {e.hacia}
-                {voz && !voz.es_autor ? ` · lo dice ${nombreDeVoz(voz)}` : ''}
-              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                {/* Si es alguien que aparece en el post, va la referencia a su
+                    fila y no su nombre escrito otra vez. */}
+                <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17 }}>
+                  {SENTIDO[e.sentido]}
+                  {quien ? '' : ` ${e.hacia}`}
+                </Text>
+                {quien ? <ChipRef para={quien.id} /> : null}
+              </View>
             ) : null}
+            {voz && !voz.es_autor ? <LoDice voz={voz} quienDeVoz={quienDeVoz} antes="lo dice" /> : null}
           </View>
         );
       })}
@@ -114,6 +123,9 @@ const TIPO_FUENTE = {
 /**
  * En qué se apoya: a quién invoca el post para sostener lo que dice.
  *
+ * Cada fuente señala lo que sostiene. Su cita se lee acá solo si no es la de
+ * un hecho o una cifra: esa ya está en su pieza, a un toque.
+ *
  * Si afirma cosas comprobables y no invoca a nadie, se dice: no citar también
  * es un dato, y es de los que más pesan al leer a una cuenta en el tiempo.
  */
@@ -123,8 +135,9 @@ export function Apoyo({ fuentes, afirma = false }) {
     <Bloque titulo="en qué se apoya" icono="apoyo">
       {fuentes?.length ? (
         fuentes.map((f, i) => (
-          <View
-            key={f.nombre}
+          <Pieza
+            key={f.id || f.nombre}
+            id={f.id}
             style={{ paddingVertical: 10, borderBottomWidth: i === fuentes.length - 1 ? 0 : 1, borderBottomColor: RAYA }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -133,10 +146,11 @@ export function Apoyo({ fuentes, afirma = false }) {
                 <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE }}>{TIPO_FUENTE[f.tipo]}</Text>
               ) : null}
             </View>
-            {f.cita && f.cita_en_texto ? (
+            {f.citaPropia ? (
               <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE, lineHeight: 18, marginTop: 5 }}>«{f.cita}»</Text>
             ) : null}
-          </View>
+            <Refs ids={f.piezas} />
+          </Pieza>
         ))
       ) : (
         <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>
@@ -156,6 +170,27 @@ const ROL = {
   otro: 'otra voz',
 };
 
+/**
+ * Quién lo dijo, al pie de un hecho o una cifra.
+ *
+ * Si esa voz tiene fila en «quién aparece», va la referencia y no el nombre
+ * escrito otra vez.
+ */
+export function LoDice({ voz, quienDeVoz, antes = '—' }) {
+  if (!voz) return null;
+  const quien = quienDeVoz?.(voz.id);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 7 }}>
+      <Text style={{ fontFamily: MONO, fontSize: 11.5, color: voz.es_autor ? 'rgba(75,79,166,0.85)' : TENUE }}>
+        {antes}
+        {quien ? '' : ` ${nombreDeVoz(voz)}`}
+        {!quien && voz.es_autor ? ' · la cuenta' : ''}
+      </Text>
+      {quien ? <ChipRef para={quien.id} /> : null}
+    </View>
+  );
+}
+
 /** Cómo se nombra una voz: su nombre si se dijo, si no su papel. */
 export function nombreDeVoz(v) {
   if (!v) return null;
@@ -163,54 +198,104 @@ export function nombreDeVoz(v) {
 }
 
 /**
- * Quién habla, cuando hay más de una voz.
+ * Quién aparece: las personas y organizaciones del post, una fila cada una.
  *
- * Una fila por voz, con cuánto del post es suyo. La de la cuenta que publicó va
- * marcada: es la que cuenta como su discurso. Las voces de un renglón —el
- * fragmento de un noticiero metido en el reel— se juntan al final para que no
- * tapen a quienes de verdad conversan.
+ * Es la sección dueña de todo lo que es de alguien: su nombre, cuánto del post
+ * es su voz, con quién se relaciona. Antes eso estaba repartido entre las
+ * menciones, «quién habla» y «relaciones», y el mismo nombre se leía tres veces.
+ *
+ * La cuenta que publicó va marcada: es la que cuenta como su discurso. Las
+ * voces de un renglón —el fragmento de un noticiero metido en el reel— se
+ * juntan al final para que no tapen a quienes de verdad conversan.
  */
-export function Voces({ hablantes }) {
-  if (!hablantes || hablantes.length < 2) return null;
-  const total = hablantes.reduce((n, v) => n + (v.palabras || 0), 0) || 1;
-  const orden = [...hablantes].sort((a, b) => (b.palabras || 0) - (a.palabras || 0));
-  const principales = orden.filter((v) => (v.palabras || 0) / total >= 0.05).slice(0, 4);
-  const resto = orden.length - principales.length;
+export function QuienAparece({ quienes, colorDe, elegida, onElegir, onSostener, ficha, relacion }) {
+  if (!quienes?.length) return null;
+  const conVoz = quienes.filter((q) => q.voz);
+  const total = conVoz.reduce((n, q) => n + (q.voz.palabras || 0), 0) || 1;
+  // Con una sola voz no hay reparto que mostrar.
+  const reparto = conVoz.length > 1;
+  const parteDe = (q) => (q.voz ? (q.voz.palabras || 0) / total : 0);
+  // Una voz sin nombre que casi no habla no merece fila propia.
+  const visibles = quienes
+    .filter((q) => q.mencion || (reparto && parteDe(q) >= 0.05))
+    .sort((a, b) => parteDe(b) - parteDe(a));
+  const resto = quienes.length - visibles.length;
+  if (!visibles.length) return null;
+
   return (
-    <Bloque titulo="quién habla" icono="voces">
-      {principales.map((v, i) => {
-        const parte = (v.palabras || 0) / total;
+    <Bloque titulo="quién aparece" icono="quien">
+      {visibles.map((q, i) => {
+        const m = q.mencion;
+        const color = m && colorDe ? colorDe(m) : INK.title;
+        const parte = parteDe(q);
         return (
-          <View
-            key={v.id}
+          <Pieza
+            key={q.id}
+            id={q.id}
             style={{
-              paddingVertical: 10,
-              borderBottomWidth: i === principales.length - 1 && !resto ? 0 : 1,
+              paddingVertical: 11,
+              borderBottomWidth: i === visibles.length - 1 && !resto ? 0 : 1,
               borderBottomColor: RAYA,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-              <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>{nombreDeVoz(v)}</Text>
-              {v.es_autor ? (
+              <Pressable
+                disabled={!m}
+                onPress={() => m && onElegir?.(m)}
+                onLongPress={() => m && onSostener?.(m)}
+                hitSlop={6}
+                style={{ flexShrink: 1 }}
+                accessibilityRole={m ? 'button' : undefined}
+                accessibilityLabel={m ? m.texto : undefined}
+              >
+                <Text
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: 13,
+                    color,
+                    // Subrayado lo que ya está en tu Codex, igual que en el texto.
+                    textDecorationLine: m?.codex ? 'underline' : 'none',
+                  }}
+                >
+                  {q.nombre || nombreDeVoz(q.voz)}
+                </Text>
+              </Pressable>
+              {q.voz?.es_autor ? (
                 <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(75,79,166,0.85)' }}>la cuenta</Text>
+              ) : q.voz && q.nombre && ROL[q.voz.rol] ? (
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE }}>{ROL[q.voz.rol]}</Text>
               ) : null}
               <View style={{ flex: 1 }} />
-              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE }}>{Math.round(parte * 100)}%</Text>
+              {reparto && q.voz ? (
+                <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE }}>{Math.round(parte * 100)}%</Text>
+              ) : null}
             </View>
-            <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.07)', marginTop: 7 }}>
-              <View
-                style={{
-                  height: 3,
-                  borderRadius: 2,
-                  width: `${Math.max(2, parte * 100)}%`,
-                  backgroundColor: v.es_autor ? 'rgba(75,79,166,0.7)' : 'rgba(28,43,34,0.3)',
-                }}
-              />
-            </View>
-            {v.descripcion ? (
-              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 6 }}>{v.descripcion}</Text>
+
+            {reparto && q.voz ? (
+              <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.07)', marginTop: 7 }}>
+                <View
+                  style={{
+                    height: 3,
+                    borderRadius: 2,
+                    width: `${Math.max(2, parte * 100)}%`,
+                    backgroundColor: q.voz.es_autor ? 'rgba(75,79,166,0.7)' : 'rgba(28,43,34,0.3)',
+                  }}
+                />
+              </View>
             ) : null}
-          </View>
+
+            {q.voz?.descripcion ? (
+              <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17, marginTop: 6 }}>{q.voz.descripcion}</Text>
+            ) : null}
+
+            {q.relaciones.length ? (
+              <View style={{ marginTop: 4 }}>{q.relaciones.map((r, n) => relacion?.(r, n))}</View>
+            ) : null}
+
+            <Refs ids={q.piezas} />
+
+            {m && elegida === m.texto ? ficha : null}
+          </Pieza>
         );
       })}
       {resto ? (
@@ -278,30 +363,62 @@ function fraccion(c) {
 }
 
 /**
+ * El marcador de un hecho: vacío si se puede guardar, lleno si ya es un Fact
+ * de tu Codex (y entonces tocarlo lo abre).
+ */
+export function GuardarHecho({ hecho, ocupado, onGuardar }) {
+  return (
+    <Pressable
+      onPress={onGuardar}
+      disabled={ocupado}
+      hitSlop={12}
+      style={({ pressed }) => ({ paddingTop: 2, opacity: pressed ? 0.5 : 1 })}
+      accessibilityRole="button"
+      accessibilityLabel={hecho.fact_id ? 'Abrir el hecho guardado' : 'Guardar el hecho'}
+    >
+      {ocupado ? (
+        <MorphingInfinity size={15} color={INK.title} />
+      ) : hecho.fact_id ? (
+        <BookmarkCheck size={17} color={INK.title} />
+      ) : (
+        <Bookmark size={17} color="rgba(28,43,34,0.4)" />
+      )}
+    </Pressable>
+  );
+}
+
+/**
  * Las cifras, en fichas: **cifra · variable → hacia**.
  *
  * Cada cifra es una ficha con el número grande arriba, lo que se cuenta debajo
  * y a qué o a quién corresponde al pie. Van de a dos por fila, como un tablero:
  * se comparan de un vistazo, que es para lo que sirve un número. Un porcentaje
- * lleva además su barra. La ficha que no entra en media fila —«110,000
- * millones»— ocupa la fila entera.
+ * lleva además su barra.
+ *
+ * Es la sección dueña de todo número. Si el post lo contó en una frase, la
+ * frase vive acá —con su cita y su marcador— y no otra vez en «hechos»; esa
+ * ficha ocupa la fila entera, igual que la que no entra en media —«110,000
+ * millones»—.
  *
  * Un análisis anterior trae la cifra con una frase (`que_representa`): se
  * muestra igual, con la frase en el lugar de la variable.
  */
-export function Cifras({ cantidades }) {
-  if (!cantidades?.length) return null;
+export function Cifras({ cifras, hablantes, quienDeVoz, ocupado, onGuardar }) {
+  if (!cifras?.length) return null;
   return (
     <Bloque titulo="cifras" icono="cifras">
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {cantidades.map((c, i) => {
+        {cifras.map((c, i) => {
           const variable = c.variable || c.que_representa || '';
           const hacia = c.hacia || (c.variable ? null : c.de) || null;
           const f = fraccion(c);
-          const ancha = String(c.valor).length > 7 || variable.length > 26 || (hacia || '').length > 26;
+          const h = c.hecho;
+          const voz = h?.hablante ? (hablantes || []).find((v) => v.id === h.hablante) : null;
+          const ancha = !!h || String(c.valor).length > 7 || variable.length > 26 || (hacia || '').length > 26;
           return (
-            <View
-              key={`${i}-${c.valor}`}
+            <Pieza
+              key={c.id || `${i}-${c.valor}`}
+              id={c.id}
               style={{
                 flexBasis: ancha ? '100%' : '47%',
                 flexGrow: 1,
@@ -330,7 +447,34 @@ export function Cifras({ cantidades }) {
               {c.periodo ? (
                 <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, lineHeight: 16, marginTop: 5 }}>{c.periodo}</Text>
               ) : null}
-            </View>
+
+              {h ? (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    gap: 14,
+                    marginTop: 12,
+                    paddingTop: 11,
+                    borderTopWidth: 1,
+                    borderTopColor: RAYA,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.title, lineHeight: 19 }}>{h.texto}</Text>
+                    {h.cita && h.cita_en_texto ? (
+                      <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE, lineHeight: 18, marginTop: 6 }}>«{h.cita}»</Text>
+                    ) : null}
+                    <LoDice voz={voz} quienDeVoz={quienDeVoz} />
+                  </View>
+                  {onGuardar ? (
+                    <GuardarHecho hecho={h} ocupado={ocupado === `hecho:${h.texto}`} onGuardar={() => onGuardar(h)} />
+                  ) : null}
+                </View>
+              ) : null}
+
+              <Refs ids={c.fuentes} arriba={10} />
+            </Pieza>
           );
         })}
       </View>
@@ -338,29 +482,64 @@ export function Cifras({ cantidades }) {
   );
 }
 
+/** Lo que explica la app y no dijo el post, marcado para que no se confunda. */
+function Explicacion({ children }) {
+  return (
+    <View style={{ paddingVertical: 11, paddingHorizontal: 14, borderRadius: RADIUS.md, backgroundColor: 'rgba(75,79,166,0.06)' }}>
+      <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(75,79,166,0.75)', marginBottom: 5 }}>explicación</Text>
+      <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>{children}</Text>
+    </View>
+  );
+}
+
 /**
- * Para entender más: una lección corta sobre lo que el post explica.
+ * Para entender más, en tres pasos.
  *
- * No es un glosario. Va lo que el post enseña, punto por punto; después el
- * contexto que el post da por sabido —de dónde viene el tema, por qué importa—,
- * marcado aparte porque eso no lo dijo el post; y al final los términos, plegados.
- * Un análisis anterior solo trae idea y términos, y se muestra con eso.
+ *  1. **El concepto, explicado simple.** Marcado como explicación: es de la app,
+ *     no algo que dijo el post.
+ *  2. **En esta nota.** Dónde aparece ese concepto en el post: una referencia a
+ *     la cifra o al hecho, que es donde está su cita. Esta sección no es dueña
+ *     de nada de lo que el post dijo; solo lo señala.
+ *  3. **Para seguir.** Por dónde explorarlo fuera de esta nota.
+ *
+ * Lo que el post enseña y ya está contado como hecho o como cifra no se vuelve
+ * a escribir: va como referencia.
  */
-export function Aprender({ aprender }) {
-  const [abierto, setAbierto] = useState(null);
+export function Aprender({ aprender, piezas }) {
   if (!aprender) return null;
   const conceptos = aprender.conceptos || [];
   const pasos = aprender.pasos || [];
-  const puntos = aprender.puntos || [];
+  // Los puntos que no son ya una pieza se leen; los que sí, se señalan.
+  const propios = [];
+  const yaContado = [];
+  for (const t of aprender.puntos || []) {
+    const ids = piezas?.dondeAparece(t) || [];
+    if (ids.length) yaContado.push(...ids);
+    else propios.push(t);
+  }
   return (
     <Bloque titulo="para entender más" icono="aprender">
       {aprender.idea ? (
         <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22 }}>{aprender.idea}</Text>
       ) : null}
 
-      {puntos.length ? (
+      {conceptos.map((c, i) => (
+        <View key={c.termino} style={{ marginTop: i || aprender.idea ? 16 : 0 }}>
+          <Text style={{ fontFamily: MONO, fontSize: 13.5, color: INK.title, marginBottom: 8 }}>{c.termino}</Text>
+          <Explicacion>{c.explicacion}</Explicacion>
+          <EnEstaNota ids={piezas?.dondeSeNombra(c.termino)} />
+        </View>
+      ))}
+
+      {aprender.contexto ? (
+        <View style={{ marginTop: 16 }}>
+          <Explicacion>{aprender.contexto}</Explicacion>
+        </View>
+      ) : null}
+
+      {propios.length ? (
         <View style={{ marginTop: 12 }}>
-          {puntos.map((t, i) => (
+          {propios.map((t, i) => (
             <View key={`${i}-${t}`} style={{ flexDirection: 'row', gap: 10, paddingVertical: 6 }}>
               <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(28,43,34,0.3)', marginTop: 8 }} />
               <Text style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{t}</Text>
@@ -371,57 +550,11 @@ export function Aprender({ aprender }) {
 
       {pasos.length ? <Numerada items={pasos} arriba={12} /> : null}
 
-      {aprender.contexto ? (
-        <View
-          style={{
-            marginTop: 16,
-            paddingVertical: 12,
-            paddingHorizontal: 14,
-            borderRadius: RADIUS.md,
-            backgroundColor: 'rgba(75,79,166,0.06)',
-          }}
-        >
-          <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(75,79,166,0.75)', marginBottom: 6 }}>contexto</Text>
-          <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>{aprender.contexto}</Text>
-        </View>
-      ) : null}
-
-      {conceptos.length ? (
-        <View style={{ marginTop: 14 }}>
-          {conceptos.map((c, i) => {
-            const esta = abierto === i;
-            return (
-              <Pressable
-                key={c.termino}
-                onPress={() => {
-                  roce();
-                  setAbierto(esta ? null : i);
-                }}
-                style={{
-                  paddingVertical: 10,
-                  borderBottomWidth: i === conceptos.length - 1 ? 0 : 1,
-                  borderBottomColor: RAYA,
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={c.termino}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ flex: 1, fontFamily: MONO, fontSize: 13, color: INK.title }}>{c.termino}</Text>
-                  <Text style={{ fontFamily: MONO, fontSize: 13, color: TENUE }}>{esta ? '—' : '+'}</Text>
-                </View>
-                {esta ? (
-                  <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20, marginTop: 7 }}>
-                    {c.explicacion}
-                  </Text>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
-      ) : null}
+      {/* Lo que el post enseña y ya está más arriba, sin volver a escribirlo. */}
+      {!conceptos.length ? <EnEstaNota ids={yaContado} /> : null}
 
       {aprender.preguntas?.length ? (
-        <View style={{ marginTop: 14 }}>
+        <View style={{ marginTop: 16 }}>
           <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginBottom: 4 }}>para seguir</Text>
           {aprender.preguntas.map((t, i) => (
             <Text key={`${i}-${t}`} style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20, paddingVertical: 3 }}>
@@ -431,6 +564,16 @@ export function Aprender({ aprender }) {
         </View>
       ) : null}
     </Bloque>
+  );
+}
+
+function EnEstaNota({ ids }) {
+  if (!ids?.length) return null;
+  return (
+    <View style={{ marginTop: 10 }}>
+      <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE }}>en esta nota</Text>
+      <Refs ids={ids} arriba={6} />
+    </View>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { X, Eye, ExternalLink, Play, Bookmark, BookmarkCheck, Plus, Check } from 'lucide-react-native';
+import { X, Eye, ExternalLink, Play, Plus, Check } from 'lucide-react-native';
 import { INK, MOTION, RADIUS } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
@@ -33,7 +33,9 @@ import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './ca
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Apoyo, Aprender, Bloque, Cifras, Listas, LoQueSeVe, Postura, Recetas, Voces, nombreDeVoz, partirHechos } from './SeccionesAnalisis';
+import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
+import { armarPiezas, norm } from './piezas';
+import { Pieza, Refs, Saltos } from './Saltos';
 import { supabase } from '../../utils/supabase';
 import { registrarAvisos } from '../../utils/notificaciones';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
@@ -42,6 +44,8 @@ import { EV, evento } from '../../utils/analitica';
 const COLOR_OJO = TYPE_ACCENT.Actor;
 
 /** El orden de las secciones: de quién y dónde, a qué pasó y con qué. */
+// Los tipos que son «alguien»: van en «quién aparece», no en chips.
+const TIPOS_QUIEN = ['Actor', 'Entidad'];
 const ORDEN_TIPOS = ['Actor', 'Entidad', 'Territorio', 'Evento', 'Historia', 'Objeto', 'Artefacto', 'Source'];
 
 const PLURAL = {
@@ -200,7 +204,20 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   // Un análisis viejo guarda los hechos como texto suelto: sin cita ni forma de
   // guardarlos, así que solo la forma nueva los muestra.
   const hechos = (analisis?.hechos || []).filter((h) => h && typeof h === 'object');
-  const { comprobables, afirmaciones } = useMemo(() => partirHechos(hechos), [analisis]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Cada dato con su sección dueña: un hecho que cuenta una cifra vive en
+  // «cifras», una persona en «quién aparece», y así. Ver `piezas.js`.
+  const piezas = useMemo(() => armarPiezas(analisis, menciones, tipoDe), [analisis, menciones]);
+  const { comprobables, afirmaciones } = useMemo(() => partirHechos(piezas.hechos), [piezas]);
+  // Hay hechos comprobables aunque todos se hayan ido a «cifras».
+  const afirmaComprobable = comprobables.length > 0 || piezas.cifras.some((c) => c.hecho);
+  // Las personas y organizaciones tienen su sección; el resto sigue en chips.
+  // Una fuente que ya está en «en qué se apoya» tampoco se repite como chip.
+  const enChips = (m) =>
+    !TIPOS_QUIEN.includes(tipoDe(m)) &&
+    !(tipoDe(m) === 'Source' && piezas.fuentes.some((f) => norm(f.nombre) === norm(m.texto)));
+  const tiposEnChips = tiposPresentes.filter((t) => menciones.some((m) => tipoDe(m) === t && enChips(m)));
+  const scroll = useRef(null);
+  const contenido = useRef(null);
   const relaciones = analisis?.relaciones || [];
   const temas = (analisis?.temas || []).filter((t) => typeof t === 'string');
   const narrativa = analisis?.narrativa || analisis?.contexto || analisis?.resumen || '';
@@ -371,8 +388,10 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   const ficha = mencionElegida ? (
     <FichaMencion
       mencion={mencionElegida}
-      hechos={hechos.filter((h) => (h.menciones || []).includes(mencionElegida.texto))}
-      relaciones={relaciones.filter((r) => r.a === mencionElegida.texto || r.b === mencionElegida.texto)}
+      // En «organizado» los hechos y las relaciones ya están en su sección;
+      // acá se repetirían. En «anotado» la ficha es el único lugar donde verlos.
+      hechos={vistaReal === 'organizado' ? [] : hechos.filter((h) => (h.menciones || []).includes(mencionElegida.texto))}
+      relaciones={vistaReal === 'organizado' ? [] : relaciones.filter((r) => r.a === mencionElegida.texto || r.b === mencionElegida.texto)}
       menciones={menciones}
       ocupado={ocupado}
       onAbrir={abrirEnCodex}
@@ -418,9 +437,12 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
         </View>
 
         <ScrollView
+          ref={scroll}
           contentContainerStyle={{ paddingHorizontal: 30, paddingTop: 18, paddingBottom: bottomInset + 44 }}
           showsVerticalScrollIndicator={false}
         >
+          <Saltos scroll={scroll} contenido={contenido} porId={piezas.porId}>
+          <View ref={contenido} collapsable={false}>
           <View
             style={{
               width: '100%',
@@ -600,27 +622,64 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                     </Text>
                   ) : null}
 
-                  {/* Lo propio de este post: solo las secciones que trae. El
-                      margen de arriba compensa el de la primera, que ya viene
-                      separada de la narrativa. */}
-                  {d.vistazo || analisis?.ejes?.length || analisis?.hablantes?.length > 1 || analisis?.cantidades?.length || analisis?.aprender || analisis?.listas?.length || analisis?.recetas?.length ? (
-                    <View style={{ marginTop: narrativa ? -28 : 0, marginBottom: 22 }}>
-                      <LoQueSeVe vistazo={d.vistazo} />
-                      <Voces hablantes={analisis?.hablantes} />
-                      <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} />
-                      <Cifras cantidades={analisis?.cantidades} />
-                      <Aprender aprender={analisis?.aprender} />
-                      <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
-                      <Recetas recetas={analisis?.recetas} />
-                    </View>
-                  ) : null}
+                  {/* Cada sección se dibuja solo si el post la trae. El orden va
+                      de quién y desde dónde, a qué dice, a en qué se apoya. */}
+                  <View style={{ marginTop: narrativa ? -28 : 0 }}>
+                    <LoQueSeVe vistazo={d.vistazo} />
+                    <QuienAparece
+                      quienes={piezas.quienes}
+                      colorDe={colorDe}
+                      elegida={elegida}
+                      onElegir={elegir}
+                      onSostener={sostener}
+                      ficha={ficha}
+                      relacion={(r, n) => (
+                        <FilaRelacion
+                          key={`${n}-${claveRelacion(r)}`}
+                          relacion={r}
+                          menciones={menciones}
+                          ocupado={ocupado === claveRelacion(r)}
+                          onMas={() => conectar(r)}
+                          compacta
+                        />
+                      )}
+                    />
+                    <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} quienDe={piezas.quienDe} quienDeVoz={piezas.quienDeVoz} />
+                    <Cifras cifras={piezas.cifras} hablantes={analisis?.hablantes} quienDeVoz={piezas.quienDeVoz} ocupado={ocupado} onGuardar={guardarHecho} />
 
-                  {tiposPresentes.map((t) => (
-                    <View key={t} style={{ marginBottom: 20 }}>
+                    {[['hechos', comprobables], ['afirmaciones', afirmaciones]].map(([titulo, lista]) =>
+                      lista.length ? (
+                        <Bloque key={titulo} titulo={titulo} icono={titulo}>
+                          {lista.map((h, i) => (
+                            <FilaHecho
+                              key={h.id}
+                              hecho={h}
+                              voz={h.hablante ? (analisis?.hablantes || []).find((v) => v.id === h.hablante) : null}
+                              quienDeVoz={piezas.quienDeVoz}
+                              ultima={i === lista.length - 1}
+                              ocupado={ocupado === `hecho:${h.texto}`}
+                              onGuardar={() => guardarHecho(h)}
+                            />
+                          ))}
+                        </Bloque>
+                      ) : null
+                    )}
+
+                    {/* Solo en análisis que ya traen fuentes: en uno anterior, «sin
+                        citar» sería decir algo que no se midió. */}
+                    {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={piezas.fuentes} afirma={afirmaComprobable} /> : null}
+
+                    <Aprender aprender={analisis?.aprender} piezas={piezas} />
+                    <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
+                    <Recetas recetas={analisis?.recetas} />
+                  </View>
+
+                  {tiposEnChips.map((t) => (
+                    <View key={t} style={{ marginTop: 28 }}>
                       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 9 }}>{PLURAL[t]}</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                         {menciones
-                          .filter((m) => tipoDe(m) === t)
+                          .filter((m) => tipoDe(m) === t && enChips(m))
                           .map((m) => (
                             <ChipMencion
                               key={m.texto}
@@ -639,7 +698,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                   ))}
 
                   {refs.length ? (
-                    <View style={{ marginBottom: 20 }}>
+                    <View style={{ marginTop: 28 }}>
                       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 9 }}>materiales</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
                         {refs.map((m) => (
@@ -656,30 +715,11 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                     </View>
                   ) : null}
 
-                  {[['hechos', comprobables], ['afirmaciones', afirmaciones]].map(([titulo, lista]) =>
-                    lista.length ? (
-                      <Bloque key={titulo} titulo={titulo} icono={titulo}>
-                        {lista.map((h, i) => (
-                          <FilaHecho
-                            key={`${i}-${h.texto}`}
-                            hecho={h}
-                            voz={h.hablante ? (analisis?.hablantes || []).find((v) => v.id === h.hablante) : null}
-                            ultima={i === lista.length - 1}
-                            ocupado={ocupado === `hecho:${h.texto}`}
-                            onGuardar={() => guardarHecho(h)}
-                          />
-                        ))}
-                      </Bloque>
-                    ) : null
-                  )}
-
-                  {/* Solo en análisis que ya traen fuentes: en uno anterior, «sin
-                      citar» sería decir algo que no se midió. */}
-                  {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={analisis.fuentes} afirma={comprobables.length > 0} /> : null}
-
-                  {relaciones.length ? (
-                    <Bloque titulo="relaciones" icono="relaciones">
-                      {relaciones.map((r, i) => (
+                  {/* Una relación entre dos cosas que no son personas ni
+                      organizaciones no tiene fila en «quién aparece». */}
+                  {piezas.relacionesSueltas.length ? (
+                    <View style={{ marginTop: 20 }}>
+                      {piezas.relacionesSueltas.map((r, i) => (
                         <FilaRelacion
                           key={`${i}-${claveRelacion(r)}`}
                           relacion={r}
@@ -688,7 +728,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                           onMas={() => conectar(r)}
                         />
                       ))}
-                    </Bloque>
+                    </View>
                   ) : null}
 
                   {temas.length ? (
@@ -714,6 +754,8 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
               )}
             </Animated.View>
           ) : null}
+          </View>
+          </Saltos>
         </ScrollView>
       </View>
 
@@ -966,9 +1008,10 @@ function ChipMencion({ mencion, elegida, onPress, onLongPress }) {
  * modelo reescribió no es una cita, y mostrarla entre comillas diría lo
  * contrario. Guardado, el marcador se llena y tocarlo abre el Fact en el Codex.
  */
-function FilaHecho({ hecho, voz = null, ultima, ocupado, onGuardar }) {
+function FilaHecho({ hecho, voz = null, quienDeVoz, ultima, ocupado, onGuardar }) {
   return (
-    <View
+    <Pieza
+      id={hecho.id}
       style={{
         flexDirection: 'row',
         alignItems: 'flex-start',
@@ -986,31 +1029,13 @@ function FilaHecho({ hecho, voz = null, ultima, ocupado, onGuardar }) {
           </Text>
         ) : null}
         {/* Quién lo dijo, cuando en el post habla más de una persona. */}
-        {voz ? (
-          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: voz.es_autor ? 'rgba(75,79,166,0.85)' : TENUE, marginTop: 6 }}>
-            — {nombreDeVoz(voz)}
-            {voz.es_autor ? ' · la cuenta' : ''}
-          </Text>
-        ) : null}
+        <LoDice voz={voz} quienDeVoz={quienDeVoz} />
+        {/* En qué se apoya, como referencia: la fuente se lee en su sección. */}
+        <Refs ids={hecho.fuentes} />
       </View>
 
-      <Pressable
-        onPress={onGuardar}
-        disabled={ocupado}
-        hitSlop={12}
-        style={({ pressed }) => ({ paddingTop: 2, opacity: pressed ? 0.5 : 1 })}
-        accessibilityRole="button"
-        accessibilityLabel={hecho.fact_id ? 'Abrir el hecho guardado' : 'Guardar el hecho'}
-      >
-        {ocupado ? (
-          <MorphingInfinity size={15} color={INK.title} />
-        ) : hecho.fact_id ? (
-          <BookmarkCheck size={17} color={INK.title} />
-        ) : (
-          <Bookmark size={17} color="rgba(28,43,34,0.4)" />
-        )}
-      </Pressable>
-    </View>
+      <GuardarHecho hecho={hecho} ocupado={ocupado} onGuardar={onGuardar} />
+    </Pieza>
   );
 }
 
