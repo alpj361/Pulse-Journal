@@ -27,8 +27,9 @@ const CLASE = {
  * @param scroll    ref del ScrollView de la ficha
  * @param contenido ref de la vista que envuelve todo su contenido
  * @param porId     `Map` id → { clase, etiqueta } de las piezas que existen
+ * @param preparar  se llama si la pieza no está dibujada (vive en otra solapa)
  */
-export function Saltos({ scroll, contenido, porId, children }) {
+export function Saltos({ scroll, contenido, porId, preparar, children }) {
   const nodos = useRef(new Map());
   const [resaltada, setResaltada] = useState(null);
 
@@ -38,10 +39,17 @@ export function Saltos({ scroll, contenido, porId, children }) {
   }, []);
 
   const ir = useCallback(
-    (id) => {
+    (id, reintento = false) => {
       const nodo = nodos.current.get(id);
+      if (!nodo && !reintento && preparar) {
+        // La pieza está en otra solapa: se abre esa, y recién ahí se baja.
+        roce();
+        preparar(id);
+        setTimeout(() => irRef.current?.(id, true), 380);
+        return;
+      }
       if (!nodo || !contenido.current) return;
-      roce();
+      if (!reintento) roce();
       nodo.measureLayout(
         contenido.current,
         (x, y) => {
@@ -53,8 +61,10 @@ export function Saltos({ scroll, contenido, porId, children }) {
         () => {}
       );
     },
-    [scroll, contenido]
+    [scroll, contenido, preparar]
   );
+  const irRef = useRef(ir);
+  irRef.current = ir;
 
   const valor = useMemo(() => ({ registrar, ir, resaltada, porId }), [registrar, ir, resaltada, porId]);
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;

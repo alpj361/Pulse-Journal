@@ -47,4 +47,5 @@ export const PISTA = {
   ESCRIBIR: 'escribir',
   GRABAR: 'grabar',
   POST_EN_CURSO: 'post_en_curso',
+  VOCES: 'voces',
 };

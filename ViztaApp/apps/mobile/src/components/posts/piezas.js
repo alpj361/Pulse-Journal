@@ -79,6 +79,52 @@ export function corta(texto, n = 4) {
   return p.length <= n ? p.join(' ') : `${p.slice(0, n).join(' ').replace(/[,;:.]$/, '')}…`;
 }
 
+const ESCALA = [
+  [/\bbillon(es)?\b/, 1e12],
+  [/\bmil millones\b/, 1e9],
+  [/\bmillon(es)?\b/, 1e6],
+  [/\bmil\b/, 1e3],
+];
+
+/** El número de una cifra y en qué se mide: «Q240 millones» → 240e6, «q». */
+function medida(c) {
+  const v = norm(c.valor);
+  const m = String(c.valor || '').match(/\d[\d.,]*\d|\d/);
+  if (!m) return null;
+  let n = typeof c.numero === 'number' ? c.numero : parseFloat(m[0].replace(/,(?=\d{3}\b)/g, '').replace(',', '.'));
+  if (!Number.isFinite(n)) return null;
+  if (typeof c.numero !== 'number') {
+    const escala = ESCALA.find(([re]) => re.test(v));
+    if (escala) n *= escala[1];
+  }
+  // La unidad es lo que queda al quitar el número y la escala: «q», «%», «us$».
+  const unidad = v.replace(/[\d.,]/g, ' ').replace(/\b(mil|millon(es)?|billon(es)?)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  return { n, unidad };
+}
+
+/**
+ * Una visualización para entender, si las cifras del post la permiten.
+ *
+ * Por ahora una sola: comparar entre sí las cifras que se miden en lo mismo
+ * (dos montos en quetzales, dos porcentajes). Sale solo de números que el post
+ * dijo; no se calcula ni se completa nada.
+ */
+function compararCifras(cifras) {
+  const grupos = new Map();
+  for (const c of cifras) {
+    const m = medida(c);
+    if (!m || m.n <= 0 || !m.unidad) continue;
+    if (!grupos.has(m.unidad)) grupos.set(m.unidad, []);
+    grupos.get(m.unidad).push({ id: c.id, valor: c.valor, n: m.n, de: [c.variable || c.que_representa, c.hacia].filter(Boolean).join(' · ') });
+  }
+  const mejor = [...grupos.values()].filter((g) => g.length >= 2).sort((a, b) => b.length - a.length)[0];
+  if (!mejor) return null;
+  const tope = Math.max(...mejor.map((x) => x.n));
+  // Si una barra no llegaría ni a verse, comparar así confunde más que aclara.
+  if (mejor.some((x) => x.n / tope < 0.02)) return null;
+  return { tipo: 'comparacion', filas: mejor.map((x) => ({ ...x, parte: x.n / tope })) };
+}
+
 const QUIEN = new Set(['Actor', 'Entidad']);
 
 /**
@@ -208,6 +254,7 @@ export function armarPiezas(analisis, menciones = [], tipoDe = (m) => m?.tipo) {
     fuentes,
     quienes,
     relacionesSueltas: sueltas,
+    visual: compararCifras(cifras),
     porId,
     quienDe: (nombre) => quienes.find((q) => q.nombre && mismoNombre(q.nombre, nombre)) || null,
     // La fila de quien habla, si tiene nombre: para señalarla en vez de repetirlo.

@@ -217,12 +217,14 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
     !(tipoDe(m) === 'Source' && piezas.fuentes.some((f) => norm(f.nombre) === norm(m.texto)));
   const tiposEnChips = tiposPresentes.filter((t) => menciones.some((m) => tipoDe(m) === t && enChips(m)));
   const scroll = useRef(null);
+  // Una referencia tocada desde «aprender» apunta a una pieza de «organizado».
+  const alOrganizado = useCallback(() => setVista('organizado'), []);
   const contenido = useRef(null);
   const relaciones = analisis?.relaciones || [];
   const temas = (analisis?.temas || []).filter((t) => typeof t === 'string');
   const narrativa = analisis?.narrativa || analisis?.contexto || analisis?.resumen || '';
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
-  const vistaReal = analisis ? vista : 'anotado';
+  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) ? 'anotado' : vista;
 
   const extraer = async () => {
     if (cargando) return;
@@ -441,7 +443,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
           contentContainerStyle={{ paddingHorizontal: 30, paddingTop: 18, paddingBottom: bottomInset + 44 }}
           showsVerticalScrollIndicator={false}
         >
-          <Saltos scroll={scroll} contenido={contenido} porId={piezas.porId}>
+          <Saltos scroll={scroll} contenido={contenido} porId={piezas.porId} preparar={alOrganizado}>
           <View ref={contenido} collapsable={false}>
           <View
             style={{
@@ -546,6 +548,13 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                     organizado
                   </Solapa>
                 ) : null}
+                {/* Aprender va aparte: es para quien quiere entender el tema, y
+                    no se mete entre las cifras y el contexto de quien no. */}
+                {analisis?.aprender ? (
+                  <Solapa activa={vistaReal === 'aprender'} onPress={() => { roce(); setVista('aprender'); }}>
+                    aprender
+                  </Solapa>
+                ) : null}
               </View>
 
               {errorAccion ? (
@@ -614,6 +623,8 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
 
                   {ficha}
                 </View>
+              ) : vistaReal === 'aprender' ? (
+                <Aprender aprender={analisis.aprender} piezas={piezas} />
               ) : (
                 <View style={{ marginTop: 14 }}>
                   {narrativa ? (
@@ -669,7 +680,6 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                         citar» sería decir algo que no se midió. */}
                     {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={piezas.fuentes} afirma={afirmaComprobable} /> : null}
 
-                    <Aprender aprender={analisis?.aprender} piezas={piezas} />
                     <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
                     <Recetas recetas={analisis?.recetas} />
                   </View>

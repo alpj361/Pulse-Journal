@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import { BookMarked, Bookmark, BookmarkCheck, ChefHat, Compass, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, UsersRound } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
@@ -5,6 +6,8 @@ import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL } from '../codex/materiales';
 import MorphingInfinity from '../MorphingInfinity';
+import Pista from '../Pista';
+import { usePistasStore, PISTA } from '../../state/pistasStore';
 import { ChipRef, Pieza, Refs } from './Saltos';
 
 /**
@@ -60,6 +63,64 @@ const EJE = {
 
 const SENTIDO = { a_favor: 'a favor de', en_contra: 'contra', informa: 'sobre', mixto: 'a favor y en contra de' };
 
+// Dónde cae cada sentido entre «contra» (0) y «a favor» (1). Quien solo informa
+// no toma lado y no lleva termómetro.
+const LADO = { en_contra: -1, a_favor: 1, mixto: 0 };
+
+/**
+ * De qué lado está, y cuánto.
+ *
+ * Una línea de «contra» a «a favor» con una marca. El lado sale del sentido de
+ * la postura; qué tan lejos del centro, de la intensidad si el análisis la
+ * midió. Un análisis que no la trae pone la marca a media distancia: dice el
+ * lado sin inventar un grado.
+ */
+function Termometro({ eje, color }) {
+  const lado = LADO[eje.sentido];
+  if (lado === undefined) return null;
+  const fuerza = typeof eje.intensidad === 'number' ? Math.min(1, Math.max(0.15, eje.intensidad)) : 0.6;
+  const pos = 50 + lado * fuerza * 50;
+  return (
+    <View style={{ marginTop: 12 }} accessible accessibilityLabel={eje.sentido === 'mixto' ? 'A favor y en contra' : lado < 0 ? 'En contra' : 'A favor'}>
+      <View style={{ height: 14, justifyContent: 'center' }}>
+        <View style={{ height: 3, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.08)' }} />
+        {/* El tramo del centro a la marca: se lee como «hasta acá llega». */}
+        {lado !== 0 ? (
+          <View
+            style={{
+              position: 'absolute',
+              height: 3,
+              borderRadius: 2,
+              backgroundColor: color,
+              opacity: 0.45,
+              left: `${Math.min(50, pos)}%`,
+              width: `${Math.abs(pos - 50)}%`,
+            }}
+          />
+        ) : null}
+        <View style={{ position: 'absolute', left: '50%', marginLeft: -0.5, width: 1, height: 9, backgroundColor: 'rgba(28,43,34,0.22)' }} />
+        <View
+          style={{
+            position: 'absolute',
+            left: `${pos}%`,
+            marginLeft: -6,
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            backgroundColor: color,
+            borderWidth: 2,
+            borderColor: '#FFFDF8',
+          }}
+        />
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 }}>
+        <Text style={{ fontFamily: MONO, fontSize: 10.5, color: lado < 0 ? color : TENUE }}>contra</Text>
+        <Text style={{ fontFamily: MONO, fontSize: 10.5, color: lado > 0 ? color : TENUE }}>a favor</Text>
+      </View>
+    </View>
+  );
+}
+
 /**
  * Desde dónde habla el post: un renglón por terreno en el que toma posición.
  *
@@ -91,12 +152,14 @@ export function Postura({ ejes, hablantes, quienDe, quienDeVoz }) {
               </Text>
             </View>
             <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{e.postura}</Text>
+            <Termometro eje={e} color={x.color} />
             {e.hacia && e.sentido ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 7 }}>
                 {/* Si es alguien que aparece en el post, va la referencia a su
                     fila y no su nombre escrito otra vez. */}
                 <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, lineHeight: 17 }}>
-                  {SENTIDO[e.sentido]}
+                  {/* Con termómetro el lado ya se ve; acá va solo hacia quién. */}
+                  {LADO[e.sentido] === undefined ? SENTIDO[e.sentido] : 'hacia'}
                   {quien ? '' : ` ${e.hacia}`}
                 </Text>
                 {quien ? <ChipRef para={quien.id} /> : null}
@@ -220,10 +283,18 @@ export function QuienAparece({ quienes, colorDe, elegida, onElegir, onSostener, 
     .filter((q) => q.mencion || (reparto && parteDe(q) >= 0.05))
     .sort((a, b) => parteDe(b) - parteDe(a));
   const resto = quienes.length - visibles.length;
+  // Vista una vez, la pista de los porcentajes no vuelve.
+  const marcar = usePistasStore((x) => x.marcar);
+  useEffect(() => (reparto ? () => marcar(PISTA.VOCES) : undefined), [reparto, marcar]);
   if (!visibles.length) return null;
 
   return (
     <Bloque titulo="quién aparece" icono="quien">
+      {reparto ? (
+        <Pista clave={PISTA.VOCES} style={{ alignItems: 'flex-end', marginBottom: 2 }}>
+          el porcentaje es cuánto del video habla cada quien
+        </Pista>
+      ) : null}
       {visibles.map((q, i) => {
         const m = q.mencion;
         const color = m && colorDe ? colorDe(m) : INK.title;
@@ -506,6 +577,7 @@ function Explicacion({ children }) {
  * a escribir: va como referencia.
  */
 export function Aprender({ aprender, piezas }) {
+  const visual = piezas?.visual;
   if (!aprender) return null;
   const conceptos = aprender.conceptos || [];
   const pasos = aprender.pasos || [];
@@ -518,10 +590,12 @@ export function Aprender({ aprender, piezas }) {
     else propios.push(t);
   }
   return (
-    <Bloque titulo="para entender más" icono="aprender">
+    <View style={{ marginTop: 14 }}>
       {aprender.idea ? (
         <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22 }}>{aprender.idea}</Text>
       ) : null}
+
+      {visual ? <Comparacion visual={visual} /> : null}
 
       {conceptos.map((c, i) => (
         <View key={c.termino} style={{ marginTop: i || aprender.idea ? 16 : 0 }}>
@@ -563,7 +637,32 @@ export function Aprender({ aprender, piezas }) {
           ))}
         </View>
       ) : null}
-    </Bloque>
+    </View>
+  );
+}
+
+/**
+ * Las cifras del post que se miden en lo mismo, una contra otra.
+ *
+ * Cada barra es una cifra que el post dijo, a escala de la más grande; tocarla
+ * lleva a la cifra. No hay ningún número que no esté en el post.
+ */
+function Comparacion({ visual }) {
+  return (
+    <View style={{ marginTop: 16, paddingVertical: 14, paddingHorizontal: 14, borderRadius: RADIUS.md, borderWidth: 1, borderColor: 'rgba(28,43,34,0.09)', backgroundColor: 'rgba(255,255,255,0.55)' }}>
+      {visual.filas.map((f, i) => (
+        <View key={f.id} style={{ marginTop: i ? 14 : 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', letterSpacing: -0.3, color: INK.title }}>{f.valor}</Text>
+            <Text numberOfLines={1} style={{ flex: 1, fontFamily: MONO, fontSize: 11.5, color: TENUE }}>{f.de}</Text>
+          </View>
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(15,118,110,0.10)', marginTop: 6 }}>
+            <View style={{ height: 8, borderRadius: 4, width: `${Math.max(3, f.parte * 100)}%`, backgroundColor: COLOR_CIFRA, opacity: f.parte === 1 ? 1 : 0.6 }} />
+          </View>
+        </View>
+      ))}
+      <Refs ids={visual.filas.map((f) => f.id)} arriba={12} />
+    </View>
   );
 }
 
