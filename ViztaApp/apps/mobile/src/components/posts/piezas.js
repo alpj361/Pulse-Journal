@@ -62,7 +62,7 @@ function mismaCita(a, b) {
   if (x.length < 12 || y.length < 12) return false;
   if (x.includes(y) || y.includes(x)) return true;
   const [corta_, larga] = x.length <= y.length ? [x, y] : [y, x];
-  return palabras(corta_).length >= 3 && cubre(corta_, larga) >= 0.75;
+  return palabras(corta_).length >= 3 && cubre(corta_, larga) >= 0.6;
 }
 
 /** Cuánto de las palabras de `a` está en `b`, de 0 a 1. */
