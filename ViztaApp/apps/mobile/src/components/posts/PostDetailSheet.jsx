@@ -41,6 +41,9 @@ import { registrarAvisos } from '../../utils/notificaciones';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
 
+// Lo mismo que el servidor (`CORTADO_MS` en `routes/analisisPost.js`), más un
+// margen: si la app ofrece reintentar antes, el servidor contesta «ya está».
+const ANALISIS_CORTADO_MS = 6 * 60 * 1000 + 15000;
 const COLOR_OJO = TYPE_ACCENT.Actor;
 
 /** El orden de las secciones: de quién y dónde, a qué pasó y con qué. */
@@ -259,6 +262,39 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
     } catch (e) {
       falla();
       setError(e.message || 'No se pudo extraer');
+    } finally {
+      setPidiendo(false);
+    }
+  };
+
+  // Un análisis que lleva demasiado «en curso» ya no lo está haciendo nadie
+  // (el servidor se reinició a la mitad). Se nota con un reloj propio: el
+  // estado no cambia solo, así que sin esto la hoja esperaría para siempre.
+  const [colgado, setColgado] = useState(false);
+  useEffect(() => {
+    setColgado(false);
+    if (estado !== 'procesando' || muestra) return undefined;
+    const desde = new Date(d.analysis_desde || Date.now()).getTime();
+    const falta = Math.max(0, desde + ANALISIS_CORTADO_MS - Date.now());
+    const reloj = setTimeout(() => setColgado(true), falta);
+    return () => clearTimeout(reloj);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado, d.analysis_desde]);
+
+  /** Volver a pedirlo, después de un fallo o de uno que se quedó colgado. */
+  const reintentar = async () => {
+    if (pidiendo) return;
+    roce();
+    setPidiendo(true);
+    setError(null);
+    setColgado(false);
+    try {
+      await pedirAnalisis(post);
+      onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando', analysis_desde: new Date().toISOString(), analysis_error: null } });
+      registrarAvisos();
+    } catch (e) {
+      falla();
+      setError(e.message || 'No se pudo analizar');
     } finally {
       setPidiendo(false);
     }
@@ -525,11 +561,17 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
           {/* El error propio es el de pedirlo —sin sesión, sin texto—; el
               remoto es el del análisis que ya había arrancado y falló allá.
               Son dos momentos distintos y ninguno tapa al otro. */}
-          {error || (errorRemoto && !analisis) ? (
+          {error || (errorRemoto && !analisis) || colgado ? (
             <Animated.View entering={FadeIn.duration(200)} style={{ marginTop: 22 }}>
               <Text style={{ fontFamily: MONO, fontSize: 12.5, color: '#B91C1C', lineHeight: 19 }}>
-                {error || errorRemoto}
+                {/* El motivo que escribe el servidor puede ser la respuesta
+                    cruda de un proveedor: no le sirve a quien lo lee. Se dice
+                    qué pasó, y al lado, cómo seguir. */}
+                {error || (colgado ? 'El análisis está tardando más de lo normal.' : 'No se pudo analizar este post.')}
               </Text>
+              <AccionTexto onPress={reintentar} etiqueta="Volver a analizar el post" arriba={10}>
+                volver a intentar
+              </AccionTexto>
             </Animated.View>
           ) : null}
 

@@ -45,7 +45,7 @@ import PostDetailSheet from './PostDetailSheet';
 import { avisoDeBorrado, fichasHijas, limpiarLienzos } from './borrarPost';
 import { registrarAvisos } from '../../utils/notificaciones';
 import CasosDeMuestra from './CasosDeMuestra';
-import agregarPost, { enlaceDePost } from './agregarPost';
+import agregarPost, { enlaceDePost, reintentarPost, seCorto } from './agregarPost';
 import usePostsEnCurso from './usePostsEnCurso';
 import AnalizandoImagen, { TextoAnalizando } from './AnalizandoImagen';
 import { MarcaCarrusel } from './CarruselPost';
@@ -130,6 +130,30 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
   const hayEnCurso = (posts || []).some((p) => p?.details?.carga === 'procesando');
 
   const marcarPista = usePistasStore((s) => s.marcar);
+
+  // Mientras haya algo trayéndose, la hora se refresca: es lo que deja notar
+  // que uno se quedó colgado y ofrecer traerlo de nuevo.
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hayEnCurso) return undefined;
+    const reloj = setInterval(() => setAhora(Date.now()), 20000);
+    return () => clearInterval(reloj);
+  }, [hayEnCurso]);
+
+  /** Volver a traer uno que falló o se cortó, en la misma tarjeta. */
+  const reintentar = async (p) => {
+    roce();
+    try {
+      const details = await reintentarPost(p);
+      setAhora(Date.now());
+      setPosts((prev) => (prev || []).map((x) => (x.id === p.id ? { ...x, details } : x)));
+      registrarAvisos();
+    } catch (e) {
+      falla();
+      const details = { ...(p.details || {}), carga: 'error', carga_error: e.message || 'No se pudo volver a traer' };
+      setPosts((prev) => (prev || []).map((x) => (x.id === p.id ? { ...x, details } : x)));
+    }
+  };
 
   // Se llegó tocando un aviso: se abre ese post apenas está en la lista.
   const abiertoPorAviso = useRef(null);
@@ -771,6 +795,8 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
                   post={p}
                   ancho={COL}
                   indice={i}
+                  ahora={ahora}
+                  onReintentar={() => reintentar(p)}
                   atenuada={!!menu && menu.item.id !== p.id}
                   onPress={() => {
                     roce();
@@ -1047,14 +1073,16 @@ function Buscador({ value, onChangeText, onCerrar }) {
  * literal que existe para «esto se reproduce acá», y ponerlo donde no se
  * reproduce nada gasta la confianza en todos los demás iconos de la pantalla.
  */
-function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
+function Tarjeta({ post, ancho, indice, atenuada, ahora, onPress, onLongPress, onReintentar }) {
   const [rota, setRota] = useState(false);
   const press = useSharedValue(0);
 
   // El servidor todavía lo está trayendo, o no pudo.
   const carga = post.details?.carga;
-  const trayendo = carga === 'procesando';
-  const fallado = carga === 'error';
+  // Lleva demasiado «trayéndose»: ya nadie lo está trayendo.
+  const cortado = seCorto(post, ahora);
+  const trayendo = carga === 'procesando' && !cortado;
+  const fallado = carga === 'error' || cortado;
   const analizando = !trayendo && post.details?.analysis_estado === 'procesando';
 
   const uri = post.thumbnail_url || post.details?.thumbnail_url || post.details?.images?.[0];
@@ -1135,8 +1163,26 @@ function Tarjeta({ post, ancho, indice, atenuada, onPress, onLongPress }) {
                   lineHeight: 16,
                 }}
               >
-                {post.details?.carga_error || 'no se pudo traer'}
+                {cortado ? 'Se cortó mientras lo traíamos.' : post.details?.carga_error || 'No se pudo traer.'}
               </Text>
+              {/* El post sigue acá, con su enlace: se puede volver a traer sin
+                  pegarlo otra vez. */}
+              <Pressable
+                onPress={onReintentar}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  marginTop: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: RADIUS.pill,
+                  backgroundColor: 'rgba(28,43,34,0.07)',
+                  opacity: pressed ? 0.55 : 1,
+                })}
+                accessibilityRole="button"
+                accessibilityLabel="Volver a traer el post"
+              >
+                <Text style={{ fontFamily: MONO, fontSize: 11, color: INK.title }}>volver a traer</Text>
+              </Pressable>
             </View>
           ) : uri && !rota ? (
             <>
