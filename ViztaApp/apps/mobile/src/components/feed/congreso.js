@@ -107,13 +107,72 @@ async function completarTitulos(items) {
     const texto = textos.get(item.id);
     if (!texto) continue;
     const inicio = plano(item.titulo.replace(CORTADO, ''));
-    const entero = texto
-      .split('\n')
-      .filter((l) => /^#{1,3}\s+\S/.test(l))
-      .map((l) => l.replace(/^#{1,3}\s+/, '').trim())
-      .find((l) => inicio.length >= 8 && plano(l).startsWith(inicio));
+    const entero = tituloEntero(texto, inicio);
     if (entero) item.titulo = entero;
   }
+}
+
+/**
+ * El título entero de una nota, sacado de su texto.
+ *
+ * En la página leída aparece dos veces: como encabezado («## TÍTULO») y como
+ * enlace en la miga de pan («[Título](…)»). Se toma el que empiece igual que
+ * el cortado.
+ */
+function tituloEntero(texto, inicio) {
+  if (!texto || inicio.length < 8) return null;
+  const candidatos = [];
+  for (const l of texto.split('\n')) {
+    if (/^#{1,3}\s+\S/.test(l)) candidatos.push(l.replace(/^#{1,3}\s+/, '').trim());
+    for (const m of l.matchAll(/\[\**([^\]]+?)\**\]\(/g)) candidatos.push(m[1].trim());
+  }
+  return candidatos.find((c) => !CORTADO.test(c) && plano(c).startsWith(inicio) && plano(c).length > inicio.length) || null;
+}
+
+const COLUMNAS_NOTA =
+  'id, titulo, url, gap_content, actors, comision_name, iniciativa_titulo, iniciativa_estado, norma_decreto, decreto_numero';
+
+/**
+ * Una nota abierta: su texto y lo que el monitor sabe de ella.
+ *
+ * Se pide al abrirla, no con el feed: el texto de una nota pesa varias veces lo
+ * que pesa su fila, y casi todas se leen solo por el título.
+ */
+export async function traerNota(id) {
+  const { data, error } = await supabase.from('congreso_items_app_view').select(COLUMNAS_NOTA).eq('id', id).single();
+  if (error) throw error;
+  const inicio = plano(String(data.titulo || '').replace(CORTADO, ''));
+  return {
+    ...data,
+    tituloEntero: CORTADO.test(data.titulo || '') ? tituloEntero(data.gap_content, inicio) : null,
+    parrafos: parrafosDe(data.gap_content),
+  };
+}
+
+/**
+ * Los párrafos de la nota, sin lo que la rodea en la página.
+ *
+ * El texto guardado es la página entera pasada a texto: buscador, menú,
+ * imágenes, «noticias relacionadas». La nota va entre su encabezado y la raya
+ * que la separa de lo relacionado; de ahí se dejan los renglones que son prosa.
+ */
+function parrafosDe(texto) {
+  if (!texto) return [];
+  const lineas = texto.split('\n');
+  const desde = lineas.findIndex((l) => /^##\s+\S/.test(l));
+  if (desde === -1) return [];
+  const cuerpo = [];
+  for (const cruda of lineas.slice(desde + 1)) {
+    const l = cruda.trim();
+    if (/^(\* \* \*|-{3,}|#{4,}\s)/.test(l)) break;
+    if (!l || /^[|!\[#>]/.test(l) || /^- \[/.test(l)) continue;
+    // La fecha suelta («Jueves, 08 de octubre de 2026») y los restos del
+    // reproductor de video no son la nota.
+    if (/^(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo),/i.test(l) && l.length < 50) continue;
+    if (l.length < 40) continue;
+    cuerpo.push(l.replace(/\\/g, '').replace(/\*\*/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1'));
+  }
+  return cuerpo;
 }
 
 /**

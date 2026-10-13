@@ -19,8 +19,8 @@ import { titular, traerVotos } from './congreso';
  */
 
 // El color del Congreso en el feed, y los de un voto.
-const TINTA = '#2F4A7A';
-const RAYA = 'rgba(28,43,34,0.09)';
+export const TINTA = '#2F4A7A';
+export const RAYA = 'rgba(28,43,34,0.09)';
 const VOTO = { favor: '#15803D', contra: '#B91C1C', ausente: 'rgba(28,43,34,0.28)', licencia: 'rgba(28,43,34,0.12)' };
 
 const TOTAL = 160;
@@ -28,7 +28,7 @@ const MAYORIA = 81; // mayoría absoluta
 const CALIFICADA = 107; // dos tercios
 
 /** El rótulo chico de arriba: qué clase de cosa es. */
-function Rotulo({ children, color = TINTA }) {
+export function Rotulo({ children, color = TINTA }) {
   return <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color, marginBottom: 5 }}>{children}</Text>;
 }
 
@@ -40,7 +40,7 @@ function Rotulo({ children, color = TINTA }) {
  * letras («Aprobación del Capítulo I que consta de los artículos 1 al 12…»), y
  * a tamaño de titular ocuparía media pantalla.
  */
-function Titulo({ children }) {
+export function Titulo({ children }) {
   const largo = String(children || '').length;
   const [tamano, renglon] = largo <= 48 ? [20, 25] : largo <= 85 ? [17.5, 22] : largo <= 130 ? [15.5, 20] : [14.5, 19];
   return (
@@ -76,7 +76,7 @@ const CAMINO = [
  * cuenta la noticia, no cuándo pasó por las anteriores. Por eso no lleva fechas
  * ni une las paradas ya recorridas como si constaran.
  */
-function Camino({ etapa }) {
+export function Camino({ etapa }) {
   const actual = CAMINO.findIndex(([clave]) => clave === etapa);
   if (actual === -1) return null;
   return (
@@ -108,7 +108,7 @@ function Camino({ etapa }) {
 // ─── Una cifra ───────────────────────────────────────────────────────────────
 
 /** 100000000 con «Q» → «Q100 millones». */
-function monto(cantidad, unidad) {
+export function monto(cantidad, unidad) {
   const n = Number(cantidad);
   if (!Number.isFinite(n)) return null;
   const u = unidad || '';
@@ -319,7 +319,7 @@ export function VotacionesDelDia({ votaciones = [] }) {
  * ni ausentes que nadie contó: va una barra hasta donde llegó, con las marcas
  * de 81 y 107 para leer si alcanzó.
  */
-function AFavor({ cuantos }) {
+export function AFavor({ cuantos }) {
   const n = Number(cuantos);
   if (!Number.isFinite(n) || n <= 0) return null;
   const marca = (m) => `${(m / TOTAL) * 100}%`;
@@ -353,7 +353,7 @@ function AFavor({ cuantos }) {
 
 // ─── Una noticia del día ─────────────────────────────────────────────────────
 
-const ETAPA = {
+export const ETAPA = {
   iniciativa_presentada: 'INICIATIVA PRESENTADA',
   en_comision: 'EN COMISIÓN',
   dictamen: 'DICTAMEN',
@@ -363,17 +363,62 @@ const ETAPA = {
   citacion: 'CITACIÓN',
 };
 
-export function ItemCongreso({ item, ultimo = false }) {
+const mayuscula = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
+/**
+ * El título y el resumen que se muestran.
+ *
+ * El sitio del Congreso corta sus títulos («…DE LA UNIVERSIDAD DA...») y el
+ * entero no siempre quedó guardado. Un título a medias no se puede leer, así
+ * que se busca algo que sí, en este orden: de qué trata la nota según el
+ * monitor (`subject`), y si no, la primera oración de su resumen —que entonces
+ * deja de repetirse abajo—. El cortado queda solo cuando no hay nada más.
+ */
+export function cabezaDe(item) {
   const d = item.card_data || {};
-  const numero = item.iniciativa_numero || d.iniciativa_numero || null;
-  const rotulo = [ETAPA[item.stage] || null, numero ? `INICIATIVA ${numero}` : null].filter(Boolean).join(' · ');
-  const tipo = item.card_type;
   // Un resumen que solo describe el tweet («el tuit anuncia…») no cuenta nada
   // del hecho: mejor el título solo.
-  const resumen = /\btuit\b/i.test(item.summary || '') ? null : item.summary;
+  const resumen = /\btuit\b/i.test(item.summary || '') ? null : item.summary || null;
+  const propio = titular(item.titulo);
+  const cortado = /…\s*$/.test(propio);
+  if (d.subject && (item.card_type === 'timeline' || cortado)) return { titulo: mayuscula(d.subject), resumen };
+  if (!cortado || !resumen) return { titulo: propio, resumen };
+
+  const fin = resumen.search(/[.!?](\s|$)/);
+  const primera = fin === -1 ? resumen : resumen.slice(0, fin);
+  if (primera.length < 30 || primera.length > 260) return { titulo: propio, resumen };
+  return { titulo: primera.trim(), resumen: resumen.slice(fin + 1).trim() || null };
+}
+
+export const tituloDe = (item) => cabezaDe(item).titulo;
+
+/** El rótulo de una nota: su etapa y, si la hay, su iniciativa. */
+export function rotuloDe(item) {
+  const numero = item.iniciativa_numero || item.card_data?.iniciativa_numero || null;
+  return [ETAPA[item.stage] || null, numero ? `INICIATIVA ${numero}` : null].filter(Boolean).join(' · ');
+}
+
+export function ItemCongreso({ item, ultimo = false, onPress }) {
+  const d = item.card_data || {};
+  const numero = item.iniciativa_numero || d.iniciativa_numero || null;
+  const rotulo = rotuloDe(item);
+  const tipo = item.card_type;
+  const cabeza = cabezaDe(item);
+  // La persona y la cifra tienen su propio titular: ahí el resumen va entero.
+  const propia = (tipo === 'ficha' && d.name) || (tipo === 'cifra' && monto(d.amount, d.unit));
+  const resumen = propia ? /\btuit\b/i.test(item.summary || '') ? null : item.summary : cabeza.resumen;
 
   return (
-    <View style={{ paddingVertical: 16, borderBottomWidth: ultimo ? 0 : 1, borderBottomColor: RAYA }}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => ({
+        paddingVertical: 16,
+        borderBottomWidth: ultimo ? 0 : 1,
+        borderBottomColor: RAYA,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
       {rotulo ? <Rotulo>{rotulo}</Rotulo> : null}
 
       {tipo === 'ficha' && d.name ? (
@@ -395,7 +440,7 @@ export function ItemCongreso({ item, ultimo = false }) {
         </>
       ) : (
         <>
-          <Titulo>{tipo === 'timeline' && d.subject ? d.subject.charAt(0).toUpperCase() + d.subject.slice(1) : titular(item.titulo)}</Titulo>
+          <Titulo>{cabeza.titulo}</Titulo>
           {tipo === 'hemiciclo' ? <AFavor cuantos={item.votes?.favor} /> : null}
           {/* El camino es el de una ley. Aprobar una agenda o citar a un
               ministro también tiene «etapa», pero no recorre ese camino. */}
@@ -403,6 +448,6 @@ export function ItemCongreso({ item, ultimo = false }) {
           <Resumen>{resumen}</Resumen>
         </>
       )}
-    </View>
+    </Pressable>
   );
 }

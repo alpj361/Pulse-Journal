@@ -21,6 +21,7 @@ import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
 import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
+import NotaCongreso from "../../components/feed/NotaCongreso";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
 
@@ -617,6 +618,7 @@ export default function Index() {
   const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
+  const [notaCongreso, setNotaCongreso] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
   const queryClient = useQueryClient();
 
@@ -765,6 +767,7 @@ export default function Index() {
 
       {/* Modal de detalle */}
       <NewsCardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
+      <NotaCongreso item={notaCongreso} onClose={() => setNotaCongreso(null)} />
       {entityModal && (
         <EntityWikiModal entityName={entityModal} onClose={() => setEntityModal(null)} />
       )}
@@ -893,7 +896,15 @@ export default function Index() {
                       {dia.items
                         .filter((item) => item.tipo !== "noticiero")
                         .map((item, i, lista) => (
-                          <ItemCongreso key={item.id} item={item} ultimo={i === lista.length - 1} />
+                          <ItemCongreso
+                            key={item.id}
+                            item={item}
+                            ultimo={i === lista.length - 1}
+                            onPress={() => {
+                              evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                              setNotaCongreso(item);
+                            }}
+                          />
                         ))}
                     </View>
                   </View>
