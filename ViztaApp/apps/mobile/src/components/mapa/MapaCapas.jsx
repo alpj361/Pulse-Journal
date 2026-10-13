@@ -131,6 +131,8 @@ function MapaCapas({
   areas,
   pines,
   recorridos = [],
+  /** Tramos de tráfico: `{ id, geometry, color }`. Se dibujan, no se tocan. */
+  trafico = [],
   mostrarAreas,
   mostrarPines,
   mostrarCalor = false,
@@ -187,6 +189,20 @@ function MapaCapas({
     path.setFillType(FillType.EvenOdd);
     return path;
   }, [niebla, ancla]);
+
+  // El tráfico va en su propia lista: cambia cada pocos minutos, y rehacer con
+  // él las fronteras de 358 municipios sería trabajo tirado.
+  const viales = useMemo(
+    () =>
+      trafico
+        .map((t) => {
+          const d = geometriaLinealAPath(t.geometry, ancla.z, ancla);
+          const path = d ? Skia.Path.MakeFromSVGString(d) : null;
+          return path ? { id: t.id, path, color: t.color } : null;
+        })
+        .filter(Boolean),
+    [trafico, ancla]
+  );
 
   const { rutas, lineas, puntos, dibujo } = useMemo(() => {
     const z = ancla.z;
@@ -396,6 +412,8 @@ function MapaCapas({
   const radioCalorAlto = useDerivedValue(() => 9 * escalaInv.value);
   const grosorRutaAro = useDerivedValue(() => 5.5 * escalaInv.value);
   const grosorRuta = useDerivedValue(() => 2.8 * escalaInv.value);
+  const grosorTraficoAro = useDerivedValue(() => 7 * escalaInv.value);
+  const grosorTrafico = useDerivedValue(() => 4.2 * escalaInv.value);
   const grosorBorrador = useDerivedValue(() => 2.4 * escalaInv.value);
   const radioVertice = useDerivedValue(() => 4.5 * escalaInv.value);
   // El relleno entra después del trazo: primero la línea, después el color.
@@ -403,7 +421,7 @@ function MapaCapas({
 
   // El velo se dibuja aunque no haya ni un territorio ni un pin: la niebla es
   // el estado inicial del mapa, no un adorno sobre los datos.
-  if (!velo && !rutas.length && !lineas.length && !puntos.length && !dibujo.path && !dibujo.vertices.length) return null;
+  if (!velo && !rutas.length && !lineas.length && !viales.length && !puntos.length && !dibujo.path && !dibujo.vertices.length) return null;
 
   return (
     <Canvas
@@ -453,6 +471,15 @@ function MapaCapas({
               color={BORDE}
               end={entrada}
             />
+          </Group>
+        ))}
+
+        {/* El tráfico: cada tramo con el color de su nivel, sobre un aro claro
+            para que se lea encima de cualquier tesela. */}
+        {viales.map((r) => (
+          <Group key={r.id}>
+            <Path path={r.path} style="stroke" strokeWidth={grosorTraficoAro} strokeJoin="round" strokeCap="round" color={RUTA_ARO} />
+            <Path path={r.path} style="stroke" strokeWidth={grosorTrafico} strokeJoin="round" strokeCap="round" color={r.color} />
           </Group>
         ))}
 

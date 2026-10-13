@@ -24,6 +24,7 @@ import {
   LocateFixed,
   Eraser,
   Flame,
+  TrafficCone,
   Hand,
   MapPinPlus,
   Pentagon,
@@ -397,6 +398,40 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
 
   const [vista, setVista] = useState(CENTRO_INICIAL);
   const [mostrarCalor, setMostrarCalor] = useState(false);
+
+  // El tráfico: los tramos que el servidor mide cada 15 minutos con Apple Maps
+  // (`trafico_ahora`). Se pide recién al prender la capa, y mientras esté
+  // prendida se vuelve a pedir cada cinco minutos: más seguido no hay dato nuevo.
+  const [mostrarTrafico, setMostrarTrafico] = useState(false);
+  const { data: tramosTrafico = VACIO } = useQuery({
+    queryKey: ['trafico-ahora'],
+    enabled: mostrarTrafico,
+    refetchInterval: mostrarTrafico ? 5 * 60 * 1000 : false,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trafico_ahora')
+        .select('clave, nombre, nivel, geometria, medido_en, demora_s')
+        .order('orden', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const trafico = useMemo(
+    () =>
+      mostrarTrafico
+        ? tramosTrafico
+            .filter((t) => Array.isArray(t.geometria) && t.geometria.length > 1)
+            .map((t) => ({
+              id: `trafico:${t.clave}`,
+              // El servidor guarda [lat, lng]; el mapa dibuja GeoJSON, [lng, lat].
+              geometry: { type: 'LineString', coordinates: t.geometria.map(([la, lo]) => [lo, la]) },
+              color: COLOR_TRAFICO[t.nivel] || COLOR_TRAFICO.sin_dato,
+            }))
+        : VACIO,
+    [mostrarTrafico, tramosTrafico]
+  );
+  const traficoMedido = tramosTrafico.find((t) => t.medido_en)?.medido_en || null;
   // La niebla arranca encendida: es el estado natural de un mapa por explorar,
   // no una capa opcional que haya que ir a buscar. Se puede apagar —a veces se
   // necesita ver el terreno completo— y esa preferencia no se guarda a
@@ -1663,6 +1698,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           areas={areasVisibles}
           pines={pines}
           recorridos={recorridos}
+          trafico={trafico}
           mostrarAreas={areasVisibles.length > 0}
           mostrarPines={pines.length > 0}
           mostrarCalor={mostrarCalor}
@@ -1691,6 +1727,11 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             <HerramientasMapa
               modo={modo}
               calor={mostrarCalor}
+              trafico={mostrarTrafico}
+              onTrafico={() => {
+                roce();
+                setMostrarTrafico((v) => !v);
+              }}
               niebla={nieblaActiva}
               onNiebla={() => {
                 roce();
@@ -1703,6 +1744,8 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               }}
             />
           </View>
+
+          {mostrarTrafico ? <LeyendaTrafico medido={traficoMedido} hay={trafico.length > 0} /> : null}
 
           {/* Los límites, en el borde izquierdo y a media altura: la ficha de
               lo que se toca sale de abajo, y ahí se taparían. Vive acá y no en
@@ -2057,7 +2100,55 @@ const MODOS_MAPA = [
   { clave: 'ruta', etiqueta: 'Crear ruta manual', Icono: Route },
 ];
 
-function HerramientasMapa({ modo, calor, niebla, onModo, onCalor, onNiebla }) {
+// Los colores del tráfico. Son el dato, así que no salen de la tinta de la
+// interfaz: verde a rojo, como los lee cualquiera en un mapa.
+const COLOR_TRAFICO = { fluido: '#15803D', lento: '#D97706', pesado: '#EA580C', detenido: '#B91C1C', sin_dato: 'rgba(28,43,34,0.35)' };
+
+/**
+ * Qué significa cada color, y de cuándo es la medición.
+ *
+ * La hora importa tanto como el color: el tráfico de hace cuarenta minutos ya
+ * es otro, y de madrugada no se mide.
+ */
+function LeyendaTrafico({ medido, hay }) {
+  const hace = medido ? Math.max(0, Math.round((Date.now() - new Date(medido).getTime()) / 60000)) : null;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 14,
+        top: 12,
+        paddingHorizontal: 11,
+        paddingVertical: 8,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,253,248,0.94)',
+        borderWidth: 1,
+        borderColor: 'rgba(28,43,34,0.12)',
+      }}
+    >
+      {hay && hace !== null ? (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+            {['fluido', 'lento', 'pesado', 'detenido'].map((n) => (
+              <View key={n} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ width: 12, height: 4, borderRadius: 2, backgroundColor: COLOR_TRAFICO[n] }} />
+                <Text style={{ fontSize: 10.5, color: INK.body }}>{n}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={{ fontSize: 10, color: INK.faint, marginTop: 4 }}>
+            {hace < 2 ? 'medido recién' : `medido hace ${hace} min`}
+          </Text>
+        </>
+      ) : (
+        <Text style={{ fontSize: 10.5, color: INK.body }}>Sin medición reciente. Se mide de 5 a 22 h.</Text>
+      )}
+    </View>
+  );
+}
+
+function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTrafico, onNiebla }) {
   return (
     <View
       style={{
@@ -2109,6 +2200,25 @@ function HerramientasMapa({ modo, calor, niebla, onModo, onCalor, onNiebla }) {
         })}
       >
         <Flame size={18} color={calor ? PAPEL : INK.body} strokeWidth={calor ? 2.4 : 1.8} />
+      </Pressable>
+
+      {/* El tráfico. Otra capa que se prende y se apaga, como el calor; va en
+        * tinta porque acá el color es de los tramos, no del botón. */}
+      <Pressable
+        onPress={onTrafico}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: trafico }}
+        accessibilityLabel={trafico ? 'Ocultar el tráfico' : 'Mostrar el tráfico'}
+        style={({ pressed }) => ({
+          width: 39,
+          height: 39,
+          borderRadius: 20,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: trafico ? INK.title : pressed ? 'rgba(28,43,34,0.08)' : 'transparent',
+        })}
+      >
+        <TrafficCone size={18} color={trafico ? PAPEL : INK.body} strokeWidth={trafico ? 2.4 : 1.8} />
       </Pressable>
 
       {/* Apagar la niebla.
