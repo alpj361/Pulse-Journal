@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react-native';
@@ -70,10 +70,19 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
     },
   });
 
+  // La ciudad y las carreteras son dos preguntas distintas —cómo llego al
+  // trabajo, cómo está la ruta a Xela— y mezcladas en una lista de cincuenta
+  // tramos ninguna se contesta. Se abre en la ciudad, que es la de todos los días.
+  const [ambito, setAmbito] = useState('ciudad');
+  const hayPais = (tramos || []).some((t) => t.ambito === 'pais');
+
   // Los más cargados arriba; los que no tienen medición, al final.
   const orden = useMemo(
-    () => [...(tramos || [])].sort((a, b) => (Number(b.razon) || 0) - (Number(a.razon) || 0)),
-    [tramos]
+    () =>
+      (tramos || [])
+        .filter((t) => (t.ambito || 'ciudad') === ambito)
+        .sort((a, b) => (Number(b.razon) || 0) - (Number(a.razon) || 0)),
+    [tramos, ambito]
   );
   const medidos = orden.filter((t) => t.nivel);
   const cargados = medidos.filter((t) => t.nivel === 'pesado' || t.nivel === 'detenido').length;
@@ -103,7 +112,30 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
             {medidos.length ? hace(medido) : 'Se mide cada 15 minutos, de 5 a 22 h.'}
           </Text>
 
-          <View style={{ marginTop: 22 }}>
+          {hayPais ? (
+            <View style={{ flexDirection: 'row', gap: 16, marginTop: 20 }}>
+              {[['ciudad', 'la ciudad'], ['pais', 'carreteras']].map(([clave, texto]) => {
+                const activa = ambito === clave;
+                return (
+                  <Pressable
+                    key={clave}
+                    onPress={() => {
+                      roce();
+                      setAmbito(clave);
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: activa }}
+                    style={{ paddingBottom: 5, borderBottomWidth: 1, borderBottomColor: activa ? INK.title : 'transparent' }}
+                  >
+                    <Text style={{ fontFamily: MONO, fontSize: 12.5, color: activa ? INK.title : INK.faint }}>{texto}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          <View style={{ marginTop: hayPais ? 8 : 22 }}>
             {orden.map((t, i) => (
               <Fila
                 key={t.clave}

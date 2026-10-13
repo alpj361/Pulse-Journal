@@ -49,6 +49,7 @@ import { ACCENT, INK, RADIUS, SERIF } from '../theme';
 import { MONO } from '../codex/mono';
 import { PAPEL } from '../codex/Papel';
 import TraficoSheet, { COLOR_TRAFICO, hace } from './TraficoSheet';
+import refrescarTrafico from './refrescarTrafico';
 import MorphingInfinity from '../MorphingInfinity';
 import MapaVizta, { CENTRO_INICIAL } from './MapaVizta';
 import BuscarLugar from './BuscarLugar';
@@ -413,7 +414,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('trafico_ahora')
-        .select('id, clave, nombre, desde, hacia, corredor, distancia_m, nivel, razon, geometria, medido_en, con_trafico_s, sin_trafico_s, demora_s, sobre_lo_normal_s')
+        .select('id, clave, nombre, desde, hacia, corredor, distancia_m, nivel, razon, geometria, medido_en, con_trafico_s, sin_trafico_s, demora_s, sobre_lo_normal_s, ambito')
         .order('orden', { ascending: true });
       if (error) throw error;
       return data || [];
@@ -435,6 +436,18 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   );
   const traficoMedido = tramosTrafico.find((t) => t.medido_en)?.medido_en || null;
   const [viendoTrafico, setViendoTrafico] = useState(false);
+  // Al prender la capa se pide una medición fresca; si el servidor midió, se
+  // vuelve a leer. Mientras tanto se ve lo último que había, con su hora.
+  useEffect(() => {
+    if (!mostrarTrafico) return undefined;
+    let vivo = true;
+    refrescarTrafico().then((hayNuevo) => {
+      if (vivo && hayNuevo) queryClient.invalidateQueries({ queryKey: ['trafico-tramos'] });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [mostrarTrafico, queryClient]);
   const [cajaTrafico, setCajaTrafico] = useState(null);
   // La niebla arranca encendida: es el estado natural de un mapa por explorar,
   // no una capa opcional que haya que ir a buscar. Se puede apagar —a veces se
