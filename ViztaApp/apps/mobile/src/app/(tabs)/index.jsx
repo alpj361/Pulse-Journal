@@ -20,7 +20,7 @@ import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
 import { PinNoticiero } from "../../components/feed/FilasCongreso";
-import { ItemCongreso, VotacionCongreso } from "../../components/feed/TarjetasCongreso";
+import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
 
@@ -887,17 +887,8 @@ export default function Index() {
                           style={{ marginBottom: 6 }}
                         />
                       ))}
-                    {/* Las votaciones del pleno de ese día, con sus 160 votos.
-                        Van dos a la vista: un día puede traer doce, y doce
-                        hemiciclos seguidos tapan todo lo demás. */}
-                    {(dia.votaciones || []).slice(0, 2).map((v) => (
-                      <VotacionCongreso key={v.id} votacion={v} />
-                    ))}
-                    {(dia.votaciones || []).length > 2 ? (
-                      <Text style={{ fontSize: 12, color: INK.faint, paddingVertical: 10 }}>
-                        y {dia.votaciones.length - 2} votaciones más ese día
-                      </Text>
-                    ) : null}
+                    {/* Las votaciones del pleno de ese día, con sus 160 votos. */}
+                    <VotacionesDelDia votaciones={dia.votaciones} />
                     <View style={{ marginBottom: 22 }}>
                       {dia.items
                         .filter((item) => item.tipo !== "noticiero")

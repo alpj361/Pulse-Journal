@@ -58,6 +58,23 @@ export async function traerCongreso() {
   return visibles;
 }
 
+/**
+ * Cómo votó cada diputado en una votación: sus 160 votos, uno por uno.
+ *
+ * Se pide recién cuando alguien abre la votación. Un día puede traer veinte, y
+ * traer de entrada los votos de todas serían miles de filas para algo que casi
+ * nadie despliega.
+ */
+export async function traerVotos(votacionId) {
+  const { data, error } = await supabase
+    .from('votos_diputado')
+    .select('diputado, bloque, voto')
+    .eq('votacion_id', votacionId)
+    .limit(200);
+  if (error) throw error;
+  return data || [];
+}
+
 const CORTADO = /(\.\.\.|…)\s*$/;
 const plano = (t) =>
   String(t || '')

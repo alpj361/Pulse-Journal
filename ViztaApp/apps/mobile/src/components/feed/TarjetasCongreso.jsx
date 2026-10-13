@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
-import { Text, View, useWindowDimensions } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
-import { titular } from './congreso';
+import { titular, traerVotos } from './congreso';
 
 /**
  * Lo del Congreso, cada cosa con la forma que le toca.
@@ -14,8 +16,6 @@ import { titular } from './congreso';
  *
  * Todo sale de lo que el monitor guardó. Nada se calcula ni se completa: una
  * votación que solo trae los votos a favor muestra eso, sin inventar el resto.
- *
- * PRUEBA DE DISEÑO (STA-232): por aprobar con PJ antes de extenderlo.
  */
 
 // El color del Congreso en el feed, y los de un voto.
@@ -171,32 +171,144 @@ function Conteo({ color, cuantos, nombre }) {
   );
 }
 
+// ─── Cómo votó cada bloque ───────────────────────────────────────────────────
+
+const CLAVE_VOTO = { 'A FAVOR': 'favor', 'EN CONTRA': 'contra', AUSENTE: 'ausente', LICENCIA: 'licencia' };
+const ORDEN_VOTO = ['favor', 'contra', 'ausente', 'licencia'];
+
+/** Los 160 votos, juntados por bloque, del bloque más grande al más chico. */
+function porBloque(votos) {
+  const bloques = new Map();
+  for (const v of votos) {
+    const nombre = v.bloque || 'Sin bloque';
+    const b = bloques.get(nombre) || { nombre, total: 0, favor: 0, contra: 0, ausente: 0, licencia: 0 };
+    const clave = CLAVE_VOTO[String(v.voto || '').toUpperCase()];
+    if (clave) b[clave] += 1;
+    b.total += 1;
+    bloques.set(nombre, b);
+  }
+  return [...bloques.values()].sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre));
+}
+
+/** «VAMOS» → «Vamos»; las siglas cortas (UNE, PU, VOS) se quedan como están. */
+const nombreDeBloque = (n) => (n.length <= 3 ? n : n.charAt(0) + n.slice(1).toLowerCase());
+
+/**
+ * Cada bloque, con cómo votaron los suyos.
+ *
+ * El largo de la barra es el tamaño del bloque y sus colores, el voto de cada
+ * diputado: así se ve de un golpe quién votó junto y quién se partió. Sale de
+ * los votos nominales, no de un resumen.
+ */
+function Bloques({ votacionId }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['congreso-votos', votacionId],
+    queryFn: () => traerVotos(votacionId),
+    staleTime: 60 * 60 * 1000,
+  });
+  const bloques = useMemo(() => porBloque(data || []), [data]);
+
+  if (isLoading) return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Trayendo los votos…</Text>;
+  if (isError || !bloques.length) {
+    return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Los votos de cada diputado no están por ahora.</Text>;
+  }
+  const mayor = bloques[0].total;
+
+  return (
+    <View style={{ marginTop: 12, gap: 7 }}>
+      {bloques.map((b) => (
+        <View key={b.nombre} style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text numberOfLines={1} style={{ width: 104, fontSize: 12, color: INK.title }}>
+            {nombreDeBloque(b.nombre)}
+          </Text>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', width: `${Math.max(4, (b.total / mayor) * 100)}%` }}>
+              {ORDEN_VOTO.map((clave) => (b[clave] ? <View key={clave} style={{ flex: b[clave], backgroundColor: VOTO[clave] }} /> : null))}
+            </View>
+          </View>
+          <Text style={{ width: 26, textAlign: 'right', fontSize: 11.5, color: INK.faint }}>{b.total}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /**
  * Una votación del pleno, con sus 160 votos.
  *
  * Sale del registro de votaciones, no de una noticia: por eso trae el conteo
- * completo y se puede dibujar el hemiciclo entero.
+ * completo y se puede dibujar el hemiciclo entero. Al tocarla se abre cómo votó
+ * cada bloque. `compacta` es la misma sin el hemiciclo, para cuando van muchas
+ * seguidas.
  */
-export function VotacionCongreso({ votacion: v }) {
+export function VotacionCongreso({ votacion: v, compacta = false }) {
   // El feed lleva 24 de margen a cada lado.
   const { width } = useWindowDimensions();
   const ancho = width - 48;
+  const [abierta, setAbierta] = useState(false);
   const aprobada = v.resultado === 'aprobada';
+  const Flecha = abierta ? ChevronUp : ChevronDown;
   return (
-    <View style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: RAYA }}>
+    <Pressable
+      onPress={() => setAbierta((x) => !x)}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: abierta }}
+      style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: RAYA }}
+    >
       <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'VOTACIÓN · APROBADA' : 'VOTACIÓN · NO APROBADA'}</Rotulo>
       <Titulo>{v.asunto}</Titulo>
-      <View style={{ alignItems: 'center', marginTop: 14 }}>
-        <Hemiciclo favor={v.a_favor} contra={v.en_contra} ausentes={v.ausentes} licencia={v.licencia} ancho={Math.min(ancho, 320)} />
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 16, rowGap: 6, marginTop: 10 }}>
+      {compacta ? null : (
+        <View style={{ alignItems: 'center', marginTop: 14 }}>
+          <Hemiciclo favor={v.a_favor} contra={v.en_contra} ausentes={v.ausentes} licencia={v.licencia} ancho={Math.min(ancho, 320)} />
+        </View>
+      )}
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: compacta ? 'flex-start' : 'center',
+          columnGap: 16,
+          rowGap: 6,
+          marginTop: 10,
+        }}
+      >
         <Conteo color={VOTO.favor} cuantos={v.a_favor} nombre="a favor" />
         <Conteo color={VOTO.contra} cuantos={v.en_contra} nombre="en contra" />
         <Conteo color={VOTO.ausente} cuantos={v.ausentes} nombre="ausentes" />
         <Conteo color={VOTO.licencia} cuantos={v.licencia} nombre="con licencia" />
+        <Flecha size={15} color={INK.faint} />
       </View>
-      {v.sesion ? <Text style={{ fontSize: 11.5, color: INK.faint, textAlign: 'center', marginTop: 9 }}>{v.sesion}</Text> : null}
-    </View>
+      {abierta ? <Bloques votacionId={v.id} /> : null}
+      {v.sesion && !compacta ? <Text style={{ fontSize: 11.5, color: INK.faint, textAlign: 'center', marginTop: 9 }}>{v.sesion}</Text> : null}
+    </Pressable>
+  );
+}
+
+/**
+ * Las votaciones de un día.
+ *
+ * Van dos con su hemiciclo: un día puede traer veinte, y veinte hemiciclos
+ * seguidos tapan todo lo demás. El resto se abre de un toque, en renglones sin
+ * dibujo.
+ */
+export function VotacionesDelDia({ votaciones = [] }) {
+  const [todas, setTodas] = useState(false);
+  const resto = votaciones.slice(2);
+  return (
+    <>
+      {votaciones.slice(0, 2).map((v) => (
+        <VotacionCongreso key={v.id} votacion={v} />
+      ))}
+      {todas ? resto.map((v) => <VotacionCongreso key={v.id} votacion={v} compacta />) : null}
+      {resto.length ? (
+        <Pressable onPress={() => setTodas((x) => !x)} accessibilityRole="button" style={{ paddingVertical: 12 }}>
+          <Text style={{ fontSize: 12.5, fontWeight: '600', color: TINTA }}>
+            {todas ? 'Menos votaciones' : resto.length === 1 ? 'Una votación más ese día' : `${resto.length} votaciones más ese día`}
+          </Text>
+        </Pressable>
+      ) : null}
+    </>
   );
 }
 
