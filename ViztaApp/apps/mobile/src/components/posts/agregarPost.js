@@ -95,3 +95,55 @@ export default async function agregarPost(urlCruda) {
 
   return json.post;
 }
+
+// Desde cuándo un «trayendo» se da por cortado. Tiene que ser lo mismo que
+// usa el servidor (`CORTADO_MS` en `routes/agregarPost.js`): si la app ofrece
+// reintentar antes, el servidor contesta «ya lo estoy trayendo» y no pasa nada.
+const CORTADO_MS = 5 * 60 * 1000;
+
+/** ¿Lleva tanto trayéndose que ya nadie lo está trayendo? */
+export function seCorto(post, ahora = Date.now()) {
+  const d = post?.details;
+  if (d?.carga !== 'procesando') return false;
+  const desde = new Date(d.carga_desde || post.created_at || 0).getTime();
+  return ahora - desde > CORTADO_MS + 15000;
+}
+
+/**
+ * Volver a traer un post que falló o que se quedó trayéndose.
+ *
+ * Es la misma fila: no aparece un post nuevo al lado del roto. Devuelve los
+ * `details` con los que pintarla mientras tanto.
+ */
+export async function reintentarPost(post) {
+  const { data: sesion } = await supabase.auth.getSession();
+  const token = sesion?.session?.access_token;
+  if (!token) throw new Error('Sin sesión activa');
+
+  const pedir = (t) =>
+    fetch(`${EXTRACTORW_URL}/api/agregar-post/${post.id}/reintentar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+    });
+  let res = await pedir(token);
+  // La sesión guardada puede haber vencido con la app abierta: se renueva y se
+  // prueba una vez más antes de darlo por perdido.
+  if (res.status === 401) {
+    const { data: nueva } = await supabase.auth.refreshSession();
+    const fresco = nueva?.session?.access_token;
+    if (!fresco) throw new Error('Tu sesión venció. Volvé a entrar.');
+    res = await pedir(fresco);
+    if (res.status === 401) throw new Error('Tu sesión venció. Volvé a entrar.');
+  }
+  const json = await res.json().catch(() => null);
+
+  if (res.status === 402) {
+    const e = new Error(json?.message || 'No podés agregar posts por ahora.');
+    e.status = 402;
+    throw e;
+  }
+  if (!res.ok || !json?.success) throw new Error(json?.message || 'No se pudo volver a traer');
+
+  const { carga_error: _fuera, ...resto } = post.details || {};
+  return { ...resto, carga: 'procesando', carga_desde: new Date().toISOString() };
+}

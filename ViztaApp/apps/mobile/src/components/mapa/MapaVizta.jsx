@@ -137,6 +137,7 @@ export default function MapaVizta({
   areas = [],
   pines = [],
   recorridos = [],
+  trafico = [],
   mostrarAreas = true,
   mostrarPines = true,
   mostrarCalor = false,
@@ -826,6 +827,7 @@ export default function MapaVizta({
           areas={areas}
           pines={pines}
           recorridos={recorridos}
+          trafico={trafico}
           mostrarAreas={mostrarAreas}
           mostrarPines={mostrarPines}
           mostrarCalor={mostrarCalor}

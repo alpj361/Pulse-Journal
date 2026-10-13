@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Modal,
   Pressable,
+  Linking,
   useWindowDimensions,
 } from "react-native";
 import { useRef, useState, useCallback, useEffect } from "react";
@@ -18,6 +19,9 @@ import { INK, GLASS, chipStyle } from "../../components/theme";
 import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
+import { PinNoticiero, TituloCongreso } from "../../components/feed/FilasCongreso";
+import SelectorFeed from "../../components/feed/SelectorFeed";
+import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
 import { categoriaDe, temaDe } from "../../components/feed/temas";
@@ -698,6 +702,16 @@ export default function Index() {
     staleTime: 1000 * 60 * 5,
   });
 
+  // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
+  const [feed, setFeed] = useState("pais");
+  // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
+  const { data: diasCongreso, isLoading: cargandoCongreso } = useQuery({
+    queryKey: ['congreso-feed'],
+    queryFn: traerCongreso,
+    enabled: feed === "congreso",
+    staleTime: 10 * 60 * 1000,
+  });
+
   const { data: narrativaData } = useQuery({
     queryKey: ['pulse-narrativa'],
     queryFn: async () => {
@@ -817,9 +831,60 @@ export default function Index() {
               contador de clicks pasa a ser: primero los temas que el usuario más
               mira. */}
           <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
-            <SectionHeader title="Lo que hay que leer" marcado="hoy" />
+            {/* El título y, a su lado, de dónde viene lo que se lee: el país o
+                el Congreso. El selector va en la misma línea para que se lea
+                como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
+            <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <SectionHeader title="Lo que hay que leer" marcado="hoy" />
+              </View>
+              <SelectorFeed valor={feed} onCambiar={setFeed} />
+            </View>
 
-            {hotTopics.length === 0 ? (
+            {feed === "congreso" ? (
+              cargandoCongreso ? (
+                <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>Trayendo lo del Congreso…</Text>
+              ) : !diasCongreso?.length ? (
+                <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>
+                  El Congreso no publicó nada en estos días.
+                </Text>
+              ) : (
+                diasCongreso.map((dia, n) => (
+                  <View key={dia.fecha}>
+                    {/* El día solo se nombra desde el segundo: el primero es
+                        el de más arriba, y el título ya dice «hoy». */}
+                    {n > 0 ? (
+                      <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: 6, marginBottom: 18 }}>
+                        {nombreDelDia(dia.fecha).toUpperCase()}
+                      </Text>
+                    ) : null}
+                    {/* El noticiero es un salto a YouTube; lo demás, los
+                        títulos de lo que se vio ese día, sin enlace. */}
+                    {dia.items
+                      .filter((item) => item.tipo === "noticiero")
+                      .map((item) => (
+                        <PinNoticiero
+                          key={item.id}
+                          item={item}
+                          onPress={() => {
+                            evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                            const destino = enYouTube(item);
+                            if (destino) Linking.openURL(destino).catch(() => {});
+                          }}
+                          style={{ marginBottom: 6 }}
+                        />
+                      ))}
+                    <View style={{ marginBottom: 22 }}>
+                      {dia.items
+                        .filter((item) => item.tipo !== "noticiero")
+                        .map((item, i, lista) => (
+                          <TituloCongreso key={item.id} item={item} ultimo={i === lista.length - 1} />
+                        ))}
+                    </View>
+                  </View>
+                ))
+              )
+            ) : hotTopics.length === 0 ? (
               <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>
                 Sin noticias en las últimas 48 horas.
               </Text>

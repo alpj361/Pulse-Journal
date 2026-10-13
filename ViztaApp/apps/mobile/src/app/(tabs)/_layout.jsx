@@ -7,6 +7,7 @@ import NavOrb from '../../components/NavOrb';
 import CreateSnippetSheet from '../../components/codex/CreateSnippetSheet';
 import PostsSheet from '../../components/posts/PostsSheet';
 import { alTocarAvisoDePost, prepararNotificaciones } from '../../utils/notificaciones';
+import { prepararCompartir } from '../../utils/compartir';
 
 // Una vez, al cargar: con la app abierta, un post que termina no saca cartel.
 prepararNotificaciones();
@@ -72,6 +73,12 @@ function BarraOrbe() {
   // de escribir: descubrir que no hay dónde guardar recién al tocar «guardar»
   // significa perder el párrafo que acabás de escribir.
   const conectado = usePulseConnectionStore((s) => s.isConnected);
+
+  // La hoja de «Compartir» necesita su llave mientras haya sesión, y que se
+  // borre al salir de la cuenta.
+  useEffect(() => {
+    prepararCompartir(conectado);
+  }, [conectado]);
 
   // Posts depende del plan, no del rol: lo trae Weekly, y en Free se paga con
   // créditos. Lo decide la base —la misma respuesta que usa el servidor para

@@ -40,6 +40,20 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { supabase } from '../../utils/supabase';
+import { ponerFila, useEnVivo, useFilasEnVivo } from '../../utils/enVivo';
+
+// Una ficha de `codex_universe_items` con la forma de las de `wiki_items`.
+const deUniverso = (item) => ({
+  id: `universe_${item.id}`,
+  _sourceId: item.id,
+  _source: 'universe',
+  name: item.name,
+  subcategory: item.tipo, // Actor, Entidad, Evento, etc. — normalizeSubcategory handles these
+  description: item.description || '',
+  tags: item.tags || [],
+  metadata: { details: item.details },
+  created_at: item.created_at,
+});
 import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 
 const EXTRACTORW_URL = process.env.EXPO_PUBLIC_EXTRACTORW_URL || 'https://server.standatpd.com';
@@ -3193,8 +3207,8 @@ export default function CodexScreen() {
   const [datasetSearchQuery, setDatasetSearchQuery] = useState('');
 
 
-  const fetchInstagramPosts = async () => {
-    setIsLoadingPosts(true);
+  const fetchInstagramPosts = async ({ callado = false } = {}) => {
+    if (!callado) setIsLoadingPosts(true);
     const { data, error } = await supabase
       .from('codex_universe_items')
       .select('id, name, tipo, description, tags, thumbnail_url, details, created_at, folder_id')
@@ -3205,8 +3219,8 @@ export default function CodexScreen() {
     if (!error) setInstagramPosts(data || []);
   };
 
-  const fetchFolders = async () => {
-    setIsLoadingFolders(true);
+  const fetchFolders = async ({ callado = false } = {}) => {
+    if (!callado) setIsLoadingFolders(true);
     const { data, error } = await supabase
       .from('post_folders')
       .select('id, name, color, icon, position, created_at')
@@ -3457,8 +3471,40 @@ export default function CodexScreen() {
     fetchSpaces();
   }, [isConnected]);
 
-  const fetchSpaces = async () => {
-    setIsLoadingSpaces(true);
+  // Lo que cambia en la base entra al momento, sin cerrar y volver a abrir.
+  //
+  // El universo son más de mil fichas: no se vuelve a bajar entero por cada
+  // tecla de una nota. Llega la fila que cambió y se pone en su lugar. Recién
+  // al volver a la app, que es cuando pudo perderse algo, se pide todo.
+  useFilasEnVivo(
+    'codex_universe_items',
+    'id, name, tipo, description, tags, aliases, details, mentions, thumbnail_url, created_at, folder_id',
+    ({ id, fila }) => {
+      const esPost = fila?.tipo === 'post';
+      setInstagramPosts((prev) => ponerFila(prev, id, fila, () => esPost));
+      setWikiItems((prev) => {
+        // Igual que al cargar: si la wiki ya tiene una ficha con ese nombre,
+        // la del universo no se muestra dos veces.
+        const nombre = fila?.name?.toLowerCase();
+        const repetida = prev.some((w) => w._source !== 'universe' && w.name?.toLowerCase() === nombre);
+        return ponerFila(prev, `universe_${id}`, fila && !esPost && !repetida ? deUniverso(fila) : null);
+      });
+    },
+    () => {
+      fetchWiki(undefined, { callado: true });
+      fetchCodex({ callado: true });
+      fetchSpaces({ callado: true });
+      if (activeTab === 'posts') fetchInstagramPosts({ callado: true });
+    },
+    { activo: isConnected }
+  );
+  useEnVivo(['codex_items'], () => fetchCodex({ callado: true }), { activo: isConnected });
+  useEnVivo(['spaces', 'workspace_resources'], () => fetchSpaces({ callado: true }), { activo: isConnected });
+  useEnVivo(['post_folders'], () => fetchFolders({ callado: true }), { activo: isConnected });
+  useEnVivo(['wiki_items'], () => fetchWiki(undefined, { callado: true }), { activo: isConnected });
+
+  const fetchSpaces = async ({ callado = false } = {}) => {
+    if (!callado) setIsLoadingSpaces(true);
     try {
       setSpaces(await listSpaces());
     } catch (e) {
@@ -3589,9 +3635,9 @@ export default function CodexScreen() {
     }, [isConnected])
   );
 
-  const fetchWiki = async (sessionOverride) => {
+  const fetchWiki = async (sessionOverride, { callado = false } = {}) => {
     console.log('[fetchWiki] 🚀 START — isConnected:', isConnected);
-    setIsLoadingWiki(true);
+    if (!callado) setIsLoadingWiki(true);
     setWikiError(null);
 
     // Verificar sesión activa de Supabase
@@ -3650,17 +3696,7 @@ export default function CodexScreen() {
     }
 
     // Map codex_universe_items to the same shape as wiki_items
-    const universeItems = (universeResult.data || []).map(item => ({
-      id: `universe_${item.id}`,
-      _sourceId: item.id,
-      _source: 'universe',
-      name: item.name,
-      subcategory: item.tipo, // Actor, Entidad, Evento, etc. — normalizeSubcategory handles these
-      description: item.description || '',
-      tags: item.tags || [],
-      metadata: { details: item.details },
-      created_at: item.created_at,
-    }));
+    const universeItems = (universeResult.data || []).map(deUniverso);
 
     // Merge: wiki_items first (they have research/metadata), then universe items not already in wiki
     const wikiNames = new Set((wikiResult.data || []).map(w => w.name?.toLowerCase()));
@@ -3673,8 +3709,8 @@ export default function CodexScreen() {
     setWikiItems(merged);
   };
 
-  const fetchCodex = async () => {
-    setIsLoadingCodex(true);
+  const fetchCodex = async ({ callado = false } = {}) => {
+    if (!callado) setIsLoadingCodex(true);
     setCodexError(null);
     const { data, error } = await supabase
       .from('codex_items')
