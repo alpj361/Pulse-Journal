@@ -31,13 +31,17 @@ export const usePulseConnectionStore = create(
           } else if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
             // Sesión válida — asegurar que Zustand esté sincronizado
             const { isConnected, connectedUser } = get();
-            if (!connectedUser || connectedUser.id !== session.user.id) {
-              console.log('[pulseStore] 🔄 Sincronizando usuario desde sesión Supabase:', session.user.email);
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('id, email, user_type, role, roles, credits')
-                .eq('id', session.user.id)
-                .single();
+            // El perfil se vuelve a leer en cada arranque aunque sea la misma
+            // persona: su tipo de cuenta puede haber cambiado en la base, y de
+            // él depende qué se le muestra (los planes, por ejemplo).
+            const mismo = connectedUser && connectedUser.id === session.user.id;
+            if (!mismo) console.log('[pulseStore] 🔄 Sincronizando usuario desde sesión Supabase:', session.user.email);
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('id, email, user_type, role, roles, credits')
+              .eq('id', session.user.id)
+              .single();
+            if (profile || !mismo) {
               set({
                 isConnected: true,
                 connectedUser: profile || { id: session.user.id, email: session.user.email },
