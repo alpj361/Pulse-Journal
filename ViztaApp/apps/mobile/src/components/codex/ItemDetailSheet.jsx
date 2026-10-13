@@ -181,14 +181,16 @@ function Vacio({ children }) {
  * cada bloque lleva su propio conteo.
  */
 function MencionesTab({ menciones, accent }) {
-  const prensa = menciones.filter((m) => m.fuente === 'news' || m.fuente === 'card');
+  // El Congreso va con la prensa: sus notas y las votaciones del pleno son
+  // apariciones públicas, igual que una noticia.
+  const prensa = menciones.filter((m) => ['news', 'card', 'congreso', 'votacion'].includes(m.fuente));
   const codex = menciones.filter((m) => m.fuente === 'snippet' || m.fuente === 'actor');
 
   if (!menciones.length) {
     return (
       <>
         <Etiqueta nota={NOTA.menciones}>Menciones</Etiqueta>
-        <Vacio>No aparece en ninguna noticia, tarjeta, snippet ni ficha de otro actor.</Vacio>
+        <Vacio>No aparece en ninguna noticia, tarjeta, nota del Congreso, snippet ni ficha de otro actor.</Vacio>
       </>
     );
   }
@@ -200,7 +202,7 @@ function MencionesTab({ menciones, accent }) {
       </Etiqueta>
       {prensa.length === 0 ? (
         <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 8 }}>
-          Sin apariciones en noticias ni tarjetas.
+          Sin apariciones en noticias, tarjetas ni en el Congreso.
         </Text>
       ) : (
         prensa.slice(0, 40).map((m, i) => (
@@ -208,7 +210,7 @@ function MencionesTab({ menciones, accent }) {
             key={`${m.fuente}-${m.ref_id}`}
             m={m}
             i={i}
-            color={m.fuente === 'card' ? '#B45309' : '#1B5E8F'}
+            color={m.fuente === 'card' ? '#B45309' : m.fuente === 'congreso' || m.fuente === 'votacion' ? '#2F4A7A' : '#1B5E8F'}
             etiqueta={m.fuente === 'card' ? 'tarjeta' : m.origen}
           />
         ))
@@ -309,6 +311,19 @@ function FraseCon({ texto, escrito }) {
   );
 }
 
+/**
+ * El título de una mención. Los del Congreso llegan como los publica el sitio
+ * —en MAYÚSCULAS— o como frase suelta en minúsculas: se pasan a oración.
+ */
+function tituloDeMencion(m) {
+  const t = String(m.titulo || '').trim();
+  if (!t) return 'Sin título';
+  if (m.fuente !== 'congreso' && m.fuente !== 'votacion') return t;
+  const letras = t.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ]/g, '');
+  const base = letras.length > 6 && letras === letras.toUpperCase() ? t.toLowerCase() : t;
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
 function FilaMencion({ m, i, color, etiqueta }) {
   return (
     <Animated.View
@@ -322,7 +337,7 @@ function FilaMencion({ m, i, color, etiqueta }) {
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color, marginTop: 6 }} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={2} style={{ fontSize: 13.5, color: INK.title, lineHeight: 19 }}>
-          {m.titulo || 'Sin título'}
+          {tituloDeMencion(m)}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
           {etiqueta ? (

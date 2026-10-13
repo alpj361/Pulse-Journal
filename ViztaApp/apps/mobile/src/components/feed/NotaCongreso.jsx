@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, X } from 'lucide-react-native';
 import { INK } from '../theme';
-import { titular, traerNota } from './congreso';
+import { supabase } from '../../utils/supabase';
+import ItemDetailSheet from '../codex/ItemDetailSheet';
+import { TYPE_ACCENT, normalizeTipo } from '../codex/tipos';
+import { titular, traerMencionados, traerNota } from './congreso';
 import { AFavor, Camino, RAYA, Rotulo, TINTA, Titulo, cabezaDe, monto, rotuloDe } from './TarjetasCongreso';
 
 /**
@@ -22,6 +26,19 @@ export default function NotaCongreso({ item, onClose }) {
     enabled: !!item,
     staleTime: 60 * 60 * 1000,
   });
+
+  // Lo de tu Codex que aparece en esta nota, según la base.
+  const { data: mencionados = [] } = useQuery({
+    queryKey: ['congreso-mencionados', item?.id],
+    queryFn: () => traerMencionados('congreso', item.id),
+    enabled: !!item,
+  });
+  const [fichaAbierta, setFichaAbierta] = useState(null);
+
+  const abrirFicha = async (id) => {
+    const { data } = await supabase.from('codex_universe_items').select(COLUMNAS_FICHA).eq('id', id).maybeSingle();
+    if (data) setFichaAbierta({ ...data, _source: 'universe' });
+  };
 
   if (!item) return null;
 
@@ -106,6 +123,36 @@ export default function NotaCongreso({ item, onClose }) {
               </View>
             ) : null}
 
+            {mencionados.length ? (
+              <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: RAYA }}>
+                <Rotulo color={INK.faint}>EN TU CODEX</Rotulo>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                  {mencionados.map((m) => {
+                    const color = TYPE_ACCENT[normalizeTipo(m.tipo)] || TINTA;
+                    return (
+                      <Pressable
+                        key={m.id}
+                        onPress={() => abrirFicha(m.id)}
+                        accessibilityRole="button"
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingVertical: 6,
+                          paddingHorizontal: 11,
+                          borderRadius: 14,
+                          backgroundColor: 'rgba(28,43,34,0.05)',
+                        }}
+                      >
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+                        <Text style={{ fontSize: 13.5, fontWeight: '600', color: INK.title }}>{m.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
             {nota?.parrafos?.length ? (
               <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: RAYA }}>
                 <Rotulo color={INK.faint}>LA NOTA</Rotulo>
@@ -130,9 +177,20 @@ export default function NotaCongreso({ item, onClose }) {
           </ScrollView>
         </View>
       </View>
+      {/* La ficha cuelga de esta hoja: iOS presenta un Modal a la vez, y como
+          hermana no aparecería. */}
+      {fichaAbierta ? (
+        <ItemDetailSheet
+          item={fichaAbierta}
+          onClose={() => setFichaAbierta(null)}
+          onSaved={(guardado) => setFichaAbierta((prev) => (prev ? { ...prev, ...guardado } : prev))}
+        />
+      ) : null}
     </Modal>
   );
 }
+
+const COLUMNAS_FICHA = 'id, name, tipo, description, aliases, tags, details, geo, thumbnail_url, created_at';
 
 function Dato({ nombre, children }) {
   return (

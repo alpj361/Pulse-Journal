@@ -22,6 +22,9 @@ export async function traerCongreso() {
   if (error) throw error;
 
   await completarTitulos(data || []);
+  // Lo nuevo del Congreso entra a la cola donde se buscan las menciones del
+  // Codex. No se espera: el feed no depende de eso.
+  supabase.rpc('codex_menciones_encolar_congreso').then(() => {}, () => {});
 
   const dias = [];
   for (const item of data || []) {
@@ -211,4 +214,24 @@ export function nombreDelDia(fecha) {
 export function enYouTube(item) {
   if (item.video_id) return `https://www.youtube.com/watch?v=${item.video_id}`;
   return /youtu\.?be/.test(item.url || '') ? item.url : null;
+}
+
+/**
+ * Lo del Codex de esta persona que aparece en una nota o en una votación.
+ *
+ * Lo decide la base, con las mismas reglas que deciden las menciones de una
+ * noticia: acá solo se leen las que quedaron en «sí». Sin sesión no hay Codex,
+ * y vuelve vacío.
+ */
+export async function traerMencionados(fuente, refId) {
+  const { data, error } = await supabase
+    .from('codex_menciones_resueltas')
+    .select('item_id')
+    .eq('fuente', fuente)
+    .eq('ref_id', String(refId))
+    .eq('veredicto', 'si');
+  if (error || !data?.length) return [];
+  const ids = [...new Set(data.map((f) => f.item_id))];
+  const { data: items } = await supabase.from('codex_universe_items').select('id, name, tipo').in('id', ids);
+  return items || [];
 }
