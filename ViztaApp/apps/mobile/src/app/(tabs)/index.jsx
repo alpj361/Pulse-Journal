@@ -19,7 +19,20 @@ import { INK, GLASS, chipStyle } from "../../components/theme";
 import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
-import { PinNoticiero, TituloCongreso } from "../../components/feed/FilasCongreso";
+import { PinNoticiero } from "../../components/feed/FilasCongreso";
+import { ItemCongreso, VotacionCongreso } from "../../components/feed/TarjetasCongreso";
+import Sticker from "../../components/Sticker";
+import LogoVizta from "../../components/LogoVizta";
+
+/** Un momento del feed sin contenido: cargando, o sin nada que mostrar. */
+function EstadoFeed({ sticker, children }) {
+  return (
+    <View style={{ alignItems: "center", paddingVertical: 26 }}>
+      <Sticker nombre={sticker} size={76} />
+      <Text style={{ fontSize: 13, color: INK.faint, marginTop: 10, textAlign: "center" }}>{children}</Text>
+    </View>
+  );
+}
 import SelectorFeed from "../../components/feed/SelectorFeed";
 import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
@@ -768,7 +781,9 @@ export default function Index() {
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingTop: insets.top + 20,
-            paddingBottom: insets.bottom + 72,
+            // El orbe flota sobre el feed: el final tiene que poder subir hasta
+            // quedar por encima de él.
+            paddingBottom: insets.bottom + 150,
           }}
           showsVerticalScrollIndicator={false}
         >
@@ -785,9 +800,9 @@ export default function Index() {
               alignItems: "center",
             }}
           >
-            <Text style={{ flex: 1, fontSize: 48, fontWeight: "800", color: INK.title, letterSpacing: -1 }}>
-              Vizta
-            </Text>
+            <View style={{ flex: 1 }}>
+              <LogoVizta alto={44} />
+            </View>
 
             {/* Mundo y ajustes, juntos.
               *
@@ -843,11 +858,9 @@ export default function Index() {
 
             {feed === "congreso" ? (
               cargandoCongreso ? (
-                <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>Trayendo lo del Congreso…</Text>
+                <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
               ) : !diasCongreso?.length ? (
-                <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>
-                  El Congreso no publicó nada en estos días.
-                </Text>
+                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
               ) : (
                 diasCongreso.map((dia, n) => (
                   <View key={dia.fecha}>
@@ -874,20 +887,29 @@ export default function Index() {
                           style={{ marginBottom: 6 }}
                         />
                       ))}
+                    {/* Las votaciones del pleno de ese día, con sus 160 votos.
+                        Van dos a la vista: un día puede traer doce, y doce
+                        hemiciclos seguidos tapan todo lo demás. */}
+                    {(dia.votaciones || []).slice(0, 2).map((v) => (
+                      <VotacionCongreso key={v.id} votacion={v} />
+                    ))}
+                    {(dia.votaciones || []).length > 2 ? (
+                      <Text style={{ fontSize: 12, color: INK.faint, paddingVertical: 10 }}>
+                        y {dia.votaciones.length - 2} votaciones más ese día
+                      </Text>
+                    ) : null}
                     <View style={{ marginBottom: 22 }}>
                       {dia.items
                         .filter((item) => item.tipo !== "noticiero")
                         .map((item, i, lista) => (
-                          <TituloCongreso key={item.id} item={item} ultimo={i === lista.length - 1} />
+                          <ItemCongreso key={item.id} item={item} ultimo={i === lista.length - 1} />
                         ))}
                     </View>
                   </View>
                 ))
               )
             ) : hotTopics.length === 0 ? (
-              <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>
-                Sin noticias en las últimas 48 horas.
-              </Text>
+              <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
               hotTopics.map((card, index) => (
                 <TarjetaNoticia

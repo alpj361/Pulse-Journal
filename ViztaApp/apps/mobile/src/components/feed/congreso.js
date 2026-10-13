@@ -7,7 +7,9 @@ import { supabase } from '../../utils/supabase';
  */
 
 const COLUMNAS =
-  'id, digest_date, tipo, titulo, url, coverage_status, thumbnail_url, tweet_urls, tweet_count, iniciativa_numero, iniciativa_titulo, iniciativa_estado, iniciativa_url, norma_titulo, norma_decreto, video_id';
+  'id, digest_date, tipo, titulo, url, iniciativa_numero, video_id, summary, stage, result, votes, card_type, card_data';
+
+const COLUMNAS_VOTACION = 'id, fecha, sesion, asunto, resultado, a_favor, en_contra, ausentes, licencia, iniciativa_numero';
 
 /** Los últimos días con algo, cada uno con su noticiero y sus títulos. */
 export async function traerCongreso() {
@@ -18,6 +20,8 @@ export async function traerCongreso() {
     .order('created_at', { ascending: true })
     .limit(80);
   if (error) throw error;
+
+  await completarTitulos(data || []);
 
   const dias = [];
   for (const item of data || []) {
@@ -30,7 +34,69 @@ export async function traerCongreso() {
   }
   // El noticiero arriba de cada día: es el resumen de todo lo demás.
   for (const d of dias) d.items.sort((a, b) => (b.tipo === 'noticiero') - (a.tipo === 'noticiero'));
-  return dias.slice(0, 3);
+  // El noticiero también llega como «noticia» del sitio, con el mismo título:
+  // ya está arriba como salto al video, y repetido no dice nada.
+  for (const d of dias) d.items = d.items.filter((i) => i.tipo === 'noticiero' || !/^\s*noticiero legislativo/i.test(i.titulo || ''));
+  const visibles = dias.slice(0, 7);
+
+  // Las votaciones del pleno de esos días. Vienen de su propio registro, con
+  // los 160 votos contados; se juntan con las noticias solo por la fecha, que
+  // es lo único que de verdad comparten. Si fallan, el día se muestra igual.
+  if (visibles.length) {
+    const { data: votaciones } = await supabase
+      .from('votaciones')
+      .select(COLUMNAS_VOTACION)
+      .in('fecha', visibles.map((d) => d.fecha))
+      .order('created_at', { ascending: true });
+    for (const d of visibles) {
+      const delDia = (votaciones || []).filter((v) => v.fecha === d.fecha);
+      // Primero lo que decide algo; aprobar el orden del día es trámite.
+      const tramite = (v) => /orden del d[ií]a|acta de la sesi[oó]n/i.test(v.asunto || '');
+      d.votaciones = delDia.sort((a, b) => tramite(a) - tramite(b));
+    }
+  }
+  return visibles;
+}
+
+const CORTADO = /(\.\.\.|…)\s*$/;
+const plano = (t) =>
+  String(t || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * Los títulos que el sitio del Congreso cortó («…DEL RÍO...»), enteros.
+ *
+ * El listado del sitio los corta, pero cuando la nota se leyó completa su
+ * título entero viene como encabezado dentro del texto. Se toma de ahí, y solo
+ * si empieza igual que el cortado: así no se le pone a una nota el título de
+ * otra. Las que no se leyeron completas —las que llegaron por tweets— quedan
+ * cortadas: el título entero no está guardado en ningún lado.
+ */
+async function completarTitulos(items) {
+  const cortados = items.filter((i) => CORTADO.test(i.titulo || ''));
+  if (!cortados.length) return;
+  const { data } = await supabase
+    .from('congreso_items_app_view')
+    .select('id, gap_content')
+    .in('id', cortados.map((i) => i.id))
+    .not('gap_content', 'is', null);
+  const textos = new Map((data || []).map((f) => [f.id, f.gap_content]));
+  for (const item of cortados) {
+    const texto = textos.get(item.id);
+    if (!texto) continue;
+    const inicio = plano(item.titulo.replace(CORTADO, ''));
+    const entero = texto
+      .split('\n')
+      .filter((l) => /^#{1,3}\s+\S/.test(l))
+      .map((l) => l.replace(/^#{1,3}\s+/, '').trim())
+      .find((l) => inicio.length >= 8 && plano(l).startsWith(inicio));
+    if (entero) item.titulo = entero;
+  }
 }
 
 /**

@@ -145,9 +145,17 @@ function BarraOrbe() {
     // `box-none`: sin píldora detrás, todo lo que no sea el orbe tiene que
     // dejar pasar el toque al contenido. Sin esto quedaría una franja invisible
     // al pie de la pantalla comiéndose los taps de lo que está debajo.
+    // Flota: `absolute` la saca del reparto de alturas, así la pantalla llega
+    // hasta el borde de abajo y el orbe queda encima del contenido, no en una
+    // franja propia que lo tape. Las pantallas que necesitan ese lugar libre lo
+    // reservan ellas (ver `sceneStyle` más abajo).
     <View
       pointerEvents="box-none"
       style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
         backgroundColor: 'transparent',
         alignItems: 'center',
         paddingTop: 10,
@@ -227,6 +235,11 @@ export default function TabsLayout() {
     if (lugar && EN_CODEX.includes(lugar.tipo)) router.navigate('/codex');
   }, [hidratado, iniciarRestauracion, router]);
 
+  // Lo que ocupa el orbe con sus márgenes. El feed corre por debajo de él; las
+  // otras pestañas tienen controles al pie y siguen terminando arriba del orbe.
+  const insets = useSafeAreaInsets();
+  const reservado = { paddingBottom: 10 + ORB_SIZE + Math.max(insets.bottom, 14) };
+
   return (
     // El fondo vive aquí, detrás de las pantallas y de la tab bar, para que no
     // haya costura entre el área de contenido y la barra flotante.
@@ -240,9 +253,9 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index" options={{ title: 'Feed' }} />
-        <Tabs.Screen name="orbit" options={{ title: 'Orbit' }} />
-        <Tabs.Screen name="codex" options={{ title: 'Codex' }} />
-        <Tabs.Screen name="settings" options={{ title: 'Ajustes' }} />
+        <Tabs.Screen name="orbit" options={{ title: 'Orbit', sceneStyle: { backgroundColor: 'transparent', ...reservado } }} />
+        <Tabs.Screen name="codex" options={{ title: 'Codex', sceneStyle: { backgroundColor: 'transparent', ...reservado } }} />
+        <Tabs.Screen name="settings" options={{ title: 'Ajustes', sceneStyle: { backgroundColor: 'transparent', ...reservado } }} />
       </Tabs>
     </View>
   );
