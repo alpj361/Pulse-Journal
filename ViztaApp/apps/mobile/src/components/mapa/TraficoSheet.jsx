@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { X } from 'lucide-react-native';
 import { INK, RADIUS, SERIF } from '../theme';
@@ -70,6 +70,26 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
     },
   });
 
+  // Lo que se reportó en cada tramo: bloqueos de Provial y tweets de tránsito,
+  // cruzados en la base por ruta y kilómetro (`trafico_tramo_incidentes`).
+  const { data: reportes } = useQuery({
+    queryKey: ['trafico-reportes'],
+    staleTime: 3 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trafico_tramo_incidentes')
+        .select('tramo_id, incidente_id, fuente, tipo, ruta, km, descripcion, inicio, url')
+        .order('inicio', { ascending: false });
+      if (error) throw error;
+      const por = new Map();
+      for (const r of data || []) {
+        if (!por.has(r.tramo_id)) por.set(r.tramo_id, []);
+        por.get(r.tramo_id).push(r);
+      }
+      return por;
+    },
+  });
+
   // La ciudad y las carreteras son dos preguntas distintas —cómo llego al
   // trabajo, cómo está la ruta a Xela— y mezcladas en una lista de cincuenta
   // tramos ninguna se contesta. Se abre en la ciudad, que es la de todos los días.
@@ -85,11 +105,13 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
     [tramos, ambito]
   );
   const medidos = orden.filter((t) => t.nivel);
+  // ¿Hay al menos un tramo medido, en la ciudad o en carreteras?
+  const hayAlgo = (tramos || []).some((t) => t.nivel);
   const cargados = medidos.filter((t) => t.nivel === 'pesado' || t.nivel === 'detenido').length;
   const medido = medidos.find((t) => t.medido_en)?.medido_en || null;
 
   const titular = !medidos.length
-    ? 'Sin medición reciente'
+    ? 'No hay información ahora'
     : cargados === 0
       ? 'Todo va con normalidad'
       : cargados === 1
@@ -106,6 +128,16 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
           </Pressable>
         </View>
 
+        {!hayAlgo ? (
+          /* Sin ninguna medición no hay nada que listar: una fila de tramos
+             grises, todos «sin medición», es ruido. La hoja queda vacía y lo
+             dice. */
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingBottom: bottomInset + 80 }}>
+            <Text style={{ fontFamily: SERIF, fontSize: 24, lineHeight: 30, letterSpacing: -0.3, color: INK.title, textAlign: 'center' }}>
+              No hay información ahora
+            </Text>
+          </View>
+        ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 30, paddingTop: 10, paddingBottom: bottomInset + 40 }} showsVerticalScrollIndicator={false}>
           <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 33, letterSpacing: -0.4, color: INK.title }}>{titular}</Text>
           <Text style={{ fontFamily: MONO, fontSize: 11.5, color: INK.faint, marginTop: 6 }}>
@@ -136,12 +168,14 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
           ) : null}
 
           <View style={{ marginTop: hayPais ? 8 : 22 }}>
-            {orden.map((t, i) => (
+            {/* Solo los que tienen medición: uno sin dato no dice nada. */}
+            {medidos.map((t, i) => (
               <Fila
                 key={t.clave}
                 tramo={t}
                 dia={delDia?.get(t.id) || []}
-                ultima={i === orden.length - 1}
+                reportes={reportes?.get(t.id) || []}
+                ultima={i === medidos.length - 1}
                 onPress={() => {
                   roce();
                   onIr?.(t);
@@ -154,12 +188,13 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
             Tiempos de Apple Maps para la ruta más rápida entre los dos puntos.
           </Text>
         </ScrollView>
+        )}
       </View>
     </Modal>
   );
 }
 
-function Fila({ tramo: t, dia, ultima, onPress }) {
+function Fila({ tramo: t, dia, reportes = [], ultima, onPress }) {
   const color = COLOR_TRAFICO[t.nivel] || COLOR_TRAFICO.sin_dato;
   const ahora = t.con_trafico_s ? minutos(t.con_trafico_s) : null;
   const demora = t.demora_s != null ? minutos(t.demora_s) : null;
@@ -215,6 +250,67 @@ function Fila({ tramo: t, dia, ultima, onPress }) {
           <DelDia muestras={dia} libre={t.sin_trafico_s} />
         </View>
       ) : null}
+
+      {reportes.map((r) => (
+        <Reporte key={r.incidente_id} reporte={r} />
+      ))}
+    </Pressable>
+  );
+}
+
+const TIPO = {
+  bloqueo: 'bloqueo',
+  derrumbe: 'derrumbe',
+  trabajos: 'trabajos en la vía',
+  accidente: 'accidente',
+  colision: 'colisión',
+  cierre: 'cierre',
+  varado: 'vehículo varado',
+};
+
+/** «x:ProvialOficial» → «@ProvialOficial»; el feed oficial, «Provial». */
+const fuenteDe = (f) => (f === 'provial_bloqueos' ? 'Provial' : String(f || '').startsWith('x:') ? `@${f.slice(2)}` : f);
+
+/** La hora de Guatemala de un reporte: «14:07», con «ayer» si no es de hoy. */
+function horaDe(iso) {
+  const gt = (d) => new Date(d.getTime() - 6 * 3600 * 1000);
+  const r = gt(new Date(iso));
+  const hoy = gt(new Date());
+  const hora = `${r.getUTCHours()}:${String(r.getUTCMinutes()).padStart(2, '0')}`;
+  return r.getUTCDate() === hoy.getUTCDate() ? hora : `ayer ${hora}`;
+}
+
+/**
+ * Lo que se reportó en este tramo.
+ *
+ * Va el reporte tal como se publicó, con quién lo dijo y a qué hora. No se
+ * resume ni se afirma que sea la causa de la demora: que haya un derrumbe en
+ * el kilómetro 33 y que el tramo vaya lento son dos datos, y el lector los une.
+ */
+function Reporte({ reporte: r }) {
+  const cuerpo = (
+    <View style={{ marginLeft: 16, marginTop: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: RADIUS.sm, backgroundColor: 'rgba(28,43,34,0.045)' }}>
+      <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.faint }}>
+        {[TIPO[r.tipo] || r.tipo, r.ruta && r.km != null ? `${r.ruta} km ${Number(r.km)}` : null].filter(Boolean).join(' · ')}
+      </Text>
+      <Text numberOfLines={4} style={{ fontFamily: MONO, fontSize: 12, color: INK.body, lineHeight: 18, marginTop: 4 }}>
+        {r.descripcion}
+      </Text>
+      <Text style={{ fontFamily: MONO, fontSize: 10.5, color: INK.faint, marginTop: 5 }}>
+        {fuenteDe(r.fuente)} · {horaDe(r.inicio)}
+        {r.url ? ' ›' : ''}
+      </Text>
+    </View>
+  );
+  if (!r.url) return cuerpo;
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(r.url).catch(() => {})}
+      accessibilityRole="link"
+      accessibilityLabel={`Abrir el reporte de ${fuenteDe(r.fuente)}`}
+      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+    >
+      {cuerpo}
     </Pressable>
   );
 }

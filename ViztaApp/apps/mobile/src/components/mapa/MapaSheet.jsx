@@ -436,18 +436,25 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   );
   const traficoMedido = tramosTrafico.find((t) => t.medido_en)?.medido_en || null;
   const [viendoTrafico, setViendoTrafico] = useState(false);
-  // Al prender la capa se pide una medición fresca; si el servidor midió, se
-  // vuelve a leer. Mientras tanto se ve lo último que había, con su hora.
+  // Mientras el tráfico se esté mirando —la capa prendida o la hoja abierta—
+  // se pide una medición fresca: al empezar y cada cinco minutos. El servidor
+  // no mide más de una vez cada diez, así que insistir no gasta de más. Antes
+  // se pedía solo al prender la capa, y un mapa que llevaba un rato abierto
+  // terminaba mostrando todos los tramos «sin medición».
   useEffect(() => {
     if (!mostrarTrafico) return undefined;
     let vivo = true;
-    refrescarTrafico().then((hayNuevo) => {
-      if (vivo && hayNuevo) queryClient.invalidateQueries({ queryKey: ['trafico-tramos'] });
-    });
+    const pedir = () =>
+      refrescarTrafico().then((hayNuevo) => {
+        if (vivo && hayNuevo) queryClient.invalidateQueries({ queryKey: ['trafico-tramos'] });
+      });
+    pedir();
+    const reloj = setInterval(pedir, 5 * 60 * 1000);
     return () => {
       vivo = false;
+      clearInterval(reloj);
     };
-  }, [mostrarTrafico, queryClient]);
+  }, [mostrarTrafico, viendoTrafico, queryClient]);
   const [cajaTrafico, setCajaTrafico] = useState(null);
   // La niebla arranca encendida: es el estado natural de un mapa por explorar,
   // no una capa opcional que haya que ir a buscar. Se puede apagar —a veces se
