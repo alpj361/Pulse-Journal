@@ -87,6 +87,15 @@ function BarraOrbe() {
   const puedePosts = useCapacidadesStore((s) => !!s.capacidades?.posts);
   const userId = usePulseConnectionStore((s) => s.connectedUser?.id);
 
+  // El orbe es de quien tiene un plan con dónde usarlo. Quien entra sin cuenta,
+  // o con una cuenta gratis —la que nace al entrar con Apple—, por ahora tiene
+  // las noticias y nada más: sin orbe no hay notas ni posts que ofrecerle.
+  // Mientras el plan no llegó se decide por el tipo de cuenta, que sí queda
+  // guardado: así a quien lo tiene no le parpadea al abrir la app.
+  const planKey = useCapacidadesStore((s) => s.capacidades?.plan?.key);
+  const tipoDeCuenta = usePulseConnectionStore((s) => s.connectedUser?.user_type);
+  const conOrbe = conectado && (esAdmin || (planKey ? planKey !== 'free' : tipoDeCuenta !== 'phone'));
+
   useEffect(() => {
     evento(EV.APP_ABIERTA, { admin: esAdmin, conectado });
     // Solo una vez por arranque: esto cuenta aperturas, no renders.
@@ -164,23 +173,25 @@ function BarraOrbe() {
     >
       {/* El único control de la app. `focused` en false: el orbe no es una
           pestaña donde se pueda estar parado, sino una acción. */}
-      <NavOrb
-        size={ORB_SIZE}
-        focused={false}
-        etiqueta="Nota nueva"
-        onPress={abrirNota}
-        // La palanca solo existe si hay a dónde ir: para quien no es admin el
-        // orbe sigue siendo un botón, sin un gesto que no lleva a nada.
-        onArriba={
-          puedePosts && conectado
-            ? () => {
-                evento(EV.POSTS_ABIERTOS);
-                setViendoPosts(true);
-              }
-            : undefined
-        }
-        etiquetaArriba="posts"
-      />
+      {conOrbe ? (
+        <NavOrb
+          size={ORB_SIZE}
+          focused={false}
+          etiqueta="Nota nueva"
+          onPress={abrirNota}
+          // La palanca solo existe si hay a dónde ir: para quien no es admin el
+          // orbe sigue siendo un botón, sin un gesto que no lleva a nada.
+          onArriba={
+            puedePosts && conectado
+              ? () => {
+                  evento(EV.POSTS_ABIERTOS);
+                  setViendoPosts(true);
+                }
+              : undefined
+          }
+          etiquetaArriba="posts"
+        />
+      ) : null}
 
       {/* Las hojas son Modales, así que se dibujan sobre toda la app aunque
           vivan acá. Colgarlas del orbe las deja disponibles en cualquier
