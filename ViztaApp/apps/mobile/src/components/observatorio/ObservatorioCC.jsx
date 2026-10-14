@@ -118,14 +118,16 @@ function Elegir({ valor, onCambiar }) {
   );
 }
 
-/** De dónde es lo que sigue: el nombre del observatorio y qué mira. */
+/**
+ * De dónde es lo que sigue: el nombre del observatorio y qué mira. Las
+ * fuentes van aparte, en el lugar que defina PJ; no en el frente.
+ */
 function Encabezado({ obs }) {
   if (!obs) return null;
   return (
     <View style={{ marginTop: 18, paddingBottom: 4 }}>
       <Text style={{ fontFamily: SERIF, fontSize: 24, lineHeight: 29, color: INK.title, letterSpacing: -0.3 }}>{obs.nombre}</Text>
       <Text style={{ fontSize: 13, color: INK.body, marginTop: 3 }}>{obs.que}</Text>
-      <Text style={{ fontSize: 11.5, color: INK.faint, marginTop: 4 }}>Datos de Poder Ciudadano</Text>
     </View>
   );
 }
