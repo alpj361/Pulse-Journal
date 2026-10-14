@@ -231,6 +231,64 @@ function Bloques({ votacionId }) {
           <Text style={{ width: 26, textAlign: 'right', fontSize: 11.5, color: INK.faint }}>{b.total}</Text>
         </View>
       ))}
+      <PorPersona votos={data} />
+    </View>
+  );
+}
+
+const NOMBRE_VOTO = { favor: 'A favor', contra: 'En contra', ausente: 'Ausentes', licencia: 'Con licencia' };
+
+/**
+ * Quién votó qué, por nombre: un renglón por voto, plegado, con cuántos son.
+ * Abierto, los diputados de ese voto ordenados por bloque, para que se vea
+ * quién de cada bancada se fue por su lado.
+ */
+function PorPersona({ votos }) {
+  const grupos = useMemo(() => {
+    const g = { favor: [], contra: [], ausente: [], licencia: [] };
+    for (const v of votos || []) {
+      const clave = CLAVE_VOTO[String(v.voto || '').toUpperCase()];
+      if (clave) g[clave].push(v);
+    }
+    for (const k of Object.keys(g)) {
+      g[k].sort((a, b) => String(a.bloque).localeCompare(String(b.bloque)) || String(a.diputado).localeCompare(String(b.diputado)));
+    }
+    return g;
+  }, [votos]);
+
+  return (
+    <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: RAYA }}>
+      {ORDEN_VOTO.map((clave) => (grupos[clave].length ? <GrupoVoto key={clave} clave={clave} personas={grupos[clave]} /> : null))}
+    </View>
+  );
+}
+
+function GrupoVoto({ clave, personas }) {
+  const [abierto, setAbierto] = useState(false);
+  const Flecha = abierto ? ChevronUp : ChevronDown;
+  return (
+    <View style={{ borderBottomWidth: 1, borderBottomColor: RAYA }}>
+      <Pressable
+        onPress={() => setAbierto((x) => !x)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: abierto }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
+      >
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: VOTO[clave] }} />
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: INK.title }}>{NOMBRE_VOTO[clave]}</Text>
+        <Text style={{ fontSize: 12.5, color: INK.faint }}>{personas.length}</Text>
+        <Flecha size={15} color={INK.faint} />
+      </Pressable>
+      {abierto ? (
+        <View style={{ paddingBottom: 10, paddingLeft: 16 }}>
+          {personas.map((p, i) => (
+            <View key={`${p.diputado}-${i}`} style={{ flexDirection: 'row', gap: 8, paddingVertical: 3 }}>
+              <Text style={{ flex: 1, fontSize: 13, color: INK.title }}>{p.diputado}</Text>
+              <Text style={{ fontSize: 11.5, color: INK.faint }}>{p.bloque ? nombreDeBloque(p.bloque) : ''}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
