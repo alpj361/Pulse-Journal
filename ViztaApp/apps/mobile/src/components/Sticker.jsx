@@ -41,6 +41,8 @@ const STICKER = {
   iniciativas: require('../../assets/stickers/iniciativas.png'),
   comisiones: require('../../assets/stickers/comisiones.png'),
   pleno: require('../../assets/stickers/pleno.png'),
+  // Mientras no haya uno propio, la urna del tema política.
+  votaciones: require('../../assets/stickers/politica.png'),
   fiscalizacion: require('../../assets/stickers/fiscalizacion.png'),
   leyes: require('../../assets/stickers/leyes.png'),
 };

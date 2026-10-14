@@ -297,6 +297,7 @@ export const SECCIONES = [
   ['iniciativas', 'Iniciativas'],
   ['comisiones', 'Comisiones y citaciones'],
   ['pleno', 'Pleno y sesiones'],
+  ['votaciones', 'Votaciones'],
   ['fiscalizacion', 'Fiscalización'],
   ['leyes', 'Leyes'],
 ];
@@ -346,6 +347,9 @@ export function organizar(dias) {
     secciones[seccionDe(entrada)].push(entrada);
   }
   for (const k of Object.keys(secciones)) secciones[k].sort((a, b) => (a._ultima < b._ultima ? 1 : -1));
+  // Las votaciones del pleno de la semana, de la más nueva a la más vieja. Ya
+  // vienen ordenadas dentro de cada día (lo que decide algo antes del trámite).
+  secciones.votaciones = (dias || []).flatMap((d) => d.votaciones || []);
   return secciones;
 }
 

@@ -6,7 +6,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import Sticker from '../Sticker';
 import { INK } from '../theme';
 import { SECCIONES, diaCorto, organizar, traerLeyes } from './congreso';
-import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from './TarjetasCongreso';
+import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe, rotuloDe } from './TarjetasCongreso';
 
 /**
  * Lo del Congreso de la semana, ordenado por lo que es.
@@ -50,9 +50,16 @@ export default function CongresoOrganizado({ dias, onAbrir }) {
                 {lista.length ? <Text style={{ fontSize: 12, color: INK.faint }}>{lista.length}</Text> : null}
               </View>
             )}
-            {lista.map((item, i) => (
+            {clave === 'votaciones'
+              ? lista.map((v) => (
+                  <View key={v.id}>
+                    <Text style={{ fontSize: 11, color: INK.faint, marginTop: 12, marginBottom: -8, textAlign: 'right' }}>{diaCorto(v.fecha)}</Text>
+                    <VotacionCongreso votacion={v} compacta />
+                  </View>
+                ))
+              : lista.map((item, i) => (
               <Entrada key={item.id} item={item} conCamino={clave === 'iniciativas'} ultima={i === lista.length - 1 && !publicadas.length} onPress={() => onAbrir(item)} />
-            ))}
+                ))}
             {publicadas.length ? <Publicadas leyes={publicadas} /> : null}
           </View>
         );
