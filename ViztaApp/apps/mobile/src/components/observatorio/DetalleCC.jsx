@@ -154,7 +154,11 @@ const ROJO = '#B91C1C';
  * nombres.
  */
 function ComoVoto({ r }) {
-  const total = Number(r.n_magistrados) || 0;
+  // La Corte resuelve con 5 magistrados, o con 7 cuando se integra con
+  // suplentes. Otro número (6, 8, 9, 10: 37 resoluciones) es un conteo mal
+  // leído de las firmas: ahí no se dibuja el tribunal, solo los nombres.
+  const leido = Number(r.n_magistrados) || 0;
+  const total = leido === 5 || leido === 7 ? leido : 0;
   const contra = (r.disidentes || []).filter(Boolean);
   const ponentes = (r.ponentes || []).filter(Boolean);
   if (!total && !ponentes.length && !contra.length) return null;
