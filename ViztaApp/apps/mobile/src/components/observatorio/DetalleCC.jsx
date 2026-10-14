@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, X } from 'lucide-react-native';
+import { ArrowUpRight, ChevronDown, ChevronUp, X } from 'lucide-react-native';
 import { INK } from '../theme';
 import { RAYA, Rotulo, TINTA, Titulo } from '../feed/TarjetasCongreso';
 import IconoCC from './IconoCC';
@@ -101,25 +102,9 @@ export default function DetalleCC({ resolucion, onClose }) {
               </Seccion>
             ) : null}
 
-            {(r.ponentes || []).length || r.n_magistrados || r.dias_total ? (
-              <Seccion>
-                {(r.ponentes || []).length ? (
-                  <Dato nombre={r.ponentes.length > 1 ? 'PONENTES' : 'PONENTE'}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <IconoCC codigo="MAGISTRADO" size={22} />
-                      <Texto>{r.ponentes.join(', ')}</Texto>
-                    </View>
-                  </Dato>
-                ) : null}
-                {(r.disidentes || []).length ? (
-                  <Dato nombre="VOTARON EN CONTRA">
-                    <Texto>{r.disidentes.join(', ')}</Texto>
-                  </Dato>
-                ) : r.n_magistrados ? (
-                  <Text style={{ fontSize: 13, color: INK.body }}>Sin votos en contra · {r.n_magistrados} magistrados</Text>
-                ) : null}
-                {r.dias_total ? <Text style={{ fontSize: 13, color: INK.body }}>{r.dias_total.toLocaleString('es-GT')} días desde que empezó el caso</Text> : null}
-              </Seccion>
+            <ComoVoto r={r} />
+            {r.dias_total ? (
+              <Text style={{ fontSize: 13, color: INK.body, marginTop: 14 }}>{r.dias_total.toLocaleString('es-GT')} días desde que empezó el caso</Text>
             ) : null}
 
             {r.enlace_oficial ? (
@@ -154,4 +139,88 @@ function Dato({ nombre, children }) {
 
 function Texto({ children }) {
   return <Text style={{ fontSize: 14.5, color: INK.title, lineHeight: 21 }}>{children}</Text>;
+}
+
+const VERDE = '#15803D';
+const ROJO = '#B91C1C';
+
+/**
+ * Cómo votó la Corte, como en el Congreso: un punto por magistrado y, abajo,
+ * los nombres por grupo, plegados.
+ *
+ * El registro guarda quién redactó la sentencia (ponente) y quién votó en
+ * contra (disidentes), y cuántos magistrados la firmaron. No guarda la lista
+ * de quienes votaron con la mayoría: ese grupo dice cuántos son y no inventa
+ * nombres.
+ */
+function ComoVoto({ r }) {
+  const total = Number(r.n_magistrados) || 0;
+  const contra = (r.disidentes || []).filter(Boolean);
+  const ponentes = (r.ponentes || []).filter(Boolean);
+  if (!total && !ponentes.length && !contra.length) return null;
+  const mayoria = Math.max(0, total - contra.length);
+  const concurrente = r.voto === 'SOLO_CONCURRENTE' || r.voto === 'VOTOS_SEPARADOS_MIXTOS';
+
+  return (
+    <Seccion>
+      <Rotulo color={INK.faint}>CÓMO VOTÓ LA CORTE</Rotulo>
+      {total ? (
+        <View>
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
+            {Array.from({ length: total }, (_, i) => (
+              <View key={i} style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: i < mayoria ? VERDE : ROJO }} />
+            ))}
+          </View>
+          <Text style={{ fontSize: 13, color: INK.body, marginTop: 8 }}>
+            {contra.length ? `${mayoria} con la mayoría · ${contra.length} en contra` : `Unánime · ${total} magistrados`}
+            {concurrente ? ' · con voto concurrente' : ''}
+          </Text>
+        </View>
+      ) : null}
+      <View style={{ borderTopWidth: 1, borderTopColor: RAYA }}>
+        {ponentes.length ? <Grupo color={TINTA} nombre={ponentes.length > 1 ? 'Redactaron la sentencia' : 'Redactó la sentencia'} personas={ponentes} abiertoAlInicio /> : null}
+        {total ? (
+          <Grupo
+            color={VERDE}
+            nombre="Con la mayoría"
+            cuantos={mayoria}
+            personas={[]}
+            nota="El registro de la Corte no lista quiénes fueron."
+          />
+        ) : null}
+        {contra.length ? <Grupo color={ROJO} nombre="Votaron en contra" personas={contra} /> : null}
+      </View>
+    </Seccion>
+  );
+}
+
+function Grupo({ color, nombre, personas, cuantos, nota, abiertoAlInicio = false }) {
+  const [abierto, setAbierto] = useState(abiertoAlInicio);
+  const Flecha = abierto ? ChevronUp : ChevronDown;
+  return (
+    <View style={{ borderBottomWidth: 1, borderBottomColor: RAYA }}>
+      <Pressable
+        onPress={() => setAbierto((x) => !x)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: abierto }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
+      >
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: INK.title }}>{nombre}</Text>
+        <Text style={{ fontSize: 12.5, color: INK.faint }}>{cuantos ?? personas.length}</Text>
+        <Flecha size={15} color={INK.faint} />
+      </Pressable>
+      {abierto ? (
+        <View style={{ paddingBottom: 10, paddingLeft: 16, gap: 6 }}>
+          {personas.map((p) => (
+            <View key={p} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconoCC codigo="MAGISTRADO" size={22} />
+              <Text style={{ flex: 1, fontSize: 13.5, color: INK.title }}>{p}</Text>
+            </View>
+          ))}
+          {nota ? <Text style={{ fontSize: 12, color: INK.faint }}>{nota}</Text> : null}
+        </View>
+      ) : null}
+    </View>
+  );
 }
