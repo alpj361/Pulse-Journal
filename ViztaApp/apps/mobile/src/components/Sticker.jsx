@@ -37,6 +37,12 @@ const STICKER = {
   'not-found': require('../../assets/stickers/not-found.png'),
   // Lugares de la app
   trafico: require('../../assets/stickers/trafico.png'),
+  // Secciones del Congreso (vista organizada)
+  iniciativas: require('../../assets/stickers/iniciativas.png'),
+  comisiones: require('../../assets/stickers/comisiones.png'),
+  pleno: require('../../assets/stickers/pleno.png'),
+  fiscalizacion: require('../../assets/stickers/fiscalizacion.png'),
+  leyes: require('../../assets/stickers/leyes.png'),
 };
 
 export const STICKERS = Object.keys(STICKER);

@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import Sticker from '../Sticker';
 import { INK } from '../theme';
 import { SECCIONES, diaCorto, organizar, traerLeyes } from './congreso';
 import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from './TarjetasCongreso';
@@ -16,19 +18,37 @@ import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from 
 export default function CongresoOrganizado({ dias, onAbrir }) {
   const secciones = useMemo(() => organizar(dias), [dias]);
   const { data: leyes = [] } = useQuery({ queryKey: ['congreso-leyes'], queryFn: traerLeyes, staleTime: 6 * 60 * 60 * 1000 });
+  // Qué sección se mira: ninguna elegida es todas.
+  const [elegida, setElegida] = useState(null);
+  const [abierto, setAbierto] = useState(true);
+
+  const cuantas = (clave) => (secciones[clave] || []).length + (clave === 'leyes' ? leyes.length : 0);
+  const disponibles = SECCIONES.filter(([clave]) => cuantas(clave) > 0);
 
   return (
     <View style={{ marginTop: 14 }}>
+      <Burbujas
+        secciones={disponibles}
+        cuantas={(clave) => (secciones[clave] || []).length}
+        elegida={elegida}
+        onElegir={(clave) => setElegida((antes) => (antes === clave ? null : clave))}
+        abierto={abierto}
+        onAbrir={() => setAbierto((x) => !x)}
+      />
       {SECCIONES.map(([clave, nombre]) => {
+        if (elegida && elegida !== clave) return null;
         const lista = secciones[clave] || [];
         const publicadas = clave === 'leyes' ? leyes : [];
         if (!lista.length && !publicadas.length) return null;
         return (
           <View key={clave} style={{ marginBottom: 26 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.1, color: INK.title }}>{nombre.toUpperCase()}</Text>
-              {lista.length ? <Text style={{ fontSize: 12, color: INK.faint }}>{lista.length}</Text> : null}
-            </View>
+            {/* Con una sola sección elegida, su nombre ya está en la burbuja. */}
+            {elegida ? null : (
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.1, color: INK.title }}>{nombre.toUpperCase()}</Text>
+                {lista.length ? <Text style={{ fontSize: 12, color: INK.faint }}>{lista.length}</Text> : null}
+              </View>
+            )}
             {lista.map((item, i) => (
               <Entrada key={item.id} item={item} conCamino={clave === 'iniciativas'} ultima={i === lista.length - 1 && !publicadas.length} onPress={() => onAbrir(item)} />
             ))}
@@ -84,6 +104,64 @@ function Publicadas({ leyes }) {
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+/**
+ * Las secciones como burbujas, para mirar una sola.
+ *
+ * Plegable: abierto se ven todas con su ícono y cuántas entradas tiene cada
+ * una; plegado queda una línea que dice qué se está mirando. Tocar la burbuja
+ * elegida otra vez vuelve a mostrar todo.
+ */
+function Burbujas({ secciones, cuantas, elegida, onElegir, abierto, onAbrir }) {
+  const nombreElegida = secciones.find(([clave]) => clave === elegida)?.[1];
+  const Flecha = abierto ? ChevronUp : ChevronDown;
+  return (
+    <View style={{ marginBottom: 18 }}>
+      <Pressable
+        onPress={onAbrir}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: abierto }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 }}
+      >
+        <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>{nombreElegida || 'Todas las secciones'}</Text>
+        <Flecha size={15} color={INK.meta} />
+      </Pressable>
+      {abierto ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+          {secciones.map(([clave, nombre]) => {
+            const activa = elegida === clave;
+            const n = cuantas(clave);
+            return (
+              <Pressable
+                key={clave}
+                onPress={() => onElegir(clave)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: activa }}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingLeft: 4,
+                  paddingRight: 13,
+                  paddingVertical: 4,
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  borderColor: activa ? TINTA : 'rgba(28,43,34,0.10)',
+                  backgroundColor: activa ? 'rgba(47,74,122,0.08)' : 'rgba(255,255,255,0.7)',
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Sticker nombre={clave} size={34} />
+                <Text style={{ fontSize: 13, fontWeight: activa ? '700' : '500', color: activa ? TINTA : INK.title }}>{nombre}</Text>
+                {n ? <Text style={{ fontSize: 12, color: INK.faint }}>{n}</Text> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
