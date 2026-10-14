@@ -193,7 +193,17 @@ function ComoVoto({ r }) {
         </View>
       ) : null}
       <View style={{ borderTopWidth: 1, borderTopColor: RAYA }}>
-        {ponentes.length ? <Grupo color={TINTA} nombre={ponentes.length > 1 ? 'Redactaron la sentencia' : 'Redactó la sentencia'} personas={ponentes} abiertoAlInicio /> : null}
+        {/* La ponencia queda a nombre de quien la preparó aunque ese día no
+            integrara el tribunal (por ausencia, entra un suplente): pasa en
+            1 de cada 9 resoluciones. Ahí no votó y se dice. */}
+        {ponentes.length ? (
+          <Grupo
+            color={TINTA}
+            nombre={ponentes.length > 1 ? 'Redactaron la sentencia' : 'Redactó la sentencia'}
+            personas={ponentes.map((n) => (firmantes.length && !firmantes.some((f) => plano(f) === plano(n)) ? `${n} · no firmó` : n))}
+            abiertoAlInicio
+          />
+        ) : null}
         {total ? (
           <Grupo
             color={VERDE}

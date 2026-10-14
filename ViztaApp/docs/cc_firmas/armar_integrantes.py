@@ -8,6 +8,8 @@ W, TAM = sys.argv[1], int(sys.argv[2])
 CONOCIDOS = ["Astrid Jeannette Lemus Rodríguez","Claudia Elizabeth Paniagua Pérez","Dina Josefina Ochoa Escribá","Gladys Annabella Morfín Mansilla","Héctor Hugo Pérez Aguilera","José Alejandro Córdova Herrera","José Luis Aguirre Pumay","Juan José Samayoa Villatoro","Julia Marisol Rivera Aguilar","Leyla Susana Lemus Arriaga","Luis Alfonso Rosales Marroquín","Luis Fernando Bermejo Quiñónez","María Magdalena Jocholá Tujal","Néster Mauricio Vásquez Pimentel","Roberto Molina Barreto","Rony Eulalio López Contreras","Walter Paulino Jiménez Texaj"]
 def plano(t): return ' '.join(unicodedata.normalize('NFD', t).encode('ascii','ignore').decode().lower().split())
 MAPA = {plano(n): n for n in CONOCIDOS}
+# Firma corta del mismo magistrado (sin segundo nombre).
+MAPA[plano('Rony López Contreras')] = 'Rony Eulalio López Contreras'
 filas = [json.loads(l) for l in open(os.path.join(W,'firmas.jsonl'))]
 filas = list({f['slug']: f for f in filas}.values())
 out, raros, errores, conteo = [], {}, 0, {}
