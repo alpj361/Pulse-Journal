@@ -7,8 +7,8 @@ import { INK } from '../theme';
 import { supabase } from '../../utils/supabase';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import { TYPE_ACCENT, normalizeTipo } from '../codex/tipos';
-import { titular, traerMencionados, traerNota } from './congreso';
-import { AFavor, Camino, RAYA, Rotulo, TINTA, Titulo, cabezaDe, monto, rotuloDe } from './TarjetasCongreso';
+import { diaCorto, seccionDe, titular, traerMencionados, traerNota } from './congreso';
+import { AFavor, Camino, ETAPA, Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, monto, rotuloDe } from './TarjetasCongreso';
 
 /**
  * Una nota del Congreso, abierta.
@@ -103,23 +103,39 @@ export default function NotaCongreso({ item, onClose }) {
               </View>
             ) : null}
 
-            {item.card_type === 'timeline' && numero ? <Camino etapa={item.stage} /> : null}
+            <Origen item={item} style={{ marginTop: 6 }} />
+            {(item.card_type === 'timeline' && numero) || (item._pasos && seccionDe(item) === 'iniciativas') ? <Camino etapa={item.stage} /> : null}
             <AFavor cuantos={item.votes?.favor} />
 
             {resumen ? (
               <Text style={{ fontSize: 16, color: INK.title, lineHeight: 25, marginTop: 18 }}>{resumen}</Text>
             ) : null}
 
-            {nota?.iniciativa_titulo || nota?.comision_name ? (
-              <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: RAYA, gap: 12 }}>
-                {nota.iniciativa_titulo ? <Dato nombre={numero ? `INICIATIVA ${numero}` : 'INICIATIVA'}>{nota.iniciativa_titulo}</Dato> : null}
-                {nota.comision_name ? <Dato nombre="COMISIÓN">{nota.comision_name}</Dato> : null}
+            {/* La comisión ya va al pie del título (de dónde sale la nota). */}
+            {nota?.iniciativa_titulo ? (
+              <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: RAYA }}>
+                <Dato nombre={numero ? `INICIATIVA ${numero}` : 'INICIATIVA'}>{nota.iniciativa_titulo}</Dato>
               </View>
             ) : null}
 
             {quienes.length ? (
               <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: RAYA }}>
                 <Dato nombre="QUIÉNES">{quienes.join(' · ')}</Dato>
+              </View>
+            ) : null}
+
+            {(item._pasos || []).length > 1 ? (
+              <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: RAYA }}>
+                <Rotulo color={INK.faint}>ESTA SEMANA</Rotulo>
+                {item._pasos.map((p) => (
+                  <View key={p.item.id} style={{ flexDirection: 'row', gap: 12, paddingVertical: 6 }}>
+                    <Text style={{ width: 52, fontSize: 12, color: INK.faint }}>{diaCorto(p.fecha)}</Text>
+                    <View style={{ flex: 1 }}>
+                      {ETAPA[p.etapa] ? <Text style={{ fontSize: 10.5, fontWeight: '800', letterSpacing: 0.8, color: TINTA }}>{ETAPA[p.etapa]}</Text> : null}
+                      <Text style={{ fontSize: 13.5, color: INK.title, lineHeight: 19 }}>{cabezaDe(p.item).titulo}</Text>
+                    </View>
+                  </View>
+                ))}
               </View>
             ) : null}
 

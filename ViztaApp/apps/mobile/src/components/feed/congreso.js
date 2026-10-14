@@ -7,7 +7,7 @@ import { supabase } from '../../utils/supabase';
  */
 
 const COLUMNAS =
-  'id, digest_date, tipo, titulo, url, iniciativa_numero, video_id, summary, stage, result, votes, card_type, card_data';
+  'id, digest_date, tipo, titulo, url, iniciativa_numero, video_id, summary, stage, origin, comision_name, decreto_numero, resolucion_tipo, result, votes, actors, card_type, card_data, created_at';
 
 const COLUMNAS_VOTACION = 'id, fecha, sesion, asunto, resultado, a_favor, en_contra, ausentes, licencia, iniciativa_numero';
 
@@ -18,7 +18,7 @@ export async function traerCongreso() {
     .select(COLUMNAS)
     .order('digest_date', { ascending: false })
     .order('created_at', { ascending: true })
-    .limit(80);
+    .limit(200);
   if (error) throw error;
 
   await completarTitulos(data || []);
@@ -40,6 +40,9 @@ export async function traerCongreso() {
   // El noticiero también llega como «noticia» del sitio, con el mismo título:
   // ya está arriba como salto al video, y repetido no dice nada.
   for (const d of dias) d.items = d.items.filter((i) => i.tipo === 'noticiero' || !/^\s*noticiero legislativo/i.test(i.titulo || ''));
+  // Fuera lo que no cuenta nada, y una sola vez lo que llegó dos veces el
+  // mismo día (por el sitio y por la cuenta, o en dos corridas del monitor).
+  for (const d of dias) d.items = unaVez(d.items.filter((i) => i.tipo === 'noticiero' || !esRelleno(i)));
   const visibles = dias.slice(0, 7);
 
   // Las votaciones del pleno de esos días. Vienen de su propio registro, con
@@ -234,4 +237,141 @@ export async function traerMencionados(fuente, refId) {
   const ids = [...new Set(data.map((f) => f.item_id))];
   const { data: items } = await supabase.from('codex_universe_items').select('id, name, tipo').in('id', ids);
   return items || [];
+}
+
+// ─── Limpieza ────────────────────────────────────────────────────────────────
+
+/**
+ * Un resumen que no sabe nada: repite el título («según el título de la
+ * noticia», «sin más detalles») o promete algo que no dice («varias
+ * iniciativas…» sin decir cuáles). La nota no se muestra.
+ */
+const RELLENO =
+  /seg[uú]n el t[ií]tulo|el t[ií]tulo indica|el encabezado indica|sin (m[aá]s|mayores) detalles|sin detallar|no se (detalla|especifica)|sin ofrecer m[aá]s|^varias iniciativas/i;
+
+export function esRelleno(item) {
+  const r = String(item.summary || '').trim();
+  if (!r) return /(\.\.\.|…)\s*$/.test(item.titulo || '') && !item.card_data?.subject;
+  if (RELLENO.test(r)) return true;
+  // Un resumen de una línea sin nadie nombrado es el título dicho otra vez.
+  return r.length < 70 && !(item.actors || []).length && !item.iniciativa_numero;
+}
+
+/** La clave de «es lo mismo»: la iniciativa si tiene número, si no el tema. */
+export function claveDe(item) {
+  const numero = item.iniciativa_numero || item.card_data?.iniciativa_numero;
+  if (numero) return `ini:${numero}`;
+  const tema = item.card_data?.subject || item.titulo || '';
+  return `tema:${plano(tema.replace(CORTADO, '')).split(' ').slice(0, 8).join(' ')}`;
+}
+
+/** Lo repetido, una vez: se queda la que trae más (resumen más largo). */
+function unaVez(items) {
+  const vistos = new Map();
+  for (const i of items) {
+    if (i.tipo === 'noticiero') {
+      vistos.set(i.id, i);
+      continue;
+    }
+    const clave = claveDe(i);
+    const antes = vistos.get(clave);
+    if (!antes || String(i.summary || '').length > String(antes.summary || '').length) vistos.set(clave, i);
+  }
+  return [...vistos.values()];
+}
+
+// ─── Lo organizado ───────────────────────────────────────────────────────────
+
+/** Cuánto avanzó una iniciativa: sirve para quedarse con la etapa más nueva. */
+const AVANCE = {
+  iniciativa_presentada: 1,
+  en_comision: 2,
+  dictamen: 3,
+  primer_debate: 4,
+  segundo_debate: 5,
+  tercer_debate: 6,
+  aprobado: 7,
+};
+
+export const SECCIONES = [
+  ['iniciativas', 'Iniciativas'],
+  ['comisiones', 'Comisiones y citaciones'],
+  ['pleno', 'Pleno y sesiones'],
+  ['fiscalizacion', 'Fiscalización'],
+  ['leyes', 'Leyes'],
+];
+
+/**
+ * A qué sección va una nota. Sale de lo que el monitor ya marcó —la etapa y de
+ * dónde viene—, no de leer el título.
+ */
+export function seccionDe(item) {
+  const etapa = item.stage;
+  const numero = item.iniciativa_numero || item.card_data?.iniciativa_numero;
+  if (item.decreto_numero || item.resolucion_tipo || (etapa === 'aprobado' && numero)) return 'leyes';
+  if (numero || ['iniciativa_presentada', 'dictamen', 'primer_debate', 'segundo_debate', 'tercer_debate'].includes(etapa)) {
+    return 'iniciativas';
+  }
+  if (item.origin === 'comision' || etapa === 'en_comision' || etapa === 'citacion') return 'comisiones';
+  if (['pleno', 'jefes_bloque', 'junta_directiva'].includes(item.origin) || etapa === 'eleccion' || etapa === 'aprobado') {
+    return 'pleno';
+  }
+  return 'fiscalizacion';
+}
+
+/**
+ * Lo de la semana, por sección.
+ *
+ * Una iniciativa es una entrada aunque haya salido cinco veces: se juntan por
+ * número (o por tema, si no tiene) y queda la etapa más avanzada, con sus pasos
+ * de la semana para abrirlos. Cada sección va de lo más nuevo a lo más viejo.
+ */
+export function organizar(dias) {
+  const grupos = new Map();
+  for (const dia of dias || []) {
+    for (const item of dia.items) {
+      if (item.tipo === 'noticiero') continue;
+      const clave = claveDe(item);
+      const g = grupos.get(clave) || { clave, pasos: [] };
+      g.pasos.push({ fecha: item.digest_date, etapa: item.stage, item });
+      grupos.set(clave, g);
+    }
+  }
+  const secciones = Object.fromEntries(SECCIONES.map(([k]) => [k, []]));
+  for (const g of grupos.values()) {
+    g.pasos.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : (AVANCE[a.etapa] || 0) - (AVANCE[b.etapa] || 0)));
+    // La que representa al grupo: la más avanzada y, a igual avance, la más nueva.
+    const cabeza = [...g.pasos].sort((a, b) => (AVANCE[b.etapa] || 0) - (AVANCE[a.etapa] || 0) || (a.fecha < b.fecha ? 1 : -1))[0];
+    const entrada = { ...cabeza.item, _pasos: g.pasos, _ultima: g.pasos[g.pasos.length - 1].fecha };
+    secciones[seccionDe(entrada)].push(entrada);
+  }
+  for (const k of Object.keys(secciones)) secciones[k].sort((a, b) => (a._ultima < b._ultima ? 1 : -1));
+  return secciones;
+}
+
+/**
+ * Las leyes y acuerdos publicados más recientes, del registro de normas. La
+ * semana casi nunca trae una: así la sección muestra igual lo último vigente.
+ */
+export async function traerLeyes() {
+  const { data } = await supabase
+    .from('normas')
+    .select('id, decreto, titulo, tipo, estado, fecha_publicacion')
+    .order('fecha_publicacion', { ascending: false, nullsFirst: false })
+    .limit(5);
+  return data || [];
+}
+
+/** «lun 12»: el día corto de una entrada organizada. */
+export function diaCorto(fecha) {
+  const [a, m, d] = String(fecha).split('-').map(Number);
+  const dia = new Date(a, m - 1, d);
+  return `${dia.toLocaleDateString('es-GT', { weekday: 'short' }).replace('.', '')} ${d}`;
+}
+
+/** De dónde sale una nota: la comisión con nombre, o el órgano que la produjo. */
+const ORIGEN = { pleno: 'Pleno', jefes_bloque: 'Jefes de bloque', junta_directiva: 'Junta Directiva', comision: 'Comisión' };
+export function origenDe(item) {
+  if (item.comision_name) return item.comision_name;
+  return ORIGEN[item.origin] || null;
 }

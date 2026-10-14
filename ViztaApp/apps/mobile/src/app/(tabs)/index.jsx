@@ -22,6 +22,7 @@ import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
 import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
+import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
 
@@ -719,6 +720,8 @@ export default function Index() {
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
+  // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
+  const [vistaCongreso, setVistaCongreso] = useState("tablero");
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
   const { data: diasCongreso, isLoading: cargandoCongreso } = useQuery({
     queryKey: ['congreso-feed'],
@@ -859,11 +862,21 @@ export default function Index() {
               <SelectorFeed valor={feed} onCambiar={setFeed} />
             </View>
 
+            {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
+
             {feed === "congreso" ? (
               cargandoCongreso ? (
                 <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
               ) : !diasCongreso?.length ? (
                 <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
+              ) : vistaCongreso === "organizado" ? (
+                <CongresoOrganizado
+                  dias={diasCongreso}
+                  onAbrir={(item) => {
+                    evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                    setNotaCongreso(item);
+                  }}
+                />
               ) : (
                 diasCongreso.map((dia, n) => (
                   <View key={dia.fecha}>
@@ -924,6 +937,14 @@ export default function Index() {
                     setSelectedCard(card);
                   }}
                   onEntidad={(e) => setEntityModal(e)}
+                  onCongreso={
+                    esDelCongreso(card)
+                      ? () => {
+                          setVistaCongreso("organizado");
+                          setFeed("congreso");
+                        }
+                      : undefined
+                  }
                   style={{ marginBottom: 22 }}
                 />
               ))
@@ -1120,4 +1141,58 @@ function SectionHeader({ title, marcado }) {
       </Text>
     </View>
   );
+}
+
+
+/**
+ * Tablero u organizado: las dos formas de ver lo del Congreso.
+ *
+ * El tablero son los días tal como pasaron —el noticiero, las votaciones, las
+ * notas—; organizado es lo mismo de la semana juntado por tema, para encontrar
+ * una iniciativa o una comisión sin recorrer día por día.
+ */
+function VistasCongreso({ valor, onCambiar }) {
+  const opciones = [
+    ["tablero", "Tablero"],
+    ["organizado", "Organizado"],
+  ];
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignSelf: "flex-start",
+        marginTop: 14,
+        marginBottom: 6,
+        padding: 3,
+        borderRadius: 12,
+        backgroundColor: "rgba(28,43,34,0.06)",
+      }}
+    >
+      {opciones.map(([clave, nombre]) => {
+        const activo = valor === clave;
+        return (
+          <Pressable
+            key={clave}
+            onPress={() => onCambiar(clave)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activo }}
+            style={{
+              paddingVertical: 6,
+              paddingHorizontal: 14,
+              borderRadius: 9,
+              backgroundColor: activo ? "#FFFFFF" : "transparent",
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: activo ? "700" : "500", color: activo ? INK.title : INK.meta }}>{nombre}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Una tarjeta del país que habla del Congreso: también se ve desde allá. */
+const DEL_CONGRESO = /\bcongreso\b|\bdiputad[oa]s?\b|\bbancadas?\b|\bpleno del\b|\blegislativo\b/i;
+function esDelCongreso(card) {
+  return DEL_CONGRESO.test(`${card?.titulo || ""} ${card?.resumen || ""}`);
 }

@@ -4,7 +4,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
-import { titular, traerVotos } from './congreso';
+import { origenDe, titular, traerVotos } from './congreso';
 
 /**
  * Lo del Congreso, cada cosa con la forma que le toca.
@@ -77,7 +77,9 @@ const CAMINO = [
  * ni une las paradas ya recorridas como si constaran.
  */
 export function Camino({ etapa }) {
-  const actual = CAMINO.findIndex(([clave]) => clave === etapa);
+  // Los tres debates son la misma parada del camino.
+  const parada = /_debate$/.test(etapa || '') ? 'primer_debate' : etapa;
+  const actual = CAMINO.findIndex(([clave]) => clave === parada);
   if (actual === -1) return null;
   return (
     <View style={{ flexDirection: 'row', marginTop: 13 }}>
@@ -358,6 +360,8 @@ export const ETAPA = {
   en_comision: 'EN COMISIÓN',
   dictamen: 'DICTAMEN',
   primer_debate: 'PRIMER DEBATE',
+  segundo_debate: 'SEGUNDO DEBATE',
+  tercer_debate: 'TERCER DEBATE',
   aprobado: 'APROBADO',
   eleccion: 'ELECCIÓN',
   citacion: 'CITACIÓN',
@@ -448,6 +452,14 @@ export function ItemCongreso({ item, ultimo = false, onPress }) {
           <Resumen>{resumen}</Resumen>
         </>
       )}
+      <Origen item={item} />
     </Pressable>
   );
+}
+
+/** De dónde sale la nota, chico y al pie: la comisión o el órgano. */
+export function Origen({ item, style }) {
+  const origen = origenDe(item);
+  if (!origen) return null;
+  return <Text style={[{ fontSize: 11.5, color: INK.faint, marginTop: 8 }, style]}>{origen}</Text>;
 }
