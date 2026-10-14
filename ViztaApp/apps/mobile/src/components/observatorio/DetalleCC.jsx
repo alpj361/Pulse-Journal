@@ -144,21 +144,36 @@ function Texto({ children }) {
 const VERDE = '#15803D';
 const ROJO = '#B91C1C';
 
+/** Para comparar nombres: sin tildes ni mayúsculas. */
+const plano = (t) =>
+  String(t || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** «LEYLA SUSANA LEMUS ARRIAGA» → «Leyla Susana Lemus Arriaga». */
+const comoNombre = (t) => String(t || '').toLowerCase().replace(/(^|\s)(\S)/g, (m, e, l) => e + l.toUpperCase()).replace(/\b(De|Del|La|Y)\b/g, (x) => x.toLowerCase());
+
 /**
  * Cómo votó la Corte, como en el Congreso: un punto por magistrado y, abajo,
  * los nombres por grupo, plegados.
  *
- * El registro guarda quién redactó la sentencia (ponente) y quién votó en
- * contra (disidentes), y cuántos magistrados la firmaron. No guarda la lista
- * de quienes votaron con la mayoría: ese grupo dice cuántos son y no inventa
- * nombres.
+ * Quiénes integraron el tribunal sale de las firmas al pie de la sentencia;
+ * quién redactó y quién votó en contra, del registro de la Corte. Con la
+ * mayoría votaron los que firmaron y no votaron en contra. Si las firmas no
+ * se han leído todavía, ese grupo dice cuántos son, sin nombres.
  */
 function ComoVoto({ r }) {
-  const total = Number(r.n_magistrados) || 0;
+  const firmantes = (r.integrantes || []).filter(Boolean);
   const contra = (r.disidentes || []).filter(Boolean);
   const ponentes = (r.ponentes || []).filter(Boolean);
+  const total = firmantes.length || Number(r.n_magistrados) || 0;
   if (!total && !ponentes.length && !contra.length) return null;
-  const mayoria = Math.max(0, total - contra.length);
+  const enContra = new Set(contra.map(plano));
+  const conMayoria = firmantes.filter((n) => !enContra.has(plano(n))).map(comoNombre);
+  const mayoria = firmantes.length ? conMayoria.length : Math.max(0, total - contra.length);
   const concurrente = r.voto === 'SOLO_CONCURRENTE' || r.voto === 'VOTOS_SEPARADOS_MIXTOS';
 
   return (
@@ -184,8 +199,8 @@ function ComoVoto({ r }) {
             color={VERDE}
             nombre="Con la mayoría"
             cuantos={mayoria}
-            personas={[]}
-            nota="El registro de la Corte no lista quiénes fueron."
+            personas={conMayoria}
+            nota={firmantes.length ? null : 'Todavía no se leyeron las firmas de esta sentencia.'}
           />
         ) : null}
         {contra.length ? <Grupo color={ROJO} nombre="Votaron en contra" personas={contra} /> : null}
