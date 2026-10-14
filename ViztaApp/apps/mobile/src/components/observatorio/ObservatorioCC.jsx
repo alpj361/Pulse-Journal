@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { INK } from '../theme';
+import { INK, SERIF } from '../theme';
 import { Burbujas } from '../feed/CongresoOrganizado';
 import { RAYA, Rotulo, TINTA, Titulo } from '../feed/TarjetasCongreso';
 import IconoCC from './IconoCC';
@@ -21,30 +21,111 @@ import {
 } from './observatorio';
 
 /**
- * El Observatorio de la Corte de Constitucionalidad, con la misma forma que el
- * Congreso: un tablero que cuenta lo reciente en el orden en que pasó, y lo
- * mismo organizado por materia para encontrar algo sin recorrer mes por mes.
- * Aparte, el presupuesto del Estado año por año y los actores públicos.
+ * El Observatorio: varios observatorios, cada uno de un lugar distinto.
+ *
+ * Arriba se elige cuál —la Corte de Constitucionalidad, el presupuesto del
+ * Estado, los actores públicos, y los que se vayan sumando— y debajo va un
+ * encabezado que dice de dónde es todo lo que sigue. Así nunca hay que adivinar
+ * si una lista es de la Corte o de otra cosa. Dentro de la Corte, el tablero y
+ * lo organizado, con la misma forma que el Congreso.
  */
+const OBSERVATORIOS = [
+  {
+    clave: 'cc',
+    nombre: 'Corte de Constitucionalidad',
+    corto: 'Corte (CC)',
+    icono: 'CONSTITUCIONAL',
+    que: 'Amparos e inconstitucionalidades que resolvió la Corte',
+  },
+  {
+    clave: 'presupuesto',
+    nombre: 'Presupuesto del Estado',
+    corto: 'Presupuesto',
+    icono: 'VIGENTE',
+    que: 'Cuánto se aprobó y rigió cada año, desde 2008',
+  },
+  {
+    clave: 'actores',
+    nombre: 'Actores públicos',
+    corto: 'Actores',
+    icono: 'AUTORIDAD',
+    que: 'Quiénes ocupan los cargos que sigue el observatorio',
+  },
+];
+
 const VISTAS = [
   ['tablero', 'Tablero'],
   ['organizado', 'Organizado'],
-  ['presupuesto', 'Presupuesto'],
-  ['actores', 'Actores'],
 ];
 
 export default function ObservatorioCC() {
+  const [cual, setCual] = useState('cc');
   const [vista, setVista] = useState('tablero');
   const [abierta, setAbierta] = useState(null);
+  const obs = OBSERVATORIOS.find((o) => o.clave === cual);
 
   return (
     <View>
-      <Pestanas valor={vista} onCambiar={setVista} />
-      {vista === 'tablero' ? <Tablero onAbrir={setAbierta} /> : null}
-      {vista === 'organizado' ? <Organizado onAbrir={setAbierta} /> : null}
-      {vista === 'presupuesto' ? <PresupuestoCC /> : null}
-      {vista === 'actores' ? <ActoresCC /> : null}
+      <Elegir valor={cual} onCambiar={setCual} />
+      <Encabezado obs={obs} />
+      {cual === 'cc' ? (
+        <>
+          <Pestanas valor={vista} onCambiar={setVista} />
+          {vista === 'tablero' ? <Tablero onAbrir={setAbierta} /> : null}
+          {vista === 'organizado' ? <Organizado onAbrir={setAbierta} /> : null}
+        </>
+      ) : null}
+      {cual === 'presupuesto' ? <PresupuestoCC /> : null}
+      {cual === 'actores' ? <ActoresCC /> : null}
       <DetalleCC resolucion={abierta} onClose={() => setAbierta(null)} />
+    </View>
+  );
+}
+
+/** Los observatorios, como tarjetas chicas en fila: el ícono dice cuál es. */
+function Elegir({ valor, onCambiar }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14, marginHorizontal: -24 }} contentContainerStyle={{ paddingHorizontal: 24, gap: 10 }}>
+      {OBSERVATORIOS.map((o) => {
+        const activo = o.clave === valor;
+        return (
+          <Pressable
+            key={o.clave}
+            onPress={() => onCambiar(o.clave)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activo }}
+            accessibilityLabel={o.nombre}
+            style={({ pressed }) => ({
+              width: 112,
+              alignItems: 'center',
+              paddingVertical: 10,
+              paddingHorizontal: 8,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: activo ? TINTA : 'rgba(28,43,34,0.10)',
+              backgroundColor: activo ? 'rgba(47,74,122,0.08)' : 'rgba(255,255,255,0.7)',
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <IconoCC codigo={o.icono} size={46} />
+            <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: activo ? '700' : '500', color: activo ? TINTA : INK.title, marginTop: 6 }}>
+              {o.corto}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+/** De dónde es lo que sigue: el nombre del observatorio y qué mira. */
+function Encabezado({ obs }) {
+  if (!obs) return null;
+  return (
+    <View style={{ marginTop: 18, paddingBottom: 4 }}>
+      <Text style={{ fontFamily: SERIF, fontSize: 24, lineHeight: 29, color: INK.title, letterSpacing: -0.3 }}>{obs.nombre}</Text>
+      <Text style={{ fontSize: 13, color: INK.body, marginTop: 3 }}>{obs.que}</Text>
+      <Text style={{ fontSize: 11.5, color: INK.faint, marginTop: 4 }}>Datos de Poder Ciudadano</Text>
     </View>
   );
 }
