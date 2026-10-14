@@ -25,7 +25,6 @@ import {
   Eraser,
   Flame,
   TrafficCone,
-  ChevronRight,
   Hand,
   MapPinPlus,
   Pentagon,
@@ -48,8 +47,10 @@ import {
 import { ACCENT, INK, RADIUS, SERIF } from '../theme';
 import { MONO } from '../codex/mono';
 import { PAPEL } from '../codex/Papel';
-import TraficoSheet, { COLOR_TRAFICO, hace } from './TraficoSheet';
+import TraficoSheet from './TraficoSheet';
 import refrescarTrafico from './refrescarTrafico';
+import MapaTrafico from './MapaTrafico';
+import { prepararIncidentes } from './incidentesTrafico';
 import MorphingInfinity from '../MorphingInfinity';
 import MapaVizta, { CENTRO_INICIAL } from './MapaVizta';
 import BuscarLugar from './BuscarLugar';
@@ -402,11 +403,12 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const [vista, setVista] = useState(CENTRO_INICIAL);
   const [mostrarCalor, setMostrarCalor] = useState(false);
 
-  // El tráfico: los tramos que el servidor mide cada 15 minutos con Apple Maps
-  // (`trafico_ahora`). Se pide recién al prender la capa, y mientras esté
-  // prendida se vuelve a pedir cada cinco minutos: más seguido no hay dato nuevo.
+  // El tráfico abre un mapa nativo con el coloreado en vivo de las calles.
+  // Los tramos que medimos siguen sirviendo para los tiempos y, si alguien lo
+  // pide, para dibujar esas líneas encima. No se pintan en el mapa del Codex:
+  // ahí tapaban el terreno y no decían nada de las demás calles.
   const [mostrarTrafico, setMostrarTrafico] = useState(false);
-  const { data: tramosTrafico = VACIO } = useQuery({
+  const { data: tramosTrafico = VACIO, isFetched: tramosListos } = useQuery({
     queryKey: ['trafico-tramos'],
     enabled: mostrarTrafico,
     refetchInterval: mostrarTrafico ? 5 * 60 * 1000 : false,
@@ -420,21 +422,41 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       return data || [];
     },
   });
-  const trafico = useMemo(
-    () =>
-      mostrarTrafico
-        ? tramosTrafico
-            .filter((t) => Array.isArray(t.geometria) && t.geometria.length > 1)
-            .map((t) => ({
-              id: `trafico:${t.clave}`,
-              // El servidor guarda [lat, lng]; el mapa dibuja GeoJSON, [lng, lat].
-              geometry: { type: 'LineString', coordinates: t.geometria.map(([la, lo]) => [lo, la]) },
-              color: COLOR_TRAFICO[t.nivel] || COLOR_TRAFICO.sin_dato,
-            }))
-        : VACIO,
-    [mostrarTrafico, tramosTrafico]
+  const {
+    data: filasIncidentes = VACIO,
+    isError: errorIncidentes,
+    refetch: reintentarIncidentes,
+  } = useQuery({
+    queryKey: ['trafico-incidentes'],
+    enabled: mostrarTrafico,
+    staleTime: 60 * 1000,
+    refetchInterval: mostrarTrafico ? 3 * 60 * 1000 : false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trafico_incidentes')
+        .select('id, fuente, tipo, ruta, km, municipio, departamento, sentido, descripcion, estado, inicio, fin, url, lat, lng, raw')
+        .eq('estado', 'activo')
+        .order('ultima_vez', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const { data: rutasKm = VACIO } = useQuery({
+    queryKey: ['trafico-rutas-km'],
+    enabled: mostrarTrafico,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('trafico_tramo_rutas').select('tramo_id, ruta, km_desde, km_hasta');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const preparados = useMemo(
+    () => prepararIncidentes(filasIncidentes, { tramos: tramosTrafico, rutas: rutasKm }),
+    [filasIncidentes, tramosTrafico, rutasKm]
   );
-  const traficoMedido = tramosTrafico.find((t) => t.medido_en)?.medido_en || null;
+  const mapaTrafico = useRef(null);
   const [viendoTrafico, setViendoTrafico] = useState(false);
   // Mientras el tráfico se esté mirando —la capa prendida o la hoja abierta—
   // se pide una medición fresca: al empezar y cada cinco minutos. El servidor
@@ -455,7 +477,6 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       clearInterval(reloj);
     };
   }, [mostrarTrafico, viendoTrafico, queryClient]);
-  const [cajaTrafico, setCajaTrafico] = useState(null);
   // La niebla arranca encendida: es el estado natural de un mapa por explorar,
   // no una capa opcional que haya que ir a buscar. Se puede apagar —a veces se
   // necesita ver el terreno completo— y esa preferencia no se guarda a
@@ -463,6 +484,14 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
   const [nieblaActiva, setNieblaActiva] = useState(false);
   const [buscandoLugar, setBuscandoLugar] = useState(false);
   const [destino, setDestino] = useState(null);
+  // Un salto pedido mientras el tráfico está prendido —buscar, centrar— tiene
+  // que mover el mapa nativo. Prender el tráfico no es un salto: ese mapa nace
+  // en la cámara que ya se estaba mirando.
+  useEffect(() => {
+    if (!mostrarTrafico || !destino?.n) return;
+    mapaTrafico.current?.irA(destino.lat, destino.lng, destino.zoom || 14);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destino?.n]);
   const celdasRaspadas = useNieblaStore((s) => s.celdas);
   const ocultos = useMapaStore((s) => s.ocultos);
   const procedencia = useMapaStore((s) => s.procedencia);
@@ -1185,11 +1214,8 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
       cajaHerramientas || { x: W - 78, y: 0, ancho: 78, alto: 340 },
       cajaNiveles || { x: 0, y: alto / 2 - 100, ancho: 70, alto: 150 },
       { x: 0, y: alto - bottomInset - 142, ancho: W, alto: 142 },
-      // La leyenda del tráfico se toca: sin esto, el toque también elegiría
-      // lo que haya en el mapa debajo.
-      ...(mostrarTrafico && cajaTrafico ? [cajaTrafico] : []),
     ],
-    [W, alto, bottomInset, cajaHerramientas, cajaNiveles, mostrarTrafico, cajaTrafico]
+    [W, alto, bottomInset, cajaHerramientas, cajaNiveles]
   );
 
   // Cuántos hay de cada nivel: la leyenda solo muestra los niveles que existen,
@@ -1725,7 +1751,6 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           areas={areasVisibles}
           pines={pines}
           recorridos={recorridos}
-          trafico={trafico}
           mostrarAreas={areasVisibles.length > 0}
           mostrarPines={pines.length > 0}
           mostrarCalor={mostrarCalor}
@@ -1740,8 +1765,25 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
           onTocar={tocarMapa}
           onExplorar={modo === 'raspar' ? raspar : null}
         >
+          {mostrarTrafico ? (
+            <MapaTrafico
+              ref={mapaTrafico}
+              ancho={W}
+              alto={alto}
+              vista={vista}
+              bottomInset={bottomInset}
+              tramos={tramosTrafico}
+              tiemposListos={tramosListos}
+              ubicados={preparados.ubicados}
+              sueltos={preparados.sueltos}
+              error={errorIncidentes}
+              onReintentar={() => reintentarIncidentes()}
+              onVerTiempos={() => setViendoTrafico(true)}
+              yo={yo}
+            />
+          ) : null}
           <View
-            style={{ position: 'absolute', right: 12, top: 12 }}
+            style={{ position: 'absolute', right: 12, top: 12, zIndex: 2 }}
             onLayout={(e) => {
               const { x, y, width, height } = e.nativeEvent.layout;
               // Un poco más ancha y alta que la barra: los botones tienen
@@ -1755,6 +1797,17 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               modo={modo}
               calor={mostrarCalor}
               trafico={mostrarTrafico}
+              soloTrafico={mostrarTrafico}
+              onCentrar={
+                mostrarTrafico
+                  ? async () => {
+                      roce();
+                      const aqui = await ubicar();
+                      if (!aqui) return;
+                      mapaTrafico.current?.irA(aqui.lat, aqui.lng, 15);
+                    }
+                  : null
+              }
               onTrafico={() => {
                 roce();
                 setMostrarTrafico((v) => !v);
@@ -1772,27 +1825,12 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             />
           </View>
 
-          {mostrarTrafico ? (
-            <LeyendaTrafico
-              medido={traficoMedido}
-              hay={trafico.length > 0}
-              onPress={() => {
-                roce();
-                setViendoTrafico(true);
-              }}
-              onLayout={(e) => {
-                const { x, y, width, height } = e.nativeEvent.layout;
-                setCajaTrafico({ x: x - 8, y: y - 8, ancho: width + 16, alto: height + 16 });
-              }}
-            />
-          ) : null}
-
           {/* Los límites, en el borde izquierdo y a media altura: la ficha de
               lo que se toca sale de abajo, y ahí se taparían. Vive acá y no en
               el panel porque cambiar de escala es un gesto que se repite
               mirando el mapa —bajar a municipios, subir a países— y abrir un
               panel para cada paso convierte un toque en cuatro. */}
-          {nivelesDisponibles.length ? (
+          {nivelesDisponibles.length && !mostrarTrafico ? (
             <View
               style={{ position: 'absolute', left: 14, top: alto / 2 - 90 }}
               onLayout={(e) => {
@@ -1821,7 +1859,8 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               El segundo botón —descubrir al andar— solo existe cuando la
               ubicación ya está concedida: ofrecerlo a quien todavía no dijo que
               sí a nada es pedir la llave antes de saludar. */}
-          <View style={{ position: 'absolute', left: 14, top: alto / 2 + 40, gap: 8 }}>
+          {!mostrarTrafico ? (
+          <View style={{ position: 'absolute', left: 14, top: alto / 2 + 40, gap: 8, zIndex: 2 }}>
             <BotonMapa
               Icono={LocateFixed}
               activo={Boolean(yo)}
@@ -1865,6 +1904,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
               />
             ) : null}
           </View>
+          ) : null}
 
           {/* Un solo control de visibilidad.
             *
@@ -1877,7 +1917,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             * El contador es el que hace de aviso: si alguien dejó algo apagado
             * la semana pasada, «118 / 358» se lo recuerda sin tener que abrir
             * nada. Un interruptor apagado en una esquina no comunica eso. */}
-          {totalTerritorios && !['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
+          {totalTerritorios && !mostrarTrafico && !['punto', 'area', 'ruta'].includes(modo) && !confirmando ? (
             <View style={{ position: 'absolute', left: 14, bottom: bottomInset + 14 }}>
               <Leyenda>
                 <Fila
@@ -1898,7 +1938,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             </View>
           ) : null}
 
-          {['area', 'ruta'].includes(modo) && !confirmando ? (
+          {['area', 'ruta'].includes(modo) && !mostrarTrafico && !confirmando ? (
             <EditorBorrador
               tipo={modo}
               cuantos={borrador?.coordinates.length || 0}
@@ -1918,7 +1958,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             />
           ) : null}
 
-          {modo === 'punto' && !confirmando && !decidiendo ? (
+          {modo === 'punto' && !mostrarTrafico && !confirmando && !decidiendo ? (
             <MiraPunto
               centro={vista}
               alto={alto}
@@ -1935,7 +1975,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             />
           ) : null}
 
-          {confirmando ? (
+          {confirmando && !mostrarTrafico ? (
             <GuardarGeometria
               tipo={borrador?.tipo}
               nombre={nombreBorrador}
@@ -2005,7 +2045,7 @@ export default function MapaSheet({ onClose, topInset = 0, bottomInset = 0 }) {
             </View>
           ) : null}
 
-          {elegido && !confirmando ? (
+          {elegido && !mostrarTrafico && !confirmando ? (
             <Ficha
               item={elegido}
               comercio={comercio}
@@ -2157,57 +2197,7 @@ const MODOS_MAPA = [
   { clave: 'ruta', etiqueta: 'Crear ruta manual', Icono: Route },
 ];
 
-/**
- * Qué significa cada color, y de cuándo es la medición.
- *
- * La hora importa tanto como el color: el tráfico de hace cuarenta minutos ya
- * es otro, y de madrugada no se mide.
- */
-function LeyendaTrafico({ medido, hay, onPress, onLayout }) {
-  const cuando = hace(medido);
-  return (
-    <Pressable
-      onPress={onPress}
-      onLayout={onLayout}
-      accessibilityRole="button"
-      accessibilityLabel="Ver el tráfico tramo por tramo"
-      style={({ pressed }) => ({
-        position: 'absolute',
-        left: 14,
-        top: 12,
-        paddingHorizontal: 11,
-        paddingVertical: 8,
-        borderRadius: 14,
-        backgroundColor: 'rgba(255,253,248,0.94)',
-        borderWidth: 1,
-        borderColor: 'rgba(28,43,34,0.12)',
-        opacity: pressed ? 0.7 : 1,
-      })}
-    >
-      {hay && cuando ? (
-        <>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-            {['fluido', 'lento', 'pesado', 'detenido'].map((n) => (
-              <View key={n} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View style={{ width: 12, height: 4, borderRadius: 2, backgroundColor: COLOR_TRAFICO[n] }} />
-                <Text style={{ fontSize: 10.5, color: INK.body }}>{n}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-            <Text style={{ flex: 1, fontSize: 10, color: INK.faint }}>{cuando}</Text>
-            {/* La leyenda es la puerta a la hoja: la flecha dice que se abre. */}
-            <ChevronRight size={12} color={INK.faint} />
-          </View>
-        </>
-      ) : (
-        <Text style={{ fontSize: 10.5, color: INK.body }}>Sin medición reciente. Se mide de 5 a 22 h.</Text>
-      )}
-    </Pressable>
-  );
-}
-
-function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTrafico, onNiebla }) {
+function HerramientasMapa({ modo, calor, trafico, soloTrafico = false, niebla, onModo, onCalor, onTrafico, onNiebla, onCentrar }) {
   return (
     <View
       style={{
@@ -2219,31 +2209,34 @@ function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTra
         borderColor: 'rgba(28,43,34,0.12)',
       }}
     >
-      {MODOS_MAPA.map(({ clave, etiqueta, Icono }) => {
-        const activo = modo === clave;
-        return (
-          <Pressable
-            key={clave}
-            onPress={() => onModo(clave)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: activo }}
-            accessibilityLabel={etiqueta}
-            style={({ pressed }) => ({
-              width: 39,
-              height: 39,
-              borderRadius: 20,
-              alignItems: 'center',
-              justifyContent: 'center',
-              // La herramienta activa va en tinta, no en un azul propio: el control no
-              // compite con el mapa, y el color queda libre para los datos.
-              backgroundColor: activo ? INK.title : pressed ? 'rgba(28,43,34,0.08)' : 'transparent',
-            })}
-          >
-            <Icono size={18} color={activo ? PAPEL : INK.body} strokeWidth={activo ? 2.4 : 1.8} />
-          </Pressable>
-        );
-      })}
-      <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 7 }} />
+      {soloTrafico
+        ? null
+        : MODOS_MAPA.map(({ clave, etiqueta, Icono }) => {
+            const activo = modo === clave;
+            return (
+              <Pressable
+                key={clave}
+                onPress={() => onModo(clave)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: activo }}
+                accessibilityLabel={etiqueta}
+                style={({ pressed }) => ({
+                  width: 39,
+                  height: 39,
+                  borderRadius: 20,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  // La herramienta activa va en tinta, no en un azul propio: el control no
+                  // compite con el mapa, y el color queda libre para los datos.
+                  backgroundColor: activo ? INK.title : pressed ? 'rgba(28,43,34,0.08)' : 'transparent',
+                })}
+              >
+                <Icono size={18} color={activo ? PAPEL : INK.body} strokeWidth={activo ? 2.4 : 1.8} />
+              </Pressable>
+            );
+          })}
+      {soloTrafico ? null : <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.10)', marginHorizontal: 7 }} />}
+      {soloTrafico ? null : (
       <Pressable
         onPress={onCalor}
         accessibilityRole="switch"
@@ -2260,9 +2253,9 @@ function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTra
       >
         <Flame size={18} color={calor ? PAPEL : INK.body} strokeWidth={calor ? 2.4 : 1.8} />
       </Pressable>
+      )}
 
-      {/* El tráfico. Otra capa que se prende y se apaga, como el calor; va en
-        * tinta porque acá el color es de los tramos, no del botón. */}
+      {/* El tráfico en vivo. El botón se queda en tinta: el color es de las calles. */}
       <Pressable
         onPress={onTrafico}
         accessibilityRole="switch"
@@ -2280,6 +2273,24 @@ function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTra
         <TrafficCone size={18} color={trafico ? PAPEL : INK.body} strokeWidth={trafico ? 2.4 : 1.8} />
       </Pressable>
 
+      {onCentrar ? (
+        <Pressable
+          onPress={onCentrar}
+          accessibilityRole="button"
+          accessibilityLabel="Centrar en mi ubicación"
+          style={({ pressed }) => ({
+            width: 39,
+            height: 39,
+            borderRadius: 20,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: pressed ? 'rgba(28,43,34,0.08)' : 'transparent',
+          })}
+        >
+          <LocateFixed size={18} color={INK.body} strokeWidth={1.8} />
+        </Pressable>
+      ) : null}
+
       {/* Apagar la niebla.
         *
         * No es una preferencia sino una consulta: a veces hace falta ver el
@@ -2290,6 +2301,7 @@ function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTra
         * Va en tinta cuando está encendida, como el resto de lo activo; el
         * naranja del calor es la excepción y se queda porque ahí el color es
         * el dato. */}
+      {soloTrafico ? null : (
       <Pressable
         onPress={onNiebla}
         accessibilityRole="switch"
@@ -2306,6 +2318,7 @@ function HerramientasMapa({ modo, calor, trafico, niebla, onModo, onCalor, onTra
       >
         <CloudFog size={18} color={niebla ? PAPEL : INK.body} strokeWidth={niebla ? 2.4 : 1.8} />
       </Pressable>
+      )}
     </View>
   );
 }
