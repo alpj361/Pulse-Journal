@@ -16,6 +16,7 @@ const STICKER = {
   // Feeds
   guatemala: require('../../assets/stickers/guatemala.png'),
   congreso: require('../../assets/stickers/congreso.png'),
+  observatorio: require('../../assets/stickers/cc/constitucional.png'),
   // Temas del feed
   politica: require('../../assets/stickers/politica.png'),
   economia: require('../../assets/stickers/economia.png'),

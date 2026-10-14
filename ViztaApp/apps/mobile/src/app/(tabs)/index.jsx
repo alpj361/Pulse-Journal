@@ -23,6 +23,9 @@ import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
+import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
+import { puedeVerObservatorio } from "../../components/observatorio/observatorio";
+import { usePulseConnectionStore } from "../../state/pulseConnectionStore";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
 
@@ -720,6 +723,8 @@ export default function Index() {
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
+  // El Observatorio es solo para Beta y admins: el servidor lo corta igual.
+  const conObservatorio = puedeVerObservatorio(usePulseConnectionStore((s) => s.connectedUser));
   // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
   const [vistaCongreso, setVistaCongreso] = useState("tablero");
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
@@ -859,8 +864,10 @@ export default function Index() {
               <View style={{ flex: 1 }}>
                 <SectionHeader title="Lo que hay que leer" marcado="hoy" />
               </View>
-              <SelectorFeed valor={feed} onCambiar={setFeed} />
+              <SelectorFeed valor={feed} onCambiar={setFeed} conObservatorio={conObservatorio} />
             </View>
+
+            {feed === "observatorio" && conObservatorio ? <ObservatorioCC /> : null}
 
             {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
 
@@ -923,7 +930,7 @@ export default function Index() {
                   </View>
                 ))
               )
-            ) : hotTopics.length === 0 ? (
+            ) : feed === "observatorio" ? null : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
               hotTopics.map((card, index) => (

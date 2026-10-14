@@ -123,9 +123,9 @@ function Publicadas({ leyes }) {
  * una; plegado queda una línea que dice qué se está mirando. Tocar la burbuja
  * elegida otra vez vuelve a mostrar todo.
  */
-function Burbujas({ secciones, cuantas, elegida, onElegir, abierto, onAbrir }) {
+export function Burbujas({ secciones, cuantas, elegida, onElegir, abierto, onAbrir, icono, todas = 'Todas las secciones' }) {
   const nombreElegida = secciones.find(([clave]) => clave === elegida)?.[1];
-  const texto = nombreElegida || 'Todas las secciones';
+  const texto = nombreElegida || todas;
 
   // Abierto, los nombres ya están en las burbujas: arriba queda solo la flecha.
   // Plegado, la flecha «escupe» el nombre de lo que se mira, y al abrir se lo
@@ -199,7 +199,7 @@ function Burbujas({ secciones, cuantas, elegida, onElegir, abierto, onAbrir }) {
                   opacity: pressed ? 0.7 : 1,
                 })}
               >
-                <Sticker nombre={clave} size={34} />
+                {icono ? icono(clave) : <Sticker nombre={clave} size={34} />}
                 <Text style={{ fontSize: 13, fontWeight: activa ? '700' : '500', color: activa ? TINTA : INK.title }}>{nombre}</Text>
                 {n ? <Text style={{ fontSize: 12, color: INK.faint }}>{n}</Text> : null}
               </Pressable>

@@ -19,6 +19,8 @@ import { roce } from '../../utils/haptics';
 export const FEEDS = [
   { clave: 'pais', nombre: 'Guatemala', sticker: 'guatemala' },
   { clave: 'congreso', nombre: 'Congreso', sticker: 'congreso' },
+  // Solo para quien tiene acceso (Beta o admin): quien no, no ve la opción.
+  { clave: 'observatorio', nombre: 'Observatorio', sticker: 'observatorio', soloBeta: true },
 ];
 
 const ANCHO_MENU = 190;
@@ -35,10 +37,11 @@ function Cristal({ radio, children, style }) {
   );
 }
 
-export default function SelectorFeed({ valor, onCambiar }) {
+export default function SelectorFeed({ valor, onCambiar, conObservatorio = false }) {
+  const opciones = FEEDS.filter((f) => !f.soloBeta || conObservatorio);
   const ancla = useRef(null);
   const [menu, setMenu] = useState(null); // { top, right } mientras está abierto
-  const actual = FEEDS.find((f) => f.clave === valor) || FEEDS[0];
+  const actual = opciones.find((f) => f.clave === valor) || opciones[0];
 
   const abrir = () => {
     roce();
@@ -82,7 +85,7 @@ export default function SelectorFeed({ valor, onCambiar }) {
             >
               <Cristal radio={RADIUS.lg}>
                 <Animated.View entering={FadeIn.duration(140)} style={{ paddingVertical: 6 }}>
-                  {FEEDS.map((f) => {
+                  {opciones.map((f) => {
                     const elegido = f.clave === actual.clave;
                     return (
                       <Pressable
