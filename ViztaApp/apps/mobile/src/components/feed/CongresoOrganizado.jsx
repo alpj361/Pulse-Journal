@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown } from 'lucide-react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Sticker from '../Sticker';
 import { INK } from '../theme';
 import { SECCIONES, diaCorto, organizar, traerLeyes } from './congreso';
@@ -117,17 +118,54 @@ function Publicadas({ leyes }) {
  */
 function Burbujas({ secciones, cuantas, elegida, onElegir, abierto, onAbrir }) {
   const nombreElegida = secciones.find(([clave]) => clave === elegida)?.[1];
-  const Flecha = abierto ? ChevronUp : ChevronDown;
+  const texto = nombreElegida || 'Todas las secciones';
+
+  // Abierto, los nombres ya están en las burbujas: arriba queda solo la flecha.
+  // Plegado, la flecha «escupe» el nombre de lo que se mira, y al abrir se lo
+  // vuelve a comer. El texto nace pegado a la flecha, chico y transparente, y
+  // se estira hacia la izquierda hasta su ancho.
+  const plegado = useSharedValue(abierto ? 0 : 1);
+  const [ancho, setAncho] = useState(0);
+  useEffect(() => {
+    plegado.value = withTiming(abierto ? 0 : 1, { duration: 280, easing: Easing.out(Easing.cubic) });
+  }, [abierto, plegado]);
+
+  const caja = useAnimatedStyle(() => ({ width: ancho * plegado.value, marginRight: 6 * plegado.value }));
+  const letras = useAnimatedStyle(() => ({
+    opacity: plegado.value,
+    transform: [{ translateX: (1 - plegado.value) * 18 }, { scale: 0.8 + 0.2 * plegado.value }],
+  }));
+  const flecha = useAnimatedStyle(() => ({ transform: [{ rotate: `${(1 - plegado.value) * 180}deg` }] }));
+
   return (
     <View style={{ marginBottom: 18 }}>
+      {/* El ancho del texto se mide aparte, sin mostrarse: la caja animada
+          necesita saber hasta dónde estirarse. */}
+      <Text
+        onLayout={(e) => setAncho(Math.ceil(e.nativeEvent.layout.width))}
+        style={{ position: 'absolute', opacity: 0, fontSize: 13, fontWeight: '700' }}
+        numberOfLines={1}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        {texto}
+      </Text>
       <Pressable
         onPress={onAbrir}
         accessibilityRole="button"
+        accessibilityLabel={abierto ? 'Plegar las secciones' : texto}
         accessibilityState={{ expanded: abierto }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6 }}
+        hitSlop={10}
+        style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingVertical: 6 }}
       >
-        <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>{nombreElegida || 'Todas las secciones'}</Text>
-        <Flecha size={15} color={INK.meta} />
+        <Animated.View style={[{ overflow: 'hidden', alignItems: 'flex-end' }, caja]}>
+          <Animated.Text numberOfLines={1} style={[{ width: ancho, fontSize: 13, fontWeight: '700', color: INK.title }, letras]}>
+            {texto}
+          </Animated.Text>
+        </Animated.View>
+        <Animated.View style={flecha}>
+          <ChevronDown size={16} color={INK.meta} />
+        </Animated.View>
       </Pressable>
       {abierto ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
