@@ -690,20 +690,34 @@ export default function Index() {
   const { data: hotTopicsData } = useQuery({
     queryKey: ['pulse-hot-topics'],
     queryFn: async () => {
-      // La corrida más reciente, sin excepciones.
-      //
-      // Antes se elegía la que más tarjetas traía, para esquivar corridas
-      // parciales de una sola tarjeta. Ese criterio se volvió en contra: hoy la
-      // corrida degradada de 08:46 trae 24 tarjetas —más que ninguna— con 20 de
-      // ellas en `categoria_principal: 'Otros'`, y le ganaba a la de 08:48, que
-      // trae 17 bien clasificadas. Contar tarjetas no dice nada sobre si
-      // sirven, y la más nueva es la que refleja el día.
-      const rows = await supabaseFetch(
-        'news_cards',
-        `select=cards,generated_at,tweets_source_count` +
-          `&pais=eq.${FEED_COUNTRY}&order=generated_at.desc&limit=1`
-      );
-      return rows?.[0]?.cards || [];
+      // La corrida más reciente, sin excepciones —contar tarjetas no dice si
+      // sirven, y la más nueva es la que refleja el día—, más la última de cada
+      // uno de los dos días anteriores. Así, pasada la medianoche, cuando hoy
+      // todavía no tiene nada, se ve lo de ayer marcado como de ayer en vez de
+      // un feed vacío o noticias viejas haciéndose pasar por nuevas.
+      const campos = `select=cards,generated_at&pais=eq.${FEED_COUNTRY}&order=generated_at.desc&limit=1`;
+      const corte = (dias) => new Date(inicioDelDiaGT(Date.now()) - dias * 86400000).toISOString();
+      const corridas = await Promise.all([
+        supabaseFetch('news_cards', campos),
+        supabaseFetch('news_cards', `${campos}&generated_at=lt.${corte(0)}`),
+        supabaseFetch('news_cards', `${campos}&generated_at=lt.${corte(1)}`),
+      ]);
+      // Una tarjeta por id: la versión de la corrida más nueva. Su día es el
+      // de cuando apareció por primera vez, no el de la corrida que la trae.
+      const porId = new Map();
+      corridas.forEach((filas, i) => {
+        const fila = filas?.[0];
+        for (const card of fila?.cards || []) {
+          const id = card.id || card.titulo;
+          if (porId.has(id)) continue;
+          porId.set(id, { ...card, _desde: card.primera_vez || fila.generated_at, _corrida: i });
+        }
+      });
+      const todas = [...porId.values()].sort((a, b) => (a._desde < b._desde ? 1 : -1));
+      // Los días anteriores rellenan, no se suman: si hoy ya hay de sobra, se
+      // muestra lo de la corrida de ahora (con su fecha, si alguna es de antes).
+      const deHoy = todas.filter((c) => diaGT(c._desde) === diaGT(Date.now())).length;
+      return deHoy >= 10 ? todas.filter((c) => c._corrida === 0) : todas;
     },
     staleTime: 1000 * 60 * 10,
   });
@@ -766,6 +780,14 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
+  // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
+  // lo que todavía no llegó.
+  const marcadoDelFeed =
+    feed !== "pais" || !hotTopics.length || diaGT(hotTopics[0]._desde) === diaGT(Date.now())
+      ? "hoy"
+      : diaGT(hotTopics[0]._desde) === diaGT(Date.now() - 86400000)
+        ? "de ayer"
+        : "estos días";
 
   const isLoading = !trendsData && !hotTopicsData;
 
@@ -862,7 +884,7 @@ export default function Index() {
                 como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <View style={{ flex: 1 }}>
-                <SectionHeader title="Lo que hay que leer" marcado="hoy" />
+                <SectionHeader title="Lo que hay que leer" marcado={marcadoDelFeed} />
               </View>
               <SelectorFeed valor={feed} onCambiar={setFeed} conObservatorio={conObservatorio} />
             </View>
@@ -933,7 +955,17 @@ export default function Index() {
             ) : feed === "observatorio" ? null : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
-              hotTopics.map((card, index) => (
+              porDiaGT(hotTopics).map((grupo, g) => (
+                <View key={grupo.dia}>
+                  {/* El día se nombra siempre que no sea hoy, y también hoy si
+                      abajo viene otro: así nunca se confunde lo de ayer con lo
+                      de hoy. */}
+                  {grupo.dia !== diaGT(Date.now()) || g > 0 ? (
+                    <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: g ? 8 : 4, marginBottom: 16 }}>
+                      {nombreDelDia(grupo.dia).toUpperCase()}
+                    </Text>
+                  ) : null}
+                  {grupo.cards.map((card, index) => (
                 <TarjetaNoticia
                   key={card.id || index}
                   card={card}
@@ -954,6 +986,8 @@ export default function Index() {
                   }
                   style={{ marginBottom: 22 }}
                 />
+                  ))}
+                </View>
               ))
             )}
           </View>
@@ -1202,4 +1236,29 @@ function VistasCongreso({ valor, onCambiar }) {
 const DEL_CONGRESO = /\bcongreso\b|\bdiputad[oa]s?\b|\bbancadas?\b|\bpleno del\b|\blegislativo\b/i;
 function esDelCongreso(card) {
   return DEL_CONGRESO.test(`${card?.titulo || ""} ${card?.resumen || ""}`);
+}
+
+
+// ─── Días en hora de Guatemala ───────────────────────────────────────────────
+
+/** «2026-10-15»: el día en Guatemala de una fecha, sin importar dónde está el teléfono. */
+function diaGT(fecha) {
+  return new Date(fecha).toLocaleDateString("en-CA", { timeZone: "America/Guatemala" });
+}
+
+/** La medianoche de hoy en Guatemala (UTC−6, sin horario de verano), en milisegundos. */
+function inicioDelDiaGT(ahora) {
+  return new Date(`${diaGT(ahora)}T00:00:00-06:00`).getTime();
+}
+
+/** Las tarjetas en grupos por día, del más nuevo al más viejo. */
+function porDiaGT(cards) {
+  const grupos = [];
+  for (const card of cards) {
+    const dia = diaGT(card._desde || Date.now());
+    let grupo = grupos.find((x) => x.dia === dia);
+    if (!grupo) grupos.push((grupo = { dia, cards: [] }));
+    grupo.cards.push(card);
+  }
+  return grupos;
 }
