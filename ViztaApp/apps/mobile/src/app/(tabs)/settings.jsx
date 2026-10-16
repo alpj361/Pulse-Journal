@@ -48,6 +48,8 @@ import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimient
 import SeccionAnalisisAutomatico from '../../components/ajustes/SeccionAnalisisAutomatico';
 import SeccionChangelog from '../../components/ajustes/SeccionChangelog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEsBeta } from '../../secciones/acceso';
+import { EnlacesBeta } from '../../secciones/piezas';
 
 /**
  * La versión, leída de `app.json` en vez de escrita a mano acá.
@@ -753,6 +755,7 @@ function FaqItem({ question, children }) {
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { esBeta } = useEsBeta();
   const { isConnected, connectedUser, connectedAt, disconnect, connectWithApple } =
     usePulseConnectionStore();
 
@@ -978,6 +981,14 @@ export default function SettingsScreen() {
                     <FileText size={13} color={ACCENT.indigo.ink} style={{ marginLeft: 8 }} />
                     <Text style={{ fontSize: 13, color: INK.body, marginLeft: 6 }}>Codex de documentos</Text>
                   </View>
+                  {esBeta ? (
+                    <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(28,43,34,0.07)' }}>
+                      <Text style={{ fontSize: 11, color: INK.meta, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 }}>
+                        BETA
+                      </Text>
+                      <EnlacesBeta variante="ajustes" />
+                    </View>
+                  ) : null}
                 </View>
 
                 <TouchableOpacity
