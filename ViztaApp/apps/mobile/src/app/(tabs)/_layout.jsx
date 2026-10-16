@@ -242,6 +242,8 @@ export default function TabsLayout() {
         <Tabs.Screen name="index" options={{ title: 'Feed' }} />
         <Tabs.Screen name="orbit" options={{ title: 'Orbit' }} />
         <Tabs.Screen name="codex" options={{ title: 'Codex' }} />
+        <Tabs.Screen name="congreso" options={{ title: 'Congreso', href: null }} />
+        <Tabs.Screen name="cc" options={{ title: 'CC', href: null }} />
         <Tabs.Screen name="settings" options={{ title: 'Ajustes' }} />
       </Tabs>
     </View>
