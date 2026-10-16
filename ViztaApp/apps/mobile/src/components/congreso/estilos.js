@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { ACCENT, INK, RADIUS, SERIF } from '../components/theme';
+import { ACCENT, INK, RADIUS, SERIF } from '../theme';
 
 /**
  * Tokens y estilos de Congreso y CC.
@@ -239,46 +239,14 @@ export const estilos = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  puerta: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 34,
-  },
-  puertaTitulo: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: INK.title,
-    textAlign: 'center',
-    letterSpacing: -0.4,
-    marginBottom: 8,
-  },
-  puertaCuerpo: {
-    fontSize: 14.5,
-    color: INK.meta,
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 24,
-  },
-  puertaBoton: {
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: INK.title,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  puertaBotonTexto: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFDF8',
-  },
-  enlacesBeta: {
+  enlaces: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 24,
     marginBottom: 22,
   },
-  enlaceBeta: {
+  enlaceChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
@@ -287,20 +255,8 @@ export const estilos = StyleSheet.create({
     borderRadius: RADIUS.pill,
     borderWidth: 1,
   },
-  enlaceBetaTexto: {
+  enlaceChipTexto: {
     fontSize: 13,
     fontWeight: '700',
-  },
-  ajustesFila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 48,
-    gap: 10,
-  },
-  ajustesFilaTexto: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: INK.title,
   },
 });

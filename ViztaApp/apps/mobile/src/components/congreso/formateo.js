@@ -1,4 +1,4 @@
-import { titular } from '../components/feed/congreso';
+import { titular } from '../feed/congreso';
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 

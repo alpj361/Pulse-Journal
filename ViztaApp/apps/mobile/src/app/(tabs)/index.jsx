@@ -51,8 +51,7 @@ import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
 import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarStore';
-import { useEsBeta } from '../../secciones/acceso';
-import { EnlacesBeta } from '../../secciones/piezas';
+import EnlacesInstitucionales from '../../components/feed/EnlacesInstitucionales';
 
 /** Lo único que el feed puede borrar del registro de «dónde me quedé». */
 const TIPOS_MAPA = ['mapa'];
@@ -705,7 +704,6 @@ export default function Index() {
   });
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
-  const { esBeta } = useEsBeta();
   const [feed, setFeed] = useState("pais");
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
   const { data: diasCongreso, isLoading: cargandoCongreso } = useQuery({
@@ -818,7 +816,7 @@ export default function Index() {
             </View>
           </View>
 
-          {esBeta ? <EnlacesBeta /> : null}
+          <EnlacesInstitucionales />
 
           {/* Portada del día: el título manda, el análisis se abre tocando. */}
           {narrativaData ? (

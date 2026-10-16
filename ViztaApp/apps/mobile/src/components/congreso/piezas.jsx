@@ -1,9 +1,9 @@
 import { ActivityIndicator, Linking, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ArrowUpRight, Landmark, Scale } from 'lucide-react-native';
-import { ACCENT, INK } from '../components/theme';
+import { ArrowLeft, ArrowUpRight } from 'lucide-react-native';
+import { INK } from '../theme';
 import { COPY } from './copy';
-import { SECCION, VOTO_COLOR, estilos } from './estilos';
+import { VOTO_COLOR, estilos } from './estilos';
 
 export function Volver({ onPress }) {
   const router = useRouter();
@@ -150,91 +150,3 @@ export function ConteoVotos({ aFavor, enContra, ausentes, licencia }) {
     </View>
   );
 }
-
-export function PuertaBeta({ autenticado }) {
-  const router = useRouter();
-  const titulo = autenticado ? COPY.comun.puertaTituloBeta : COPY.comun.puertaTituloAuth;
-  const cuerpo = autenticado ? COPY.comun.puertaCuerpoBeta : COPY.comun.puertaCuerpoAuth;
-
-  return (
-    <View style={estilos.puerta}>
-      <Text style={estilos.puertaTitulo}>{titulo}</Text>
-      <Text style={estilos.puertaCuerpo}>{cuerpo}</Text>
-      {!autenticado ? (
-        <Pressable
-          onPress={() => router.push('/settings')}
-          accessibilityRole="button"
-          style={({ pressed }) => [estilos.puertaBoton, { opacity: pressed ? 0.85 : 1 }]}
-        >
-          <Text style={estilos.puertaBotonTexto}>{COPY.comun.puertaBotonAuth}</Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
-const ICONOS = {
-  congreso: Landmark,
-  cc: Scale,
-};
-
-export function EnlacesBeta({ variante = 'feed' }) {
-  const router = useRouter();
-  const destinos = [
-    { clave: 'congreso', ruta: '/congreso', texto: COPY.congreso.titulo },
-    { clave: 'cc', ruta: '/cc', texto: COPY.cc.titulo },
-  ];
-
-  if (variante === 'ajustes') {
-    return (
-      <View>
-        {destinos.map((d) => {
-          const Icono = ICONOS[d.clave];
-          const tinta = SECCION[d.clave].tinta;
-          return (
-            <Pressable
-              key={d.clave}
-              onPress={() => router.push(d.ruta)}
-              accessibilityRole="button"
-              style={({ pressed }) => [estilos.ajustesFila, { opacity: pressed ? 0.6 : 1 }]}
-            >
-              <Icono size={16} color={tinta} strokeWidth={2} />
-              <Text style={estilos.ajustesFilaTexto}>{d.texto}</Text>
-              <ArrowUpRight size={15} color={INK.faint} />
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  }
-
-  return (
-    <View style={estilos.enlacesBeta}>
-      {destinos.map((d) => {
-        const Icono = ICONOS[d.clave];
-        const paleta = SECCION[d.clave];
-        return (
-          <Pressable
-            key={d.clave}
-            onPress={() => router.push(d.ruta)}
-            accessibilityRole="button"
-            accessibilityLabel={d.texto}
-            style={({ pressed }) => [
-              estilos.enlaceBeta,
-              {
-                backgroundColor: paleta.lavado,
-                borderColor: paleta.borde,
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}
-          >
-            <Icono size={14} color={paleta.tinta} strokeWidth={2.2} />
-            <Text style={[estilos.enlaceBetaTexto, { color: paleta.tinta }]}>{d.texto}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-export { ACCENT };

@@ -1,7 +1,5 @@
-jest.mock('../../utils/supabase', () => ({ supabase: {} }));
-jest.mock('../../state/capacidadesStore', () => ({ useCapacidadesStore: () => null }));
-jest.mock('../../state/pulseConnectionStore', () => ({ usePulseConnectionStore: () => null }));
-jest.mock('../../components/feed/congreso', () => ({ titular: (t) => t }));
+jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
+jest.mock('../../feed/congreso', () => ({ titular: (t) => t }));
 
 import {
   anioActual,
@@ -12,7 +10,6 @@ import {
   etiquetaVoto,
   fechaCorta,
 } from '../formateo';
-import { cuentaEsBeta } from '../acceso';
 
 describe('formateo de Congreso y CC', () => {
   test('fechaCorta arma día mes año', () => {
@@ -42,24 +39,5 @@ describe('formateo de Congreso y CC', () => {
 
   test('anioActual es un número de cuatro dígitos', () => {
     expect(anioActual()).toBeGreaterThan(2020);
-  });
-});
-
-describe('puerta Beta', () => {
-  test('admin entra', () => {
-    expect(cuentaEsBeta({ role: 'admin', roles: ['admin'] }, null)).toBe(true);
-  });
-
-  test('rol beta entra', () => {
-    expect(cuentaEsBeta({ role: 'user', roles: ['user', 'beta'] }, null)).toBe(true);
-  });
-
-  test('plan alfa entra', () => {
-    expect(cuentaEsBeta({ role: 'user', roles: ['user'] }, { plan: { key: 'alpha' } })).toBe(true);
-  });
-
-  test('usuario regular no entra', () => {
-    expect(cuentaEsBeta({ role: 'user', roles: ['user'] }, { plan: { key: 'free' } })).toBe(false);
-    expect(cuentaEsBeta(null, null)).toBe(false);
   });
 });

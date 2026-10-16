@@ -39,10 +39,5 @@ export const COPY = {
     cargarMas: 'Cargar más',
     reintentar: 'Reintentar',
     volver: 'Volver',
-    puertaTituloAuth: 'Iniciá sesión',
-    puertaCuerpoAuth: 'Congreso y CC son para cuentas Beta. Primero conectá tu cuenta desde Ajustes.',
-    puertaBotonAuth: 'Ir a Ajustes',
-    puertaTituloBeta: 'Solo cuentas Beta',
-    puertaCuerpoBeta: 'Las noticias siguen abiertas para todos. Congreso y CC se abren cuando tu cuenta tiene el rol Beta.',
   },
 };
