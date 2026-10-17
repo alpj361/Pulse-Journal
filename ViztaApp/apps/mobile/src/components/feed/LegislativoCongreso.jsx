@@ -63,7 +63,45 @@ const ETAPA_INICIATIVA = {
 /** Los nombres que trae el registro, sin los pedazos de frase que se colaron. */
 const nombres = (lista) => (lista || []).filter((n) => /^[A-ZÁÉÍÓÚÑ]/.test(String(n || '').trim()));
 
+/**
+ * Lo que se sabe de cada iniciativa en palabras: el objetivo que trae su
+ * registro, o el resumen de la nota del Congreso que habló de ella. El texto
+ * de la iniciativa todavía no se lee, así que muchas no tienen ninguno.
+ */
+function useResumenes() {
+  return useQuery({
+    queryKey: ['congreso-resumenes-iniciativas'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('congreso_items_app_view')
+        .select('iniciativa_numero, summary, digest_date')
+        .not('iniciativa_numero', 'is', null)
+        .not('summary', 'is', null)
+        .order('digest_date', { ascending: false })
+        .limit(500);
+      const m = new Map();
+      for (const f of data || []) {
+        if (/\btuit\b|seg[uú]n el t[ií]tulo|sin m[aá]s detalles/i.test(f.summary)) continue;
+        if (!m.has(f.iniciativa_numero)) m.set(f.iniciativa_numero, f.summary);
+      }
+      return m;
+    },
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+function resumenDe(ini, deNotas) {
+  const conObjetivo = [...(ini.eventos_timeline || [])]
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+    .find((e) => e.detalle?.objetivo);
+  const r = conObjetivo?.detalle?.objetivo || deNotas?.get(ini.numero) || null;
+  // Si dice lo mismo que el título, no suma nada.
+  const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
+  return r && !plano(ini.titulo).includes(plano(r)) && !plano(r).includes(plano(limpiarTitulo(ini.titulo))) ? r : null;
+}
+
 export function ListaIniciativas() {
+  const { data: deNotas } = useResumenes();
   const q = useInfiniteQuery({
     queryKey: ['congreso-iniciativas'],
     queryFn: paginaIniciativas,
@@ -78,14 +116,14 @@ export function ListaIniciativas() {
       <SinNumero />
       {q.isLoading ? <Cargando>Trayendo las iniciativas…</Cargando> : null}
       {filas.map((ini) => (
-        <Iniciativa key={ini.numero} ini={ini} />
+        <Iniciativa key={ini.numero} ini={ini} resumen={resumenDe(ini, deNotas)} />
       ))}
       <VerMas q={q} cuantas={filas.length} total={total} />
     </View>
   );
 }
 
-function Iniciativa({ ini }) {
+function Iniciativa({ ini, resumen }) {
   const [abierta, setAbierta] = useState(false);
   const [parada, rotulo] = ETAPA_INICIATIVA[ini.estado_actual] || [null, null];
   const fecha = ini.fecha_presentacion || ini.fecha_conocio_pleno;
@@ -106,6 +144,11 @@ function Iniciativa({ ini }) {
         {fecha ? <Text style={{ fontSize: 11, color: INK.faint, marginBottom: 5 }}>{fechaCorta(fecha)}</Text> : null}
       </View>
       <Titulo>{limpiarTitulo(ini.titulo)}</Titulo>
+      {resumen ? (
+        <Text numberOfLines={abierta ? undefined : 3} style={{ fontSize: 13.5, color: INK.body, lineHeight: 20, marginTop: 7 }}>
+          {resumen}
+        </Text>
+      ) : null}
       {parada ? <Camino etapa={parada} /> : null}
       {ponentes.length ? <Text style={{ fontSize: 12, color: INK.faint, marginTop: 8 }}>{ponentes.join(' · ')}</Text> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
@@ -125,7 +168,6 @@ function Iniciativa({ ini }) {
               <Text style={{ width: 90, fontSize: 12, color: INK.faint }}>{fechaCorta(e.fecha)}</Text>
               <Text style={{ flex: 1, fontSize: 13, color: INK.title }}>
                 {ETAPA_INICIATIVA[e.tipo]?.[1]?.toLowerCase() || e.tipo}
-                {e.detalle?.objetivo ? ` — ${e.detalle.objetivo}` : ''}
               </Text>
             </View>
           ))}
@@ -185,6 +227,11 @@ function SinNumero() {
             style={{ paddingVertical: 9, borderTopWidth: 1, borderTopColor: RAYA }}
           >
             <Text style={{ fontSize: 14, color: INK.title, lineHeight: 19 }}>{limpiarSinNumero(s.titulo)}</Text>
+            {s.resumen ? (
+              <Text numberOfLines={3} style={{ fontSize: 13, color: INK.body, lineHeight: 18, marginTop: 3 }}>
+                {s.resumen}
+              </Text>
+            ) : null}
             <Text style={{ fontSize: 11.5, color: INK.faint, marginTop: 3 }}>
               {etiqueta}
               {s.fecha_presentacion ? ` · ${fechaCorta(s.fecha_presentacion)}` : ''}
