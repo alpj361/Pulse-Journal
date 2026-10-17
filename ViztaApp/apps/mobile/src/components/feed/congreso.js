@@ -308,13 +308,17 @@ export const SECCIONES = [
  */
 export function seccionDe(item) {
   const etapa = item.stage;
-  const numero = item.iniciativa_numero || item.card_data?.iniciativa_numero;
-  if (item.decreto_numero || item.resolucion_tipo || (etapa === 'aprobado' && numero)) return 'leyes';
-  if (numero || ['iniciativa_presentada', 'dictamen', 'primer_debate', 'segundo_debate', 'tercer_debate'].includes(etapa)) {
-    return 'iniciativas';
-  }
-  if (item.origin === 'comision' || etapa === 'en_comision' || etapa === 'citacion') return 'comisiones';
-  if (['pleno', 'jefes_bloque', 'junta_directiva'].includes(item.origin) || etapa === 'eleccion' || etapa === 'aprobado') {
+  // Iniciativas y Leyes salen de su propio registro (una iniciativa por número,
+  // un decreto por ley), no de las noticias: una nota sobre una iniciativa va
+  // con quien la movió —la comisión o el pleno—, y «se aprobaron leyes» no es
+  // una ley.
+  if (item.origin === 'comision' || etapa === 'en_comision' || etapa === 'dictamen' || etapa === 'citacion') return 'comisiones';
+  if (
+    ['pleno', 'jefes_bloque', 'junta_directiva'].includes(item.origin) ||
+    ['eleccion', 'aprobado', 'iniciativa_presentada', 'primer_debate', 'segundo_debate', 'tercer_debate'].includes(etapa) ||
+    item.resolucion_tipo ||
+    item.decreto_numero
+  ) {
     return 'pleno';
   }
   return 'fiscalizacion';

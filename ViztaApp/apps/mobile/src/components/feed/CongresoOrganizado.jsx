@@ -5,7 +5,8 @@ import { ChevronDown } from 'lucide-react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Sticker from '../Sticker';
 import { INK } from '../theme';
-import { SECCIONES, diaCorto, organizar, traerLeyes } from './congreso';
+import { SECCIONES, diaCorto, organizar } from './congreso';
+import { ListaIniciativas, ListaLeyes, useConteosLegislativos } from './LegislativoCongreso';
 import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe, rotuloDe } from './TarjetasCongreso';
 
 /**
@@ -18,19 +19,20 @@ import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe
  */
 export default function CongresoOrganizado({ dias, onAbrir }) {
   const secciones = useMemo(() => organizar(dias), [dias]);
-  const { data: leyes = [] } = useQuery({ queryKey: ['congreso-leyes'], queryFn: traerLeyes, staleTime: 6 * 60 * 60 * 1000 });
+  // Iniciativas y Leyes no son de la semana: son todo el registro.
+  const { data: registro } = useConteosLegislativos();
   // Qué sección se mira: ninguna elegida es todas.
   const [elegida, setElegida] = useState(null);
   const [abierto, setAbierto] = useState(true);
 
-  const cuantas = (clave) => (secciones[clave] || []).length + (clave === 'leyes' ? leyes.length : 0);
+  const cuantas = (clave) => (clave === 'iniciativas' || clave === 'leyes' ? registro?.[clave] || 0 : (secciones[clave] || []).length);
   const disponibles = SECCIONES.filter(([clave]) => cuantas(clave) > 0);
 
   return (
     <View style={{ marginTop: 14 }}>
       <Burbujas
         secciones={disponibles}
-        cuantas={(clave) => (secciones[clave] || []).length}
+        cuantas={cuantas}
         elegida={elegida}
         onElegir={(clave) => setElegida((antes) => (antes === clave ? null : clave))}
         abierto={abierto}
@@ -39,18 +41,23 @@ export default function CongresoOrganizado({ dias, onAbrir }) {
       {SECCIONES.map(([clave, nombre]) => {
         if (elegida && elegida !== clave) return null;
         const lista = secciones[clave] || [];
-        const publicadas = clave === 'leyes' ? leyes : [];
-        if (!lista.length && !publicadas.length) return null;
+        const registroEntero = clave === 'iniciativas' || clave === 'leyes';
+        // Sin una elegida, las del registro entero (cientos) no se despliegan:
+        // se ven al tocar su burbuja.
+        if (registroEntero && !elegida) return null;
+        if (!registroEntero && !lista.length) return null;
         return (
           <View key={clave} style={{ marginBottom: 26 }}>
             {/* Con una sola sección elegida, su nombre ya está en la burbuja. */}
             {elegida ? null : (
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
                 <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.1, color: INK.title }}>{nombre.toUpperCase()}</Text>
-                {lista.length ? <Text style={{ fontSize: 12, color: INK.faint }}>{lista.length}</Text> : null}
+                {cuantas(clave) ? <Text style={{ fontSize: 12, color: INK.faint }}>{cuantas(clave)}</Text> : null}
               </View>
             )}
-            {clave === 'votaciones'
+            {clave === 'iniciativas' ? <ListaIniciativas /> : null}
+            {clave === 'leyes' ? <ListaLeyes /> : null}
+            {registroEntero ? null : clave === 'votaciones'
               ? lista.map((v) => (
                   <View key={v.id}>
                     <Text style={{ fontSize: 11, color: INK.faint, marginTop: 12, marginBottom: -8, textAlign: 'right' }}>{diaCorto(v.fecha)}</Text>
@@ -58,9 +65,8 @@ export default function CongresoOrganizado({ dias, onAbrir }) {
                   </View>
                 ))
               : lista.map((item, i) => (
-              <Entrada key={item.id} item={item} conCamino={clave === 'iniciativas'} ultima={i === lista.length - 1 && !publicadas.length} onPress={() => onAbrir(item)} />
+              <Entrada key={item.id} item={item} conCamino={clave === 'iniciativas'} ultima={i === lista.length - 1} onPress={() => onAbrir(item)} />
                 ))}
-            {publicadas.length ? <Publicadas leyes={publicadas} /> : null}
           </View>
         );
       })}
