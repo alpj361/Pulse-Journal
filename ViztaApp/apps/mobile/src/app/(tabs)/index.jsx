@@ -780,14 +780,6 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
-  // En el Congreso, «hoy» solo si lo más reciente es de hoy.
-  const ultimoCongreso = diasCongreso?.[0]?.fecha;
-  const marcadoCongreso =
-    !ultimoCongreso || ultimoCongreso === diaGT(Date.now())
-      ? "hoy"
-      : ultimoCongreso === diaGT(Date.now() - 86400000)
-        ? "de ayer"
-        : "estos días";
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
   const marcadoDelFeed =
@@ -891,15 +883,19 @@ export default function Index() {
                 el Congreso. El selector va en la misma línea para que se lea
                 como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              {/* «Lo que hay que leer» es del feed de noticias. El Congreso y
+                  el Observatorio no son lo del día: son tableros, y el
+                  título no va. */}
               <View style={{ flex: 1 }}>
-                <SectionHeader title="Lo que hay que leer" marcado={feed === "congreso" ? marcadoCongreso : marcadoDelFeed} />
+                {feed === "pais" ? <SectionHeader title="Lo que hay que leer" marcado={marcadoDelFeed} /> : null}
+                {/* En el Congreso, el lugar del título lo ocupa el cambio de vista. */}
+                {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
               </View>
               <SelectorFeed valor={feed} onCambiar={setFeed} conObservatorio={conObservatorio} />
             </View>
 
             {feed === "observatorio" && conObservatorio ? <ObservatorioCC /> : null}
 
-            {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
 
             {feed === "congreso" ? (
               cargandoCongreso ? (
@@ -1209,7 +1205,7 @@ function VistasCongreso({ valor, onCambiar }) {
       style={{
         flexDirection: "row",
         alignSelf: "flex-start",
-        marginTop: 14,
+        marginTop: 2,
         marginBottom: 6,
         padding: 3,
         borderRadius: 12,
