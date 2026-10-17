@@ -780,6 +780,14 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
+  // En el Congreso, «hoy» solo si lo más reciente es de hoy.
+  const ultimoCongreso = diasCongreso?.[0]?.fecha;
+  const marcadoCongreso =
+    !ultimoCongreso || ultimoCongreso === diaGT(Date.now())
+      ? "hoy"
+      : ultimoCongreso === diaGT(Date.now() - 86400000)
+        ? "de ayer"
+        : "estos días";
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
   const marcadoDelFeed =
@@ -884,7 +892,7 @@ export default function Index() {
                 como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <View style={{ flex: 1 }}>
-                <SectionHeader title="Lo que hay que leer" marcado={marcadoDelFeed} />
+                <SectionHeader title="Lo que hay que leer" marcado={feed === "congreso" ? marcadoCongreso : marcadoDelFeed} />
               </View>
               <SelectorFeed valor={feed} onCambiar={setFeed} conObservatorio={conObservatorio} />
             </View>
@@ -909,13 +917,12 @@ export default function Index() {
               ) : (
                 diasCongreso.map((dia, n) => (
                   <View key={dia.fecha}>
-                    {/* El día solo se nombra desde el segundo: el primero es
-                        el de más arriba, y el título ya dice «hoy». */}
-                    {n > 0 ? (
-                      <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: 6, marginBottom: 18 }}>
-                        {nombreDelDia(dia.fecha).toUpperCase()}
-                      </Text>
-                    ) : null}
+                    {/* Cada día lleva su fecha, también el primero: lo más
+                        reciente del Congreso puede ser de ayer, y sin fecha
+                        se leería como de hoy. */}
+                    <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: n > 0 ? 6 : 16, marginBottom: 18 }}>
+                      {nombreDelDia(dia.fecha).toUpperCase()}
+                    </Text>
                     {/* El noticiero es un salto a YouTube; lo demás, los
                         títulos de lo que se vio ese día, sin enlace. */}
                     {dia.items
