@@ -37,7 +37,7 @@ const ALERTA = '#B45309';
  * pide ser tocado como un botón de acción; un nombre subrayado dentro de un
  * texto se lee como lo que es — una referencia a otra cosa.
  */
-export default function TarjetaNoticia({ card, onPress, onEntidad, style }) {
+export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, style }) {
   const press = useSharedValue(0);
   const categoria = categoriaDe(card);
   const p = paletaDe(categoria);
@@ -82,6 +82,14 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, style }) {
           <Text numberOfLines={3} style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginTop: 9 }}>
             {card.resumen}
           </Text>
+        ) : null}
+
+        {/* Lo que habla del Congreso sale acá y también en su vista: esto
+            lleva allá, donde está ordenado junto con el resto del trámite. */}
+        {onCongreso ? (
+          <Pressable onPress={onCongreso} hitSlop={8} accessibilityRole="link" style={{ alignSelf: 'flex-start', marginTop: 10 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#2F4A7A' }}>del Congreso ›</Text>
+          </Pressable>
         ) : null}
 
         {/* La capa de medios, en una línea.

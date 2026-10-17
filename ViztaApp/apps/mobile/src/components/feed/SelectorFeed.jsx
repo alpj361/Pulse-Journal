@@ -4,7 +4,7 @@ import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Check, ChevronDown } from 'lucide-react-native';
 import { CARD_SHADOW, GLASS, INK, RADIUS } from '../theme';
-import { MapaGuate, Podio } from './iconosFeed';
+import Sticker from '../Sticker';
 import { roce } from '../../utils/haptics';
 
 /**
@@ -17,8 +17,10 @@ import { roce } from '../../utils/haptics';
  * a propósito.
  */
 export const FEEDS = [
-  { clave: 'pais', nombre: 'Guatemala', Icono: MapaGuate },
-  { clave: 'congreso', nombre: 'Congreso', Icono: Podio },
+  { clave: 'pais', nombre: 'Guatemala', sticker: 'guatemala' },
+  { clave: 'congreso', nombre: 'Congreso', sticker: 'congreso' },
+  // Solo para quien tiene acceso (Beta o admin): quien no, no ve la opción.
+  { clave: 'observatorio', nombre: 'Observatorio', sticker: 'observatorio', soloBeta: true },
 ];
 
 const ANCHO_MENU = 190;
@@ -35,10 +37,11 @@ function Cristal({ radio, children, style }) {
   );
 }
 
-export default function SelectorFeed({ valor, onCambiar }) {
+export default function SelectorFeed({ valor, onCambiar, conObservatorio = false }) {
+  const opciones = FEEDS.filter((f) => !f.soloBeta || conObservatorio);
   const ancla = useRef(null);
   const [menu, setMenu] = useState(null); // { top, right } mientras está abierto
-  const actual = FEEDS.find((f) => f.clave === valor) || FEEDS[0];
+  const actual = opciones.find((f) => f.clave === valor) || opciones[0];
 
   const abrir = () => {
     roce();
@@ -66,8 +69,8 @@ export default function SelectorFeed({ valor, onCambiar }) {
         style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
       >
         <Cristal radio={RADIUS.pill}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 11, paddingRight: 8, height: 36 }}>
-            <actual.Icono size={18} color={INK.title} relleno />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingLeft: 7, paddingRight: 8, height: 36 }}>
+            <Sticker nombre={actual.sticker} size={27} />
             <ChevronDown size={14} color={INK.meta} strokeWidth={2.4} />
           </View>
         </Cristal>
@@ -82,7 +85,7 @@ export default function SelectorFeed({ valor, onCambiar }) {
             >
               <Cristal radio={RADIUS.lg}>
                 <Animated.View entering={FadeIn.duration(140)} style={{ paddingVertical: 6 }}>
-                  {FEEDS.map((f) => {
+                  {opciones.map((f) => {
                     const elegido = f.clave === actual.clave;
                     return (
                       <Pressable
@@ -95,11 +98,11 @@ export default function SelectorFeed({ valor, onCambiar }) {
                           alignItems: 'center',
                           gap: 11,
                           paddingHorizontal: 14,
-                          height: 46,
+                          height: 52,
                           backgroundColor: pressed ? 'rgba(28,43,34,0.05)' : 'transparent',
                         })}
                       >
-                        <f.Icono size={20} color={elegido ? INK.title : INK.body} relleno={elegido} />
+                        <Sticker nombre={f.sticker} size={34} />
                         <Text style={{ flex: 1, fontSize: 15, fontWeight: elegido ? '700' : '500', color: elegido ? INK.title : INK.body }}>
                           {f.nombre}
                         </Text>
