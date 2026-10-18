@@ -92,4 +92,41 @@ describe('LineaDeTiempo', () => {
     expect(textoDel(r)).toContain('Desarrollo 4');
     expect(textoDel(r)).toContain('ver menos');
   });
+
+  test('un medio en singular, y el día corto si la fila es de otro día', () => {
+    let r;
+    act(() => {
+      r = TestRenderer.create(
+        <LineaDeTiempo
+          card={{
+            titulo: TITULO,
+            fuentes: { independientes: 1 },
+            desarrollos: [
+              {
+                id: 'hoy',
+                ts: '2026-10-17T20:33:50-06:00',
+                tipo: 'desarrollo',
+                texto: TITULO,
+                fuente: 'Prensa Libre',
+                url: 'https://www.prensalibre.com/nota',
+              },
+              {
+                id: 'ayer',
+                ts: '2026-10-16T20:33:50-06:00',
+                tipo: 'hecho_base',
+                texto: 'Un día antes',
+                fuente: 'Prensa Libre',
+                url: 'https://www.prensalibre.com/nota',
+              },
+            ],
+          }}
+        />
+      );
+    });
+    const plano = textoDel(r);
+    expect(plano).toContain('1 medio');
+    expect(plano).not.toContain('1 medios');
+    expect(plano).toContain('16 oct, 8:33 p. m.');
+    expect(plano).toContain('Un día antes');
+  });
 });

@@ -16,6 +16,8 @@
 /** Cuántas entradas se ven antes de «ver más». */
 export const VISIBLE_INICIAL = 4;
 
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
 const lista = (v) => (Array.isArray(v) ? v : []);
 
 /**
@@ -50,6 +52,44 @@ export function horaGT(ts) {
   const periodo = hora24 < 12 ? 'a. m.' : 'p. m.';
   const hora12 = hora24 % 12 === 0 ? 12 : hora24 % 12;
   return `${hora12}:${minutos} ${periodo}`;
+}
+
+/**
+ * `YYYY-MM-DD` tal cual viene en el ISO. Sin `Date` ni `Intl`: la fecha
+ * ya es de Guatemala, y convertirla en el teléfono la podría correr.
+ */
+export function fechaISO(ts) {
+  if (typeof ts !== 'string' || !ts) return null;
+  const m = ts.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const mes = Number(m[2]);
+  const dia = Number(m[3]);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
+/** Día corto en español, minúsculas: `16 oct`. El cero a la izquierda no va. */
+export function diaCorto(ts) {
+  const fecha = fechaISO(ts);
+  if (!fecha) return null;
+  const dia = Number(fecha.slice(8, 10));
+  const mes = Number(fecha.slice(5, 7));
+  return `${dia} ${MESES[mes - 1]}`;
+}
+
+/**
+ * Hora de la fila. Si el día no es el de la entrada más nueva, se antepone:
+ * `16 oct, 8:33 p. m.`. En una historia de varios días, la hora sola
+ * no alcanza para leer el orden.
+ */
+export function marcaTiempo(ts, tsMasNueva) {
+  const hora = horaGT(ts);
+  if (!hora) return null;
+  const fecha = fechaISO(ts);
+  const fechaNueva = fechaISO(tsMasNueva);
+  if (!fecha || !fechaNueva || fecha === fechaNueva) return hora;
+  const dia = diaCorto(ts);
+  return dia ? `${dia}, ${hora}` : hora;
 }
 
 function milis(ts) {
@@ -142,11 +182,12 @@ export function ocultaTextoPorTitular(entrada, titulo, index) {
 /**
  * Una fila de la línea de tiempo: qué se ve, sin códigos internos.
  */
-export function filaDe(entrada, card, index) {
+export function filaDe(entrada, card, index, tsMasNueva) {
   if (!entrada) return null;
   const ocultar = ocultaTextoPorTitular(entrada, card?.titulo, index);
+  const referencia = tsMasNueva ?? desarrollosDe(card)[0]?.ts;
   return {
-    hora: horaGT(entrada.ts),
+    hora: marcaTiempo(entrada.ts, referencia),
     texto: ocultar ? null : cuerpoDe(entrada),
     medio: entrada.fuente,
     url: entrada.url,
@@ -166,7 +207,7 @@ export function filaDe(entrada, card, index) {
 export function etiquetaMedios(card) {
   const n = card?.fuentes?.independientes;
   if (!Number.isFinite(n) || n <= 0) return null;
-  return `${n} medios`;
+  return n === 1 ? '1 medio' : `${n} medios`;
 }
 
 /**

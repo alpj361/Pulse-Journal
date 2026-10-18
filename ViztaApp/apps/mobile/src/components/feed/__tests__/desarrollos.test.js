@@ -1,10 +1,13 @@
 import {
   cuerpoDe,
+  diaCorto,
   desarrollosDe,
   etiquetaMedios,
+  fechaISO,
   filaDe,
   horaGT,
   lineaActualizada,
+  marcaTiempo,
   ocultaTextoPorTitular,
   urlHttp,
 } from '../desarrollos';
@@ -217,7 +220,55 @@ describe('lineaActualizada y medios', () => {
     expect(lineaActualizada(cardHistoria)).toBe('actualizada 8:33 p. m.');
     expect(lineaActualizada({ ...cardHistoria, desarrollos: [] })).toBeNull();
     expect(etiquetaMedios(cardHistoria)).toBe('12 medios');
+    expect(etiquetaMedios({ fuentes: { independientes: 1 } })).toBe('1 medio');
     expect(etiquetaMedios({ fuentes: { independientes: 0 } })).toBeNull();
     expect(etiquetaMedios({ fuentes: { independientes: '12' } })).toBeNull();
+  });
+
+  test('si la historia cruza días, el feed sigue diciendo solo la hora', () => {
+    expect(
+      lineaActualizada({
+        ...cardHistoria,
+        ultima_actualizacion: '2026-10-17T20:33:50-06:00',
+        desarrollos: [
+          entrada({ ts: '2026-10-17T20:33:50-06:00' }),
+          entrada({ id: 'ayer', ts: '2026-10-16T08:33:00-06:00', texto: 'Ayer' }),
+        ],
+      })
+    ).toBe('actualizada 8:33 p. m.');
+  });
+});
+
+describe('día corto en historias de varios días', () => {
+  test('la fecha se lee del ISO, sin Date ni Intl', () => {
+    expect(fechaISO('2026-10-16T20:33:50-06:00')).toBe('2026-10-16');
+    expect(fechaISO('2026-01-06T08:05:00-06:00')).toBe('2026-01-06');
+    expect(fechaISO('anoche')).toBeNull();
+    expect(diaCorto('2026-10-16T20:33:50-06:00')).toBe('16 oct');
+    expect(diaCorto('2026-01-06T08:05:00-06:00')).toBe('6 ene');
+  });
+
+  test('si el día no es el de la entrada más nueva, se antepone el día corto', () => {
+    const ref = '2026-10-17T20:33:50-06:00';
+    expect(marcaTiempo(ref, ref)).toBe('8:33 p. m.');
+    expect(marcaTiempo('2026-10-17T08:05:00-06:00', ref)).toBe('8:05 a. m.');
+    expect(marcaTiempo('2026-10-16T20:33:50-06:00', ref)).toBe('16 oct, 8:33 p. m.');
+    expect(marcaTiempo('2026-10-16T08:33:00-06:00', ref)).toBe('16 oct, 8:33 a. m.');
+    expect(marcaTiempo('2026-01-06T08:05:00-06:00', ref)).toBe('6 ene, 8:05 a. m.');
+  });
+
+  test('en la fila, el día va cuando no es el de la más nueva', () => {
+    const card = {
+      titulo: TITULO,
+      desarrollos: [
+        entrada({ id: 'hoy', ts: '2026-10-17T20:33:50-06:00' }),
+        entrada({ id: 'manana', ts: '2026-10-17T09:00:00-06:00', texto: 'Misma mañana' }),
+        entrada({ id: 'ayer', ts: '2026-10-16T20:33:50-06:00', texto: 'Un día antes' }),
+      ],
+    };
+    const lista = desarrollosDe(card);
+    expect(filaDe(lista[0], card, 0).hora).toBe('8:33 p. m.');
+    expect(filaDe(lista[1], card, 1).hora).toBe('9:00 a. m.');
+    expect(filaDe(lista[2], card, 2).hora).toBe('16 oct, 8:33 p. m.');
   });
 });

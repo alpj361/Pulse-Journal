@@ -43,8 +43,8 @@ function Medio({ nombre, url }) {
   );
 }
 
-function Fila({ entrada, card, index, transicion }) {
-  const fila = filaDe(entrada, card, index);
+function Fila({ entrada, card, index, tsMasNueva, transicion }) {
+  const fila = filaDe(entrada, card, index, tsMasNueva);
   if (!fila) return null;
 
   const { hora, texto, medio, url, detalle, corregido, correccion } = fila;
@@ -102,6 +102,7 @@ export default function LineaDeTiempo({ card }) {
   const visibles = abierta ? lista : lista.slice(0, VISIBLE_INICIAL);
   const hayMas = lista.length > VISIBLE_INICIAL;
   const medios = etiquetaMedios(card);
+  const tsMasNueva = lista[0].ts;
 
   return (
     <Animated.View layout={transicion} style={{ marginTop: 22 }}>
@@ -116,6 +117,7 @@ export default function LineaDeTiempo({ card }) {
           entrada={entrada}
           card={card}
           index={i}
+          tsMasNueva={tsMasNueva}
           transicion={transicion}
         />
       ))}
