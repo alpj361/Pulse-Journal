@@ -32,6 +32,7 @@ import { PAPEL } from "../../components/codex/Papel";
 import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
 import MediosNoticia, { MarcaTweet } from "../../components/feed/MediosNoticia";
+import LineaDeTiempo from "../../components/feed/LineaDeTiempo";
 import { marcaDe } from "../../components/feed/encuadres";
 import { EV, evento } from "../../utils/analitica";
 import {
@@ -452,9 +453,11 @@ function NewsCardModal({ card, onClose }) {
             <GaleriaNoticia fotos={fotos} ancho={anchoPantalla - MARGEN_MODAL * 2} />
 
 
-            {card.resumen ? (
-              <Text style={{ fontSize: 15.5, color: INK.body, lineHeight: 25 }}>{card.resumen}</Text>
+            {card.resumen || card.bajada ? (
+              <Text style={{ fontSize: 15.5, color: INK.body, lineHeight: 25 }}>{card.resumen || card.bajada}</Text>
             ) : null}
+
+            <LineaDeTiempo card={card} />
 
             {/* Dato clave sin filete: el rótulo en versalitas ya lo separa de
                 la columna, y la línea de color sumaba un segundo marcador para
@@ -679,6 +682,9 @@ export default function Index() {
       // ellas en `categoria_principal: 'Otros'`, y le ganaba a la de 08:48, que
       // trae 17 bien clasificadas. Contar tarjetas no dice nada sobre si
       // sirven, y la más nueva es la que refleja el día.
+      //
+      // `cards` es el jsonb entero: desarrollos, bajada y ultima_actualizacion
+      // viven adentro. No hace falta pedir columnas nuevas.
       const rows = await supabaseFetch(
         'news_cards',
         `select=cards,generated_at,tweets_source_count` +
