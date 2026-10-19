@@ -138,9 +138,9 @@ export const MEDIDAS = [
   ['gobierno', 'Gobierno y Congreso'],
   ['volumen', 'Volumen'],
   ['accidentes', 'Accidentes y tráfico'],
-  ['polarizacion', 'Polarización'],
-  ['novedad', 'Novedad'],
 ];
+// Polarización y novedad quedan fuera hasta definir cómo medirlas (PJ,
+// 19-oct): se siguen calculando en medirDia, pero no se muestran.
 
 /** Las 4 de la franja de arriba. */
 export const EN_LA_FRANJA = ['intensidad', 'violencia', 'gobierno', 'volumen'];
