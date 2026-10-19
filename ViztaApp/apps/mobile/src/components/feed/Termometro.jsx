@@ -142,7 +142,9 @@ function Hoja({ data, onClose }) {
             <Semana dias={dias} elegido={d.dia} onElegir={setElegido} />
 
             <View style={{ marginTop: 22 }}>
-              <Text style={ROTULO}>TERMÓMETRO</Text>
+              {/* El termómetro es de un día: el elegido en la semana. Se dice
+                  cuál, para que no se lea como de toda la semana. */}
+              <Text style={ROTULO}>{`TERMÓMETRO · ${nombreDelDia(d.dia).toUpperCase()}`}</Text>
               {MEDIDAS.map(([k, nombre]) =>
                 k === 'intensidad' ? (
                   <Intensidad key={k} i={d.intensidad} />
