@@ -9,6 +9,7 @@ import { INK, MOTION, SERIF } from '../theme';
 import { categoriaDe, paletaDe } from './temas';
 import Pegatina from './Pegatina';
 import { lineaDeCard } from './encuadres';
+import { lineaActualizada } from './desarrollos';
 
 /**
  * El ámbar del aviso.
@@ -49,6 +50,7 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, s
   const entidades = Array.isArray(card?.entidades) ? card.entidades.filter(Boolean) : [];
 
   const linea = lineaDeCard(card);
+  const actualizada = lineaActualizada(card);
 
   return (
     <Pressable
@@ -78,9 +80,17 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, s
           {card?.titulo}
         </Text>
 
-        {card?.resumen ? (
+        {card?.resumen || card?.bajada ? (
           <Text numberOfLines={3} style={{ fontSize: 14, color: INK.body, lineHeight: 22, marginTop: 9 }}>
-            {card.resumen}
+            {card.resumen || card.bajada}
+          </Text>
+        ) : null}
+
+        {/* Solo si la historia trae desarrollos. Sin ellos, la card queda
+            exactamente como hoy: no hay «actualizada» huérfano. */}
+        {actualizada ? (
+          <Text style={{ fontSize: 11.5, color: INK.meta, marginTop: 9 }}>
+            {actualizada}
           </Text>
         ) : null}
 

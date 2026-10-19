@@ -50,6 +50,7 @@ import { PAPEL } from "../../components/codex/Papel";
 import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
 import MediosNoticia, { MarcaTweet } from "../../components/feed/MediosNoticia";
+import LineaDeTiempo from "../../components/feed/LineaDeTiempo";
 import { marcaDe } from "../../components/feed/encuadres";
 import { EV, evento } from "../../utils/analitica";
 import {
@@ -470,9 +471,11 @@ function NewsCardModal({ card, onClose }) {
             <GaleriaNoticia fotos={fotos} ancho={anchoPantalla - MARGEN_MODAL * 2} />
 
 
-            {card.resumen ? (
-              <Text style={{ fontSize: 15.5, color: INK.body, lineHeight: 25 }}>{card.resumen}</Text>
+            {card.resumen || card.bajada ? (
+              <Text style={{ fontSize: 15.5, color: INK.body, lineHeight: 25 }}>{card.resumen || card.bajada}</Text>
             ) : null}
+
+            <LineaDeTiempo card={card} />
 
             {/* Dato clave sin filete: el rótulo en versalitas ya lo separa de
                 la columna, y la línea de color sumaba un segundo marcador para
@@ -695,6 +698,8 @@ export default function Index() {
       // uno de los dos días anteriores. Así, pasada la medianoche, cuando hoy
       // todavía no tiene nada, se ve lo de ayer marcado como de ayer en vez de
       // un feed vacío o noticias viejas haciéndose pasar por nuevas.
+      // `cards` es el jsonb entero: desarrollos, bajada y ultima_actualizacion
+      // viven adentro.
       const campos = `select=cards,generated_at&pais=eq.${FEED_COUNTRY}&order=generated_at.desc&limit=1`;
       const corte = (dias) => new Date(inicioDelDiaGT(Date.now()) - dias * 86400000).toISOString();
       const corridas = await Promise.all([
