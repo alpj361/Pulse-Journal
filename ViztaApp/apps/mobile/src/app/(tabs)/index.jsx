@@ -51,6 +51,7 @@ import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
 import MediosNoticia, { MarcaTweet } from "../../components/feed/MediosNoticia";
 import LineaDeTiempo from "../../components/feed/LineaDeTiempo";
+import Termometro from "../../components/feed/Termometro";
 import { fechaHechoDe, seguimientoDe } from "../../components/feed/desarrollos";
 import { marcaDe } from "../../components/feed/encuadres";
 import { EV, evento } from "../../utils/analitica";
@@ -914,6 +915,8 @@ export default function Index() {
             {/* El título y, a su lado, de dónde viene lo que se lee: el país o
                 el Congreso. El selector va en la misma línea para que se lea
                 como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
+            {/* Cómo está el día: cuatro medidas contadas, a un toque del detalle. */}
+            {feed === "pais" ? <Termometro pais={FEED_COUNTRY} style={{ marginBottom: 22 }} /> : null}
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               {/* «Lo que hay que leer» es del feed de noticias. El Congreso y
                   el Observatorio no son lo del día: son tableros, y el
