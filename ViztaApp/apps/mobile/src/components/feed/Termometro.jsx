@@ -42,7 +42,7 @@ async function traerDias(pais) {
   return (filas || []).map((f) => {
     const dia = diaGT(f.generated_at);
     const cards = (f.cards || []).filter((c) => diaDeCard(c, f.generated_at) === dia);
-    return { dia, cards };
+    return { dia, cards, todas: f.cards || [] };
   });
 }
 
@@ -51,7 +51,12 @@ export function useDias(pais) {
     queryKey: ['termometro-dias', pais],
     queryFn: async () => {
       const crudos = await traerDias(pais);
-      const puntuados = puntuar(crudos.map((d) => medirDia(d.cards, d.dia)));
+      // La versión más nueva de cada historia, con todo su recorrido.
+      const historias = new Map();
+      for (const d of [...crudos].sort((a, b) => (a.dia < b.dia ? 1 : -1))) {
+        for (const c of d.todas) if (!historias.has(c.id || c.titulo)) historias.set(c.id || c.titulo, c);
+      }
+      const puntuados = puntuar(crudos.map((d) => medirDia(d.cards, d.dia, [...historias.values()])));
       const cardsPorDia = new Map(crudos.map((d) => [d.dia, d.cards]));
       return { dias: puntuados, cardsPorDia };
     },
@@ -127,6 +132,9 @@ function Hoja({ data, onClose }) {
             <Text style={{ fontSize: 13, color: INK.meta, marginTop: 3 }}>
               {nombreDelDia(d.dia)}
               {d.base ? ` · contra ${d.base === 1 ? 'el día anterior' : `los ${d.base} días anteriores`}` : ''}
+              {d.bases?.intensidad != null && d.bases.intensidad !== d.base
+                ? ` (intensidad: ${d.bases.intensidad ? `contra ${d.bases.intensidad} ${d.bases.intensidad === 1 ? 'día' : 'días'}` : 'sin días para comparar'})`
+                : ''}
             </Text>
 
             <Semana dias={dias} elegido={d.dia} onElegir={setElegido} />
