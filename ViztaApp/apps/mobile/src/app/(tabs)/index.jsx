@@ -731,7 +731,16 @@ export default function Index() {
           porId.set(id, { ...card, _desde: card.primera_vez || fila.generated_at, _corrida: i });
         }
       });
-      const todas = [...porId.values()].sort((a, b) => (a._desde < b._desde ? 1 : -1));
+      // Orden: el día primero (lo de hoy arriba), y dentro de cada día lo que
+      // más pesa —impacto, después cuántos medios lo cubren—. A igual peso,
+      // lo más reciente.
+      const todas = [...porId.values()].sort(
+        (a, b) =>
+          (diaGT(a._desde) < diaGT(b._desde) ? 1 : diaGT(a._desde) > diaGT(b._desde) ? -1 : 0) ||
+          numero(b.impacto_score) - numero(a.impacto_score) ||
+          numero(b.fuentes?.independientes) - numero(a.fuentes?.independientes) ||
+          (a._desde < b._desde ? 1 : -1)
+      );
       // Los días anteriores rellenan, no se suman: si hoy ya hay de sobra, se
       // muestra lo de la corrida de ahora (con su fecha, si alguna es de antes).
       const deHoy = todas.filter((c) => diaGT(c._desde) === diaGT(Date.now())).length;
@@ -1282,4 +1291,10 @@ function porDiaGT(cards) {
     grupo.cards.push(card);
   }
   return grupos;
+}
+
+/** Un número de la tarjeta, que puede venir como texto o faltar. */
+function numero(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
