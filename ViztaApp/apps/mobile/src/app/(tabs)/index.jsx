@@ -728,7 +728,12 @@ export default function Index() {
         for (const card of fila?.cards || []) {
           const id = card.id || card.titulo;
           if (porId.has(id)) continue;
-          porId.set(id, { ...card, _desde: card.primera_vez || fila.generated_at, _corrida: i });
+          // El día de una historia es el de su último movimiento: una que
+          // empezó ayer y siguió hoy es de hoy, no de ayer.
+          const momentos = [card.primera_vez, card.ultima_actualizacion, fila.generated_at && !card.primera_vez ? fila.generated_at : null]
+            .filter(Boolean)
+            .map((t) => new Date(t).toISOString());
+          porId.set(id, { ...card, _desde: momentos.sort().pop() || fila.generated_at, _corrida: i });
         }
       });
       // Orden: el día primero (lo de hoy arriba), y dentro de cada día lo que
