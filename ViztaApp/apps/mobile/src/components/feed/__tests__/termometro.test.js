@@ -22,8 +22,8 @@ describe('termómetro', () => {
 
   it('50 es el promedio de los días anteriores; el primer día no tiene puntaje', () => {
     const dias = puntuar([
-      { dia: '2026-10-01', volumen: 10, violencia: 2, accidentes: 1, gobierno: 1, intensidad: 5, polarizacion: 0, novedad: 100 },
-      { dia: '2026-10-02', volumen: 20, violencia: 2, accidentes: 1, gobierno: 1, intensidad: 5, polarizacion: 0, novedad: 100 },
+      { dia: '2026-10-01', volumen: 10, violencia: 2, accidentes: 1, gobierno: 1, polarizacion: 0, novedad: 100 },
+      { dia: '2026-10-02', volumen: 20, violencia: 2, accidentes: 1, gobierno: 1, polarizacion: 0, novedad: 100 },
     ]);
     expect(dias[0].puntos.volumen).toBeNull();
     expect(dias[1].puntos.volumen).toBe(100);
@@ -46,15 +46,3 @@ describe('termómetro', () => {
   });
 });
 
-describe('intensidad por día del desarrollo', () => {
-  it('un hecho del sábado cuenta el sábado aunque la tarjeta sea del domingo', () => {
-    const h = { id: 'f', titulo: 'Foppa', desarrollos: [
-      { texto: 'a', ts: '2026-10-17T11:00:00-06:00', fuente: 'A' },
-      { texto: 'b', ts: '2026-10-17T12:00:00-06:00', fuente: 'B' },
-      { texto: 'c', ts: '2026-10-18T09:00:00-06:00', fuente: 'A' },
-    ] };
-    expect(medirDia([], '2026-10-17', [h]).intensidad).toBe(4);
-    expect(medirDia([], '2026-10-18', [h]).intensidad).toBe(2);
-    expect(medirDia([], '2026-10-16', [h]).intensidad).toBeNull();
-  });
-});

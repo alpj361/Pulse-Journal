@@ -7,6 +7,7 @@ import { supabase } from '../../utils/supabase';
 import { INK, SERIF } from '../theme';
 import { nombreDelDia } from './congreso';
 import { EN_LA_FRANJA, MEDIDAS, colorDe, deQueSeHabla, diaDeCard, diaGT, frase, medirDia, puntuar } from './termometro';
+import { colorIntensidad, frasesIntensidad, intensidadDelDia } from './intensidad';
 
 /**
  * Cómo está el día, a un toque del feed.
@@ -56,7 +57,11 @@ export function useDias(pais) {
       for (const d of [...crudos].sort((a, b) => (a.dia < b.dia ? 1 : -1))) {
         for (const c of d.todas) if (!historias.has(c.id || c.titulo)) historias.set(c.id || c.titulo, c);
       }
-      const puntuados = puntuar(crudos.map((d) => medirDia(d.cards, d.dia, [...historias.values()])));
+      const todas = [...historias.values()];
+      const puntuados = puntuar(crudos.map((d) => medirDia(d.cards, d.dia))).map((d) => {
+        const intensidad = intensidadDelDia(todas, d.dia);
+        return { ...d, intensidad, puntos: { ...d.puntos, intensidad: intensidad.puntos } };
+      });
       const cardsPorDia = new Map(crudos.map((d) => [d.dia, d.cards]));
       return { dias: puntuados, cardsPorDia };
     },
@@ -90,7 +95,7 @@ export default function Termometro({ pais, style }) {
                 {k === 'gobierno' ? 'Gobierno' : nombres[k]}
               </Text>
               <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, overflow: 'hidden' }}>
-                <View style={{ width: `${Math.max(6, p ?? 0)}%`, height: 6, borderRadius: 3, backgroundColor: colorDe(p) }} />
+                <View style={{ width: `${Math.max(6, p ?? 0)}%`, height: 6, borderRadius: 3, backgroundColor: k === 'intensidad' ? colorIntensidad(p) : colorDe(p) }} />
               </View>
             </View>
           );
@@ -132,18 +137,19 @@ function Hoja({ data, onClose }) {
             <Text style={{ fontSize: 13, color: INK.meta, marginTop: 3 }}>
               {nombreDelDia(d.dia)}
               {d.base ? ` · contra ${d.base === 1 ? 'el día anterior' : `los ${d.base} días anteriores`}` : ''}
-              {d.bases?.intensidad != null && d.bases.intensidad !== d.base
-                ? ` (intensidad: ${d.bases.intensidad ? `contra ${d.bases.intensidad} ${d.bases.intensidad === 1 ? 'día' : 'días'}` : 'sin días para comparar'})`
-                : ''}
             </Text>
 
             <Semana dias={dias} elegido={d.dia} onElegir={setElegido} />
 
             <View style={{ marginTop: 22 }}>
               <Text style={ROTULO}>TERMÓMETRO</Text>
-              {MEDIDAS.map(([k, nombre]) => (
-                <Medida key={k} nombre={nombre} puntos={d.puntos[k]} frase={frase(k, d)} porcentaje={k === 'polarizacion' || k === 'novedad'} />
-              ))}
+              {MEDIDAS.map(([k, nombre]) =>
+                k === 'intensidad' ? (
+                  <Intensidad key={k} i={d.intensidad} />
+                ) : (
+                  <Medida key={k} nombre={nombre} puntos={d.puntos[k]} frase={frase(k, d)} porcentaje={k === 'polarizacion' || k === 'novedad'} />
+                )
+              )}
             </View>
 
             {temas.length ? (
@@ -160,6 +166,30 @@ function Hoja({ data, onClose }) {
         </View>
       </View>
     </Modal>
+  );
+}
+
+/** La intensidad: su total en escala fija y los cuatro componentes con su cifra. */
+function Intensidad({ i }) {
+  return (
+    <View style={{ marginTop: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>Intensidad</Text>
+        <Text style={{ fontSize: 12.5, color: INK.meta }}>{i.puntos}</Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, marginTop: 6, overflow: 'hidden' }}>
+        <View style={{ width: `${Math.max(2, i.puntos)}%`, height: 6, borderRadius: 3, backgroundColor: colorIntensidad(i.puntos) }} />
+      </View>
+      <View style={{ marginTop: 6, gap: 4 }}>
+        {frasesIntensidad(i).map(([nombre, pts, texto]) => (
+          <View key={nombre} style={{ flexDirection: 'row', gap: 8 }}>
+            <Text style={{ width: 84, fontSize: 12, color: INK.meta }}>{nombre}</Text>
+            <Text style={{ flex: 1, fontSize: 12.5, color: INK.body, lineHeight: 17 }}>{texto}</Text>
+            <Text style={{ fontSize: 12, color: INK.faint }}>{pts}/25</Text>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -196,7 +226,7 @@ function Semana({ dias, elegido, onElegir }) {
                   width: '100%',
                   aspectRatio: 1,
                   borderRadius: 8,
-                  backgroundColor: colorDe(x.puntos.intensidad),
+                  backgroundColor: colorIntensidad(x.puntos.intensidad),
                   borderWidth: activo ? 2 : 0,
                   borderColor: INK.title,
                 }}
@@ -240,7 +270,7 @@ function Mes({ dias, elegido, onElegir }) {
                 style={{
                   flex: 1,
                   borderRadius: 5,
-                  backgroundColor: x ? colorDe(x.puntos.intensidad) : 'rgba(28,43,34,0.05)',
+                  backgroundColor: x ? colorIntensidad(x.puntos.intensidad) : 'rgba(28,43,34,0.05)',
                   borderWidth: dia === elegido ? 2 : 0,
                   borderColor: INK.title,
                   alignItems: 'center',

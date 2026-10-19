@@ -46,7 +46,7 @@ const desarrollosDelDia = (card, dia) => lista(card?.desarrollos).filter((d) => 
  * Las medidas crudas de un día, a partir de sus tarjetas.
  * `cards` son las tarjetas de la última corrida de ese día cuyo día es ese.
  */
-export function medirDia(cards, dia, historias) {
+export function medirDia(cards, dia) {
   const n = cards.length;
   const violencia = cards.filter((c) => VIOLENCIA.test(textoDe(c)));
   const accidentes = cards.filter((c) => !VIOLENCIA.test(textoDe(c)) && ACCIDENTES.test(textoDe(c)));
@@ -56,36 +56,19 @@ export function medirDia(cards, dia, historias) {
   );
   const nuevas = cards.filter((c) => !c?.seguimiento);
 
-  // La historia más fuerte del día: la que más se movió ESE día, contada con
-  // los desarrollos fechados ese día y los medios distintos que los
-  // publicaron. Se mira la versión más nueva de cada historia (que trae todo
-  // su recorrido), no la tarjeta de la corrida de ese día: así un hecho del
-  // sábado cuenta el sábado aunque la tarjeta se haya armado el domingo.
-  // Antes del 18-oct las tarjetas no traían desarrollos: esos días no tienen
-  // intensidad.
-  let top = null;
-  for (const h of historias || cards) {
-    const delDia = desarrollosDelDia(h, dia);
-    if (!delDia.length) continue;
-    const medios = new Set(delDia.map((x) => x.fuente || (x.fuentes || [])[0]).filter(Boolean)).size;
-    const valor = delDia.length + medios;
-    if (!top || valor > top.valor) top = { titulo: h.titulo, desarrollos: delDia.length, medios, valor };
-  }
-
   return {
     dia,
     volumen: n,
     violencia: violencia.length,
     accidentes: accidentes.length,
     gobierno: gobierno.length,
-    intensidad: top ? top.valor : null,
     polarizacion: n ? Math.round((conOpinion.length / n) * 100) : 0,
     novedad: n ? Math.round((nuevas.length / n) * 100) : 0,
-    top: top ? { titulo: top.titulo, desarrollos: top.desarrollos, medios: top.medios } : null,
   };
 }
 
-const CONTEOS = ['intensidad', 'violencia', 'accidentes', 'gobierno', 'volumen'];
+// La intensidad va aparte (intensidad.js): escala fija, no contra el promedio.
+const CONTEOS = ['violencia', 'accidentes', 'gobierno', 'volumen'];
 
 /** 0–100 contra el promedio de los días anteriores: 50 = promedio, 100 = el doble o más. */
 function escalar(valor, promedio) {
@@ -109,7 +92,6 @@ export function puntuar(medidas) {
       const con = antes.filter((x) => x[k] != null);
       const prom = con.length ? con.reduce((s, x) => s + x[k], 0) / con.length : 0;
       puntos[k] = m[k] != null && con.length ? escalar(m[k], prom) : null;
-      if (k === 'intensidad') bases.intensidad = con.length;
     }
     puntos.polarizacion = m.polarizacion;
     puntos.novedad = m.novedad;
@@ -129,10 +111,6 @@ export function colorDe(p) {
 /** La frase literal de cada medida, con el número detrás. */
 export function frase(clave, d) {
   switch (clave) {
-    case 'intensidad':
-      return d.top
-        ? `${d.top.titulo}: ${d.top.desarrollos} ${d.top.desarrollos === 1 ? 'desarrollo' : 'desarrollos'}, ${d.top.medios} ${d.top.medios === 1 ? 'medio' : 'medios'}`
-        : 'Sin datos de desarrollos ese día';
     case 'violencia':
       return `${d.violencia} de ${d.volumen} noticias son de violencia`;
     case 'accidentes':
