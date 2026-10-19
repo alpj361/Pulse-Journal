@@ -51,6 +51,7 @@ import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
 import MediosNoticia, { MarcaTweet } from "../../components/feed/MediosNoticia";
 import LineaDeTiempo from "../../components/feed/LineaDeTiempo";
+import { fechaHechoDe, seguimientoDe } from "../../components/feed/desarrollos";
 import { marcaDe } from "../../components/feed/encuadres";
 import { EV, evento } from "../../utils/analitica";
 import {
@@ -459,9 +460,21 @@ function NewsCardModal({ card, onClose }) {
               </TouchableOpacity>
             </View>
 
+            {seguimientoDe(card) ? (
+              <Text style={{ fontSize: 12, fontWeight: '700', color: INK.meta, letterSpacing: 0.2, marginBottom: 6 }}>{seguimientoDe(card)}</Text>
+            ) : null}
+
             <Text style={{ fontFamily: SERIF, fontSize: 27, color: INK.title, lineHeight: 33, letterSpacing: -0.3 }}>
               {card.titulo}
             </Text>
+
+            {/* Cuándo pasó, no cuándo se publicó la tarjeta. Si la fecha no
+                se pudo confirmar, se dice. */}
+            {fechaHechoDe(card) ? (
+              <Text style={{ fontSize: 12.5, color: INK.meta, marginTop: 6, fontStyle: fechaHechoDe(card).verificada ? 'normal' : 'italic' }}>
+                {fechaHechoDe(card).texto}
+              </Text>
+            ) : null}
 
             {/* Las fotos van pegadas al titular y no al final: en la tarjeta se
                 vieron desenfocadas detrás del título, así que es acá donde uno

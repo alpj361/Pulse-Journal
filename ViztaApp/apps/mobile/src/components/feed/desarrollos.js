@@ -133,6 +133,7 @@ function normalizar(entrada) {
     corregido: entrada.corregido === true,
     correccion,
     actores: limpiaLista(entrada.actores),
+    opinion: entrada.opinion === true,
   };
 }
 
@@ -194,6 +195,7 @@ export function filaDe(entrada, card, index, tsMasNueva) {
     detalle: entrada.detalle,
     corregido: entrada.corregido,
     correccion: entrada.correccion,
+    opinion: entrada.opinion,
   };
 }
 
@@ -228,3 +230,41 @@ export function lineaActualizada(card) {
   if (!hora) return null;
   return `actualizada ${hora}`;
 }
+
+// ─── Seguimiento, fecha del hecho y opinión (campos del 18-oct-2026) ─────────
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/**
+ * Si la historia ya venía de antes: «Seguimiento · desde 3 oct» o «Retoma ·
+ * desde 3 oct». Así una noticia que vuelve no se lee como nueva. Sin el
+ * campo, o con un tipo desconocido, nada.
+ */
+export function seguimientoDe(card) {
+  const s = card?.seguimiento;
+  if (!s || typeof s !== 'object') return null;
+  const nombre = s.tipo === 'retoma' ? 'Retoma' : s.tipo === 'seguimiento' ? 'Seguimiento' : null;
+  if (!nombre) return null;
+  const desde = diaCorto(s.desde);
+  return desde ? `${nombre} · desde ${desde}` : nombre;
+}
+
+/**
+ * Cuándo pasó el hecho, para la ficha: «Pasó el sábado 17 de oct., 10:57 a. m.».
+ * Si la fecha no está verificada, se dice eso y no se inventa una.
+ */
+export function fechaHechoDe(card) {
+  const noVerificada =
+    card?.fecha_evento_base === 'no_verificada' || /no verificada/i.test(String(card?.fecha_evento || ''));
+  if (noVerificada) return { texto: 'Fecha del hecho sin confirmar', verificada: false };
+  const ts = card?.fecha_evento_ts;
+  const fecha = fechaISO(ts);
+  if (!fecha) return null;
+  const [a, m, d] = fecha.split('-').map(Number);
+  const dia = DIAS[new Date(Date.UTC(a, m - 1, d)).getUTCDay()];
+  const hora = horaGT(ts);
+  return { texto: `Pasó el ${dia} ${d} de ${MESES[m - 1]}${hora ? `, ${hora}` : ''}`, verificada: true };
+}
+
+/** Un desarrollo que es opinión y no un hecho. */
+export const esOpinion = (entradaCruda) => entradaCruda?.opinion === true;

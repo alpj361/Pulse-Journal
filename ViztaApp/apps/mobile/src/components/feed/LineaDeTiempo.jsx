@@ -47,14 +47,16 @@ function Fila({ entrada, card, index, tsMasNueva, transicion }) {
   const fila = filaDe(entrada, card, index, tsMasNueva);
   if (!fila) return null;
 
-  const { hora, texto, medio, url, detalle, corregido, correccion } = fila;
+  const { hora, texto, medio, url, detalle, corregido, correccion, opinion } = fila;
   const trozos = [];
   if (hora) trozos.push({ clave: 'hora', nodo: <Text style={{ color: INK.meta }}>{hora}</Text> });
+  if (opinion) trozos.push({ clave: 'opinion', nodo: <Text style={{ color: INK.meta, fontStyle: 'italic' }}>opinión</Text> });
   if (texto) trozos.push({ clave: 'texto', nodo: texto });
   if (medio) trozos.push({ clave: 'medio', nodo: <Medio nombre={medio} url={url} /> });
 
   return (
-    <Animated.View layout={transicion} style={{ marginTop: index ? 16 : 0 }}>
+    // Una opinión va más tenue: no es lo que pasó, es lo que alguien dijo de eso.
+    <Animated.View layout={transicion} style={{ marginTop: index ? 16 : 0, opacity: opinion ? 0.72 : 1 }}>
       {trozos.length ? (
         <Text style={{ fontSize: 14.5, color: INK.body, lineHeight: 22 }}>
           {trozos.map((t, i) => (

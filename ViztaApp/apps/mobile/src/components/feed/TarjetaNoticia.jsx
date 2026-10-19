@@ -9,7 +9,7 @@ import { INK, MOTION, SERIF } from '../theme';
 import { categoriaDe, paletaDe } from './temas';
 import Pegatina from './Pegatina';
 import { lineaDeCard } from './encuadres';
-import { lineaActualizada } from './desarrollos';
+import { lineaActualizada, seguimientoDe } from './desarrollos';
 
 /**
  * El ámbar del aviso.
@@ -51,6 +51,7 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, s
 
   const linea = lineaDeCard(card);
   const actualizada = lineaActualizada(card);
+  const seguimiento = seguimientoDe(card);
 
   return (
     <Pressable
@@ -66,7 +67,13 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, s
       style={style}
     >
       <Animated.View style={animado}>
-        <Pegatina categoria={categoria} id={card?.id} style={{ marginBottom: 13 }} />
+        <Pegatina categoria={categoria} id={card?.id} style={{ marginBottom: seguimiento ? 9 : 13 }} />
+
+        {/* Una historia que viene de antes lo dice antes del titular: así no
+            se lee como nueva. */}
+        {seguimiento ? (
+          <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta, letterSpacing: 0.2, marginBottom: 6 }}>{seguimiento}</Text>
+        ) : null}
 
         <Text
           style={{
