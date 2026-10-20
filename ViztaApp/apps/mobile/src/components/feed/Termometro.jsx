@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Minus, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import Sticker from '../Sticker';
+import { cielo, eventosActivos, nivelCalles, traerFeedsDelDia, traerPronostico } from './callesYClima';
 import { nombreDelDia } from './congreso';
 import {
   EN_LA_FRANJA,
@@ -94,6 +95,9 @@ function Hoja({ data, onClose }) {
   const i = dias.indexOf(d);
   const anterior = dias[i - 1];
   const temas = useMemo(() => deQueSeHabla(d, anterior), [d, anterior]);
+  // Calles y clima: lo que dicen las noticias (NewsCron) y el pronóstico.
+  const { data: feeds } = useQuery({ queryKey: ['feeds-calles-clima'], queryFn: traerFeedsDelDia, staleTime: 15 * 60 * 1000 });
+  const { data: pronostico } = useQuery({ queryKey: ['pronostico-gt'], queryFn: traerPronostico, staleTime: 60 * 60 * 1000 });
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -124,11 +128,9 @@ function Hoja({ data, onClose }) {
               </Text>
               <Intensidad d={d} />
               <Violencia d={d} />
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                {CONTADORES.map(([k, nombre, sticker]) => (
-                  <Contador key={k} clave={k} nombre={nombre} sticker={sticker} d={d} />
-                ))}
-              </View>
+              <Gobierno d={d} />
+              <Calles d={d} fila={feeds?.movilidad} />
+              <Clima d={d} fila={feeds?.clima} dia={pronostico?.[d.dia]} />
             </View>
 
             {temas.length ? (
@@ -156,14 +158,6 @@ const TARJETA = {
   padding: 14,
 };
 const NUMERO = { fontFamily: SERIF, color: INK.title, letterSpacing: -0.5 };
-
-// Los contadores chicos, debajo de Violencia. El volumen no va: ya lo dice la
-// amplitud de la intensidad (son las mismas historias del día).
-const CONTADORES = [
-  ['gobierno', 'Gobierno y Congreso', 'politica'],
-  ['accidentes', 'Accidentes y tráfico', 'movilidad'],
-  ['clima', 'Clima', 'clima'],
-];
 
 /** «lo normal, 6», cuando el servidor ya junta días para comparar. */
 function Normal({ clave, d, style }) {
@@ -239,18 +233,114 @@ function Violencia({ d }) {
   );
 }
 
-/** Un contador chico: sticker, número grande y qué cuenta. */
-function Contador({ clave, nombre, sticker, d }) {
-  const n = d[clave];
-  const vacio = !n;
+/** Gobierno y Congreso: una fila, con su sticker y el número. */
+function Gobierno({ d }) {
+  const vacio = !d.gobierno;
   return (
-    <View style={[TARJETA, { flex: 1, padding: 12 }]}>
-      <Sticker nombre={sticker} size={30} style={{ opacity: vacio ? 0.45 : 1 }} />
-      <Text style={[NUMERO, { fontSize: 30, lineHeight: 34, marginTop: 6, opacity: vacio ? 0.45 : 1 }]}>{n ?? '—'}</Text>
-      <Text numberOfLines={2} style={{ fontSize: 11.5, color: INK.meta, lineHeight: 15 }}>
-        {nombre}
-      </Text>
-      <Normal clave={clave} d={d} style={{ marginTop: 2 }} />
+    <View style={[TARJETA, { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }]}>
+      <Sticker nombre="politica" size={32} style={{ opacity: vacio ? 0.45 : 1 }} />
+      <Text style={[NUMERO, { fontSize: 30, lineHeight: 34, opacity: vacio ? 0.45 : 1 }]}>{d.gobierno ?? '—'}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, color: INK.meta }}>Gobierno y Congreso</Text>
+        <Normal clave="gobierno" d={d} />
+      </View>
+    </View>
+  );
+}
+
+/** Una etiqueta con el número en negrita: «10 en las noticias». */
+function Etiqueta({ n, texto, tinta = INK.body, fondo = 'rgba(28,43,34,0.05)' }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, backgroundColor: fondo, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 }}>
+      {n != null ? <Text style={{ fontSize: 14, fontWeight: '700', color: tinta }}>{n}</Text> : null}
+      <Text style={{ fontSize: 12, color: tinta }}>{texto}</Text>
+    </View>
+  );
+}
+
+/** Lo que está pasando en un lugar: «Bloqueo · Mixco». */
+function Evento({ e }) {
+  return (
+    <Text numberOfLines={1} style={{ fontSize: 13, color: INK.body, marginTop: 6 }}>
+      <Text style={{ fontWeight: '700', color: e.alto ? '#9A5347' : INK.title }}>{e.tipo}</Text>
+      {e.zona ? ` · ${e.zona}` : ''}
+    </Text>
+  );
+}
+
+const esDeHoy = (fila, dia) => !!fila?.generated_at && diaGT(fila.generated_at) === dia;
+
+/**
+ * Las calles: qué tan pesado está el día (por los eventos activos que traen
+ * las noticias) y dónde. Los eventos son solo del último día que NewsCron
+ * armó; para los días anteriores queda el conteo.
+ */
+function Calles({ d, fila }) {
+  const eventos = esDeHoy(fila, d.dia) ? eventosActivos(fila) : [];
+  const nivel = eventos.length || esDeHoy(fila, d.dia) ? nivelCalles(eventos) : null;
+  return (
+    <View style={[TARJETA, { marginTop: 8 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Sticker nombre={nivel ? `trafico-${nivel.clave}` : 'movilidad'} respaldo="movilidad" size={40} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, color: INK.meta }}>Calles</Text>
+          {nivel ? (
+            <Text style={[NUMERO, { fontSize: 30, lineHeight: 34, color: nivel.color }]}>{nivel.nombre}</Text>
+          ) : null}
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+        <Etiqueta n={d.accidentes ?? 0} texto={d.accidentes === 1 ? 'accidente, incendio o cierre' : 'accidentes, incendios o cierres'} />
+        {eventos.length ? <Etiqueta n={eventos.length} texto={eventos.length === 1 ? 'sigue activo' : 'siguen activos'} /> : null}
+      </View>
+      {eventos.slice(0, 4).map((e) => (
+        <Evento key={e.id || `${e.tipo}-${e.zona}`} e={e} />
+      ))}
+      <Normal clave="accidentes" d={d} style={{ marginTop: 6 }} />
+    </View>
+  );
+}
+
+const grados = (x) => (x == null ? null : `${Math.round(x)}°`);
+
+/** El clima: el cielo del día en la capital y lo que reportan las noticias. */
+function Clima({ d, fila, dia }) {
+  const c = dia ? cielo(dia.codigo) : null;
+  const eventos = esDeHoy(fila, d.dia) ? eventosActivos(fila) : [];
+  const alertas = esDeHoy(fila, d.dia) ? (fila?.data?.alertas || []).filter(Boolean) : [];
+  const detalle = dia
+    ? [
+        dia.min != null ? `mín ${grados(dia.min)}` : null,
+        dia.probLluvia != null ? `${dia.probLluvia}% de lluvia` : null,
+        dia.lluviaMm ? `${Math.round(dia.lluviaMm)} mm` : null,
+      ].filter(Boolean).join(' · ')
+    : null;
+  return (
+    <View style={[TARJETA, { marginTop: 8 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Sticker nombre={c?.sticker || 'clima'} respaldo="clima" size={40} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, color: INK.meta }}>{c ? c.nombre : 'Clima'}</Text>
+          {dia?.max != null ? (
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text style={[NUMERO, { fontSize: 30, lineHeight: 34 }]}>{grados(dia.max)}</Text>
+              {detalle ? <Text style={{ fontSize: 12, color: INK.meta, flexShrink: 1 }}>{detalle}</Text> : null}
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+        <Etiqueta n={d.clima ?? 0} texto={d.clima === 1 ? 'noticia de lluvias, sismos o deslaves' : 'noticias de lluvias, sismos o deslaves'} />
+      </View>
+      {alertas.slice(0, 2).map((a, i) => (
+        <Text key={i} numberOfLines={2} style={{ fontSize: 13, color: '#9A5347', marginTop: 6, fontWeight: '600' }}>
+          {typeof a === 'string' ? a : a.titulo || a.descripcion || ''}
+        </Text>
+      ))}
+      {eventos.slice(0, 3).map((e) => (
+        <Evento key={e.id || `${e.tipo}-${e.zona}`} e={e} />
+      ))}
+      <Normal clave="clima" d={d} style={{ marginTop: 6 }} />
     </View>
   );
 }

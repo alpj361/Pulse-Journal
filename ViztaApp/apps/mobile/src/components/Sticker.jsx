@@ -65,11 +65,13 @@ const STICKER = {
 export const STICKERS = Object.keys(STICKER);
 
 /**
- * @param nombre uno de `STICKERS`; si no existe, no dibuja nada
+ * @param nombre   uno de `STICKERS`; si no existe, se usa `respaldo`
+ * @param respaldo el sticker si `nombre` todavía no existe (p. ej. una
+ *                 variante de clima que Raúl no ha hecho); si tampoco, nada
  * @param size   lado en puntos
  */
-export default function Sticker({ nombre, size = 48, style }) {
-  const fuente = STICKER[nombre];
+export default function Sticker({ nombre, respaldo, size = 48, style }) {
+  const fuente = STICKER[nombre] || STICKER[respaldo];
   if (!fuente) return null;
   // Decorativo: quien lo usa ya dice con texto lo que el sticker ilustra.
   return <Image source={fuente} style={[{ width: size, height: size }, style]} resizeMode="contain" accessible={false} />;
