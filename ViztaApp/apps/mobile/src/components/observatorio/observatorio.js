@@ -5,9 +5,9 @@ import { supabase } from '../../utils/supabase';
  * Lo que la app lee del Observatorio de Poder Ciudadano: por ahora, la Corte de
  * Constitucionalidad (resoluciones), el presupuesto anual y los actores.
  *
- * Todo pasa por ExtractorW (`/api/v1/observatorios`), que exige sesión y rol
- * beta o admin y lee de la base con su propia llave: la app no puede leer esas
- * tablas directo. Los nombres llegan como los dejó el monitor y se muestran
+ * Todo pasa por ExtractorW (`/api/v1/observatorios`), que lee de la base con
+ * su propia llave: la app no puede leer esas tablas directo. Es público
+ * (PJ, 20-oct): con sesión se manda el token, sin sesión se pide igual. Los nombres llegan como los dejó el monitor y se muestran
  * así, sin completarlos.
  */
 const BASE = `${EXTRACTORW_URL}/api/v1/observatorios`;
@@ -17,12 +17,11 @@ export class SinAcceso extends Error {}
 async function pedir(ruta, params = {}) {
   const { data } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
-  if (!token) throw new SinAcceso('Sin sesión');
   const query = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');
-  const res = await fetch(`${BASE}${ruta}${query ? `?${query}` : ''}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${BASE}${ruta}${query ? `?${query}` : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   if (res.status === 401 || res.status === 403) throw new SinAcceso('Sin acceso');
   const json = await res.json().catch(() => null);
   if (!res.ok) throw new Error(json?.message || `Error ${res.status}`);
@@ -52,12 +51,6 @@ export async function traerFaceta(faceta) {
     suma.set(f.valor, antes);
   }
   return [...suma.values()];
-}
-
-/** Quién puede ver el Observatorio: el mismo corte que hace el servidor. */
-export function puedeVerObservatorio(usuario) {
-  const roles = new Set([usuario?.role, ...(usuario?.roles || [])].filter(Boolean).map((r) => String(r).toLowerCase()));
-  return roles.has('beta') || roles.has('admin');
 }
 
 const CLASE = {

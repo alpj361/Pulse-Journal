@@ -19,8 +19,7 @@ import { roce } from '../../utils/haptics';
 export const FEEDS = [
   { clave: 'pais', nombre: 'Guatemala', sticker: 'guatemala' },
   { clave: 'congreso', nombre: 'Congreso', sticker: 'congreso' },
-  // Solo para quien tiene acceso (Beta o admin): quien no, no ve la opción.
-  { clave: 'observatorio', nombre: 'Observatorio', sticker: 'observatorio', soloBeta: true },
+  { clave: 'observatorio', nombre: 'Observatorio', sticker: 'observatorio' },
 ];
 
 const ANCHO_MENU = 190;
@@ -37,8 +36,8 @@ function Cristal({ radio, children, style }) {
   );
 }
 
-export default function SelectorFeed({ valor, onCambiar, conObservatorio = false }) {
-  const opciones = FEEDS.filter((f) => !f.soloBeta || conObservatorio);
+export default function SelectorFeed({ valor, onCambiar }) {
+  const opciones = FEEDS;
   const ancla = useRef(null);
   const [menu, setMenu] = useState(null); // { top, right } mientras está abierto
   const actual = opciones.find((f) => f.clave === valor) || opciones[0];

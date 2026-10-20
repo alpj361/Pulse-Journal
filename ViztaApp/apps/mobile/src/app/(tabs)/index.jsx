@@ -24,8 +24,6 @@ import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCo
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
-import { puedeVerObservatorio } from "../../components/observatorio/observatorio";
-import { usePulseConnectionStore } from "../../state/pulseConnectionStore";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
 
@@ -770,8 +768,6 @@ export default function Index() {
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
-  // El Observatorio es solo para Beta y admins: el servidor lo corta igual.
-  const conObservatorio = puedeVerObservatorio(usePulseConnectionStore((s) => s.connectedUser));
   // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
   const [vistaCongreso, setVistaCongreso] = useState("tablero");
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
@@ -931,10 +927,10 @@ export default function Index() {
                 {/* En el Congreso, el lugar del título lo ocupa el cambio de vista. */}
                 {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
               </View>
-              <SelectorFeed valor={feed} onCambiar={setFeed} conObservatorio={conObservatorio} />
+              <SelectorFeed valor={feed} onCambiar={setFeed} />
             </View>
 
-            {feed === "observatorio" && conObservatorio ? <ObservatorioCC /> : null}
+            {feed === "observatorio" ? <ObservatorioCC /> : null}
 
 
             {feed === "congreso" ? (

@@ -22,11 +22,11 @@ export function diaGT(fecha) {
 /** Los días desde hace `cuantos` días hasta hoy, del más viejo al más nuevo. */
 export async function traerTermometro(pais = 'gt', cuantos = 35) {
   const { data } = await supabase.auth.getSession();
+  // Público (PJ, 20-oct): con sesión se manda el token, sin sesión se pide igual.
   const token = data?.session?.access_token;
-  if (!token) return [];
   const desde = diaGT(Date.now() - cuantos * 86400000);
   const res = await fetch(`${EXTRACTORW_URL}/api/termometro?pais=${encodeURIComponent(pais)}&desde=${desde}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (res.status === 401 || res.status === 403) return [];
   const json = await res.json().catch(() => null);
