@@ -242,7 +242,9 @@ const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', '
  */
 export function seguimientoDe(card) {
   const s = card?.seguimiento;
-  if (!s || typeof s !== 'object') return null;
+  // Desde el 19-oct, `es_seguimiento` siempre viene: también marca las
+  // historias que siguen dentro del mismo tablero, sin objeto `seguimiento`.
+  if (!s || typeof s !== 'object') return card?.es_seguimiento === true ? 'Seguimiento' : null;
   const nombre = s.tipo === 'retoma' ? 'Retoma' : s.tipo === 'seguimiento' ? 'Seguimiento' : null;
   if (!nombre) return null;
   const desde = diaCorto(s.desde);

@@ -4,6 +4,8 @@ describe('seguimientoDe', () => {
   it('sin campo o con tipo desconocido no dice nada', () => {
     expect(seguimientoDe({})).toBeNull();
     expect(seguimientoDe({ seguimiento: { tipo: 'otra' } })).toBeNull();
+    expect(seguimientoDe({ es_seguimiento: false })).toBeNull();
+    expect(seguimientoDe({ es_seguimiento: true })).toBe('Seguimiento');
   });
   it('retoma y seguimiento con su fecha', () => {
     expect(seguimientoDe({ seguimiento: { tipo: 'seguimiento', desde: '2026-10-03T08:00:00-06:00' } })).toBe('Seguimiento · desde 3 oct');
@@ -28,5 +30,14 @@ describe('opinión en desarrollos', () => {
   it('se conserva la marca', () => {
     const [d] = desarrollosDe({ desarrollos: [{ texto: 'x', ts: '2026-10-18T10:00:00-06:00', opinion: true }] });
     expect(d.opinion).toBe(true);
+  });
+});
+
+describe('fuentes del 19-oct', () => {
+  const { fuentesDe } = require('../encuadres');
+  it('cuenta medios sin cuentas oficiales cuando viene independientes_casas', () => {
+    const f = { casas: ['@soy_502', 'Soy502', '@PNCdeGuatemala'], independientes_casas: ['Soy502'], independientes: 1 };
+    expect(fuentesDe({ fuentes: f }).casas).toEqual(['Soy502']);
+    expect(fuentesDe({ fuentes: { casas: ['A', 'B'] } }).casas).toEqual(['A', 'B']);
   });
 });
