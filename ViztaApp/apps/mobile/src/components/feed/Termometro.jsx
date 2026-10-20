@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Minus, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
+import Sticker from '../Sticker';
 import { nombreDelDia } from './congreso';
 import {
   EN_LA_FRANJA,
@@ -12,11 +13,10 @@ import {
   colorIntensidad,
   deQueSeHabla,
   diaGT,
-  frase,
-  frasesIntensidad,
   normalDe,
   puntosDe,
   traerTermometro,
+  victimasDe,
 } from './termometro';
 
 /**
@@ -109,25 +109,26 @@ function Hoja({ data, onClose }) {
 
           <ScrollView contentContainerStyle={{ paddingHorizontal: 26, paddingTop: 18, paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
             <Text style={{ fontFamily: SERIF, fontSize: 26, color: INK.title, letterSpacing: -0.3 }}>Cómo está el día</Text>
-            <Text style={{ fontSize: 13, color: INK.meta, marginTop: 3 }}>
-              {nombreDelDia(d.dia)}
-              {d.parcial ? ' · hasta ahora' : ''}
-              {d.datosParciales ? ' · con datos incompletos' : ''}
-            </Text>
 
             <Semana dias={dias} elegido={d.dia} onElegir={setElegido} />
 
             <View style={{ marginTop: 22 }}>
               {/* El termómetro es de un día: el elegido en la semana. Se dice
-                  cuál, para que no se lea como de toda la semana. */}
-              <Text style={ROTULO}>{`TERMÓMETRO · ${nombreDelDia(d.dia).toUpperCase()}`}</Text>
-              {MEDIDAS.map(([k, nombre]) =>
-                k === 'intensidad' ? (
-                  <Intensidad key={k} d={d} />
-                ) : (
-                  <Medida key={k} clave={k} nombre={nombre} d={d} />
-                )
-              )}
+                  cuál —una sola vez, acá—, para que no se lea como de toda la
+                  semana. */}
+              <Text style={ROTULO}>
+                {[nombreDelDia(d.dia), d.parcial ? 'hasta ahora' : null, d.datosParciales ? 'con datos incompletos' : null]
+                  .filter(Boolean)
+                  .join(' · ')
+                  .toUpperCase()}
+              </Text>
+              <Intensidad d={d} />
+              <Violencia d={d} />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                {CONTADORES.map(([k, nombre, sticker]) => (
+                  <Contador key={k} clave={k} nombre={nombre} sticker={sticker} d={d} />
+                ))}
+              </View>
             </View>
 
             {temas.length ? (
@@ -147,24 +148,60 @@ function Hoja({ data, onClose }) {
   );
 }
 
-/** La intensidad: su total en escala fija y sus tres partes con su cifra. */
+const TARJETA = {
+  backgroundColor: 'rgba(255,255,255,0.72)',
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: RAYA,
+  padding: 14,
+};
+const NUMERO = { fontFamily: SERIF, color: INK.title, letterSpacing: -0.5 };
+
+// Los contadores chicos, debajo de Violencia. El volumen no va: ya lo dice la
+// amplitud de la intensidad (son las mismas historias del día).
+const CONTADORES = [
+  ['gobierno', 'Gobierno y Congreso', 'politica'],
+  ['accidentes', 'Accidentes y tráfico', 'movilidad'],
+  ['clima', 'Clima', 'clima'],
+];
+
+/** «lo normal, 6», cuando el servidor ya junta días para comparar. */
+function Normal({ clave, d, style }) {
+  const n = normalDe(clave, d);
+  if (n == null) return null;
+  return <Text style={[{ fontSize: 11, color: INK.faint }, style]}>{`lo normal, ${n}`}</Text>;
+}
+
+/**
+ * La intensidad: el número grande, en su color, y una barra partida en sus
+ * tres componentes —cuánto puso cada uno—, con el dato de cada uno abajo.
+ */
 function Intensidad({ d }) {
   const p = d.intensidad;
+  const c = d.componentes;
+  const color = colorIntensidad(p);
+  const partes = [
+    ['Seguimiento', c.seguimiento, c.maxDesarrollos != null ? `la más seguida, ${c.maxDesarrollos} ${c.maxDesarrollos === 1 ? 'vez' : 'veces'}` : null, 1],
+    ['Amplitud', c.amplitud, d.volumen != null ? `${d.volumen} ${d.volumen === 1 ? 'historia' : 'historias'}` : null, 0.66],
+    ['Alto impacto', c.altoImpacto, c.historiasAltoImpacto != null ? `${c.historiasAltoImpacto} con 5 medios o más` : null, 0.38],
+  ];
   return (
-    <View style={{ marginTop: 14 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>Intensidad</Text>
-        <Text style={{ fontSize: 12.5, color: INK.meta }}>{p ?? '—'}</Text>
+    <View style={[TARJETA, { marginTop: 10 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <Text style={[NUMERO, { fontSize: 50, lineHeight: 54, color }]}>{p ?? '—'}</Text>
+        <Text style={{ fontSize: 13, color: INK.meta }}>Intensidad</Text>
       </View>
-      <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, marginTop: 6, overflow: 'hidden' }}>
-        <View style={{ width: `${Math.max(2, p ?? 0)}%`, height: 6, borderRadius: 3, backgroundColor: colorIntensidad(p) }} />
+      <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, backgroundColor: RAYA, overflow: 'hidden', marginTop: 8, gap: 2 }}>
+        {partes.map(([nombre, pts, , op]) => (
+          <View key={nombre} style={{ width: `${Math.max(0, pts ?? 0)}%`, backgroundColor: color, opacity: op }} />
+        ))}
       </View>
-      <View style={{ marginTop: 6, gap: 4 }}>
-        {frasesIntensidad(d).map(([nombre, pts, texto]) => (
-          <View key={nombre} style={{ flexDirection: 'row', gap: 8 }}>
-            <Text style={{ width: 84, fontSize: 12, color: INK.meta }}>{nombre}</Text>
-            <Text style={{ flex: 1, fontSize: 12.5, color: INK.body, lineHeight: 17 }}>{texto}</Text>
-            <Text style={{ fontSize: 12, color: INK.faint }}>{pts}/33</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+        {partes.map(([nombre, , dato, op]) => (
+          <View key={nombre} style={{ flex: 1 }}>
+            <View style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: color, opacity: op, marginBottom: 5 }} />
+            <Text style={{ fontSize: 11.5, fontWeight: '600', color: INK.title }}>{nombre}</Text>
+            {dato ? <Text style={{ fontSize: 11.5, color: INK.body, lineHeight: 15, marginTop: 1 }}>{dato}</Text> : null}
           </View>
         ))}
       </View>
@@ -172,25 +209,48 @@ function Intensidad({ d }) {
   );
 }
 
-/** Un indicador: el conteo del día y, cuando ya hay con qué, cómo está contra lo normal. */
-function Medida({ clave, nombre, d }) {
-  const p = puntosDe(clave, d);
-  const normal = normalDe(clave, d);
+/** Violencia: cuántas historias nuevas y, debajo, las víctimas que dicen las tarjetas. */
+function Violencia({ d }) {
+  const victimas = victimasDe(d.victimas);
+  const vacio = !d.violencia;
   return (
-    <View style={{ marginTop: 14 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>{nombre}</Text>
-        <Text style={{ fontSize: 12.5, color: INK.meta }}>{d[clave] ?? '—'}</Text>
+    <View style={[TARJETA, { marginTop: 8 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Sticker nombre="violencia" size={40} style={{ opacity: vacio ? 0.5 : 1 }} />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+            <Text style={[NUMERO, { fontSize: 38, lineHeight: 42, opacity: vacio ? 0.5 : 1 }]}>{d.violencia ?? '—'}</Text>
+            <Text style={{ fontSize: 13, color: INK.meta }}>Violencia</Text>
+          </View>
+          <Normal clave="violencia" d={d} />
+        </View>
       </View>
-      {p != null ? (
-        <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, marginTop: 6, overflow: 'hidden' }}>
-          <View style={{ width: `${Math.max(2, p)}%`, height: 6, borderRadius: 3, backgroundColor: colorDe(p, clave) }} />
+      {victimas.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {victimas.map(([n, palabra]) => (
+            <View key={palabra} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, backgroundColor: '#F3E9E7', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 }}>
+              {n != null ? <Text style={{ fontSize: 14, fontWeight: '700', color: '#783D34' }}>{n}</Text> : null}
+              <Text style={{ fontSize: 12, color: '#783D34' }}>{palabra}</Text>
+            </View>
+          ))}
         </View>
       ) : null}
-      <Text style={{ fontSize: 12.5, color: INK.body, marginTop: 5, lineHeight: 18 }}>
-        {frase(clave, d)}
-        {normal != null ? <Text style={{ color: INK.faint }}>{` · lo normal, ${normal}`}</Text> : null}
+    </View>
+  );
+}
+
+/** Un contador chico: sticker, número grande y qué cuenta. */
+function Contador({ clave, nombre, sticker, d }) {
+  const n = d[clave];
+  const vacio = !n;
+  return (
+    <View style={[TARJETA, { flex: 1, padding: 12 }]}>
+      <Sticker nombre={sticker} size={30} style={{ opacity: vacio ? 0.45 : 1 }} />
+      <Text style={[NUMERO, { fontSize: 30, lineHeight: 34, marginTop: 6, opacity: vacio ? 0.45 : 1 }]}>{n ?? '—'}</Text>
+      <Text numberOfLines={2} style={{ fontSize: 11.5, color: INK.meta, lineHeight: 15 }}>
+        {nombre}
       </Text>
+      <Normal clave={clave} d={d} style={{ marginTop: 2 }} />
     </View>
   );
 }

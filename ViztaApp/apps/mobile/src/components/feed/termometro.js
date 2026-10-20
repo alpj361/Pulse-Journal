@@ -92,6 +92,20 @@ export function colorDe(p, clave) {
 
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
+/** Las víctimas del día como [número, palabra]: [[3, 'muertos'], [9, 'capturados']]. */
+export function victimasDe(v) {
+  if (!v) return [];
+  const t = [
+    ['muertos', 'muerto', 'muertos'],
+    ['desaparecidos', 'desaparecido', 'desaparecidos'],
+    ['heridos', 'herido', 'heridos'],
+    ['capturados', 'capturado', 'capturados'],
+  ];
+  const out = t.filter(([k]) => v[k]).map(([k, uno, varios]) => [v[k], v[k] === 1 ? uno : varios]);
+  if (v.victimas_sin_cifra) out.push([null, 'casos sin cifra']);
+  return out;
+}
+
 /** Las víctimas del día, en palabras: «3 muertos, 9 capturados». */
 export function fraseVictimas(v) {
   if (!v) return null;
