@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Minus, X } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, HelpCircle, Minus, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import Sticker from '../Sticker';
 import { cielo, eventosActivos, nivelCalles, traerFeedsDelDia, traerPronostico } from './callesYClima';
@@ -278,6 +278,9 @@ const esDeHoy = (fila, dia) => !!fila?.generated_at && diaGT(fila.generated_at) 
 function Calles({ d, fila }) {
   const eventos = esDeHoy(fila, d.dia) ? eventosActivos(fila) : [];
   const nivel = eventos.length || esDeHoy(fila, d.dia) ? nivelCalles(eventos) : null;
+  // Se abre solo si se toca: no es un letrero fijo. Cuando el mapa tenga el
+  // tráfico en vivo, hora por hora, esto cambia.
+  const [ayuda, setAyuda] = useState(false);
   return (
     <View style={[TARJETA, { marginTop: 8 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -288,7 +291,23 @@ function Calles({ d, fila }) {
             <Text style={[NUMERO, { fontSize: 30, lineHeight: 34, color: nivel.color }]}>{nivel.nombre}</Text>
           ) : null}
         </View>
+        <Pressable
+          onPress={() => setAyuda((v) => !v)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Qué muestra Calles"
+          style={{ alignSelf: 'flex-start' }}
+        >
+          <HelpCircle size={18} color={ayuda ? INK.title : INK.faint} />
+        </Pressable>
       </View>
+      {ayuda ? (
+        <Pressable onPress={() => setAyuda(false)} style={{ backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 10, padding: 10, marginTop: 10 }}>
+          <Text style={{ fontSize: 12.5, color: INK.body, lineHeight: 17 }}>
+            Es cómo estuvo el día en las calles, según las noticias. No es el tráfico de este momento: se arma una vez al día.
+          </Text>
+        </Pressable>
+      ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         <Etiqueta n={d.accidentes ?? 0} texto={d.accidentes === 1 ? 'accidente, incendio o cierre' : 'accidentes, incendios o cierres'} />
         {eventos.length ? <Etiqueta n={eventos.length} texto={eventos.length === 1 ? 'sigue activo' : 'siguen activos'} /> : null}
