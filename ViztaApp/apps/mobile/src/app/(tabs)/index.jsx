@@ -61,21 +61,14 @@ const TIPOS_MAPA = ['mapa'];
 const TUERCA = '#B45309';
 import * as Notifications from 'expo-notifications';
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://qqshdccpmypelhmyqnut.supabase.co';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 // El feed público se estrena con Guatemala. El filtro vive en la consulta para
 // que no lleguen al cliente registros generados para otros países.
 const FEED_COUNTRY = 'gt';
 
-async function supabaseFetch(table, params = '') {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-  });
-  if (!res.ok) throw new Error(`Supabase fetch failed: ${res.status}`);
-  return res.json();
+async function leerPublico(consulta) {
+  const { data, error } = await consulta;
+  if (error) throw error;
+  return data;
 }
 
 // ── Entity Wiki Modal ─────────────────────────────────────────────────────────
@@ -662,9 +655,12 @@ export default function Index() {
   const { data: trendsData } = useQuery({
     queryKey: ['pulse-trends'],
     queryFn: async () => {
-      const rows = await supabaseFetch(
-        'trends',
-        'select=about,top_keywords,timestamp&order=timestamp.desc&limit=1'
+      const rows = await leerPublico(
+        supabase
+          .from('trends')
+          .select('about,top_keywords,timestamp')
+          .order('timestamp', { ascending: false })
+          .limit(1)
       );
       return rows[0] || null;
     },
@@ -685,10 +681,13 @@ export default function Index() {
       //
       // `cards` es el jsonb entero: desarrollos, bajada y ultima_actualizacion
       // viven adentro. No hace falta pedir columnas nuevas.
-      const rows = await supabaseFetch(
-        'news_cards',
-        `select=cards,generated_at,tweets_source_count` +
-          `&pais=eq.${FEED_COUNTRY}&order=generated_at.desc&limit=1`
+      const rows = await leerPublico(
+        supabase
+          .from('news_cards')
+          .select('cards,generated_at,tweets_source_count')
+          .eq('pais', FEED_COUNTRY)
+          .order('generated_at', { ascending: false })
+          .limit(1)
       );
       return rows?.[0]?.cards || [];
     },
@@ -698,10 +697,14 @@ export default function Index() {
   const { data: tweetsData } = useQuery({
     queryKey: ['pulse-tweets'],
     queryFn: async () => {
-      const rows = await supabaseFetch(
-        'trending_tweets',
-        `select=texto,usuario,likes,retweets,verified,fecha_tweet&pais=eq.${FEED_COUNTRY}` +
-          '&source_type=eq.profile&order=fecha_tweet.desc&limit=8'
+      const rows = await leerPublico(
+        supabase
+          .from('trending_tweets')
+          .select('texto,usuario,likes,retweets,verified,fecha_tweet')
+          .eq('pais', FEED_COUNTRY)
+          .eq('source_type', 'profile')
+          .order('fecha_tweet', { ascending: false })
+          .limit(8)
       );
       return rows || [];
     },
@@ -721,10 +724,15 @@ export default function Index() {
   const { data: narrativaData } = useQuery({
     queryKey: ['pulse-narrativa'],
     queryFn: async () => {
-      const rows = await supabaseFetch(
-        'narrativa_diaria',
-        `select=titulo,narrativa,temas_subiendo,actores_clave,intencion_predominante,intensidad_informativa,generated_at&pais=eq.${FEED_COUNTRY}` +
-          '&order=generated_at.desc&limit=1'
+      const rows = await leerPublico(
+        supabase
+          .from('narrativa_diaria')
+          .select(
+            'titulo,narrativa,temas_subiendo,actores_clave,intencion_predominante,intensidad_informativa,generated_at'
+          )
+          .eq('pais', FEED_COUNTRY)
+          .order('generated_at', { ascending: false })
+          .limit(1)
       );
       return rows[0] || null;
     },
