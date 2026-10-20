@@ -320,6 +320,22 @@ function Calles({ d, fila }) {
   );
 }
 
+/**
+ * Una alerta del feed de Clima: «Insivumeh · alerta naranja: lluvias fuertes
+ * en el occidente». Quién la da y el nivel, como los dice la fuente.
+ */
+function Alerta({ a }) {
+  const texto = typeof a === 'string' ? a : a?.texto;
+  if (!texto) return null;
+  const quien = typeof a === 'string' ? null : [a.institucion, a.nivel].filter(Boolean).join(' · ');
+  return (
+    <Text numberOfLines={3} style={{ fontSize: 13, color: INK.body, marginTop: 6, lineHeight: 18 }}>
+      {quien ? <Text style={{ fontWeight: '700', color: '#9A5347' }}>{`${quien}: `}</Text> : null}
+      {texto}
+    </Text>
+  );
+}
+
 const grados = (x) => (x == null ? null : `${Math.round(x)}°`);
 
 /** El clima: el cielo del día en la capital y lo que reportan las noticias. */
@@ -352,9 +368,7 @@ function Clima({ d, fila, dia }) {
         <Etiqueta n={d.clima ?? 0} texto={d.clima === 1 ? 'noticia de lluvias, sismos o deslaves' : 'noticias de lluvias, sismos o deslaves'} />
       </View>
       {alertas.slice(0, 2).map((a, i) => (
-        <Text key={i} numberOfLines={2} style={{ fontSize: 13, color: '#9A5347', marginTop: 6, fontWeight: '600' }}>
-          {typeof a === 'string' ? a : a.titulo || a.descripcion || ''}
-        </Text>
+        <Alerta key={i} a={a} />
       ))}
       {eventos.slice(0, 3).map((e) => (
         <Evento key={e.id || `${e.tipo}-${e.zona}`} e={e} />
