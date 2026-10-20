@@ -1,166 +1,180 @@
 /**
- * Cómo está el día: medidas contadas, no leídas por un modelo.
+ * Cómo está el día: lo calcula NewsCron (tabla `termometro_diario`) con los
+ * campos del catálogo de cada tarjeta, sin listas de palabras ni IA, y la app
+ * lo lee de ExtractorW (`GET /api/termometro`). Acá solo se le da forma.
  *
- * Todo sale de las tarjetas de noticias de cada día (la última corrida de ese
- * día). Nada de IA: subcategoría y palabras del título, conteos y promedios.
- * Las listas de palabras son un primer corte; Morrow las ajusta.
+ * Intensidad: 0–100 en escala fija, suma de seguimiento, amplitud y alto
+ * impacto (0–33.3 cada uno). Las víctimas no entran a la intensidad; solo
+ * acompañan a Violencia.
  *
- * Escala: las medidas que cuentan cosas (intensidad, violencia, accidentes,
- * gobierno, volumen) valen 50 cuando el día está en su promedio de los días
- * anteriores, 100 cuando está al doble o más. Polarización y novedad ya son
- * porcentajes y se muestran como tales.
+ * Los demás indicadores son conteos de historias nuevas del día. Se comparan
+ * contra «lo normal» solo cuando el servidor junta 7 días comparables
+ * (`comparacion.disponible`); antes de eso se muestra el número y nada más.
  */
-
-const VIOLENCIA =
-  /homicid|asesin|ataque|atac|armad|disparo|balacera|balead|muert[oa]s?\b|fallec|captur|extorsi|secuestr|femicid|agresi|violaci|cad[aá]ver|cuerpo|crimen|pandill|mara\b|herido de bala|robo|asalt/i;
-const ACCIDENTES =
-  /accidente|colisi|choque|volcad|vuelca|percance|atropell|derrape|salida de pista|incendio|derrumbe|deslizamiento|desliz|emergencia|inundaci|tr[aá]nsito|tr[aá]fico|[aá]rbol ca[ií]do|hundimiento|sismo|tormenta|lluvia/i;
-const GOBIERNO =
-  /congreso|diputad|iniciativa|bancada|pleno|ministr|gobierno|presidente|ar[eé]valo|ejecutivo|ministerio p[uú]blico|\bmp\b|fiscal|\bcc\b|corte de constitucionalidad|\bcsj\b|\btse\b|decreto|presupuesto|contralor|municipalidad|alcald/i;
-const CUESTIONA = /cuestion|critic|denunci|rechaz|exig|reclam|acus|pol[eé]mic|protest|se[nñ]al/i;
-
-const textoDe = (c) => `${c?.subcategoria || ''} ${c?.titulo || ''}`;
-const num = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
-const lista = (v) => (Array.isArray(v) ? v : []);
+import { EXTRACTORW_URL } from '../../utils/servicios';
+import { supabase } from '../../utils/supabase';
 
 /** «2026-10-18»: el día en Guatemala de una fecha. */
 export function diaGT(fecha) {
   return new Date(fecha).toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' });
 }
 
-/** El día de una historia: su último movimiento (primera vez o última actualización). */
-export function diaDeCard(card, respaldo) {
-  const momentos = [card?.primera_vez, card?.ultima_actualizacion, respaldo]
-    .filter(Boolean)
-    .map((t) => new Date(t).getTime())
-    .filter(Number.isFinite);
-  return momentos.length ? diaGT(Math.max(...momentos)) : null;
+/** Los días desde hace `cuantos` días hasta hoy, del más viejo al más nuevo. */
+export async function traerTermometro(pais = 'gt', cuantos = 35) {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) return [];
+  const desde = diaGT(Date.now() - cuantos * 86400000);
+  const res = await fetch(`${EXTRACTORW_URL}/api/termometro?pais=${encodeURIComponent(pais)}&desde=${desde}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401 || res.status === 403) return [];
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) throw new Error(json?.error || `Error ${res.status}`);
+  return (json.dias || []).map(formaDia);
 }
 
-const desarrollosDelDia = (card, dia) => lista(card?.desarrollos).filter((d) => d?.ts && diaGT(d.ts) === dia);
+const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 
-/**
- * Las medidas crudas de un día, a partir de sus tarjetas.
- * `cards` son las tarjetas de la última corrida de ese día cuyo día es ese.
- */
-export function medirDia(cards, dia) {
-  const n = cards.length;
-  const violencia = cards.filter((c) => VIOLENCIA.test(textoDe(c)));
-  const accidentes = cards.filter((c) => !VIOLENCIA.test(textoDe(c)) && ACCIDENTES.test(textoDe(c)));
-  const gobierno = cards.filter((c) => GOBIERNO.test(textoDe(c)));
-  const conOpinion = cards.filter(
-    (c) => lista(c?.desarrollos).some((d) => d?.opinion === true) || CUESTIONA.test(c?.titulo || '')
-  );
-  const nuevas = cards.filter((c) => !c?.seguimiento);
-
+/** Un día del servidor, con nombres cortos y sin nulos sorpresa. */
+export function formaDia(d) {
+  const ind = d?.indicadores || {};
+  const comp = d?.componentes || {};
   return {
-    dia,
-    volumen: n,
-    violencia: violencia.length,
-    accidentes: accidentes.length,
-    gobierno: gobierno.length,
-    polarizacion: n ? Math.round((conOpinion.length / n) * 100) : 0,
-    novedad: n ? Math.round((nuevas.length / n) * 100) : 0,
+    dia: d.fecha,
+    parcial: !!d.parcial,
+    datosParciales: !!d.datos_parciales,
+    intensidad: num(d.intensidad),
+    componentes: {
+      seguimiento: num(comp.seguimiento),
+      amplitud: num(comp.amplitud),
+      altoImpacto: num(comp.alto_impacto),
+      maxDesarrollos: num(comp.max_desarrollos_dia),
+      historiasAltoImpacto: num(comp.historias_alto_impacto),
+    },
+    volumen: num(ind.volumen),
+    nuevas: num(ind.nuevas),
+    violencia: num(ind.violencia),
+    gobierno: num(ind.gobierno_congreso),
+    accidentes: num(ind.accidentes),
+    clima: num(ind.clima),
+    victimas: d.violencia_victimas || null,
+    promedios: d.comparacion?.disponible ? d.comparacion.promedios || null : null,
+    top: Array.isArray(d.top_historias) ? d.top_historias : [],
   };
 }
 
-// La intensidad va aparte (intensidad.js): escala fija, no contra el promedio.
-const CONTEOS = ['violencia', 'accidentes', 'gobierno', 'volumen'];
-
-/** 0–100 contra el promedio de los días anteriores: 50 = promedio, 100 = el doble o más. */
-function escalar(valor, promedio) {
-  if (!promedio) return valor ? 100 : 0;
+/** 0–100 contra lo normal: 50 = el promedio, 100 = el doble o más. Sin promedio, null. */
+export function contraLoNormal(valor, promedio) {
+  if (valor == null || promedio == null) return null;
+  if (!promedio) return valor ? 100 : 50;
   return Math.max(0, Math.min(100, Math.round((valor / promedio) * 50)));
 }
 
-/**
- * Cada día con sus puntajes. Cada día se compara contra los días anteriores
- * a él que haya (`base` dice cuántos), nunca contra sí mismo.
- */
-export function puntuar(medidas) {
-  const orden = [...medidas].sort((a, b) => (a.dia < b.dia ? -1 : 1));
-  return orden.map((m, i) => {
-    const antes = orden.slice(Math.max(0, i - 30), i);
-    const puntos = {};
-    const bases = {};
-    for (const k of CONTEOS) {
-      // Solo cuentan los días que tienen esa medida (la intensidad no existe
-      // antes del 18-oct).
-      const con = antes.filter((x) => x[k] != null);
-      const prom = con.length ? con.reduce((s, x) => s + x[k], 0) / con.length : 0;
-      puntos[k] = m[k] != null && con.length ? escalar(m[k], prom) : null;
-    }
-    puntos.polarizacion = m.polarizacion;
-    puntos.novedad = m.novedad;
-    return { ...m, puntos, base: antes.length, bases };
-  });
+/** Color de la intensidad (escala fija): <30 verde, <50 amarillo, <70 naranja, rojo. */
+export function colorIntensidad(p) {
+  if (p == null) return 'rgba(28,43,34,0.12)';
+  if (p < 30) return '#4C9A6A';
+  if (p < 50) return '#C9B458';
+  if (p < 70) return '#D98A3D';
+  return '#C0453B';
 }
 
-/** Color de un puntaje, de verde a rojo. Sin puntaje, gris. */
-export function colorDe(p) {
+/** Color de un indicador contra lo normal. El rojo, solo en violencia y accidentes (Morrow). */
+export function colorDe(p, clave) {
   if (p == null) return 'rgba(28,43,34,0.12)';
+  if (clave !== 'violencia' && clave !== 'accidentes') return '#5F6F66';
   if (p < 35) return '#4C9A6A';
   if (p < 55) return '#C9B458';
   if (p < 75) return '#D98A3D';
   return '#C0453B';
 }
 
-/** La frase literal de cada medida, con el número detrás. */
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+/** Las víctimas del día, en palabras: «3 muertos, 9 capturados». */
+export function fraseVictimas(v) {
+  if (!v) return null;
+  const partes = [
+    v.muertos ? plural(v.muertos, 'muerto', 'muertos') : null,
+    v.desaparecidos ? plural(v.desaparecidos, 'desaparecido', 'desaparecidos') : null,
+    v.heridos ? plural(v.heridos, 'herido', 'heridos') : null,
+    v.capturados ? plural(v.capturados, 'capturado', 'capturados') : null,
+  ].filter(Boolean);
+  if (v.victimas_sin_cifra) partes.push(partes.length ? 'y casos sin cifra' : 'casos sin cifra');
+  return partes.length ? partes.join(', ').replace(', y casos', ' y casos') : null;
+}
+
+/** La frase literal de cada indicador, con el número detrás. */
 export function frase(clave, d) {
   switch (clave) {
-    case 'violencia':
-      return `${d.violencia} de ${d.volumen} noticias son de violencia`;
-    case 'accidentes':
-      return `${d.accidentes} de ${d.volumen} son accidentes, tráfico o emergencias`;
+    case 'violencia': {
+      const base = plural(d.violencia ?? 0, 'historia nueva de violencia', 'historias nuevas de violencia');
+      const v = fraseVictimas(d.victimas);
+      return v ? `${base}: ${v}` : base;
+    }
     case 'gobierno':
-      return `${d.gobierno} de ${d.volumen} tocan al Gobierno, el Congreso o las cortes`;
+      return `${plural(d.gobierno ?? 0, 'acto', 'actos')} del Ejecutivo, el Congreso o las municipalidades`;
+    case 'accidentes':
+      return `${plural(d.accidentes ?? 0, 'accidente, incendio o cierre', 'accidentes, incendios o cierres')}`;
+    case 'clima':
+      return `${plural(d.clima ?? 0, 'noticia', 'noticias')} de lluvias, sismos o deslaves`;
     case 'volumen':
-      return `${d.volumen} noticias`;
-    case 'polarizacion':
-      return `${d.polarizacion}% con opinión o cuestionamientos`;
-    case 'novedad':
-      return d.novedad >= 100
-        ? 'Todas son historias nuevas'
-        : d.novedad <= 0
-          ? 'Todas son seguimientos de días anteriores'
-          : `${d.novedad}% son historias nuevas; el resto, seguimientos`;
+      return d.nuevas != null && d.nuevas !== d.volumen
+        ? `${plural(d.volumen ?? 0, 'noticia', 'noticias')}, ${d.nuevas} nuevas`
+        : plural(d.volumen ?? 0, 'noticia', 'noticias');
     default:
       return '';
   }
+}
+
+/** Las tres partes de la intensidad, cada una con su cifra. */
+export function frasesIntensidad(d) {
+  const c = d.componentes;
+  const top = d.top[0];
+  const r = (x) => (x == null ? 0 : Math.round(x));
+  return [
+    ['Seguimiento', r(c.seguimiento), top ? `${top.titulo}: ${plural(c.maxDesarrollos ?? top.desarrollos_dia, 'vez', 'veces')} en el día` : 'Ninguna historia se siguió'],
+    ['Amplitud', r(c.amplitud), plural(d.volumen ?? 0, 'historia', 'historias')],
+    ['Alto impacto', r(c.altoImpacto), `${plural(c.historiasAltoImpacto ?? 0, 'historia', 'historias')} con 5 medios o más`],
+  ];
 }
 
 export const MEDIDAS = [
   ['intensidad', 'Intensidad'],
   ['violencia', 'Violencia'],
   ['gobierno', 'Gobierno y Congreso'],
-  ['volumen', 'Volumen'],
   ['accidentes', 'Accidentes y tráfico'],
+  ['clima', 'Clima'],
+  ['volumen', 'Volumen'],
 ];
-// Polarización y novedad quedan fuera hasta definir cómo medirlas (PJ,
-// 19-oct): se siguen calculando en medirDia, pero no se muestran.
 
 /** Las 4 de la franja de arriba. */
 export const EN_LA_FRANJA = ['intensidad', 'violencia', 'gobierno', 'volumen'];
 
+const PROMEDIO = { volumen: 'volumen', violencia: 'violencia', gobierno: 'gobierno_congreso', accidentes: 'accidentes', clima: 'clima' };
+
+/** El puntaje 0–100 de un indicador contra lo normal, o null si todavía no hay con qué comparar. */
+export function puntosDe(clave, d) {
+  if (clave === 'intensidad') return d.intensidad;
+  return contraLoNormal(d[clave], d.promedios?.[PROMEDIO[clave]]);
+}
+
+/** Lo normal de un indicador, redondeado, si ya existe. */
+export function normalDe(clave, d) {
+  const p = d.promedios?.[PROMEDIO[clave]];
+  return p == null ? null : Math.round(p);
+}
+
 /**
- * De qué se habla: las historias con más peso del día, con su % del total y
- * cómo les fue contra ayer.
+ * De qué se habla: las historias más seguidas del día, y cómo les fue contra
+ * el día anterior (por cuántas veces se publicaron).
  */
-export function deQueSeHabla(cardsHoy, cardsAyer, cuantas = 5) {
-  const peso = (c) => num(c?.impacto_score) * (1 + num(c?.fuentes?.independientes) / 5);
-  const total = cardsHoy.reduce((s, c) => s + peso(c), 0) || 1;
-  const totalAyer = cardsAyer.reduce((s, c) => s + peso(c), 0) || 1;
-  const ayer = new Map(cardsAyer.map((c) => [c.id, peso(c) / totalAyer]));
-  return [...cardsHoy]
-    .sort((a, b) => peso(b) - peso(a))
-    .slice(0, cuantas)
-    .map((c) => {
-      const parte = peso(c) / total;
-      const antes = ayer.get(c.id);
-      const rumbo = antes == null ? 'nueva' : parte > antes * 1.1 ? 'sube' : parte < antes * 0.9 ? 'baja' : 'igual';
-      return { id: c.id, titulo: c.titulo, categoria: c.categoria, porcentaje: Math.round(parte * 100), rumbo };
-    });
+export function deQueSeHabla(d, anterior) {
+  const antes = new Map((anterior?.top || []).map((t) => [t.historia, t.desarrollos_dia]));
+  return d.top.map((t) => {
+    const a = antes.get(t.historia);
+    const rumbo = a == null ? 'nueva' : t.desarrollos_dia > a ? 'sube' : t.desarrollos_dia < a ? 'baja' : 'igual';
+    return { id: t.historia, titulo: t.titulo, veces: t.desarrollos_dia, medios: t.medios_dia, rumbo };
+  });
 }

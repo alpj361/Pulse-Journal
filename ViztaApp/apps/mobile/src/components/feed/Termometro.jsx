@@ -3,68 +3,38 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Minus, X } from 'lucide-react-native';
-import { supabase } from '../../utils/supabase';
 import { INK, SERIF } from '../theme';
 import { nombreDelDia } from './congreso';
-import { EN_LA_FRANJA, MEDIDAS, colorDe, deQueSeHabla, diaDeCard, diaGT, frase, medirDia, puntuar } from './termometro';
-import { colorIntensidad, frasesIntensidad, intensidadDelDia } from './intensidad';
+import {
+  EN_LA_FRANJA,
+  MEDIDAS,
+  colorDe,
+  colorIntensidad,
+  deQueSeHabla,
+  diaGT,
+  frase,
+  frasesIntensidad,
+  normalDe,
+  puntosDe,
+  traerTermometro,
+} from './termometro';
 
 /**
  * Cómo está el día, a un toque del feed.
  *
  * Arriba, una franja con cuatro medidas (intensidad, violencia, gobierno y
  * Congreso, volumen). Al tocarla, una hoja con todas las medidas, la semana,
- * el mes y de qué se habla. Todo sale de contar las tarjetas de cada día; cada
- * día se compara contra los anteriores que haya, y se dice cuántos.
+ * el mes y de qué se habla. Los números los calcula NewsCron con el catálogo
+ * de las tarjetas; la app los lee de ExtractorW.
  */
 
 const RAYA = 'rgba(28,43,34,0.08)';
 const ROTULO = { fontSize: 10.5, fontWeight: '800', letterSpacing: 1.1, color: INK.faint };
 
-/** Las tarjetas de cada día: la última corrida de ese día, solo las de ese día. */
-async function traerDias(pais) {
-  const desde = new Date(Date.now() - 35 * 86400000).toISOString();
-  const { data: corridas, error } = await supabase
-    .from('news_cards')
-    .select('id, generated_at')
-    .eq('pais', pais)
-    .gte('generated_at', desde)
-    .order('generated_at', { ascending: false });
-  if (error) throw error;
-  const ultimaDelDia = new Map();
-  for (const c of corridas || []) {
-    const dia = diaGT(c.generated_at);
-    if (!ultimaDelDia.has(dia)) ultimaDelDia.set(dia, c);
-  }
-  const ids = [...ultimaDelDia.values()].map((c) => c.id);
-  if (!ids.length) return [];
-  const { data: filas, error: e2 } = await supabase.from('news_cards').select('id, generated_at, cards').in('id', ids);
-  if (e2) throw e2;
-  return (filas || []).map((f) => {
-    const dia = diaGT(f.generated_at);
-    const cards = (f.cards || []).filter((c) => diaDeCard(c, f.generated_at) === dia);
-    return { dia, cards, todas: f.cards || [] };
-  });
-}
-
 export function useDias(pais) {
   return useQuery({
-    queryKey: ['termometro-dias', pais],
-    queryFn: async () => {
-      const crudos = await traerDias(pais);
-      // La versión más nueva de cada historia, con todo su recorrido.
-      const historias = new Map();
-      for (const d of [...crudos].sort((a, b) => (a.dia < b.dia ? 1 : -1))) {
-        for (const c of d.todas) if (!historias.has(c.id || c.titulo)) historias.set(c.id || c.titulo, c);
-      }
-      const todas = [...historias.values()];
-      const puntuados = puntuar(crudos.map((d) => medirDia(d.cards, d.dia))).map((d) => {
-        const intensidad = intensidadDelDia(todas, d.dia);
-        return { ...d, intensidad, puntos: { ...d.puntos, intensidad: intensidad.puntos } };
-      });
-      const cardsPorDia = new Map(crudos.map((d) => [d.dia, d.cards]));
-      return { dias: puntuados, cardsPorDia };
-    },
+    queryKey: ['termometro', pais],
+    queryFn: () => traerTermometro(pais),
     staleTime: 15 * 60 * 1000,
   });
 }
@@ -74,7 +44,7 @@ export function useDias(pais) {
 export default function Termometro({ pais, style }) {
   const { data } = useDias(pais);
   const [abierta, setAbierta] = useState(false);
-  const dias = data?.dias || [];
+  const dias = data || [];
   const hoy = dias[dias.length - 1];
   if (!hoy) return null;
   const nombres = Object.fromEntries(MEDIDAS);
@@ -88,14 +58,22 @@ export default function Termometro({ pais, style }) {
         style={({ pressed }) => [{ flexDirection: 'row', gap: 8, opacity: pressed ? 0.7 : 1 }, style]}
       >
         {EN_LA_FRANJA.map((k) => {
-          const p = hoy.puntos[k];
+          const p = puntosDe(k, hoy);
           return (
             <View key={k} style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={{ fontSize: 10.5, color: INK.meta, marginBottom: 5 }}>
-                {k === 'gobierno' ? 'Gobierno' : nombres[k]}
-              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                <Text numberOfLines={1} style={{ fontSize: 10.5, color: INK.meta, flexShrink: 1 }}>
+                  {k === 'gobierno' ? 'Gobierno' : nombres[k]}
+                </Text>
+                {/* Sin con qué comparar todavía, el conteo del día. */}
+                {k !== 'intensidad' && p == null && hoy[k] != null ? (
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: INK.title }}>{hoy[k]}</Text>
+                ) : null}
+              </View>
               <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, overflow: 'hidden' }}>
-                <View style={{ width: `${Math.max(6, p ?? 0)}%`, height: 6, borderRadius: 3, backgroundColor: k === 'intensidad' ? colorIntensidad(p) : colorDe(p) }} />
+                {p != null ? (
+                  <View style={{ width: `${Math.max(6, p)}%`, height: 6, borderRadius: 3, backgroundColor: k === 'intensidad' ? colorIntensidad(p) : colorDe(p, k) }} />
+                ) : null}
               </View>
             </View>
           );
@@ -110,15 +88,12 @@ export default function Termometro({ pais, style }) {
 
 function Hoja({ data, onClose }) {
   const insets = useSafeAreaInsets();
-  const { dias, cardsPorDia } = data;
+  const dias = data;
   const [elegido, setElegido] = useState(dias[dias.length - 1].dia);
   const d = dias.find((x) => x.dia === elegido) || dias[dias.length - 1];
   const i = dias.indexOf(d);
   const anterior = dias[i - 1];
-  const temas = useMemo(
-    () => deQueSeHabla(cardsPorDia.get(d.dia) || [], anterior ? cardsPorDia.get(anterior.dia) || [] : []),
-    [cardsPorDia, d.dia, anterior]
-  );
+  const temas = useMemo(() => deQueSeHabla(d, anterior), [d, anterior]);
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -136,7 +111,8 @@ function Hoja({ data, onClose }) {
             <Text style={{ fontFamily: SERIF, fontSize: 26, color: INK.title, letterSpacing: -0.3 }}>Cómo está el día</Text>
             <Text style={{ fontSize: 13, color: INK.meta, marginTop: 3 }}>
               {nombreDelDia(d.dia)}
-              {d.base ? ` · contra ${d.base === 1 ? 'el día anterior' : `los ${d.base} días anteriores`}` : ''}
+              {d.parcial ? ' · hasta ahora' : ''}
+              {d.datosParciales ? ' · con datos incompletos' : ''}
             </Text>
 
             <Semana dias={dias} elegido={d.dia} onElegir={setElegido} />
@@ -147,9 +123,9 @@ function Hoja({ data, onClose }) {
               <Text style={ROTULO}>{`TERMÓMETRO · ${nombreDelDia(d.dia).toUpperCase()}`}</Text>
               {MEDIDAS.map(([k, nombre]) =>
                 k === 'intensidad' ? (
-                  <Intensidad key={k} i={d.intensidad} />
+                  <Intensidad key={k} d={d} />
                 ) : (
-                  <Medida key={k} nombre={nombre} puntos={d.puntos[k]} frase={frase(k, d)} porcentaje={k === 'polarizacion' || k === 'novedad'} />
+                  <Medida key={k} clave={k} nombre={nombre} d={d} />
                 )
               )}
             </View>
@@ -171,23 +147,24 @@ function Hoja({ data, onClose }) {
   );
 }
 
-/** La intensidad: su total en escala fija y los cuatro componentes con su cifra. */
-function Intensidad({ i }) {
+/** La intensidad: su total en escala fija y sus tres partes con su cifra. */
+function Intensidad({ d }) {
+  const p = d.intensidad;
   return (
     <View style={{ marginTop: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>Intensidad</Text>
-        <Text style={{ fontSize: 12.5, color: INK.meta }}>{i.puntos}</Text>
+        <Text style={{ fontSize: 12.5, color: INK.meta }}>{p ?? '—'}</Text>
       </View>
       <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, marginTop: 6, overflow: 'hidden' }}>
-        <View style={{ width: `${Math.max(2, i.puntos)}%`, height: 6, borderRadius: 3, backgroundColor: colorIntensidad(i.puntos) }} />
+        <View style={{ width: `${Math.max(2, p ?? 0)}%`, height: 6, borderRadius: 3, backgroundColor: colorIntensidad(p) }} />
       </View>
       <View style={{ marginTop: 6, gap: 4 }}>
-        {frasesIntensidad(i).map(([nombre, pts, texto]) => (
+        {frasesIntensidad(d).map(([nombre, pts, texto]) => (
           <View key={nombre} style={{ flexDirection: 'row', gap: 8 }}>
             <Text style={{ width: 84, fontSize: 12, color: INK.meta }}>{nombre}</Text>
             <Text style={{ flex: 1, fontSize: 12.5, color: INK.body, lineHeight: 17 }}>{texto}</Text>
-            <Text style={{ fontSize: 12, color: INK.faint }}>{pts}/25</Text>
+            <Text style={{ fontSize: 12, color: INK.faint }}>{pts}/33</Text>
           </View>
         ))}
       </View>
@@ -195,17 +172,25 @@ function Intensidad({ i }) {
   );
 }
 
-function Medida({ nombre, puntos, frase: texto, porcentaje }) {
+/** Un indicador: el conteo del día y, cuando ya hay con qué, cómo está contra lo normal. */
+function Medida({ clave, nombre, d }) {
+  const p = puntosDe(clave, d);
+  const normal = normalDe(clave, d);
   return (
     <View style={{ marginTop: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>{nombre}</Text>
-        <Text style={{ fontSize: 12.5, color: INK.meta }}>{puntos == null ? '—' : porcentaje ? `${puntos}%` : puntos}</Text>
+        <Text style={{ fontSize: 12.5, color: INK.meta }}>{d[clave] ?? '—'}</Text>
       </View>
-      <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, marginTop: 6, overflow: 'hidden' }}>
-        <View style={{ width: `${Math.max(2, puntos ?? 0)}%`, height: 6, borderRadius: 3, backgroundColor: porcentaje ? INK.meta : colorDe(puntos) }} />
-      </View>
-      <Text style={{ fontSize: 12.5, color: INK.body, marginTop: 5, lineHeight: 18 }}>{texto}</Text>
+      {p != null ? (
+        <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, marginTop: 6, overflow: 'hidden' }}>
+          <View style={{ width: `${Math.max(2, p)}%`, height: 6, borderRadius: 3, backgroundColor: colorDe(p, clave) }} />
+        </View>
+      ) : null}
+      <Text style={{ fontSize: 12.5, color: INK.body, marginTop: 5, lineHeight: 18 }}>
+        {frase(clave, d)}
+        {normal != null ? <Text style={{ color: INK.faint }}>{` · lo normal, ${normal}`}</Text> : null}
+      </Text>
     </View>
   );
 }
@@ -228,7 +213,8 @@ function Semana({ dias, elegido, onElegir }) {
                   width: '100%',
                   aspectRatio: 1,
                   borderRadius: 8,
-                  backgroundColor: colorIntensidad(x.puntos.intensidad),
+                  backgroundColor: colorIntensidad(x.intensidad),
+                  opacity: x.datosParciales ? 0.55 : 1,
                   borderWidth: activo ? 2 : 0,
                   borderColor: INK.title,
                 }}
@@ -272,7 +258,8 @@ function Mes({ dias, elegido, onElegir }) {
                 style={{
                   flex: 1,
                   borderRadius: 5,
-                  backgroundColor: x ? colorIntensidad(x.puntos.intensidad) : 'rgba(28,43,34,0.05)',
+                  backgroundColor: x ? colorIntensidad(x.intensidad) : 'rgba(28,43,34,0.05)',
+                  opacity: x?.datosParciales ? 0.55 : 1,
                   borderWidth: dia === elegido ? 2 : 0,
                   borderColor: INK.title,
                   alignItems: 'center',
@@ -293,18 +280,15 @@ function Tema({ t }) {
   const Flecha = t.rumbo === 'sube' ? ArrowUp : t.rumbo === 'baja' ? ArrowDown : Minus;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: RAYA }}>
-      <Text style={{ width: 38, fontSize: 15, fontWeight: '700', color: INK.title }}>{t.porcentaje}%</Text>
       <View style={{ flex: 1 }}>
         <Text numberOfLines={2} style={{ fontSize: 14, color: INK.title, lineHeight: 19 }}>
           {t.titulo}
         </Text>
-        {t.categoria ? <Text style={{ fontSize: 11, color: INK.faint, marginTop: 2 }}>{t.categoria}</Text> : null}
+        <Text style={{ fontSize: 11, color: INK.faint, marginTop: 2 }}>
+          {`${t.veces} ${t.veces === 1 ? 'vez' : 'veces'} · ${t.medios} ${t.medios === 1 ? 'medio' : 'medios'}`}
+        </Text>
       </View>
-      {t.rumbo === 'nueva' ? (
-        <Text style={{ fontSize: 11, color: INK.meta }}>nueva</Text>
-      ) : (
-        <Flecha size={15} color={t.rumbo === 'sube' ? '#C0453B' : INK.meta} />
-      )}
+      {t.rumbo === 'nueva' ? null : <Flecha size={15} color={t.rumbo === 'sube' ? '#C0453B' : INK.meta} />}
     </View>
   );
 }
