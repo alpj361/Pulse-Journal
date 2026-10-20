@@ -52,6 +52,7 @@ import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
 import { Settings as SettingsIcon } from 'lucide-react-native';
 import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarStore';
+import EnlacesInstitucionales from '../../components/feed/EnlacesInstitucionales';
 
 /** Lo único que el feed puede borrar del registro de «dónde me quedé». */
 const TIPOS_MAPA = ['mapa'];
@@ -828,6 +829,8 @@ export default function Index() {
               </Pressable>
             </View>
           </View>
+
+          <EnlacesInstitucionales />
 
           {/* Portada del día: el título manda, el análisis se abre tocando. */}
           {narrativaData ? (

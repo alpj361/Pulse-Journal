@@ -47,6 +47,7 @@ import SeccionUso from '../../components/ajustes/SeccionUso';
 import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimiento';
 import SeccionAnalisisAutomatico from '../../components/ajustes/SeccionAnalisisAutomatico';
 import SeccionChangelog from '../../components/ajustes/SeccionChangelog';
+import SeccionInstitucional from '../../components/ajustes/SeccionInstitucional';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -1053,6 +1054,8 @@ export default function SettingsScreen() {
             </View>
           )}
         </View>
+
+        <SeccionInstitucional />
 
         {/* ── Planes: un menú plegado más, como los de abajo. Sin muro de
              pago: se vende acá, donde se viene a ver la cuenta. ── */}
