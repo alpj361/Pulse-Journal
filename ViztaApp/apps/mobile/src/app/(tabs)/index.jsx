@@ -42,7 +42,7 @@ import SelectorFeed from "../../components/feed/SelectorFeed";
 import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
-import { categoriaDe, temaDe } from "../../components/feed/temas";
+import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
 import { SERIF } from "../../components/theme";
 import Mundito from "../../components/mapa/Mundito";
 import MapaSheet from "../../components/mapa/MapaSheet";
@@ -446,7 +446,7 @@ function NewsCardModal({ card, onClose }) {
                   renglón para no decir nada. Sin subcategoría útil, la cabecera
                   queda como estaba. */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, marginRight: 12 }}>
-                <Pegatina categoria={categoria} id={card.id} />
+                <Pegatina categoria={categoria} sticker={stickerDe(card)} id={card.id} />
                 {subcategoria ? (
                   <Text
                     numberOfLines={2}

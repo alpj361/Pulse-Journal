@@ -6,7 +6,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { INK, MOTION, SERIF } from '../theme';
-import { categoriaDe, paletaDe } from './temas';
+import { categoriaDe, paletaDe, stickerDe } from './temas';
 import Pegatina from './Pegatina';
 import { lineaDeCard } from './encuadres';
 import { lineaActualizada, seguimientoDe } from './desarrollos';
@@ -67,7 +67,7 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, s
       style={style}
     >
       <Animated.View style={animado}>
-        <Pegatina categoria={categoria} id={card?.id} style={{ marginBottom: seguimiento ? 9 : 13 }} />
+        <Pegatina categoria={categoria} sticker={stickerDe(card)} id={card?.id} style={{ marginBottom: seguimiento ? 9 : 13 }} />
 
         {/* Una historia que viene de antes lo dice antes del titular: así no
             se lee como nueva. */}
