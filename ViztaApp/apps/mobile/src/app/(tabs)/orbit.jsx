@@ -2177,9 +2177,13 @@ export default function OrbitScreen() {
       const { data, error } = await supabase
         .from('feed_data')
         .select('categoria, data, generated_at')
+        .in('categoria', CATEGORY_ORDER)
         .order('generated_at', { ascending: false })
-        .limit(8);
+        .limit(40);
       if (error) throw error;
+      // La fila más nueva de cada categoría. Con 8 filas sin filtro, las
+      // categorías nuevas y «ley» (varias por día) dejaban fuera a Violencia
+      // cuando un día no se generó.
       const seen = new Set();
       return (data || []).filter(r => {
         if (seen.has(r.categoria)) return false;
