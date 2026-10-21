@@ -40,6 +40,9 @@ export function useDias(pais) {
   });
 }
 
+// Cómo se nombra cada conteo cuando va como ficha: «4 violencia».
+const FICHA = { violencia: 'violencia', gobierno: 'gobierno', volumen: 'noticias' };
+
 // ─── La franja ───────────────────────────────────────────────────────────────
 
 export default function Termometro({ pais, style }) {
@@ -49,6 +52,8 @@ export default function Termometro({ pais, style }) {
   const hoy = dias[dias.length - 1];
   if (!hoy) return null;
   const nombres = Object.fromEntries(MEDIDAS);
+  const conBarra = EN_LA_FRANJA.filter((k) => puntosDe(k, hoy) != null);
+  const fichas = EN_LA_FRANJA.filter((k) => puntosDe(k, hoy) == null && hoy[k] != null);
 
   return (
     <>
@@ -56,29 +61,34 @@ export default function Termometro({ pais, style }) {
         onPress={() => setAbierta(true)}
         accessibilityRole="button"
         accessibilityLabel="Cómo está el día"
-        style={({ pressed }) => [{ flexDirection: 'row', gap: 8, opacity: pressed ? 0.7 : 1 }, style]}
+        style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.7 : 1 }, style]}
       >
-        {EN_LA_FRANJA.map((k) => {
+        {/* Con barra solo lo que tiene con qué medirse: la intensidad (escala
+            fija) y los conteos cuando ya hay «lo normal». Los demás van como
+            fichas con el número del día. */}
+        {conBarra.map((k) => {
           const p = puntosDe(k, hoy);
           return (
-            <View key={k} style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                <Text numberOfLines={1} style={{ fontSize: 10.5, color: INK.meta, flexShrink: 1 }}>
-                  {k === 'gobierno' ? 'Gobierno' : nombres[k]}
-                </Text>
-                {/* Sin con qué comparar todavía, el conteo del día. */}
-                {k !== 'intensidad' && p == null && hoy[k] != null ? (
-                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: INK.title }}>{hoy[k]}</Text>
-                ) : null}
-              </View>
+            <View key={k} style={{ flex: 1, minWidth: 64 }}>
+              <Text numberOfLines={1} style={{ fontSize: 10.5, color: INK.meta, marginBottom: 5 }}>
+                {k === 'gobierno' ? 'Gobierno' : nombres[k]}
+              </Text>
               <View style={{ height: 6, borderRadius: 3, backgroundColor: RAYA, overflow: 'hidden' }}>
-                {p != null ? (
-                  <View style={{ width: `${Math.max(6, p)}%`, height: 6, borderRadius: 3, backgroundColor: k === 'intensidad' ? colorIntensidad(p) : colorDe(p, k) }} />
-                ) : null}
+                <View style={{ width: `${Math.max(6, p)}%`, height: 6, borderRadius: 3, backgroundColor: k === 'intensidad' ? colorIntensidad(p) : colorDe(p, k) }} />
               </View>
             </View>
           );
         })}
+        {fichas.length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, flexShrink: 1, justifyContent: 'flex-end' }}>
+            {fichas.map((k) => (
+              <View key={k} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK.title }}>{hoy[k]}</Text>
+                <Text style={{ fontSize: 11, color: INK.meta }}>{FICHA[k]}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </Pressable>
       {abierta ? <Hoja data={data} onClose={() => setAbierta(false)} /> : null}
     </>
