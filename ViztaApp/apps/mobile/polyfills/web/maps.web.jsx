@@ -1,4 +1,5 @@
 import WebMapView, * as WebMaps from '@teovilla/react-native-web-maps';
+import { TrafficLayer } from '../../node_modules/@teovilla/react-native-web-maps/node_modules/@react-google-maps/api';
 import React from 'react';
 
 export const PROVIDER_GOOGLE = 'google';
@@ -7,12 +8,15 @@ export const PROVIDER_DEFAULT = undefined;
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 const MapView = React.forwardRef((props, ref) => {
+  const { showsTraffic, children, provider: _proveedor, ...rest } = props;
   return (
     <WebMapView
       ref={ref}
-      provider={PROVIDER_GOOGLE} // only google provider works on web
+      {...rest}
+      // En la web solo existe Google. Va después de las props para que un
+      // `provider` de iOS (undefined, MapKit) no deje el mapa en blanco.
+      provider={PROVIDER_GOOGLE}
       googleMapsApiKey={GOOGLE_MAPS_API_KEY}
-      {...props}
       options={{
         disableDefaultUI: true,
         zoomControl: false,
@@ -24,7 +28,10 @@ const MapView = React.forwardRef((props, ref) => {
         keyboardShortcuts: false,
         ...props.options,
       }}
-    />
+    >
+      {showsTraffic ? <TrafficLayer /> : null}
+      {children}
+    </WebMapView>
   );
 });
 
