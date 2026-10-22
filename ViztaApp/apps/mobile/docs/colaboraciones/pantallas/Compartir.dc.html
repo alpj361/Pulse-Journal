@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Compartir algo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3D5F46}a:hover{color:#1C2B22}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #7F8A83; font-family: -apple-system, system-ui, sans-serif; color: #1C2B22; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden">
+
+  <div style="background: #FBFAF6; border-radius: 28px 28px 0 0; padding: 10px 22px 34px; display: flex; flex-direction: column; gap: 16px">
+    <div aria-hidden="true" style="align-self: center; width: 34px; height: 4px; border-radius: 2px; background: rgba(28,43,34,0.18)"></div>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 12px; color: #8A968D">Compartir con [Nombre de un colega]</span>
+      <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 27px; line-height: 30px; letter-spacing: -0.3px">Línea de tiempo del caso</h2>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">PUEDE</span>
+      <div style="background: #FFFFFF; border: 1px solid rgba(28,43,34,0.08); border-radius: 16px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <span style="flex: 1; font-size: 15px; font-weight: 600">Leer</span>
+          <button role="switch" aria-checked="true" aria-label="Leer" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: #3D5F46; padding: 2px; display: flex; justify-content: flex-end"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <span style="flex: 1; font-size: 15px; font-weight: 600">Sumarle cosas</span>
+          <button role="switch" aria-checked="false" aria-label="Sumarle cosas" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: rgba(28,43,34,0.14); padding: 2px; display: flex; justify-content: flex-start"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <span style="flex: 1; font-size: 15px; font-weight: 600">Cambiarla</span>
+          <button role="switch" aria-checked="true" aria-label="Cambiarla" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: #3D5F46; padding: 2px; display: flex; justify-content: flex-end"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px">
+          <span style="flex: 1; font-size: 15px; font-weight: 600">Borrarla</span>
+          <button role="switch" aria-checked="false" aria-label="Borrarla" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: rgba(28,43,34,0.14); padding: 2px; display: flex; justify-content: flex-start"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">SUS CAMBIOS</span>
+      <div role="radiogroup" aria-label="Cómo llegan sus cambios" style="display: flex; flex-direction: column; gap: 8px">
+        <button role="radio" aria-checked="true" style="text-align: left; display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1.5px solid #3D5F46; background: #FFFFFF">
+          <span aria-hidden="true" style="width: 18px; height: 18px; border-radius: 9px; border: 5px solid #3D5F46; box-sizing: border-box; flex-shrink: 0"></span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14.5px; font-weight: 600; color: #1C2B22">Te llegan para aprobar</span><span style="font-size: 12px; color: #8A968D">ves qué cambia antes de que quede</span></span>
+        </button>
+        <button role="radio" aria-checked="false" style="text-align: left; display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(28,43,34,0.12); background: #FFFFFF">
+          <span aria-hidden="true" style="width: 18px; height: 18px; border-radius: 9px; border: 1.5px solid rgba(28,43,34,0.3); box-sizing: border-box; flex-shrink: 0"></span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14.5px; font-weight: 600; color: #1C2B22">Quedan directo</span><span style="font-size: 12px; color: #8A968D">para gente de confianza</span></span>
+        </button>
+      </div>
+    </div>
+
+    <a href="Comun.dc.html" style="height: 52px; border-radius: 15px; background: #1C2B22; color: #FFFFFF; text-decoration: none; font-size: 15.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">compartir</a>
+    <button style="height: 40px; border: 0; background: transparent; font-size: 14.5px; font-weight: 600; color: #B23A2E">dejar de compartir</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

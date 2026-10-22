@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Adjuntar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3D5F46}a:hover{color:#1C2B22}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #7F8A83; font-family: -apple-system, system-ui, sans-serif; color: #1C2B22; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden">
+
+  <div style="background: #FBFAF6; border-radius: 28px 28px 0 0; padding: 10px 22px 34px; display: flex; flex-direction: column; gap: 16px">
+    <div aria-hidden="true" style="align-self: center; width: 34px; height: 4px; border-radius: 2px; background: rgba(28,43,34,0.18)"></div>
+    <h2 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 27px; letter-spacing: -0.3px">Adjuntar</h2>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+      <button style="height: 92px; border-radius: 16px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C2B22">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#39476B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
+        de mi Codex
+      </button>
+      <button style="height: 92px; border-radius: 16px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C2B22">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9A5347" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h6M7 13h10"/></svg>
+        noticia
+      </button>
+      <button style="height: 92px; border-radius: 16px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C2B22">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3F737F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h5"/></svg>
+        del feed
+      </button>
+      <button style="height: 92px; border-radius: 16px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C2B22">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6A5433" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h7l5 5v11H7z"/><path d="M14 4v5h5"/></svg>
+        fragmento
+      </button>
+      <button style="height: 92px; border-radius: 16px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C2B22">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1C2B22" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+        código
+      </button>
+      <button style="height: 92px; border-radius: 16px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C2B22">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6A5433" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+        artifact
+      </button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">DE MI CODEX</span>
+      <label for="buscar" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Buscar en tu Codex</label>
+      <input id="buscar" placeholder="buscar en tu Codex" style="height: 42px; border-radius: 12px; border: 1px solid rgba(28,43,34,0.12); background: #FFFFFF; padding: 0 14px; font-size: 14.5px">
+      <button style="text-align: left; display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(61,95,70,0.35); background: #FFFFFF">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px; font-weight: 700; color: #1C2B22">Asesinato de Solórzano Foppa</span><span style="font-size: 11.5px; color: #8A968D">nota · 17 oct</span></span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3D5F46" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-label="Elegida" role="img"><path d="M5 12l5 5 9-10"/></svg>
+      </button>
+      <button style="text-align: left; display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(28,43,34,0.08); background: #FFFFFF">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px; font-weight: 700; color: #1C2B22">Juan Francisco Solórzano Foppa</span><span style="font-size: 11.5px; color: #8A968D">actor</span></span>
+      </button>
+    </div>
+
+    <a href="Chat.dc.html" style="height: 50px; border-radius: 15px; background: #1C2B22; color: #FFFFFF; text-decoration: none; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center">adjuntar 1</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

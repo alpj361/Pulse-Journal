@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Permisos del agente</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3D5F46}a:hover{color:#1C2B22}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); font-family: -apple-system, system-ui, sans-serif; color: #1C2B22; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="padding: 58px 20px 12px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(28,43,34,0.07)">
+    <a href="Chat.dc.html" aria-label="Volver al chat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin-left: -10px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C2B22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <div aria-hidden="true" style="width: 40px; height: 40px; border-radius: 12px; background: #DCE3EF; display: flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 21px; color: #39476B">In</div>
+    <div style="display: flex; flex-direction: column; gap: 1px">
+      <span style="font-size: 17px; font-weight: 700">Investigador</span>
+      <span style="font-size: 12px; color: #8A968D">agente · responde a Pablo</span>
+    </div>
+  </div>
+
+  <div style="flex: 1; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+
+    <a href="Bandeja.dc.html" style="text-decoration: none; color: inherit; display: flex; gap: 12px; align-items: center; background: #FFFFFF; border: 1px solid rgba(154,83,71,0.28); border-radius: 16px; padding: 12px 14px">
+      <span style="flex: 1; font-size: 14.5px; font-weight: 600"><span style="color: #9A5347">2</span> cosas por aprobar</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9A5347" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+    </a>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">EN TU CODEX PUEDE</span>
+      <div style="background: rgba(255,255,255,0.78); border: 1px solid rgba(28,43,34,0.08); border-radius: 18px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">Leer</span><span style="font-size: 12.5px; color: #8A968D">Busca en lo que guardaste</span></div>
+          <button role="switch" aria-checked="true" aria-label="Leer" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: #3D5F46; padding: 2px; display: flex; justify-content: flex-end"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">Crear</span><span style="font-size: 12.5px; color: #8A968D">Guarda cosas nuevas en su Codex</span></div>
+          <button role="switch" aria-checked="true" aria-label="Crear" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: #3D5F46; padding: 2px; display: flex; justify-content: flex-end"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">Editar</span><span style="font-size: 12.5px; color: #8A968D">Sin esto, sus cambios te llegan para aprobar</span></div>
+          <button role="switch" aria-checked="false" aria-label="Editar" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: rgba(28,43,34,0.14); padding: 2px; display: flex; justify-content: flex-start"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 15px; font-weight: 600">Borrar</span><span style="font-size: 12.5px; color: #8A968D">Quita lo que ya no sirve</span></div>
+          <button role="switch" aria-checked="false" aria-label="Borrar" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: rgba(28,43,34,0.14); padding: 2px; display: flex; justify-content: flex-start"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block"></span></button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">DESDE DÓNDE TRABAJA</span>
+      <div style="background: rgba(255,255,255,0.78); border: 1px solid rgba(28,43,34,0.08); border-radius: 18px; overflow: hidden">
+        <a href="Actividad.dc.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14.5px; font-weight: 600">Claude, en la compu de Pablo</span><span style="font-size: 12px; color: #8A968D">usó hace 20 min</span></div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A968D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
+        <a href="Actividad.dc.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 10px; padding: 12px 16px">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 3px">
+            <span style="font-size: 14.5px; font-weight: 600">ChatGPT</span>
+            <span style="display: flex; gap: 6px; align-items: center"><span style="font-size: 11px; font-weight: 700; color: #6A5433; background: #F3EEE4; border-radius: 6px; padding: 2px 7px">conexión antigua</span><span style="font-size: 12px; color: #8A968D">puede todo</span></span>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A968D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: baseline; gap: 8px; padding: 0 4px">
+      <span style="font-family: 'Instrument Serif', serif; font-size: 26px">[N]</span>
+      <span style="font-size: 13px; color: #5A6B60">créditos tuyos esta semana</span>
+    </div>
+
+    <div style="flex: 1"></div>
+    <button style="height: 44px; border-radius: 14px; border: 0; background: transparent; font-size: 15px; font-weight: 600; color: #B23A2E">quitarle el acceso</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

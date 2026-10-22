@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Unir campo por campo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3D5F46}a:hover{color:#1C2B22}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #FBFAF6; font-family: -apple-system, system-ui, sans-serif; color: #1C2B22; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="padding: 58px 20px 14px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid rgba(28,43,34,0.07)">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <a href="Bandeja.dc.html" aria-label="Volver" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin-left: -10px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C2B22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </a>
+      <span aria-hidden="true" style="width: 30px; height: 30px; border-radius: 9px; background: #DCE3EF; color: #39476B; font-family: 'Instrument Serif', serif; font-size: 16px; display: flex; align-items: center; justify-content: center">In</span>
+      <span style="flex: 1; font-size: 13.5px; color: #5A6B60"><b style="color: #1C2B22">Investigador</b> propone cambios</span>
+      <span style="font-size: 11.5px; color: #8A968D">vence en 30 días</span>
+    </div>
+    <h1 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 27px; line-height: 30px; letter-spacing: -0.3px">Asesinato de Solórzano Foppa</h1>
+  </div>
+
+  <div style="flex: 1; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+
+    <div style="background: #FFFFFF; border: 1.5px solid rgba(61,95,70,0.45); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <input type="checkbox" id="c1" checked style="width: 20px; height: 20px; accent-color: #3D5F46; margin: 0">
+        <label for="c1" style="flex: 1; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #3D5F46">TÍTULO</label>
+      </div>
+      <span style="font-size: 14px; color: #9A5347; text-decoration: line-through; line-height: 19px">Asesinato de Solórzano Foppa</span>
+      <span style="font-size: 14.5px; color: #1C2B22; font-weight: 600; line-height: 20px">Caso Solórzano Foppa: ataque en Campo Marte</span>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1.5px solid rgba(61,95,70,0.45); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <input type="checkbox" id="c2" checked style="width: 20px; height: 20px; accent-color: #3D5F46; margin: 0">
+        <label for="c2" style="flex: 1; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #3D5F46">DESCRIPCIÓN</label>
+      </div>
+      <span style="font-size: 13.5px; color: #2E3B33; line-height: 19px">El exfiscal fue atacado durante un partido el 17 de octubre. <span style="background: #E8EFE9; color: #2D4A35">Dos días después separaron a los agentes que hicieron las capturas.</span></span>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid rgba(28,43,34,0.1); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <input type="checkbox" id="c3" style="width: 20px; height: 20px; accent-color: #3D5F46; margin: 0">
+        <label for="c3" style="flex: 1; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #8A968D">ETIQUETAS</label>
+      </div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap">
+        <span style="font-size: 12.5px; color: #5A6B60; background: rgba(28,43,34,0.06); border-radius: 6px; padding: 3px 8px">violencia</span>
+        <span style="font-size: 12.5px; color: #2D4A35; background: #E8EFE9; border-radius: 6px; padding: 3px 8px">+ Campo Marte</span>
+        <span style="font-size: 12.5px; color: #9A5347; background: #F3E9E7; border-radius: 6px; padding: 3px 8px; text-decoration: line-through">homicidio</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 10px 20px 30px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid rgba(28,43,34,0.07)">
+    <button style="height: 52px; border-radius: 15px; border: 0; background: #1C2B22; color: #FFFFFF; font-size: 15.5px; font-weight: 700">aprobar 2 cambios</button>
+    <button style="height: 40px; border: 0; background: transparent; font-size: 14.5px; font-weight: 600; color: #8A968D">rechazar todo</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
