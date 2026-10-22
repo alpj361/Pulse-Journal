@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Estados de la lista</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3D5F46}a:hover{color:#1C2B22}
+</style>
+</helmet>
+<div style="width: 1560px; height: 844px; box-sizing: border-box; background: #ECEBE5; font-family: -apple-system, system-ui, sans-serif; color: #1C2B22; padding: 48px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px">
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 12px; font-weight: 800; letter-spacing: 1.1px; color: #8A968D">CARGANDO</span>
+    <div style="flex: 1; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); border-radius: 28px; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -1px">Colaboradores</span>
+      <div style="display: flex; gap: 12px; align-items: center"><div style="width: 46px; height: 46px; border-radius: 13px; background: rgba(28,43,34,0.07)"></div><div style="flex: 1; display: flex; flex-direction: column; gap: 8px"><div style="height: 12px; width: 60%; border-radius: 6px; background: rgba(28,43,34,0.08)"></div><div style="height: 10px; width: 85%; border-radius: 5px; background: rgba(28,43,34,0.05)"></div></div></div>
+      <div style="display: flex; gap: 12px; align-items: center"><div style="width: 46px; height: 46px; border-radius: 23px; background: rgba(28,43,34,0.07)"></div><div style="flex: 1; display: flex; flex-direction: column; gap: 8px"><div style="height: 12px; width: 45%; border-radius: 6px; background: rgba(28,43,34,0.08)"></div><div style="height: 10px; width: 75%; border-radius: 5px; background: rgba(28,43,34,0.05)"></div></div></div>
+      <div style="display: flex; gap: 12px; align-items: center"><div style="width: 46px; height: 46px; border-radius: 13px; background: rgba(28,43,34,0.07)"></div><div style="flex: 1; display: flex; flex-direction: column; gap: 8px"><div style="height: 12px; width: 55%; border-radius: 6px; background: rgba(28,43,34,0.08)"></div><div style="height: 10px; width: 65%; border-radius: 5px; background: rgba(28,43,34,0.05)"></div></div></div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 12px; font-weight: 800; letter-spacing: 1.1px; color: #8A968D">VACÍA · SOLO AGENTES (HOY)</span>
+    <div style="flex: 1; position: relative; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); border-radius: 28px; padding: 40px 18px; display: flex; flex-direction: column; gap: 18px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -1px">Colaboradores</span>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; padding: 0 4px">
+        <div aria-hidden="true" style="width: 68px; height: 68px; border-radius: 20px; background: #DCE3EF; display: flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 30px; color: #39476B">Ag</div>
+        <span style="font-family: 'Instrument Serif', serif; font-size: 24px; line-height: 27px">Todavía no tenés agentes</span>
+        <span style="font-size: 13.5px; color: #5A6B60; line-height: 19px">Un agente investiga y guarda en su propio Codex, y vos decidís qué pasa al tuyo.</span>
+        <a href="CrearAgente.dc.html" style="margin-top: 6px; height: 46px; padding: 0 18px; border-radius: 14px; background: #1C2B22; color: #FFFFFF; text-decoration: none; font-size: 14.5px; font-weight: 700; display: flex; align-items: center">sumar un agente</a>
+      </div>
+      <div role="status" style="background: #FFFFFF; border-radius: 16px; padding: 12px 12px 12px 14px; display: flex; gap: 10px; align-items: flex-start; box-shadow: 0 6px 20px rgba(30,51,38,0.14)">
+        <span style="flex: 1; font-size: 13.5px; color: #2E3B33; line-height: 19px">Pronto vas a poder colaborar también con colegas y amigos.</span>
+        <button aria-label="Cerrar" style="width: 28px; height: 28px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; margin: -4px -4px 0 0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A968D" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 12px; font-weight: 800; letter-spacing: 1.1px; color: #8A968D">VACÍA · AGENTES Y COLEGAS</span>
+    <div style="flex: 1; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); border-radius: 28px; padding: 40px 18px; display: flex; flex-direction: column; gap: 18px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -1px">Colaboradores</span>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; padding: 0 4px">
+        <div aria-hidden="true" style="width: 68px; height: 68px; border-radius: 20px; background: #E8EFE9; display: flex; align-items: center; justify-content: center">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3D5F46" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c.8-3.3 3.2-5 6-5s5.2 1.7 6 5M15 15.3c2.6-.4 4.8 1.2 5.5 4.7"/></svg>
+        </div>
+        <span style="font-family: 'Instrument Serif', serif; font-size: 24px; line-height: 27px">Todavía no trabajás con nadie</span>
+        <span style="font-size: 13.5px; color: #5A6B60; line-height: 19px">Sumá un agente que investigue por vos, o invitá a un colega a compartir lo que tienen.</span>
+        <a href="CrearAgente.dc.html" style="margin-top: 6px; height: 46px; padding: 0 18px; border-radius: 14px; background: #1C2B22; color: #FFFFFF; text-decoration: none; font-size: 14.5px; font-weight: 700; display: flex; align-items: center">sumar un agente</a>
+        <button style="height: 44px; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(28,43,34,0.16); background: transparent; color: #1C2B22; font-size: 14.5px; font-weight: 600">invitar a un colega</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 12px; font-weight: 800; letter-spacing: 1.1px; color: #8A968D">FUERA DE LA BETA</span>
+    <div style="flex: 1; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); border-radius: 28px; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -1px">Colaboradores</span>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; padding: 0 6px">
+        <span style="font-family: 'Instrument Serif', serif; font-size: 24px; line-height: 27px">Trabajar con agentes y colegas llega pronto</span>
+        <span style="font-size: 13.5px; color: #5A6B60; line-height: 19px">Hoy está abierto para la beta. Te avisamos cuando se abra para tu cuenta.</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 12px; font-weight: 800; letter-spacing: 1.1px; color: #8A968D">APAGADO POR EL EQUIPO</span>
+    <div style="flex: 1; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); border-radius: 28px; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -1px">Colaboradores</span>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; padding: 0 6px">
+        <span style="font-family: 'Instrument Serif', serif; font-size: 24px; line-height: 27px">Colaboradores no está disponible ahora</span>
+        <span style="font-size: 13.5px; color: #5A6B60; line-height: 19px">Tus chats y lo que compartiste siguen guardados.</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 12px; font-weight: 800; letter-spacing: 1.1px; color: #8A968D">ERROR</span>
+    <div style="flex: 1; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); border-radius: 28px; padding: 40px 20px; display: flex; flex-direction: column; gap: 18px">
+      <span style="font-size: 30px; font-weight: 800; letter-spacing: -1px">Colaboradores</span>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; text-align: center; padding: 0 10px">
+        <span style="font-family: 'Instrument Serif', serif; font-size: 24px; line-height: 27px">No se pudo traer la lista</span>
+        <span style="font-size: 13.5px; color: #5A6B60; line-height: 19px">Revisá la conexión y probá de nuevo.</span>
+        <button style="margin-top: 6px; height: 46px; padding: 0 18px; border-radius: 14px; border: 1px solid rgba(28,43,34,0.16); background: transparent; color: #1C2B22; font-size: 14.5px; font-weight: 600">probar de nuevo</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1560,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

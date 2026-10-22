@@ -1,0 +1,9 @@
+-- APLICADA el 2026-10-13 (migración `menciones_del_congreso`, proyecto qqshdccpmypelhmyqnut).
+-- Referencia de lo que hace; el SQL completo está en el historial de migraciones.
+--
+-- 1. `codex_textos_buscables` suma dos fuentes: 'congreso' (notas de congreso_items,
+--    sin el noticiero: título, resumen, de qué trata, comisión y quiénes) y
+--    'votacion' (el asunto de cada votación del pleno).
+-- 2. `codex_menciones_lectores` las trata como prensa: las lee quien tenga Codex.
+-- 3. `codex_menciones_encolar_congreso()`: encola lo que falta buscar. La llama la
+--    app al abrir el feed del Congreso. No hay disparadores en las tablas del monitor.

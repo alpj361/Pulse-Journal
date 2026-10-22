@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Grupo y cifrado</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#3D5F46}a:hover{color:#1C2B22}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: linear-gradient(180deg, #F4F3EE 0%, #EEF2EC 100%); font-family: -apple-system, system-ui, sans-serif; color: #1C2B22; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="padding: 58px 20px 12px; display: flex; align-items: center; gap: 8px">
+    <a href="Main.dc.html" aria-label="Volver" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; margin-left: -10px">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1C2B22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+  </div>
+
+  <div style="padding: 0 24px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+    <div aria-hidden="true" style="width: 72px; height: 72px; border-radius: 20px; background: #E8EFE9; display: flex; align-items: center; justify-content: center">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#3D5F46" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c.8-3.3 3.2-5 6-5s5.2 1.7 6 5M15 15.3c2.6-.4 4.8 1.2 5.5 4.7"/></svg>
+    </div>
+    <h1 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 30px">Caso Foppa</h1>
+    <span style="font-size: 13px; color: #8A968D">grupo · 3</span>
+  </div>
+
+  <div style="flex: 1; padding: 20px 20px; display: flex; flex-direction: column; gap: 18px; overflow: hidden">
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">EN EL GRUPO</span>
+      <div style="background: rgba(255,255,255,0.78); border: 1px solid rgba(28,43,34,0.08); border-radius: 18px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 17px; background: #3D5F46; color: #FFFFFF; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center">P</span>
+          <span style="flex: 1; font-size: 15px; font-weight: 600">Vos</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid rgba(28,43,34,0.06)">
+          <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 17px; background: #E8DCCB; color: #6A5433; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">[N]</span>
+          <span style="flex: 1; font-size: 15px; font-weight: 600">[Nombre de un colega]</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 14px">
+          <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 10px; background: #DCE3EF; color: #39476B; font-family: 'Instrument Serif', serif; font-size: 18px; display: flex; align-items: center; justify-content: center">In</span>
+          <span style="flex: 1; font-size: 15px; font-weight: 600">Investigador</span>
+          <span style="font-size: 12px; color: #8A968D">agente</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">PRIVACIDAD</span>
+      <div style="background: rgba(255,255,255,0.78); border: 1px solid rgba(28,43,34,0.08); border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="flex: 1; font-size: 15px; font-weight: 600; color: #8A968D">Cifrado de extremo a extremo</span>
+          <button role="switch" aria-checked="false" aria-disabled="true" aria-label="Cifrado de extremo a extremo" style="width: 51px; height: 31px; border-radius: 16px; border: 0; background: rgba(28,43,34,0.08); padding: 2px; display: flex; justify-content: flex-start"><span style="width: 27px; height: 27px; border-radius: 14px; background: #FFFFFF; display: block; opacity: 0.7"></span></button>
+        </div>
+        <span style="font-size: 12.5px; color: #8A968D; line-height: 17px">Con un agente en el grupo no se puede cifrar: el agente tiene que poder leerlo.</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 10.5px; font-weight: 800; letter-spacing: 1.1px; color: #A7B0A6">LOS OTROS DOS ESTADOS</span>
+      <div style="display: flex; gap: 8px">
+        <div style="flex: 1; background: rgba(255,255,255,0.6); border: 1px dashed rgba(28,43,34,0.16); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px">
+          <span style="font-size: 12.5px; font-weight: 700">Entre personas, prendido</span>
+          <span style="font-size: 12px; color: #5A6B60; line-height: 16px; display: flex; gap: 4px; align-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3D5F46" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>candado en el chat</span>
+        </div>
+        <div style="flex: 1; background: rgba(255,255,255,0.6); border: 1px dashed rgba(28,43,34,0.16); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px">
+          <span style="font-size: 12.5px; font-weight: 700">Todavía no está</span>
+          <span style="font-size: 12px; color: #5A6B60; line-height: 16px">«Pronto vas a poder cifrar tus chats»</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex: 1"></div>
+    <button style="height: 46px; border-radius: 14px; border: 0; background: transparent; font-size: 15px; font-weight: 600; color: #B23A2E">salir del grupo</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

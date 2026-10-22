@@ -46,6 +46,11 @@ const ALIAS = {
   violencia: 'Violencia',
   seguridad: 'Violencia',
   justicia: 'Justicia',
+  clima: 'Clima',
+  'clima y desastres': 'Clima',
+  desastres: 'Clima',
+  'riesgo y ambiente': 'Clima',
+  'economia y costo de vida': 'Economía',
   movilidad: 'Movilidad',
   transporte: 'Movilidad',
   internacional: 'Internacional',
@@ -70,6 +75,7 @@ export const TEMAS = {
   Social:          { lavado: ['#E8EFE9', '#DAE7DC'], tinta: '#3D5F46', marca: '#537A5D' },
   Violencia:       { lavado: ['#F3E9E7', '#EBDBD7'], tinta: '#783D34', marca: '#9A5347' },
   Justicia:        { lavado: ['#ECEEEF', '#E0E3E5'], tinta: '#43494E', marca: '#5C6469' },
+  Clima:           { lavado: ['#E8ECEF', '#DAE1E6'], tinta: '#3E5262', marca: '#5A6F80' },
   Movilidad:       { lavado: ['#E4EEF1', '#D4E5EA'], tinta: '#2D5862', marca: '#3F737F' },
   Internacional:   { lavado: ['#ECEAF3', '#DFDDEE'], tinta: '#484468', marca: '#615C86' },
   Deportes:        { lavado: ['#EEF0E4', '#E2E7D2'], tinta: '#535E38', marca: '#6E7B4A' },
@@ -129,6 +135,39 @@ export function temaDe(valor) {
   }
 
   return 'Otros';
+}
+
+// Subcategoría (catálogo v2 de ExtractorW, 19-oct) → sticker de violencia.
+// Capturas y operativos no es violencia: se queda con el sticker del tema.
+const STICKER_VIOLENCIA = {
+  homicidios: 'violencia-homicidio',
+  'robos y asaltos': 'violencia-alerta',
+  'extorsion y amenazas': 'violencia-extorsion',
+  'crimen organizado': 'violencia-crimen-organizado',
+  'violencia contra mujeres y ninez': 'violencia-mujer',
+  'secuestros y desapariciones': 'violencia-desaparicion',
+  'secuestro y desapariciones': 'violencia-desaparicion',
+  'uso de la fuerza por agentes del estado': 'violencia-estado',
+  'otro hecho violento': 'violencia-alerta',
+};
+
+/**
+ * El sticker de una tarjeta: el de su tema, salvo en Violencia, donde el
+ * subtipo dice más (la silla vacía de un homicidio no es el sobre con candado
+ * de una extorsión).
+ */
+export function stickerDe(card) {
+  const tema = temaDe(categoriaDe(card));
+  if (tema !== 'Violencia') return normalizarTema(tema);
+  const sub = normalizarTema(card?.subcategoria);
+  const subtipo = normalizarTema(card?.subtipo);
+  if (subtipo === 'linchamiento') return 'violencia-linchamiento';
+  if (subtipo === 'en transporte') return 'violencia-transporte';
+  if (sub === 'violencia contra mujeres y ninez') {
+    if (subtipo === 'intrafamiliar') return 'violencia-intrafamiliar';
+    if (subtipo === 'contra ninez' || card?.victima_menor === true) return 'violencia-ninez';
+  }
+  return STICKER_VIOLENCIA[sub] || 'violencia';
 }
 
 /** Paleta del tema. Nunca devuelve undefined: eso era el gris de antes. */

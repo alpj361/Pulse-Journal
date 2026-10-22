@@ -1055,8 +1055,12 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Planes: un menú plegado más, como los de abajo. Sin muro de
-             pago: se vende acá, donde se viene a ver la cuenta. ── */}
-        <SeccionPlan />
+             pago: se vende acá, donde se viene a ver la cuenta.
+
+             Solo para cuentas Beta con sesión. Quien entra a probar —sin
+             cuenta, o con una cuenta Alpha— no ve nada que comprar: la app
+             se prueba sin que nadie le ofrezca un plan. ── */}
+        {isConnected && /^beta$/i.test(connectedUser?.user_type || '') ? <SeccionPlan /> : null}
         <SeccionUso />
         {/* Solo aparece si la cuenta tiene el flag; para el resto no existe. */}
         <SeccionReconocimiento />

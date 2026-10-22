@@ -19,12 +19,28 @@ import { INK, GLASS, chipStyle } from "../../components/theme";
 import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
-import { PinNoticiero, TituloCongreso } from "../../components/feed/FilasCongreso";
+import { PinNoticiero } from "../../components/feed/FilasCongreso";
+import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
+import NotaCongreso from "../../components/feed/NotaCongreso";
+import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
+import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
+import Sticker from "../../components/Sticker";
+import LogoVizta from "../../components/LogoVizta";
+
+/** Un momento del feed sin contenido: cargando, o sin nada que mostrar. */
+function EstadoFeed({ sticker, children }) {
+  return (
+    <View style={{ alignItems: "center", paddingVertical: 26 }}>
+      <Sticker nombre={sticker} size={76} />
+      <Text style={{ fontSize: 13, color: INK.faint, marginTop: 10, textAlign: "center" }}>{children}</Text>
+    </View>
+  );
+}
 import SelectorFeed from "../../components/feed/SelectorFeed";
 import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
-import { categoriaDe, temaDe } from "../../components/feed/temas";
+import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
 import { SERIF } from "../../components/theme";
 import Mundito from "../../components/mapa/Mundito";
 import MapaSheet from "../../components/mapa/MapaSheet";
@@ -33,6 +49,8 @@ import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
 import MediosNoticia, { MarcaTweet } from "../../components/feed/MediosNoticia";
 import LineaDeTiempo from "../../components/feed/LineaDeTiempo";
+import Termometro from "../../components/feed/Termometro";
+import { fechaHechoDe, seguimientoDe } from "../../components/feed/desarrollos";
 import { marcaDe } from "../../components/feed/encuadres";
 import { EV, evento } from "../../utils/analitica";
 import {
@@ -419,7 +437,7 @@ function NewsCardModal({ card, onClose }) {
                   renglón para no decir nada. Sin subcategoría útil, la cabecera
                   queda como estaba. */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, marginRight: 12 }}>
-                <Pegatina categoria={categoria} id={card.id} />
+                <Pegatina categoria={categoria} sticker={stickerDe(card)} id={card.id} />
                 {subcategoria ? (
                   <Text
                     numberOfLines={2}
@@ -434,9 +452,21 @@ function NewsCardModal({ card, onClose }) {
               </TouchableOpacity>
             </View>
 
+            {seguimientoDe(card) ? (
+              <Text style={{ fontSize: 12, fontWeight: '700', color: INK.meta, letterSpacing: 0.2, marginBottom: 6 }}>{seguimientoDe(card)}</Text>
+            ) : null}
+
             <Text style={{ fontFamily: SERIF, fontSize: 27, color: INK.title, lineHeight: 33, letterSpacing: -0.3 }}>
               {card.titulo}
             </Text>
+
+            {/* Cuándo pasó, no cuándo se publicó la tarjeta. Si la fecha no
+                se pudo confirmar, se dice. */}
+            {fechaHechoDe(card) ? (
+              <Text style={{ fontSize: 12.5, color: INK.meta, marginTop: 6, fontStyle: fechaHechoDe(card).verificada ? 'normal' : 'italic' }}>
+                {fechaHechoDe(card).texto}
+              </Text>
+            ) : null}
 
             {/* Las fotos van pegadas al titular y no al final: en la tarjeta se
                 vieron desenfocadas detrás del título, así que es acá donde uno
@@ -600,6 +630,7 @@ export default function Index() {
   const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
+  const [notaCongreso, setNotaCongreso] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
   const queryClient = useQueryClient();
 
@@ -670,26 +701,50 @@ export default function Index() {
   const { data: hotTopicsData } = useQuery({
     queryKey: ['pulse-hot-topics'],
     queryFn: async () => {
-      // La corrida más reciente, sin excepciones.
-      //
-      // Antes se elegía la que más tarjetas traía, para esquivar corridas
-      // parciales de una sola tarjeta. Ese criterio se volvió en contra: hoy la
-      // corrida degradada de 08:46 trae 24 tarjetas —más que ninguna— con 20 de
-      // ellas en `categoria_principal: 'Otros'`, y le ganaba a la de 08:48, que
-      // trae 17 bien clasificadas. Contar tarjetas no dice nada sobre si
-      // sirven, y la más nueva es la que refleja el día.
-      //
+      // La corrida más reciente, sin excepciones —contar tarjetas no dice si
+      // sirven, y la más nueva es la que refleja el día—, más la última de cada
+      // uno de los dos días anteriores. Así, pasada la medianoche, cuando hoy
+      // todavía no tiene nada, se ve lo de ayer marcado como de ayer en vez de
+      // un feed vacío o noticias viejas haciéndose pasar por nuevas.
       // `cards` es el jsonb entero: desarrollos, bajada y ultima_actualizacion
-      // viven adentro. No hace falta pedir columnas nuevas.
-      const rows = await leerPublico(
-        supabase
-          .from('news_cards')
-          .select('cards,generated_at,tweets_source_count')
-          .eq('pais', FEED_COUNTRY)
-          .order('generated_at', { ascending: false })
-          .limit(1)
+      // viven adentro.
+      const corte = (dias) => new Date(inicioDelDiaGT(Date.now()) - dias * 86400000).toISOString();
+      const corrida = (antesDe) => {
+        let q = supabase.from('news_cards').select('cards,generated_at').eq('pais', FEED_COUNTRY);
+        if (antesDe) q = q.lt('generated_at', antesDe);
+        return leerPublico(q.order('generated_at', { ascending: false }).limit(1));
+      };
+      const corridas = await Promise.all([corrida(null), corrida(corte(0)), corrida(corte(1))]);
+      // Una tarjeta por id: la versión de la corrida más nueva. Su día es el
+      // de cuando apareció por primera vez, no el de la corrida que la trae.
+      const porId = new Map();
+      corridas.forEach((filas, i) => {
+        const fila = filas?.[0];
+        for (const card of fila?.cards || []) {
+          const id = card.id || card.titulo;
+          if (porId.has(id)) continue;
+          // El día de una historia es el de su último movimiento: una que
+          // empezó ayer y siguió hoy es de hoy, no de ayer.
+          const momentos = [card.primera_vez, card.ultima_actualizacion, fila.generated_at && !card.primera_vez ? fila.generated_at : null]
+            .filter(Boolean)
+            .map((t) => new Date(t).toISOString());
+          porId.set(id, { ...card, _desde: momentos.sort().pop() || fila.generated_at, _corrida: i });
+        }
+      });
+      // Orden: el día primero (lo de hoy arriba), y dentro de cada día lo que
+      // más pesa —impacto, después cuántos medios lo cubren—. A igual peso,
+      // lo más reciente.
+      const todas = [...porId.values()].sort(
+        (a, b) =>
+          (diaGT(a._desde) < diaGT(b._desde) ? 1 : diaGT(a._desde) > diaGT(b._desde) ? -1 : 0) ||
+          numero(b.impacto_score) - numero(a.impacto_score) ||
+          numero(b.fuentes?.independientes) - numero(a.fuentes?.independientes) ||
+          (a._desde < b._desde ? 1 : -1)
       );
-      return rows?.[0]?.cards || [];
+      // Los días anteriores rellenan, no se suman: si hoy ya hay de sobra, se
+      // muestra lo de la corrida de ahora (con su fecha, si alguna es de antes).
+      const deHoy = todas.filter((c) => diaGT(c._desde) === diaGT(Date.now())).length;
+      return deHoy >= 10 ? todas.filter((c) => c._corrida === 0) : todas;
     },
     staleTime: 1000 * 60 * 10,
   });
@@ -713,6 +768,8 @@ export default function Index() {
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
+  // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
+  const [vistaCongreso, setVistaCongreso] = useState("tablero");
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
   const { data: diasCongreso, isLoading: cargandoCongreso } = useQuery({
     queryKey: ['congreso-feed'],
@@ -757,6 +814,14 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
+  // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
+  // lo que todavía no llegó.
+  const marcadoDelFeed =
+    feed !== "pais" || !hotTopics.length || diaGT(hotTopics[0]._desde) === diaGT(Date.now())
+      ? "hoy"
+      : diaGT(hotTopics[0]._desde) === diaGT(Date.now() - 86400000)
+        ? "de ayer"
+        : "estos días";
 
   const isLoading = !trendsData && !hotTopicsData;
 
@@ -766,6 +831,7 @@ export default function Index() {
 
       {/* Modal de detalle */}
       <NewsCardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
+      <NotaCongreso item={notaCongreso} onClose={() => setNotaCongreso(null)} />
       {entityModal && (
         <EntityWikiModal entityName={entityModal} onClose={() => setEntityModal(null)} />
       )}
@@ -782,7 +848,9 @@ export default function Index() {
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingTop: insets.top + 20,
-            paddingBottom: insets.bottom + 72,
+            // El orbe flota sobre el feed: el final tiene que poder subir hasta
+            // quedar por encima de él.
+            paddingBottom: insets.bottom + 150,
           }}
           showsVerticalScrollIndicator={false}
         >
@@ -799,9 +867,9 @@ export default function Index() {
               alignItems: "center",
             }}
           >
-            <Text style={{ flex: 1, fontSize: 48, fontWeight: "800", color: INK.title, letterSpacing: -1 }}>
-              Vizta
-            </Text>
+            <View style={{ flex: 1 }}>
+              <LogoVizta alto={44} />
+            </View>
 
             {/* Mundo y ajustes, juntos.
               *
@@ -848,30 +916,45 @@ export default function Index() {
             {/* El título y, a su lado, de dónde viene lo que se lee: el país o
                 el Congreso. El selector va en la misma línea para que se lea
                 como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
+            {/* Cómo está el día: cuatro medidas contadas, a un toque del detalle. */}
+            {feed === "pais" ? <Termometro pais={FEED_COUNTRY} style={{ marginBottom: 22 }} /> : null}
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              {/* «Lo que hay que leer» es del feed de noticias. El Congreso y
+                  el Observatorio no son lo del día: son tableros, y el
+                  título no va. */}
               <View style={{ flex: 1 }}>
-                <SectionHeader title="Lo que hay que leer" marcado="hoy" />
+                {feed === "pais" ? <SectionHeader title="Lo que hay que leer" marcado={marcadoDelFeed} /> : null}
+                {/* En el Congreso, el lugar del título lo ocupa el cambio de vista. */}
+                {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
               </View>
               <SelectorFeed valor={feed} onCambiar={setFeed} />
             </View>
 
+            {feed === "observatorio" ? <ObservatorioCC /> : null}
+
+
             {feed === "congreso" ? (
               cargandoCongreso ? (
-                <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>Trayendo lo del Congreso…</Text>
+                <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
               ) : !diasCongreso?.length ? (
-                <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>
-                  El Congreso no publicó nada en estos días.
-                </Text>
+                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
+              ) : vistaCongreso === "organizado" ? (
+                <CongresoOrganizado
+                  dias={diasCongreso}
+                  onAbrir={(item) => {
+                    evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                    setNotaCongreso(item);
+                  }}
+                />
               ) : (
                 diasCongreso.map((dia, n) => (
                   <View key={dia.fecha}>
-                    {/* El día solo se nombra desde el segundo: el primero es
-                        el de más arriba, y el título ya dice «hoy». */}
-                    {n > 0 ? (
-                      <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: 6, marginBottom: 18 }}>
-                        {nombreDelDia(dia.fecha).toUpperCase()}
-                      </Text>
-                    ) : null}
+                    {/* Cada día lleva su fecha, también el primero: lo más
+                        reciente del Congreso puede ser de ayer, y sin fecha
+                        se leería como de hoy. */}
+                    <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: n > 0 ? 6 : 16, marginBottom: 18 }}>
+                      {nombreDelDia(dia.fecha).toUpperCase()}
+                    </Text>
                     {/* El noticiero es un salto a YouTube; lo demás, los
                         títulos de lo que se vio ese día, sin enlace. */}
                     {dia.items
@@ -888,22 +971,40 @@ export default function Index() {
                           style={{ marginBottom: 6 }}
                         />
                       ))}
+                    {/* Las votaciones del pleno de ese día, con sus 160 votos. */}
+                    <VotacionesDelDia votaciones={dia.votaciones} />
                     <View style={{ marginBottom: 22 }}>
                       {dia.items
                         .filter((item) => item.tipo !== "noticiero")
                         .map((item, i, lista) => (
-                          <TituloCongreso key={item.id} item={item} ultimo={i === lista.length - 1} />
+                          <ItemCongreso
+                            key={item.id}
+                            item={item}
+                            ultimo={i === lista.length - 1}
+                            onPress={() => {
+                              evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                              setNotaCongreso(item);
+                            }}
+                          />
                         ))}
                     </View>
                   </View>
                 ))
               )
-            ) : hotTopics.length === 0 ? (
-              <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 10 }}>
-                Sin noticias en las últimas 48 horas.
-              </Text>
+            ) : feed === "observatorio" ? null : hotTopics.length === 0 ? (
+              <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
-              hotTopics.map((card, index) => (
+              porDiaGT(hotTopics).map((grupo, g) => (
+                <View key={grupo.dia}>
+                  {/* El día se nombra siempre que no sea hoy, y también hoy si
+                      abajo viene otro: así nunca se confunde lo de ayer con lo
+                      de hoy. */}
+                  {grupo.dia !== diaGT(Date.now()) || g > 0 ? (
+                    <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: g ? 8 : 4, marginBottom: 16 }}>
+                      {nombreDelDia(grupo.dia).toUpperCase()}
+                    </Text>
+                  ) : null}
+                  {grupo.cards.map((card, index) => (
                 <TarjetaNoticia
                   key={card.id || index}
                   card={card}
@@ -914,8 +1015,18 @@ export default function Index() {
                     setSelectedCard(card);
                   }}
                   onEntidad={(e) => setEntityModal(e)}
+                  onCongreso={
+                    esDelCongreso(card)
+                      ? () => {
+                          setVistaCongreso("organizado");
+                          setFeed("congreso");
+                        }
+                      : undefined
+                  }
                   style={{ marginBottom: 22 }}
                 />
+                  ))}
+                </View>
               ))
             )}
           </View>
@@ -1110,4 +1221,89 @@ function SectionHeader({ title, marcado }) {
       </Text>
     </View>
   );
+}
+
+
+/**
+ * Tablero u organizado: las dos formas de ver lo del Congreso.
+ *
+ * El tablero son los días tal como pasaron —el noticiero, las votaciones, las
+ * notas—; organizado es lo mismo de la semana juntado por tema, para encontrar
+ * una iniciativa o una comisión sin recorrer día por día.
+ */
+function VistasCongreso({ valor, onCambiar }) {
+  const opciones = [
+    ["tablero", "Tablero"],
+    ["organizado", "Organizado"],
+  ];
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignSelf: "flex-start",
+        marginTop: 2,
+        marginBottom: 6,
+        padding: 3,
+        borderRadius: 12,
+        backgroundColor: "rgba(28,43,34,0.06)",
+      }}
+    >
+      {opciones.map(([clave, nombre]) => {
+        const activo = valor === clave;
+        return (
+          <Pressable
+            key={clave}
+            onPress={() => onCambiar(clave)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activo }}
+            style={{
+              paddingVertical: 6,
+              paddingHorizontal: 14,
+              borderRadius: 9,
+              backgroundColor: activo ? "#FFFFFF" : "transparent",
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: activo ? "700" : "500", color: activo ? INK.title : INK.meta }}>{nombre}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Una tarjeta del país que habla del Congreso: también se ve desde allá. */
+const DEL_CONGRESO = /\bcongreso\b|\bdiputad[oa]s?\b|\bbancadas?\b|\bpleno del\b|\blegislativo\b/i;
+function esDelCongreso(card) {
+  return DEL_CONGRESO.test(`${card?.titulo || ""} ${card?.resumen || ""}`);
+}
+
+
+// ─── Días en hora de Guatemala ───────────────────────────────────────────────
+
+/** «2026-10-15»: el día en Guatemala de una fecha, sin importar dónde está el teléfono. */
+function diaGT(fecha) {
+  return new Date(fecha).toLocaleDateString("en-CA", { timeZone: "America/Guatemala" });
+}
+
+/** La medianoche de hoy en Guatemala (UTC−6, sin horario de verano), en milisegundos. */
+function inicioDelDiaGT(ahora) {
+  return new Date(`${diaGT(ahora)}T00:00:00-06:00`).getTime();
+}
+
+/** Las tarjetas en grupos por día, del más nuevo al más viejo. */
+function porDiaGT(cards) {
+  const grupos = [];
+  for (const card of cards) {
+    const dia = diaGT(card._desde || Date.now());
+    let grupo = grupos.find((x) => x.dia === dia);
+    if (!grupo) grupos.push((grupo = { dia, cards: [] }));
+    grupo.cards.push(card);
+  }
+  return grupos;
+}
+
+/** Un número de la tarjeta, que puede venir como texto o faltar. */
+function numero(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }

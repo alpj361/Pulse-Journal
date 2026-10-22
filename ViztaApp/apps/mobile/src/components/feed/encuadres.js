@@ -76,8 +76,12 @@ const lista = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
  */
 export function fuentesDe(card) {
   const f = card?.fuentes;
+  // Desde el 19-oct, `independientes_casas` trae solo los medios: sin cuentas
+  // oficiales (Estado, PNC, PDH…) y sin contar dos veces @soy_502 y Soy502.
+  // Las cards de antes solo traen `casas`, con todo junto.
+  const independientesCasas = Array.isArray(f?.independientes_casas) ? f.independientes_casas : null;
   return {
-    casas: lista(f?.casas),
+    casas: independientesCasas ?? lista(f?.casas),
     handles: lista(f?.handles),
     independientes: Number.isFinite(f?.independientes) ? f.independientes : 0,
     contrastada: f?.contrastada === true,

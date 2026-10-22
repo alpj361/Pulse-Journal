@@ -1,6 +1,7 @@
 import { Text, View } from 'react-native';
 import { inclinacion } from '../codex/Papel';
-import { paletaDe, temaDe } from './temas';
+import Sticker from '../Sticker';
+import { normalizarTema, paletaDe, temaDe } from './temas';
 
 /**
  * La categoría, como una etiqueta de papel pegada.
@@ -22,16 +23,28 @@ import { paletaDe, temaDe } from './temas';
  *    grande la convertiría en la píldora de siempre.
  *  · **Sombra corta y pegada.** Una sombra difusa la haría flotar. Esta la
  *    apoya sobre la página.
+ *
+ * A su lado va el sticker del tema: cada categoría tiene el suyo —la urna de
+ * Política, el bus de Movilidad—, y es lo que deja reconocerla al bajar por el
+ * feed antes de leer la palabra. Va torcido para el otro lado, como dos cosas
+ * pegadas a mano y no una sola pieza.
  */
-export default function Pegatina({ categoria, id, style }) {
+// A menos de 32 puntos los stickers pierden el detalle.
+const TAMANO_STICKER = 36;
+
+export default function Pegatina({ categoria, sticker, id, style }) {
   const tema = temaDe(categoria);
   const p = paletaDe(categoria);
 
   return (
-    <View
-      style={[
-        {
-          alignSelf: 'flex-start',
+    <View style={[{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 }, style]}>
+      <Sticker
+        nombre={sticker || normalizarTema(tema)}
+        size={TAMANO_STICKER}
+        style={{ marginVertical: -4, transform: [{ rotate: `${-inclinacion(`${id || tema}-stk`, 5)}deg` }] }}
+      />
+      <View
+        style={{
           backgroundColor: p.lavado[1],
           borderRadius: 2.5,
           paddingHorizontal: 8,
@@ -42,13 +55,12 @@ export default function Pegatina({ categoria, id, style }) {
           shadowRadius: 2,
           shadowOffset: { width: 0, height: 1.5 },
           elevation: 2,
-        },
-        style,
-      ]}
-    >
-      <Text style={{ fontSize: 9.5, fontWeight: '800', color: p.tinta, letterSpacing: 0.9 }}>
-        {tema.toUpperCase()}
-      </Text>
+        }}
+      >
+        <Text style={{ fontSize: 9.5, fontWeight: '800', color: p.tinta, letterSpacing: 0.9 }}>
+          {tema.toUpperCase()}
+        </Text>
+      </View>
     </View>
   );
 }

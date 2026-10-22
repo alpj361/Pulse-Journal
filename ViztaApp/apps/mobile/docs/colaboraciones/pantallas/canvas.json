@@ -1,0 +1,43 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-20T10:30:00Z" },
+  "title": "Colaboradores del Codex",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 390, "h": 844, "title": "1 · Los chats", "radius": 44 },
+    "Notificaciones.dc.html": { "x": 470, "y": 0, "w": 390, "h": 844, "title": "2 · Avisos", "radius": 44 },
+    "Estados.dc.html": { "x": 940, "y": 0, "w": 1560, "h": 844, "title": "3 · Estados de la lista" },
+
+    "Chat.dc.html": { "x": 0, "y": 1300, "w": 390, "h": 844, "title": "4 · Chat con un agente", "radius": 44 },
+    "Adjuntar.dc.html": { "x": 470, "y": 1300, "w": 390, "h": 844, "title": "5 · Adjuntar", "radius": 44 },
+    "Conversacion.dc.html": { "x": 940, "y": 1300, "w": 390, "h": 844, "title": "6 · Grupo y cifrado", "radius": 44 },
+    "Artifact.dc.html": { "x": 1410, "y": 1300, "w": 390, "h": 844, "title": "7 · Abrir un artifact", "radius": 44 },
+
+    "Items.dc.html": { "x": 0, "y": 2600, "w": 390, "h": 844, "title": "8 · Su Codex y sus espacios", "radius": 44 },
+    "Panel.dc.html": { "x": 470, "y": 2600, "w": 390, "h": 844, "title": "9 · Permisos del agente", "radius": 44 },
+    "CrearAgente.dc.html": { "x": 940, "y": 2600, "w": 390, "h": 844, "title": "10 · Sumar un agente", "radius": 44 },
+    "Actividad.dc.html": { "x": 1410, "y": 2600, "w": 390, "h": 844, "title": "11 · Actividad (30 días)", "radius": 44 },
+    "Deshacer.dc.html": { "x": 1880, "y": 2600, "w": 390, "h": 844, "title": "12 · Deshacer una conexión", "radius": 44 },
+
+    "Comun.dc.html": { "x": 0, "y": 3900, "w": 390, "h": 844, "title": "13 · Compartido", "radius": 44 },
+    "Compartir.dc.html": { "x": 470, "y": 3900, "w": 390, "h": 844, "title": "14 · Compartir algo", "radius": 44 },
+    "Bandeja.dc.html": { "x": 940, "y": 3900, "w": 390, "h": 844, "title": "15 · Solicitudes", "radius": 44 },
+    "Solicitud.dc.html": { "x": 1410, "y": 3900, "w": 390, "h": 844, "title": "16 · Unir campo por campo", "radius": 44 },
+    "Conflicto.dc.html": { "x": 1880, "y": 3900, "w": 390, "h": 844, "title": "17 · Cambió mientras tanto", "radius": 44 }
+  },
+  "order": [
+    "Main.dc.html", "Notificaciones.dc.html", "Estados.dc.html",
+    "Chat.dc.html", "Adjuntar.dc.html", "Conversacion.dc.html", "Artifact.dc.html",
+    "Items.dc.html", "Panel.dc.html", "CrearAgente.dc.html", "Actividad.dc.html", "Deshacer.dc.html",
+    "Comun.dc.html", "Compartir.dc.html", "Bandeja.dc.html", "Solicitud.dc.html", "Conflicto.dc.html"
+  ],
+  "notes": {
+    "titulo": { "x": 0, "y": -620, "text": "Colaboradores · propuesta v2 (STA-259)", "kind": "title1", "maxW": 2270 },
+    "filaLista": { "x": 0, "y": -300, "text": "La lista", "kind": "title1", "maxW": 2500 },
+    "filaChat": { "x": 0, "y": 1000, "text": "El chat", "kind": "title1", "maxW": 1800 },
+    "filaAgentes": { "x": 0, "y": 2300, "text": "Agentes", "kind": "title1", "maxW": 2270 },
+    "filaCompartir": { "x": 0, "y": 3600, "text": "Compartir y aprobar", "kind": "title1", "maxW": 2270 }
+  },
+  "designSystems": []
+}

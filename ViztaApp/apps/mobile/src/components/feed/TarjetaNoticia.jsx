@@ -6,10 +6,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { INK, MOTION, SERIF } from '../theme';
-import { categoriaDe, paletaDe } from './temas';
+import { categoriaDe, paletaDe, stickerDe } from './temas';
 import Pegatina from './Pegatina';
 import { lineaDeCard } from './encuadres';
-import { lineaActualizada } from './desarrollos';
+import { lineaActualizada, seguimientoDe } from './desarrollos';
 
 /**
  * El ámbar del aviso.
@@ -38,7 +38,7 @@ const ALERTA = '#B45309';
  * pide ser tocado como un botón de acción; un nombre subrayado dentro de un
  * texto se lee como lo que es — una referencia a otra cosa.
  */
-export default function TarjetaNoticia({ card, onPress, onEntidad, style }) {
+export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, style }) {
   const press = useSharedValue(0);
   const categoria = categoriaDe(card);
   const p = paletaDe(categoria);
@@ -51,6 +51,7 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, style }) {
 
   const linea = lineaDeCard(card);
   const actualizada = lineaActualizada(card);
+  const seguimiento = seguimientoDe(card);
 
   return (
     <Pressable
@@ -66,7 +67,13 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, style }) {
       style={style}
     >
       <Animated.View style={animado}>
-        <Pegatina categoria={categoria} id={card?.id} style={{ marginBottom: 13 }} />
+        <Pegatina categoria={categoria} sticker={stickerDe(card)} id={card?.id} style={{ marginBottom: seguimiento ? 9 : 13 }} />
+
+        {/* Una historia que viene de antes lo dice antes del titular: así no
+            se lee como nueva. */}
+        {seguimiento ? (
+          <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta, letterSpacing: 0.2, marginBottom: 6 }}>{seguimiento}</Text>
+        ) : null}
 
         <Text
           style={{
@@ -92,6 +99,14 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, style }) {
           <Text style={{ fontSize: 11.5, color: INK.meta, marginTop: 9 }}>
             {actualizada}
           </Text>
+        ) : null}
+
+        {/* Lo que habla del Congreso sale acá y también en su vista: esto
+            lleva allá, donde está ordenado junto con el resto del trámite. */}
+        {onCongreso ? (
+          <Pressable onPress={onCongreso} hitSlop={8} accessibilityRole="link" style={{ alignSelf: 'flex-start', marginTop: 10 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#2F4A7A' }}>del Congreso ›</Text>
+          </Pressable>
         ) : null}
 
         {/* La capa de medios, en una línea.

@@ -7,6 +7,7 @@ import { MONO } from '../codex/mono';
 import { PAPEL } from '../codex/Papel';
 import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
+import Sticker from '../Sticker';
 
 /**
  * El tráfico, tramo por tramo.
@@ -122,7 +123,8 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: PAPEL }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 16, paddingHorizontal: 18 }}>
-          <Text style={{ flex: 1, fontFamily: MONO, fontSize: 12, color: INK.faint, paddingLeft: 12 }}>tráfico</Text>
+          <Sticker nombre="trafico" size={38} style={{ marginLeft: 6 }} />
+          <Text style={{ flex: 1, fontFamily: MONO, fontSize: 12, color: INK.faint, paddingLeft: 6 }}>tráfico</Text>
           <Pressable onPress={onClose} hitSlop={12} style={{ padding: 6 }} accessibilityRole="button" accessibilityLabel="Cerrar">
             <X size={19} color={INK.faint} />
           </Pressable>
@@ -133,6 +135,7 @@ export default function TraficoSheet({ tramos, onClose, onIr, topInset = 0, bott
              grises, todos «sin medición», es ruido. La hoja queda vacía y lo
              dice. */
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingBottom: bottomInset + 80 }}>
+            <Sticker nombre="vacio" size={84} style={{ marginBottom: 14 }} />
             <Text style={{ fontFamily: SERIF, fontSize: 24, lineHeight: 30, letterSpacing: -0.3, color: INK.title, textAlign: 'center' }}>
               No hay información ahora
             </Text>

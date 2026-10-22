@@ -6,17 +6,28 @@ import { INK, ACCENT } from '../theme';
 import { useUsoStore, refrescarUso } from '../../state/usoStore';
 
 /**
- * Cuánto llevás usado, en tres renglones.
+ * Cuánto llevás usado.
  *
- * Nada de nombres de límites ni periodos: «Posts», «Espacios» y
- * «Almacenamiento», cada uno con su barra. La base ya decide cuáles aplican —a
- * quien no tiene Posts no le aparece esa fila— y de dónde sale cada número.
+ * Dos grupos, porque son dos cosas distintas: lo que se gasta y vuelve cada
+ * semana (posts que traés, análisis, minutos de video, búsquedas, Vizta) y lo
+ * que se va juntando (posts guardados, espacios, almacenamiento). Mezclados en
+ * una sola lista, un «5 de 50» al lado de un «77» no se entiende.
  *
- * Un área sin tope muestra el número y no una barra: una barra que nunca se
- * llena no dice nada. Los admins tienen los mismos topes que cualquiera.
+ * La base decide qué filas hay (`get_my_usage`): a quien su plan no le da cupo
+ * por semana no le aparece ese grupo. Cada fila dice cuánto va de cuánto; un
+ * área sin tope muestra el número solo, porque una barra que nunca se llena no
+ * dice nada. Los admins tienen los mismos topes que cualquiera.
  */
 
-const NOMBRE = { posts: 'Posts', espacios: 'Espacios', almacenamiento: 'Almacenamiento' };
+const NOMBRE = { posts: 'Posts guardados', espacios: 'Espacios', almacenamiento: 'Almacenamiento' };
+
+const NOMBRE_SEMANA = {
+  posts: 'Posts nuevos',
+  analisis: 'Análisis',
+  minutos: 'Video y audio',
+  busquedas: 'Búsquedas',
+  vizta: 'Vizta',
+};
 
 /** Bytes en algo que se lee de un vistazo. */
 function pesa(bytes) {
@@ -27,7 +38,74 @@ function pesa(bytes) {
   return `${n} B`;
 }
 
-const contar = (area) => (area.clave === 'almacenamiento' ? pesa(area.usado) : String(area.usado ?? 0));
+/** «5 de 50», «12 MB de 300 MB», «40 de 75 min», o el número solo si no hay tope. */
+function cuanto(area, deLaSemana) {
+  const usado = Number(area.usado) || 0;
+  // Vizta se mide en costo, que no es un número para mostrarle a nadie.
+  if (deLaSemana && area.clave === 'vizta') return `${area.porcentaje ?? 0}%`;
+  if (area.clave === 'almacenamiento') {
+    return area.limite != null ? `${pesa(usado)} de ${pesa(area.limite)}` : pesa(usado);
+  }
+  if (area.limite == null) return String(usado);
+  const cola = deLaSemana && area.clave === 'minutos' ? ' min' : '';
+  return `${Math.min(usado, area.limite)} de ${area.limite}${cola}`;
+}
+
+function Fila({ area, deLaSemana }) {
+  const nombre = (deLaSemana ? NOMBRE_SEMANA : NOMBRE)[area.clave] || area.clave;
+  return (
+    <View style={{ marginTop: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+        <Text style={{ flex: 1, fontSize: 14, color: INK.title }}>{nombre}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>{cuanto(area, deLaSemana)}</Text>
+      </View>
+      {area.porcentaje != null ? (
+        <View
+          style={{
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: 'rgba(28,43,34,0.08)',
+            marginTop: 8,
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            style={{
+              // Con cero no se pinta nada: un pedacito de barra diría que ya gastaste.
+              width: area.porcentaje > 0 ? `${Math.max(2, area.porcentaje)}%` : 0,
+              height: '100%',
+              borderRadius: 3,
+              backgroundColor: area.porcentaje >= 90 ? ACCENT.red.ink : ACCENT.indigo.ink,
+            }}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function Grupo({ titulo, nota, children }) {
+  return (
+    <View style={{ marginTop: titulo ? 18 : 2 }}>
+      {titulo ? (
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: INK.meta, letterSpacing: 1.1 }}>
+            {titulo}
+          </Text>
+          {nota ? <Text style={{ fontSize: 12, color: INK.faint }}>{nota}</Text> : null}
+        </View>
+      ) : null}
+      {children}
+    </View>
+  );
+}
+
+/** «hasta el lunes»: el día en que la semana vuelve a empezar. */
+function hasta(reinicia) {
+  if (!reinicia) return null;
+  const dia = new Date(reinicia).toLocaleDateString('es-GT', { weekday: 'long' });
+  return `hasta el ${dia}`;
+}
 
 export default function SeccionUso() {
   const [abierto, setAbierto] = useState(false);
@@ -38,8 +116,12 @@ export default function SeccionUso() {
   }, [abierto]);
 
   const areas = uso?.areas || [];
-  // El área más gastada resume el renglón plegado; sin topes, no se resume nada.
-  const tope = areas.reduce((alto, a) => (a.porcentaje != null && a.porcentaje > alto ? a.porcentaje : alto), -1);
+  const semana = uso?.semana || [];
+  // Lo más gastado resume el renglón plegado; sin topes, no se resume nada.
+  const tope = [...semana, ...areas].reduce(
+    (alto, a) => (a.porcentaje != null && a.porcentaje > alto ? a.porcentaje : alto),
+    -1,
+  );
 
   return (
     <View style={{ marginBottom: 24 }}>
@@ -65,37 +147,18 @@ export default function SeccionUso() {
               borderColor: 'rgba(28,43,34,0.08)',
             }}
           >
-            {areas.map((area) => (
-              <View key={area.clave} style={{ marginTop: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <Text style={{ flex: 1, fontSize: 14, color: INK.title }}>{NOMBRE[area.clave] || area.clave}</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>
-                    {area.porcentaje != null ? `${area.porcentaje}%` : contar(area)}
-                  </Text>
-                </View>
-
-                {area.porcentaje != null ? (
-                  <View
-                    style={{
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: 'rgba(28,43,34,0.08)',
-                      marginTop: 8,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: `${Math.max(2, area.porcentaje)}%`,
-                        height: '100%',
-                        borderRadius: 3,
-                        backgroundColor: area.porcentaje >= 90 ? ACCENT.red.ink : ACCENT.indigo.ink,
-                      }}
-                    />
-                  </View>
-                ) : null}
-              </View>
-            ))}
+            {semana.length ? (
+              <Grupo titulo="ESTA SEMANA" nota={hasta(uso?.reinicia)}>
+                {semana.map((area) => (
+                  <Fila key={area.clave} area={area} deLaSemana />
+                ))}
+              </Grupo>
+            ) : null}
+            <Grupo titulo={semana.length ? 'EN TOTAL' : null}>
+              {areas.map((area) => (
+                <Fila key={area.clave} area={area} />
+              ))}
+            </Grupo>
           </View>
         )}
       </GlassCard>
