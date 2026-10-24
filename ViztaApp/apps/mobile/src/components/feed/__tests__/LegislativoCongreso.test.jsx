@@ -97,3 +97,11 @@ test('un fallo de consulta se propaga en vez de devolver un registro incompleto'
   supabase.from.mockReturnValue(query);
   await expect(registroCompleto('x', 'numero', 'numero')).rejects.toThrow('sin conexión');
 });
+
+
+test('prefiere el resumen de la noticia y conserva el objetivo como respaldo', () => {
+  const ini = { numero: 1, titulo: 'Ley del agua', eventos_timeline: [{ detalle: { objetivo: 'Establecer reglas para las municipalidades.' } }] };
+  const notas = new Map([['1', [{ summary: 'La propuesta protege las fuentes de agua y modifica las obligaciones municipales.' }]]]);
+  expect(resumenDe(ini, notas)).toBe(notas.get('1')[0].summary);
+  expect(resumenDe(ini, new Map())).toBe('Establecer reglas para las municipalidades.');
+});

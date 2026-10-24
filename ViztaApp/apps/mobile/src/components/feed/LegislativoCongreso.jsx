@@ -104,7 +104,7 @@ export function resumenDe(ini, deNotas) {
   const notas = (deNotas?.get(String(ini.numero)) || []).map((n) => n.summary);
   const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
   const titulo = plano(limpiarTitulo(ini.titulo));
-  return [...objetivos, ...notas].find((r) => typeof r === 'string' && plano(r) &&
+  return [...notas, ...objetivos].find((r) => typeof r === 'string' && plano(r) &&
     !/\btuit\b|seg[uú]n el t[ií]tulo|sin m[aá]s detalles/i.test(r) &&
     (!titulo || !titulo.includes(plano(r)))) || null;
 }
