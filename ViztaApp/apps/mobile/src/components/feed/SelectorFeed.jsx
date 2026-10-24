@@ -76,7 +76,7 @@ export default function SelectorFeed({ valor, onCambiar }) {
       </Pressable>
 
       <Modal visible={!!menu} transparent animationType="none" onRequestClose={() => setMenu(null)}>
-        <Pressable style={{ flex: 1 }} onPress={() => setMenu(null)}>
+        <Pressable accessible={false} style={{ flex: 1 }} onPress={() => setMenu(null)}>
           {menu ? (
             <Animated.View
               entering={ZoomIn.springify().damping(18).stiffness(260).mass(0.6)}
@@ -91,6 +91,7 @@ export default function SelectorFeed({ valor, onCambiar }) {
                         key={f.clave}
                         onPress={() => elegir(f.clave)}
                         accessibilityRole="menuitem"
+                        accessibilityLabel={f.nombre}
                         accessibilityState={{ selected: elegido }}
                         style={({ pressed }) => ({
                           flexDirection: 'row',
