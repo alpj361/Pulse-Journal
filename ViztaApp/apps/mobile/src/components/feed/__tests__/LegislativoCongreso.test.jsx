@@ -3,18 +3,20 @@ import { Linking, Pressable, Text, TextInput } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '../../../utils/supabase';
-import { ListaIniciativas, Iniciativa, registroCompleto, resumenDe } from '../LegislativoCongreso';
+import { ListaIniciativas, ListaLeyes, ListaVotaciones, Iniciativa, registroCompleto, resumenDe } from '../LegislativoCongreso';
 
 jest.mock('../../../utils/supabase', () => ({ supabase: { from: jest.fn() } }));
 jest.mock('../TarjetasCongreso', () => {
   const { Text } = require('react-native');
-  return { Camino: ({ etapa }) => <Text>{etapa}</Text>, Titulo: Text, Rotulo: Text, RAYA: '#ddd', TINTA: '#234' };
+  return { VotacionCongreso: ({ votacion }) => <Text>{votacion.asunto}</Text>, Camino: ({ etapa }) => <Text>{etapa}</Text>, Titulo: Text, Rotulo: Text, RAYA: '#ddd', TINTA: '#234' };
 });
 
 const registro = Array.from({ length: 45 }, (_, i) => ({
   numero: 7000 - i, titulo: `Ley de prueba ${i}`, estado_actual: 'conocio_pleno',
   url_pdf: `https://congreso.gob.gt/${i}.pdf`, eventos_timeline: [],
 }));
+const decretos = Array.from({ length: 83 }, (_, i) => ({ numero: `${83 - i}-${i < 23 ? 2026 : i < 53 ? 2025 : 2024}`, fecha: `${i < 23 ? 2026 : i < 53 ? 2025 : 2024}-09-01`, resumen: `Ley de prueba ${i}`, pdf_url: i < 3 ? null : `https://congreso.gob.gt/${i}.pdf` }));
+const votaciones = Array.from({ length: 82 }, (_, i) => ({ id: String(i).padStart(3, '0'), fecha: i < 2 ? '2026-10-22' : '2026-09-08', asunto: `Votación sobre asunto ${i}`, resultado: i < 54 ? 'aprobada' : 'no_aprobada' }));
 const notas = [{ id: 'n', iniciativa_numero: 6960, stage: 'dictamen', digest_date: '2026-10-24', summary: 'Resumen que explica los cambios de prueba de la propuesta.', url: 'https://congreso.gob.gt/nota' }];
 let renderer, cliente;
 const texto = () => JSON.stringify(renderer.toJSON());
@@ -23,7 +25,7 @@ async function esperar() { await act(async () => { await new Promise((r) => setT
 
 beforeEach(() => {
   supabase.from.mockImplementation((tabla) => {
-    const rows = tabla === 'iniciativas_app_view' ? registro : tabla === 'congreso_items_app_view' ? notas : [{ id: 's', titulo: 'Una propuesta anunciada', estado: 'anunciada', fuentes: [] }];
+    const rows = tabla === 'iniciativas_app_view' ? registro : tabla === 'congreso_items_app_view' ? notas : tabla === 'pc_congreso_decretos_view' ? decretos : tabla === 'votaciones' ? votaciones : [{ id: 's', titulo: 'Una propuesta anunciada', estado: 'anunciada', fuentes: [] }];
     const query = {
       select: () => query, order: () => query, not: () => query, is: () => query,
       range: jest.fn((a, b) => Promise.resolve({ data: rows.slice(a, b + 1), error: null })),
@@ -128,4 +130,37 @@ test('abre el resumen completo sin abrir el recorrido', () => {
   act(() => expansion.props.onPress());
   expect(boton('cerrar resumen, iniciativa 7000').props.accessibilityState.expanded).toBe(true);
   expect(renderer.root.findAll((n) => n.props.children === resumen && n.props.numberOfLines === undefined).length).toBeGreaterThan(0);
+});
+
+
+async function montarRegistro(Componente) {
+  await act(async () => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Componente /></QueryClientProvider>); });
+  await esperar();
+}
+
+test('leyes: busca todo el registro, filtra por año y cambia de página', async () => {
+  await montarRegistro(ListaLeyes);
+  expect(texto()).toContain('Ley de prueba 0');
+  expect(texto()).toContain('Documento aún no disponible.');
+  act(() => boton('página 5').props.onPress());
+  expect(texto()).not.toContain('Ley de prueba 0');
+  expect(texto()).toContain('Ley de prueba 82');
+  act(() => boton('2026, 23').props.onPress());
+  expect(texto()).toContain('Ley de prueba 0');
+  act(() => renderer.root.findByType(TextInput).props.onChangeText('83-2026'));
+  expect(texto()).toContain('Ley de prueba 0');
+  expect(texto()).not.toContain('Ley de prueba 1');
+});
+
+test('votaciones: consulta el historial independiente de los días del tablero', async () => {
+  await montarRegistro(ListaVotaciones);
+  expect(boton('todas, 82')).toBeDefined();
+  expect(boton('página 5')).toBeDefined();
+  act(() => boton('página 5').props.onPress());
+  expect(texto()).toContain('Votación sobre asunto 3');
+  expect(texto()).toContain('Votación sobre asunto 2');
+  expect(texto()).not.toContain('Votación sobre asunto 81');
+  act(() => boton('aprobadas, 54').props.onPress());
+  expect(boton('página 3')).toBeDefined();
+  expect(boton('página 5')).toBeUndefined();
 });

@@ -958,19 +958,19 @@ export default function Index() {
 
 
             {feed === "congreso" ? (
-              cargandoCongreso ? (
-                <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
-              ) : !diasCongreso?.length ? (
-                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
-              ) : vistaCongreso === "organizado" ? (
+              vistaCongreso === "organizado" ? (
                 <CongresoOrganizado
-                  dias={diasCongreso}
+                  dias={diasCongreso || []}
                   onPagina={irAIniciativas}
                   onAbrir={(item) => {
                     evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
                     setNotaCongreso(item);
                   }}
                 />
+              ) : cargandoCongreso ? (
+                <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
+              ) : !diasCongreso?.length ? (
+                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
               ) : (
                 !diasVisiblesCongreso.length ? <EstadoFeed sticker="vacio">No hay publicaciones de esta sección en estos días.</EstadoFeed> : diasVisiblesCongreso.map((dia, n) => (
                   <View key={dia.fecha}>

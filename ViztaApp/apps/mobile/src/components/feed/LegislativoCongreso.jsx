@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, Text, TextInput, View } from 'react-native';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
-import { Camino, RAYA, Rotulo, TINTA, Titulo } from './TarjetasCongreso';
+import { Camino, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso } from './TarjetasCongreso';
 import { nombreDelDia } from './congreso';
 import FiltroChips from './FiltroChips';
+import { anoDecreto, buscarRegistro, fechaRegistro, periodoDe, resultadoVotacion } from './organizacion';
 import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS_ETAPA } from './iniciativas';
 
 /**
@@ -45,13 +46,15 @@ export async function registroCompleto(tabla, columnas, orden, configurar = (q) 
 /** Cuántas hay, para la burbuja: iniciativas con número y leyes (decretos). */
 export function useConteosLegislativos() {
   return useQuery({
-    queryKey: ['congreso-conteos-legislativos'],
+    queryKey: ['congreso-conteos-legislativos-v2'],
     queryFn: async () => {
-      const [ini, dec] = await Promise.all([
+      const [ini, dec, votos] = await Promise.all([
         supabase.from('iniciativas_app_view').select('numero', { count: 'exact', head: true }),
         supabase.from('pc_congreso_decretos_view').select('numero', { count: 'exact', head: true }),
+        supabase.from('votaciones').select('id', { count: 'exact', head: true }),
       ]);
-      return { iniciativas: ini.count || 0, leyes: dec.count || 0 };
+      for (const r of [ini, dec, votos]) if (r.error) throw r.error;
+      return { iniciativas: ini.count || 0, leyes: dec.count || 0, votaciones: votos.count || 0 };
     },
     staleTime: 30 * 60 * 1000,
   });
@@ -144,6 +147,7 @@ export function ListaIniciativas({ onPagina }) {
   };
   return (
     <View>
+      <EncabezadoRegistro titulo="Iniciativas" datos={(q.data || []).map((i) => ({ fecha: i.fecha_presentacion || i.fecha_conocio_pleno }))} />
       <SinNumero />
       <View ref={ancla} collapsable={false}>
         <TextInput value={texto} onChangeText={(t) => { setTexto(t); setPagina(1); }}
@@ -356,61 +360,129 @@ function limpiarSinNumero(t) {
 
 // ─── Leyes ───────────────────────────────────────────────────────────────────
 
-async function paginaDecretos({ pageParam = 0 }) {
-  const { data, error, count } = await supabase
-    .from('pc_congreso_decretos_view')
-    .select('numero, fecha, resumen, pdf_url', { count: 'exact' })
-    .order('fecha', { ascending: false, nullsFirst: false })
-    .range(pageParam, pageParam + PAGINA - 1);
-  if (error) throw error;
-  return { filas: data || [], total: count || 0, desde: pageParam };
-}
-
-/** Las leyes son los decretos que aprobó el Congreso: uno por renglón, con su fecha. */
-export function ListaLeyes() {
-  const q = useInfiniteQuery({
-    queryKey: ['congreso-decretos'],
-    queryFn: paginaDecretos,
-    getNextPageParam: (u) => (u.desde + PAGINA < u.total ? u.desde + PAGINA : undefined),
+/** Registros completos: su contenido no depende de los días del tablero. */
+export function ListaLeyes({ onPagina }) {
+  const q = useQuery({
+    queryKey: ['congreso-decretos-registro-v2'],
+    queryFn: async () => (await registroCompleto('pc_congreso_decretos_view', 'numero, fecha, resumen, pdf_url', 'numero'))
+      .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.numero).localeCompare(String(a.numero), undefined, { numeric: true })),
     staleTime: 30 * 60 * 1000,
   });
-  const filas = (q.data?.pages || []).flatMap((p) => p.filas);
-  const total = q.data?.pages?.[0]?.total;
+  const [ano, setAno] = useState('todos');
+  const [texto, setTexto] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const ancla = useRef(null);
+  const datos = q.data || [];
+  const anos = [...new Set(datos.map(anoDecreto).filter(Boolean))].sort().reverse();
+  const filas = datos.filter((d) => (ano === 'todos' || anoDecreto(d) === ano) && buscarRegistro(`${d.numero} ${d.resumen || ''}`, texto));
+  const total = Math.max(1, Math.ceil(filas.length / PAGINA));
+  const actual = Math.min(pagina, total);
+  const cambiar = (n) => { setPagina(n); onPagina?.(ancla.current); };
   return (
     <View>
-      {q.isLoading ? <Cargando>Trayendo los decretos…</Cargando> : null}
-      {filas.map((d) => (
-        <Pressable
-          key={d.numero}
-          disabled={!d.pdf_url}
-          onPress={() => Linking.openURL(d.pdf_url).catch(() => {})}
-          style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: RAYA }}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-            <Rotulo>{`DECRETO ${d.numero}`}</Rotulo>
-            {d.fecha ? <Text style={{ fontSize: 11, color: INK.faint }}>{fechaCorta(d.fecha)}</Text> : null}
-          </View>
-          <Text style={{ fontSize: 14.5, color: INK.title, lineHeight: 20 }}>{d.resumen}</Text>
-        </Pressable>
-      ))}
-      <VerMas q={q} cuantas={filas.length} total={total} />
+      <EncabezadoRegistro titulo="Leyes y decretos" datos={datos} />
+      <View ref={ancla} collapsable={false}>
+        <BuscadorRegistro valor={texto} onCambiar={(v) => { setTexto(v); setPagina(1); }} etiqueta="buscar decreto por número o tema" />
+        <FiltroChips valor={ano} onCambiar={(v) => { setAno(v); setPagina(1); }} opciones={[
+          { clave: 'todos', nombre: 'todos los años', cuenta: datos.length },
+          ...anos.map((a) => ({ clave: a, nombre: a, cuenta: datos.filter((d) => anoDecreto(d) === a).length })),
+        ]} />
+      </View>
+      <EstadoRegistro q={q} vacio={!filas.length} />
+      <Paginado actual={actual} total={total} onCambiar={cambiar} />
+      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((d) => <Decreto key={d.numero} decreto={d} />)}
+      <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="decretos" />
+      <Paginado actual={actual} total={total} onCambiar={cambiar} />
     </View>
   );
 }
 
-// ─── Piezas ──────────────────────────────────────────────────────────────────
-
-function Cargando({ children }) {
-  return <Text style={{ fontSize: 13, color: INK.faint, paddingVertical: 16 }}>{children}</Text>;
+export function Decreto({ decreto: d }) {
+  const [error, setError] = useState(false);
+  const enlace = /^https?:\/\//i.test(d.pdf_url || '') ? d.pdf_url : null;
+  return (
+    <View style={CARD_REGISTRO}>
+      <Rotulo>{`DECRETO ${d.numero}`}</Rotulo>
+      <Titulo>{d.resumen || `Decreto ${d.numero}`}</Titulo>
+      {d.fecha ? <Text style={{ color: INK.meta, fontSize: 12, marginTop: 8 }}>{fechaRegistro(d.fecha)}</Text> : null}
+      {enlace ? <Pressable accessibilityRole="link" accessibilityLabel={`documento del decreto ${d.numero}`}
+        onPress={() => { setError(false); Linking.openURL(enlace).catch(() => setError(true)); }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
+        <FileText size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento del decreto</Text>
+      </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
+      {error ? <Text accessibilityLiveRegion="polite" style={{ color: INK.body, marginTop: 6 }}>No se pudo abrir. Probá de nuevo.</Text> : null}
+    </View>
+  );
 }
 
-function VerMas({ q, cuantas, total }) {
-  if (!q.hasNextPage) return null;
+export function ListaVotaciones({ onPagina }) {
+  const q = useQuery({
+    queryKey: ['congreso-votaciones-registro'],
+    queryFn: async () => (await registroCompleto('votaciones', 'id, fecha, sesion, asunto, resultado, a_favor, en_contra, ausentes, licencia, iniciativa_numero', 'id'))
+      .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.id).localeCompare(String(a.id))),
+    staleTime: 10 * 60 * 1000,
+  });
+  const [texto, setTexto] = useState('');
+  const [resultado, setResultado] = useState('todas');
+  const [pagina, setPagina] = useState(1);
+  const ancla = useRef(null);
+  const datos = q.data || [];
+  const buscadas = datos.filter((v) => buscarRegistro(`${v.asunto || ''} ${v.sesion || ''} ${v.iniciativa_numero || ''}`, texto));
+  const filas = buscadas.filter((v) => resultado === 'todas' || resultadoVotacion(v) === resultado);
+  const total = Math.max(1, Math.ceil(filas.length / PAGINA));
+  const actual = Math.min(pagina, total);
+  const cambiar = (n) => { setPagina(n); onPagina?.(ancla.current); };
+  const opciones = [['todas', 'todas'], ['aprobada', 'aprobadas'], ['no_aprobada', 'no aprobadas']];
+  if (buscadas.some((v) => resultadoVotacion(v) === 'sin_resultado')) opciones.push(['sin_resultado', 'sin resultado']);
   return (
-    <Pressable onPress={() => q.fetchNextPage()} disabled={q.isFetchingNextPage} accessibilityRole="button" style={{ paddingVertical: 14 }}>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: TINTA }}>
-        {q.isFetchingNextPage ? 'Trayendo…' : `Ver más · ${cuantas} de ${total}`}
-      </Text>
-    </Pressable>
+    <View>
+      <EncabezadoRegistro titulo="Votaciones" datos={datos} />
+      <View ref={ancla} collapsable={false}>
+        <BuscadorRegistro valor={texto} onCambiar={(v) => { setTexto(v); setPagina(1); }} etiqueta="buscar votación por asunto o iniciativa" />
+        <FiltroChips valor={resultado} onCambiar={(v) => { setResultado(v); setPagina(1); }} opciones={opciones.map(([clave, nombre]) => ({ clave, nombre,
+          cuenta: clave === 'todas' ? buscadas.length : buscadas.filter((v) => resultadoVotacion(v) === clave).length }))} />
+      </View>
+      <EstadoRegistro q={q} vacio={!filas.length} />
+      <Paginado actual={actual} total={total} onCambiar={cambiar} />
+      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((v) => (
+        <View key={v.id} style={CARD_REGISTRO}>
+          <Text style={{ color: INK.meta, fontSize: 12 }}>{fechaRegistro(v.fecha)}</Text>
+          <VotacionCongreso votacion={v} compacta />
+        </View>
+      ))}
+      <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="votaciones" />
+      <Paginado actual={actual} total={total} onCambiar={cambiar} />
+    </View>
   );
+}
+
+export const CARD_REGISTRO = { padding: 14, marginVertical: 7, borderWidth: 1, borderColor: RAYA, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.6)' };
+
+export function BuscadorRegistro({ valor, onCambiar, etiqueta }) {
+  return <TextInput value={valor} onChangeText={onCambiar} placeholder={etiqueta} accessibilityLabel={etiqueta} placeholderTextColor={INK.meta}
+    autoCorrect={false} returnKeyType="search" style={{ minHeight: 44, borderWidth: 1, borderColor: RAYA, borderRadius: 12, paddingHorizontal: 12, color: INK.title, fontSize: 14 }} />;
+}
+
+export function EncabezadoRegistro({ titulo, datos }) {
+  const periodo = periodoDe(datos);
+  return <View style={{ marginBottom: 14 }}><Titulo>{titulo}</Titulo>
+    <Text style={{ fontSize: 12, color: INK.meta, lineHeight: 18, marginTop: 4 }}>historial disponible{periodo ? ` · ${periodo}` : ''}</Text>
+  </View>;
+}
+
+export function EstadoRegistro({ q, vacio }) {
+  if (q.isLoading) return <Cargando>Trayendo el registro…</Cargando>;
+  if (q.isError) return <Reintentar onPress={q.refetch}>No se pudo traer el registro.</Reintentar>;
+  return vacio ? <Cargando>No hay resultados para esta búsqueda.</Cargando> : null;
+}
+
+export function CuentaRegistro({ pagina, cantidad, unidad, tamano = PAGINA }) {
+  if (!cantidad) return null;
+  return <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>
+    {(pagina - 1) * tamano + 1}–{Math.min(pagina * tamano, cantidad)} de {cantidad} {unidad}
+  </Text>;
+}
+
+function Cargando({ children }) {
+  return <Text style={{ fontSize: 13, color: INK.meta, paddingVertical: 16 }}>{children}</Text>;
 }

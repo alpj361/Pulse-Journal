@@ -1,125 +1,140 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown } from 'lucide-react-native';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Sticker from '../Sticker';
 import { INK } from '../theme';
-import { SECCIONES, diaCorto, organizar } from './congreso';
-import { ListaIniciativas, ListaLeyes, useConteosLegislativos } from './LegislativoCongreso';
-import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe, rotuloDe } from './TarjetasCongreso';
+import { organizar, traerArchivoCongreso } from './congreso';
+import { BuscadorRegistro, CARD_REGISTRO, CuentaRegistro, ListaIniciativas, ListaLeyes, ListaVotaciones, Paginado, useConteosLegislativos } from './LegislativoCongreso';
+import { Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from './TarjetasCongreso';
+import FiltroChips from './FiltroChips';
+import { buscarRegistro, fechaRegistro, periodoDe } from './organizacion';
 
-/**
- * Lo del Congreso de la semana, ordenado por lo que es.
- *
- * El tablero cuenta los días en el orden en que pasaron; esto junta lo mismo
- * por tema: iniciativas, comisiones, pleno, fiscalización y leyes. Una
- * iniciativa que salió varias veces es una sola entrada, con su etapa más
- * avanzada y los días en que se movió.
- */
+const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones']];
+const ACTIVIDAD = [['comisiones', 'Comisiones y citaciones'], ['pleno', 'Pleno y sesiones'], ['fiscalizacion', 'Fiscalización y actividad']];
+const NOMBRES = Object.fromEntries([...REGISTROS, ...ACTIVIDAD]);
+
+/** Distingue los registros disponibles de la cobertura de noticias por período. */
 export default function CongresoOrganizado({ dias, onAbrir, onPagina }) {
-  const secciones = useMemo(() => organizar(dias), [dias]);
-  // Iniciativas y Leyes no son de la semana: son todo el registro.
-  const { data: registro } = useConteosLegislativos();
-  // Qué sección se mira: ninguna elegida es todas.
   const [elegida, setElegida] = useState(null);
   const [abierto, setAbierto] = useState(true);
-
-  const cuantas = (clave) => (clave === 'iniciativas' || clave === 'leyes' ? registro?.[clave] || 0 : (secciones[clave] || []).length);
-  const disponibles = SECCIONES.filter(([clave]) => cuantas(clave) > 0);
-
+  const [alcance, setAlcance] = useState('reciente');
+  const anclaSeccion = useRef(null);
+  const registro = useConteosLegislativos();
+  const archivo = useQuery({ queryKey: ['congreso-archivo-noticias'], queryFn: traerArchivoCongreso,
+    enabled: alcance === 'historial', staleTime: 10 * 60 * 1000 });
+  const fuente = alcance === 'historial' ? archivo.data || [] : dias || [];
+  const secciones = useMemo(() => organizar(fuente), [fuente]);
+  const cuantas = (clave) => REGISTROS.some(([c]) => c === clave) ? registro.data?.[clave] : (secciones[clave] || []).length;
+  const elegir = (clave) => { setElegida(clave); setAbierto(false); onPagina?.(anclaSeccion.current); };
+  const esRegistro = REGISTROS.some(([c]) => c === elegida);
+  const periodo = periodoDe(fuente, 'fecha');
   return (
-    <View style={{ marginTop: 14 }}>
-      <Burbujas
-        secciones={disponibles}
-        cuantas={cuantas}
-        elegida={elegida}
-        onElegir={(clave) => setElegida((antes) => (antes === clave ? null : clave))}
-        abierto={abierto}
-        onAbrir={() => setAbierto((x) => !x)}
-      />
-      {SECCIONES.map(([clave, nombre]) => {
-        if (elegida && elegida !== clave) return null;
-        const lista = secciones[clave] || [];
-        const registroEntero = clave === 'iniciativas' || clave === 'leyes';
-        // Sin una elegida, las del registro entero (cientos) no se despliegan:
-        // se ven al tocar su burbuja.
-        if (registroEntero && !elegida) return null;
-        if (!registroEntero && !lista.length) return null;
-        return (
-          <View key={clave} style={{ marginBottom: 26 }}>
-            {/* Con una sola sección elegida, su nombre ya está en la burbuja. */}
-            {elegida ? null : (
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', letterSpacing: 1.1, color: INK.title }}>{nombre.toUpperCase()}</Text>
-                {cuantas(clave) ? <Text style={{ fontSize: 12, color: INK.faint }}>{cuantas(clave)}</Text> : null}
-              </View>
-            )}
-            {clave === 'iniciativas' ? <ListaIniciativas onPagina={onPagina} /> : null}
-            {clave === 'leyes' ? <ListaLeyes /> : null}
-            {registroEntero ? null : clave === 'votaciones'
-              ? lista.map((v) => (
-                  <View key={v.id}>
-                    <Text style={{ fontSize: 11, color: INK.faint, marginTop: 12, marginBottom: -8, textAlign: 'right' }}>{diaCorto(v.fecha)}</Text>
-                    <VotacionCongreso votacion={v} compacta />
-                  </View>
-                ))
-              : lista.map((item, i) => (
-              <Entrada key={item.id} item={item} conCamino={clave === 'iniciativas'} ultima={i === lista.length - 1} onPress={() => onAbrir(item)} />
-                ))}
-          </View>
-        );
-      })}
+    <View ref={anclaSeccion} collapsable={false} style={{ marginTop: 14 }}>
+      <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }}
+        accessibilityLabel={abierto ? 'plegar secciones del Congreso' : 'cambiar sección del Congreso'}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginBottom: 8 }}>
+        {elegida ? <Sticker nombre={elegida} size={30} /> : null}
+        <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{elegida ? NOMBRES[elegida] : 'Explorá el Congreso'}</Text>
+          {!abierto ? <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>cambiar sección</Text> : null}</View>
+        {abierto ? <ChevronUp size={17} color={INK.meta} /> : <ChevronDown size={17} color={INK.meta} />}
+      </Pressable>
+      {abierto ? <View style={{ marginBottom: 16 }}>
+        <GrupoSecciones titulo="REGISTROS DISPONIBLES" secciones={REGISTROS} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
+        {registro.isError ? <Text style={{ color: INK.meta, fontSize: 12 }}>Los conteos aún no están disponibles. Podés abrir cada registro.</Text> : null}
+        <GrupoSecciones titulo="NOTICIAS Y ACTIVIDAD" secciones={ACTIVIDAD} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
+      </View> : null}
+      {elegida === 'iniciativas' ? <ListaIniciativas onPagina={onPagina} /> : null}
+      {elegida === 'leyes' ? <ListaLeyes onPagina={onPagina} /> : null}
+      {elegida === 'votaciones' ? <ListaVotaciones onPagina={onPagina} /> : null}
+      {!esRegistro ? <>
+        <FiltroChips valor={alcance} onCambiar={setAlcance} opciones={[
+          { clave: 'reciente', nombre: 'últimos días' }, { clave: 'historial', nombre: 'historial disponible' },
+        ]} />
+        {periodo ? <Text style={{ fontSize: 12, lineHeight: 18, color: INK.meta, marginBottom: 12 }}>{periodo}</Text> : null}
+        {alcance === 'historial' && archivo.isLoading ? <Text style={{ color: INK.meta, paddingVertical: 16 }}>Trayendo las noticias anteriores…</Text>
+          : alcance === 'historial' && archivo.isError ? <Pressable onPress={() => archivo.refetch()} accessibilityRole="button" style={{ minHeight: 44 }}><Text style={{ color: TINTA }}>No se pudo traer el historial. Volver a intentar.</Text></Pressable>
+          : elegida ? <ActividadLista key={`${elegida}-${alcance}`} lista={secciones[elegida] || []} clave={elegida} onAbrir={onAbrir} onPagina={onPagina} />
+          : ACTIVIDAD.map(([clave, nombre]) => <View key={clave} style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: INK.title, marginBottom: 6 }}>{nombre} · {(secciones[clave] || []).length}</Text>
+              {(secciones[clave] || []).slice(0, 2).map((item) => <Entrada key={item.id} item={item} onAbrir={onAbrir} />)}
+              <Pressable onPress={() => elegir(clave)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: TINTA, fontSize: 13 }}>ver esta sección ›</Text></Pressable>
+            </View>)}
+      </> : null}
     </View>
   );
 }
 
-function Entrada({ item, conCamino, ultima, onPress }) {
+function GrupoSecciones({ titulo, secciones, cuantas, elegida, onElegir }) {
+  return <View style={{ marginTop: 8 }}><Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 0.8, color: INK.meta, marginBottom: 8 }}>{titulo}</Text>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {secciones.map(([clave, nombre]) => <Pressable key={clave} onPress={() => onElegir(clave)} accessibilityRole="button"
+        accessibilityLabel={`${nombre}${cuantas(clave) == null ? '' : `, ${cuantas(clave)}`}`} accessibilityState={{ selected: elegida === clave }}
+        style={{ width: '48%', minHeight: 64, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 7,
+          borderRadius: 14, borderWidth: 1, borderColor: elegida === clave ? TINTA : RAYA, backgroundColor: elegida === clave ? 'rgba(47,74,122,0.08)' : 'rgba(255,255,255,0.6)' }}>
+        <Sticker nombre={clave} size={28} /><View style={{ flex: 1 }}><Text style={{ fontSize: 12, lineHeight: 16, fontWeight: '600', color: INK.title }}>{nombre}</Text>
+          <Text style={{ fontSize: 11, color: INK.meta, marginTop: 3 }}>{cuantas(clave) ?? '…'}</Text></View>
+      </Pressable>)}
+    </View>
+  </View>;
+}
+
+export function ActividadLista({ lista, clave, onAbrir, onPagina }) {
+  const [texto, setTexto] = useState('');
+  const [comision, setComision] = useState('todas');
+  const [pagina, setPagina] = useState(1);
+  const ancla = useRef(null);
+  const comisiones = [...new Set(lista.map((i) => i.comision_name).filter(Boolean))].sort();
+  const filas = lista.filter((item) => buscarRegistro(`${item.titulo || ''} ${item.summary || ''} ${item.iniciativa_numero || ''} ${item.comision_name || ''}`, texto) && (comision === 'todas' || item.comision_name === comision));
+  const total = Math.max(1, Math.ceil(filas.length / 20));
+  const actual = Math.min(pagina, total);
+  const cambiar = (n) => { setPagina(n); onPagina?.(ancla.current); };
+  return <View>
+    <View ref={ancla} collapsable={false}>
+      <BuscadorRegistro valor={texto} onCambiar={(v) => { setTexto(v); setPagina(1); }} etiqueta="buscar por tema, iniciativa o comisión" />
+      {clave === 'comisiones' && comisiones.length ? <FiltroChips valor={comision} onCambiar={(v) => { setComision(v); setPagina(1); }} opciones={[
+        { clave: 'todas', nombre: 'todas las comisiones' }, ...comisiones.map((c) => ({ clave: c, nombre: c.replace(/^Comisi[oó]n de /, '') })),
+      ]} /> : null}
+    </View>
+    {clave === 'fiscalizacion' ? <Text style={{ color: INK.meta, fontSize: 12, lineHeight: 18, marginVertical: 10 }}>Fiscalización, intermediación y otras actividades institucionales.</Text> : null}
+    {!filas.length ? <Text style={{ color: INK.meta, paddingVertical: 18 }}>No hay publicaciones para esta búsqueda.</Text> : null}
+    <Paginado actual={actual} total={total} onCambiar={cambiar} />
+    {filas.slice((actual - 1) * 20, actual * 20).map((item) => <Entrada key={item.id} item={item} onAbrir={onAbrir} />)}
+    <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="temas" />
+    <Paginado actual={actual} total={total} onCambiar={cambiar} />
+  </View>;
+}
+
+export function Entrada({ item, onAbrir }) {
   const { titulo, resumen } = cabezaDe(item);
-  const rotulo = rotuloDe(item);
+  const [expandido, setExpandido] = useState(false);
+  const [relacionadas, setRelacionadas] = useState(false);
   const pasos = item._pasos || [];
-  // Los días en que se movió, sin repetir: «lun 6 · jue 8 · lun 12».
-  const dias = [...new Set(pasos.map((p) => p.fecha))].map(diaCorto);
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => ({ paddingVertical: 14, borderBottomWidth: ultima ? 0 : 1, borderBottomColor: RAYA, opacity: pressed ? 0.6 : 1 })}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-        <View style={{ flex: 1 }}>{rotulo ? <Rotulo>{rotulo}</Rotulo> : null}</View>
-        <Text style={{ fontSize: 11, color: INK.faint, marginBottom: 5 }}>{dias.join(' · ')}</Text>
-      </View>
-      <Titulo>{titulo}</Titulo>
-      {conCamino ? <Camino etapa={item.stage} /> : null}
-      {resumen ? (
-        <Text numberOfLines={2} style={{ fontSize: 13, color: INK.body, lineHeight: 19, marginTop: 7 }}>
-          {resumen}
-        </Text>
-      ) : null}
-      <Origen item={item} />
-    </Pressable>
-  );
-}
-
-/** Lo último publicado como ley o acuerdo, del registro de normas. */
-function Publicadas({ leyes }) {
-  return (
-    <View style={{ marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: RAYA }}>
-      <Rotulo color={INK.faint}>LO ÚLTIMO PUBLICADO</Rotulo>
-      {leyes.map((ley) => (
-        <View key={ley.id} style={{ paddingVertical: 9 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: TINTA }}>{ley.decreto}</Text>
-            {ley.fecha_publicacion ? <Text style={{ fontSize: 11, color: INK.faint }}>{ley.fecha_publicacion}</Text> : null}
-          </View>
-          <Text numberOfLines={3} style={{ fontSize: 13.5, color: INK.title, lineHeight: 19, marginTop: 3 }}>
-            {ley.titulo}
-          </Text>
-        </View>
-      ))}
+  return <View style={CARD_REGISTRO}>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+      <View style={{ flex: 1 }}>{rotuloDe(item) ? <Rotulo>{rotuloDe(item)}</Rotulo> : null}</View>
+      <Text style={{ color: INK.meta, fontSize: 11 }}>{fechaRegistro(item._ultima || item.digest_date)}</Text>
     </View>
-  );
+    <Titulo>{titulo}</Titulo>
+    {resumen ? <><Text numberOfLines={expandido ? undefined : 3} style={{ fontSize: 13.5, color: INK.body, lineHeight: 20, marginTop: 8 }}>{resumen}</Text>
+      <Pressable onPress={() => setExpandido((v) => !v)} accessibilityRole="button" accessibilityLabel={`${expandido ? 'cerrar resumen' : 'leer resumen completo'}, ${titulo}`} accessibilityState={{ expanded: expandido }} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text style={{ fontSize: 12, color: TINTA }}>{expandido ? 'resumir' : 'leer resumen completo'}</Text>
+      </Pressable></> : null}
+    <Origen item={item} />
+    <Pressable onPress={() => onAbrir(item)} accessibilityRole="button" accessibilityLabel={`abrir noticia, ${titulo}`} style={{ minHeight: 44, justifyContent: 'center', marginTop: 4 }}>
+      <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>abrir noticia ›</Text>
+    </Pressable>
+    {pasos.length > 1 ? <>
+      <Pressable onPress={() => setRelacionadas((v) => !v)} accessibilityRole="button" accessibilityLabel={`noticias relacionadas, ${titulo}`} accessibilityState={{ expanded: relacionadas }} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <Text style={{ fontSize: 12, color: TINTA }}>{relacionadas ? 'ocultar noticias relacionadas' : `${pasos.length} noticias relacionadas`}</Text>
+      </Pressable>
+      {relacionadas ? [...pasos].reverse().map((p, i) => <Pressable key={`${p.item.id}-${i}`} onPress={() => onAbrir(p.item)} accessibilityRole="button" accessibilityLabel={`abrir noticia relacionada, ${p.item.titulo}`} style={{ minHeight: 44, paddingVertical: 10, borderTopWidth: 1, borderTopColor: RAYA }}>
+        <Text style={{ fontSize: 11, color: INK.meta, marginBottom: 4 }}>{fechaRegistro(p.fecha)}</Text>
+        <Text style={{ fontSize: 13, color: INK.title, lineHeight: 18 }}>{cabezaDe(p.item).titulo}</Text>
+      </Pressable>) : null}
+    </> : null}
+  </View>;
 }
 
 /**

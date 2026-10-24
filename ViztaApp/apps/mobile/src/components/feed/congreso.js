@@ -64,6 +64,22 @@ export async function traerCongreso() {
   return visibles;
 }
 
+/** Archivo disponible de noticias; independiente de los días del tablero. */
+export async function traerArchivoCongreso() {
+  const filas = [];
+  for (let desde = 0; ; desde += 250) {
+    const { data, error } = await supabase.from('congreso_items_app_view').select(COLUMNAS)
+      .order('id', { ascending: false }).range(desde, desde + 249);
+    if (error) throw error;
+    filas.push(...(data || []));
+    if ((data || []).length < 250) break;
+  }
+  const items = filas.filter((i) => i.tipo !== 'noticiero' && !/^\s*noticiero legislativo/i.test(i.titulo || '') && !esRelleno(i));
+  await completarTitulos(items);
+  const fechas = [...new Set(items.map((i) => i.digest_date))].sort().reverse();
+  return fechas.map((fecha) => ({ fecha, items: unaVez(items.filter((i) => i.digest_date === fecha)), votaciones: [] }));
+}
+
 /**
  * Cómo votó cada diputado en una votación: sus 160 votos, uno por uno.
  *

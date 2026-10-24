@@ -3,7 +3,7 @@ import { categoriaDe, temaDe } from './temas';
 
 export const FILTROS_CONGRESO = [
   ['todo', 'todo'], ['comisiones', 'comisiones'], ['pleno', 'pleno'],
-  ['votaciones', 'votaciones'], ['fiscalizacion', 'fiscalización'],
+  ['votaciones', 'votaciones'], ['fiscalizacion', 'fiscalización y actividad'],
 ];
 
 export function filtrarDias(dias = [], seccion = 'todo') {

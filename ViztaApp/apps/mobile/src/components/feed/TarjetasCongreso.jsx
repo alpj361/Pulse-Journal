@@ -6,6 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
+import { resultadoVotacion } from './organizacion';
 import { origenDe, titular, traerVotos } from './congreso';
 
 /**
@@ -297,7 +298,8 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
   const { width } = useWindowDimensions();
   const ancho = width - 48;
   const [abierta, setAbierta] = useState(false);
-  const aprobada = v.resultado === 'aprobada';
+  const resultado = resultadoVotacion(v);
+  const aprobada = resultado === 'aprobada';
   const Flecha = abierta ? ChevronUp : ChevronDown;
   return (
     <Pressable
@@ -306,8 +308,9 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
       accessibilityState={{ expanded: abierta }}
       style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: RAYA }}
     >
-      <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'VOTACIÓN · APROBADA' : 'VOTACIÓN · NO APROBADA'}</Rotulo>
+      <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'VOTACIÓN · APROBADA' : resultado === 'no_aprobada' ? 'VOTACIÓN · NO APROBADA' : 'VOTACIÓN · RESULTADO SIN CONFIRMAR'}</Rotulo>
       <Titulo>{v.asunto}</Titulo>
+      {compacta && v.sesion ? <Text style={{ fontSize: 12, color: INK.meta, marginTop: 5 }}>{v.sesion}</Text> : null}
       {compacta ? null : (
         <View style={{ alignItems: 'center', marginTop: 14 }}>
           <Hemiciclo favor={v.a_favor} contra={v.en_contra} ausentes={v.ausentes} licencia={v.licencia} ancho={Math.min(ancho, 320)} />
