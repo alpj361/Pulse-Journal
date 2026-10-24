@@ -1,3 +1,5 @@
+import { monto } from './cifras';
+export { monto } from './cifras';
 import { useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
@@ -110,17 +112,6 @@ export function Camino({ etapa }) {
 // ─── Una cifra ───────────────────────────────────────────────────────────────
 
 /** 100000000 con «Q» → «Q100 millones». */
-export function monto(cantidad, unidad) {
-  const n = Number(cantidad);
-  if (!Number.isFinite(n)) return null;
-  const u = unidad || '';
-  const pegada = u.length <= 3; // «Q», «US$», «%»
-  const con = (texto) => (u ? (pegada && u !== '%' ? `${u}${texto}` : `${texto}${u === '%' ? '%' : ` ${u}`}`) : texto);
-  if (n >= 1e9) return con(`${+(n / 1e9).toFixed(1)} mil millones`);
-  if (n >= 1e6) return con(`${+(n / 1e6).toFixed(1)} millones`);
-  return con(n.toLocaleString('es-GT'));
-}
-
 // ─── Una votación ────────────────────────────────────────────────────────────
 
 /**
@@ -494,10 +485,13 @@ export function ItemCongreso({ item, ultimo = false, onPress }) {
           <Resumen>{resumen}</Resumen>
         </>
       ) : tipo === 'cifra' && monto(d.amount, d.unit) ? (
-        /* Lo que importa es el número: va grande, con de qué es al lado. */
+        /* El titular dice de qué es; el monto va como etiqueta, no como
+           titular: un número de 30 puntos pesaba más que la noticia. */
         <>
-          <Text style={{ fontSize: 30, fontWeight: '700', letterSpacing: -0.8, color: INK.title }}>{monto(d.amount, d.unit)}</Text>
-          {d.subject ? <Text style={{ fontSize: 13.5, color: TINTA, lineHeight: 19, marginTop: 2 }}>{d.subject}</Text> : null}
+          <Titulo>{d.subject || cabeza.titulo}</Titulo>
+          <View style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, marginTop: 6 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: TINTA }}>{monto(d.amount, d.unit)}</Text>
+          </View>
           <Resumen>{resumen}</Resumen>
         </>
       ) : (

@@ -17,7 +17,7 @@ import { Camino, Origen, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe
  * iniciativa que salió varias veces es una sola entrada, con su etapa más
  * avanzada y los días en que se movió.
  */
-export default function CongresoOrganizado({ dias, onAbrir }) {
+export default function CongresoOrganizado({ dias, onAbrir, onPagina }) {
   const secciones = useMemo(() => organizar(dias), [dias]);
   // Iniciativas y Leyes no son de la semana: son todo el registro.
   const { data: registro } = useConteosLegislativos();
@@ -55,7 +55,7 @@ export default function CongresoOrganizado({ dias, onAbrir }) {
                 {cuantas(clave) ? <Text style={{ fontSize: 12, color: INK.faint }}>{cuantas(clave)}</Text> : null}
               </View>
             )}
-            {clave === 'iniciativas' ? <ListaIniciativas /> : null}
+            {clave === 'iniciativas' ? <ListaIniciativas onPagina={onPagina} /> : null}
             {clave === 'leyes' ? <ListaLeyes /> : null}
             {registroEntero ? null : clave === 'votaciones'
               ? lista.map((v) => (

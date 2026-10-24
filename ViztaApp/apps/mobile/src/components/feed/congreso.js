@@ -283,7 +283,7 @@ function unaVez(items) {
 // ─── Lo organizado ───────────────────────────────────────────────────────────
 
 /** Cuánto avanzó una iniciativa: sirve para quedarse con la etapa más nueva. */
-const AVANCE = {
+export const AVANCE = {
   iniciativa_presentada: 1,
   en_comision: 2,
   dictamen: 3,

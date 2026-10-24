@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
 import { Camino, RAYA, Rotulo, TINTA, Titulo } from './TarjetasCongreso';
 import { nombreDelDia } from './congreso';
+import FiltroChips from './FiltroChips';
+import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS_ETAPA } from './iniciativas';
 
 /**
  * Iniciativas y leyes del Congreso, de su registro y no de las noticias.
@@ -15,7 +17,8 @@ import { nombreDelDia } from './congreso';
  * hable de ella esta semana, y una ley es un decreto aprobado, no un tuit que
  * dice «se aprobaron leyes». Acá cada iniciativa sale una vez, de la más nueva
  * a la más vieja, y cada decreto una vez, con su fecha. Las dos listas se
- * cargan de a 20.
+ * muestran de a 20; las iniciativas se guardan juntas para buscar y filtrar
+ * sobre todo el registro sin pedir de nuevo al cambiar de página.
  */
 const PAGINA = 20;
 
@@ -24,16 +27,19 @@ const fechaCorta = (f) => (f ? nombreDelDia(String(f).slice(0, 10)) : null);
 // ─── Iniciativas ─────────────────────────────────────────────────────────────
 
 const COLUMNAS_INICIATIVA =
-  'numero, titulo, ponentes, comisiones, estado_actual, fecha_presentacion, fecha_conocio_pleno, url_ficha, url_pdf, eventos_timeline';
+  'numero, titulo, ponentes, comisiones, estado_actual, fecha_presentacion, fecha_conocio_pleno, url_ficha, url_pdf, fuente_presentacion_url, eventos_timeline, decreto_resultante';
 
-async function paginaIniciativas({ pageParam = 0 }) {
-  const { data, error, count } = await supabase
-    .from('iniciativas_app_view')
-    .select(COLUMNAS_INICIATIVA, { count: 'exact' })
-    .order('numero', { ascending: false })
-    .range(pageParam, pageParam + PAGINA - 1);
-  if (error) throw error;
-  return { filas: data || [], total: count || 0, desde: pageParam };
+/** Lee lotes acotados, sin depender del límite de filas configurado en la base. */
+export async function registroCompleto(tabla, columnas, orden, configurar = (q) => q) {
+  const filas = [];
+  const lote = 250;
+  for (let desde = 0; ; desde += lote) {
+    const { data, error } = await configurar(supabase.from(tabla).select(columnas))
+      .order(orden, { ascending: false }).range(desde, desde + lote - 1);
+    if (error) throw error;
+    filas.push(...(data || []));
+    if ((data || []).length < lote) return filas;
+  }
 }
 
 /** Cuántas hay, para la burbuja: iniciativas con número y leyes (decretos). */
@@ -68,75 +74,135 @@ const nombres = (lista) => (lista || []).filter((n) => /^[A-ZÁÉÍÓÚÑ]/.test
  * registro, o el resumen de la nota del Congreso que habló de ella. El texto
  * de la iniciativa todavía no se lee, así que muchas no tienen ninguno.
  */
+function indexarNotas(data) {
+  const m = new Map();
+  for (const nota of [...data].sort((a, b) => String(b.digest_date).localeCompare(String(a.digest_date)))) {
+    const clave = String(nota.iniciativa_numero);
+    m.set(clave, [...(m.get(clave) || []), nota]);
+  }
+  return m;
+}
+
 function useResumenes() {
   return useQuery({
-    queryKey: ['congreso-resumenes-iniciativas'],
+    queryKey: ['congreso-notas-iniciativas-v2'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('congreso_items_app_view')
-        .select('iniciativa_numero, summary, digest_date')
-        .not('iniciativa_numero', 'is', null)
-        .not('summary', 'is', null)
-        .order('digest_date', { ascending: false })
-        .limit(500);
-      const m = new Map();
-      for (const f of data || []) {
-        if (/\btuit\b|seg[uú]n el t[ií]tulo|sin m[aá]s detalles/i.test(f.summary)) continue;
-        if (!m.has(f.iniciativa_numero)) m.set(f.iniciativa_numero, f.summary);
-      }
-      return m;
+      const data = await registroCompleto('congreso_items_app_view',
+        'id, iniciativa_numero, summary, digest_date, stage, iniciativa_url, url', 'id',
+        (q) => q.not('iniciativa_numero', 'is', null));
+      return data;
     },
-    staleTime: 30 * 60 * 1000,
-  });
-}
-
-function resumenDe(ini, deNotas) {
-  const conObjetivo = [...(ini.eventos_timeline || [])]
-    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
-    .find((e) => e.detalle?.objetivo);
-  const r = conObjetivo?.detalle?.objetivo || deNotas?.get(ini.numero) || null;
-  // Si dice lo mismo que el título, no suma nada.
-  const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
-  return r && !plano(ini.titulo).includes(plano(r)) && !plano(r).includes(plano(limpiarTitulo(ini.titulo))) ? r : null;
-}
-
-export function ListaIniciativas() {
-  const { data: deNotas } = useResumenes();
-  const q = useInfiniteQuery({
-    queryKey: ['congreso-iniciativas'],
-    queryFn: paginaIniciativas,
-    getNextPageParam: (u) => (u.desde + PAGINA < u.total ? u.desde + PAGINA : undefined),
+    select: indexarNotas,
     staleTime: 10 * 60 * 1000,
   });
-  const filas = (q.data?.pages || []).flatMap((p) => p.filas);
-  const total = q.data?.pages?.[0]?.total;
+}
 
+export function resumenDe(ini, deNotas) {
+  const objetivos = [...(ini.eventos_timeline || [])]
+    .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
+    .map((e) => e.detalle?.objetivo);
+  const notas = (deNotas?.get(String(ini.numero)) || []).map((n) => n.summary);
+  const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
+  const titulo = plano(limpiarTitulo(ini.titulo));
+  return [...objetivos, ...notas].find((r) => typeof r === 'string' && plano(r) &&
+    !/\btuit\b|seg[uú]n el t[ií]tulo|sin m[aá]s detalles/i.test(r) &&
+    (!titulo || !titulo.includes(plano(r)))) || null;
+}
+
+export function ListaIniciativas({ onPagina }) {
+  const notas = useResumenes();
+  const [texto, setTexto] = useState('');
+  const [filtro, setFiltro] = useState('todas');
+  const [pagina, setPagina] = useState(1);
+  const ancla = useRef(null);
+  const q = useQuery({
+    queryKey: ['congreso-iniciativas-registro-v2'],
+    queryFn: () => registroCompleto('iniciativas_app_view', COLUMNAS_INICIATIVA, 'numero'),
+    staleTime: 10 * 60 * 1000,
+  });
+  const iniciativas = useMemo(() => (q.data || []).map((ini) => ({
+    ...ini, etapa: etapaDe(ini, notas.data?.get(String(ini.numero)) || []),
+  })), [q.data, notas.data]);
+  const buscadas = iniciativas.filter((ini) => coincide(ini, texto));
+  const filas = buscadas.filter((ini) => filtro === 'todas' || paradaDe(ini.etapa) === filtro);
+  const totalPaginas = Math.max(1, Math.ceil(filas.length / PAGINA));
+  const actual = Math.min(pagina, totalPaginas);
+  const visibles = filas.slice((actual - 1) * PAGINA, actual * PAGINA);
+  const cambiarPagina = (n) => {
+    setPagina(n);
+    onPagina?.(ancla.current);
+  };
   return (
     <View>
       <SinNumero />
+      <View ref={ancla} collapsable={false}>
+        <TextInput value={texto} onChangeText={(t) => { setTexto(t); setPagina(1); }}
+          placeholder="buscar por número o título" accessibilityLabel="buscar iniciativa por número o título"
+          placeholderTextColor={INK.meta} autoCorrect={false} returnKeyType="search"
+          style={{ minHeight: 44, borderWidth: 1, borderColor: RAYA, borderRadius: 12, paddingHorizontal: 12, color: INK.title, fontSize: 14 }} />
+        <FiltroChips valor={filtro} onCambiar={(f) => { setFiltro(f); setPagina(1); }} opciones={[
+          { clave: 'todas', nombre: 'todas', cuenta: buscadas.length },
+          ...ETAPAS.map(([clave, nombre]) => ({ clave, nombre, cuenta: buscadas.filter((ini) => paradaDe(ini.etapa) === clave).length })),
+        ]} />
+      </View>
       {q.isLoading ? <Cargando>Trayendo las iniciativas…</Cargando> : null}
-      {filas.map((ini) => (
-        <Iniciativa key={ini.numero} ini={ini} resumen={resumenDe(ini, deNotas)} />
+      {q.isError ? <Reintentar onPress={q.refetch}>No se pudieron traer las iniciativas.</Reintentar> : null}
+      {notas.isError ? <Reintentar onPress={notas.refetch}>No se pudieron completar los avances.</Reintentar> : null}
+      {!q.isLoading && !q.isError && !filas.length ? <Cargando>No hay iniciativas para esta búsqueda.</Cargando> : null}
+      {visibles.map((ini) => (
+        <Iniciativa key={ini.numero} ini={ini} resumen={resumenDe(ini, notas.data)} notas={notas.data?.get(String(ini.numero)) || []} />
       ))}
-      <VerMas q={q} cuantas={filas.length} total={total} />
+      {filas.length ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>
+        {(actual - 1) * PAGINA + 1}–{Math.min(actual * PAGINA, filas.length)} de {filas.length} iniciativas
+      </Text> : null}
+      <Paginado actual={actual} total={totalPaginas} onCambiar={cambiarPagina} />
     </View>
   );
 }
 
-function Iniciativa({ ini, resumen }) {
+export function Paginado({ actual, total, onCambiar }) {
+  if (total < 2) return null;
+  const boton = (n, texto, deshabilitado = false) => (
+    <Pressable key={texto || n} onPress={() => onCambiar(n)} disabled={deshabilitado}
+      accessibilityRole="button" accessibilityLabel={texto || `página ${n}`}
+      accessibilityState={{ disabled: deshabilitado, selected: !texto && actual === n }}
+      style={{ minWidth: 36, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10,
+        backgroundColor: !texto && actual === n ? 'rgba(47,74,122,0.12)' : 'transparent', opacity: deshabilitado ? 0.35 : 1 }}>
+      {texto ? (texto === 'anterior' ? <ChevronLeft size={17} color={TINTA} /> : <ChevronRight size={17} color={TINTA} />) : <Text style={{ color: TINTA, fontSize: 13, fontWeight: actual === n ? '700' : '500' }}>{n}</Text>}
+    </Pressable>
+  );
+  return (
+    <View style={{ marginVertical: 12, alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 2 }}>
+        {boton(actual - 1, 'anterior', actual === 1)}
+        {paginasVisibles(actual, total).map((n, i) => n === '…'
+          ? <Text key={`salto-${i}`} style={{ color: INK.meta, alignSelf: 'center', paddingHorizontal: 3 }}>…</Text>
+          : boton(n))}
+        {boton(actual + 1, 'siguiente', actual === total)}
+      </View>
+    </View>
+  );
+}
+
+function Reintentar({ children, onPress }) {
+  return <View style={{ paddingVertical: 10 }}><Text style={{ color: INK.body }}>{children}</Text>
+    <Pressable onPress={() => onPress()} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }}>
+      <Text style={{ color: TINTA }}>volver a intentar</Text>
+    </Pressable></View>;
+}
+
+export function Iniciativa({ ini, resumen, notas = [] }) {
   const [abierta, setAbierta] = useState(false);
-  const [parada, rotulo] = ETAPA_INICIATIVA[ini.estado_actual] || [null, null];
+  const parada = ini.etapa ?? etapaDe(ini, notas);
+  const rotulo = ROTULOS_ETAPA[parada];
+  const enlace = enlaceDe(ini, notas);
+  const [errorEnlace, setErrorEnlace] = useState(false);
   const fecha = ini.fecha_presentacion || ini.fecha_conocio_pleno;
   const ponentes = nombres(ini.ponentes);
   const eventos = [...(ini.eventos_timeline || [])].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
   const Flecha = abierta ? ChevronUp : ChevronDown;
   return (
-    <Pressable
-      onPress={() => setAbierta((x) => !x)}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: abierta }}
-      style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: RAYA }}
-    >
+    <View style={{ padding: 14, marginVertical: 7, borderWidth: 1, borderColor: RAYA, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.6)' }}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
         <View style={{ flex: 1 }}>
           <Rotulo>{[`INICIATIVA ${ini.numero}`, rotulo].filter(Boolean).join(' · ')}</Rotulo>
@@ -148,13 +214,24 @@ function Iniciativa({ ini, resumen }) {
         <Text numberOfLines={abierta ? undefined : 3} style={{ fontSize: 13.5, color: INK.body, lineHeight: 20, marginTop: 7 }}>
           {resumen}
         </Text>
-      ) : null}
+      ) : <Text style={{ fontSize: 13, color: INK.meta, marginTop: 7 }}>Resumen aún no disponible. Podés consultar la fuente.</Text>}
       {parada ? <Camino etapa={parada} /> : null}
       {ponentes.length ? <Text style={{ fontSize: 12, color: INK.faint, marginTop: 8 }}>{ponentes.join(' · ')}</Text> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
-        <Text style={{ fontSize: 12, color: INK.faint }}>{abierta ? 'Menos' : 'Su recorrido'}</Text>
-        <Flecha size={13} color={INK.faint} />
-      </View>
+      {enlace ? (
+        <Pressable onPress={() => { setErrorEnlace(false); Linking.openURL(enlace.url).catch(() => setErrorEnlace(true)); }}
+          accessibilityRole="link" accessibilityLabel={`${enlace.titulo}, iniciativa ${ini.numero}`}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 10, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
+          <FileText size={20} color={TINTA} />
+          <View style={{ flex: 1 }}><Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>{enlace.titulo}</Text>
+            <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>{enlace.tipo === 'PDF' ? 'PDF · Congreso de la República' : 'consultar la fuente'}</Text></View>
+        </Pressable>
+      ) : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 8 }}>Documento aún no disponible.</Text>}
+      {errorEnlace ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.body }}>No se pudo abrir. Probá de nuevo.</Text> : null}
+      <Pressable onPress={() => setAbierta((x) => !x)} accessibilityRole="button" accessibilityState={{ expanded: abierta }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 }}>
+        <Text style={{ fontSize: 12, color: INK.meta }}>{abierta ? 'menos' : 'su recorrido'}</Text>
+        <Flecha size={13} color={INK.meta} />
+      </Pressable>
       {abierta ? (
         <View style={{ marginTop: 10, gap: 8 }}>
           {(ini.comisiones || []).length ? (
@@ -171,14 +248,14 @@ function Iniciativa({ ini, resumen }) {
               </Text>
             </View>
           ))}
-          {ini.url_ficha || ini.url_pdf ? (
-            <Pressable onPress={() => Linking.openURL(ini.url_ficha || ini.url_pdf).catch(() => {})} accessibilityRole="link">
-              <Text style={{ fontSize: 13, fontWeight: '600', color: TINTA }}>La iniciativa en el Congreso ›</Text>
+          {notas.filter((n) => ROTULOS_ETAPA[n.stage]).map((n) => (
+            <Pressable key={n.id} onPress={() => Linking.openURL(n.url).catch(() => setErrorEnlace(true))} disabled={!/^https?:\/\//i.test(n.url || '')} accessibilityRole="link" style={{ minHeight: 44, justifyContent: 'center' }}>
+              <Text style={{ color: TINTA, fontSize: 12 }}>{ROTULOS_ETAPA[n.stage].toLowerCase()} · {fechaCorta(n.digest_date)} ›</Text>
             </Pressable>
-          ) : null}
+          ))}
         </View>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -195,24 +272,32 @@ function limpiarTitulo(t) {
  * quién la anunció y cuándo.
  */
 function SinNumero() {
-  const { data = [] } = useQuery({
+  const [abierto, setAbierto] = useState(false);
+  const q = useQuery({
     queryKey: ['congreso-sin-numero'],
     queryFn: async () => {
-      const { data: filas } = await supabase
+      const { data: filas, error } = await supabase
         .from('iniciativas_sin_numero')
         .select('id, titulo, ponentes, fecha_presentacion, estado, numero_asignado, resumen, fuentes')
         .is('numero_asignado', null)
         .order('fecha_presentacion', { ascending: false, nullsFirst: false })
         .limit(20);
+      if (error) throw error;
       return filas || [];
     },
     staleTime: 30 * 60 * 1000,
   });
+  const data = q.data || [];
+  if (q.isError) return <Reintentar onPress={q.refetch}>No se pudieron traer las propuestas sin número.</Reintentar>;
   if (!data.length) return null;
   return (
     <View style={{ marginTop: 6, marginBottom: 10, padding: 14, borderRadius: 16, backgroundColor: 'rgba(28,43,34,0.04)' }}>
-      <Rotulo color={INK.faint}>TODAVÍA SIN NÚMERO</Rotulo>
-      {data.map((s) => {
+      <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 }}>
+        <Rotulo color={INK.meta}>TODAVÍA SIN NÚMERO · {data.length}</Rotulo>
+        {abierto ? <ChevronUp size={16} color={INK.meta} /> : <ChevronDown size={16} color={INK.meta} />}
+      </Pressable>
+      {abierto ? data.map((s) => {
         const fuente = (s.fuentes || [])[0];
         const anunciada = /anunciada/i.test(s.estado || '');
         const quien = fuente?.medio && !/congreso/i.test(fuente.medio) ? fuente.medio : null;
@@ -238,7 +323,7 @@ function SinNumero() {
             </Text>
           </Pressable>
         );
-      })}
+      }) : null}
     </View>
   );
 }
