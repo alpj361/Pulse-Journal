@@ -88,7 +88,7 @@ function useResumenes() {
     queryKey: ['congreso-notas-iniciativas-v2'],
     queryFn: async () => {
       const data = await registroCompleto('congreso_items_app_view',
-        'id, iniciativa_numero, summary, digest_date, stage, iniciativa_url, url', 'id',
+        'id, titulo, iniciativa_numero, summary, digest_date, stage, iniciativa_url, url', 'id',
         (q) => q.not('iniciativa_numero', 'is', null));
       return data;
     },
@@ -101,12 +101,22 @@ export function resumenDe(ini, deNotas) {
   const objetivos = [...(ini.eventos_timeline || [])]
     .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
     .map((e) => e.detalle?.objetivo);
-  const notas = (deNotas?.get(String(ini.numero)) || []).map((n) => n.summary);
-  const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '');
+  const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const titulo = plano(limpiarTitulo(ini.titulo));
-  return [...notas, ...objetivos].find((r) => typeof r === 'string' && plano(r) &&
+  const comunes = new Set(['iniciativa', 'dispone', 'aprobar', 'propone', 'reformas', 'decreto', 'numero', 'congreso', 'republica', 'guatemala', 'nacional', 'para', 'sobre', 'como', 'esta', 'este']);
+  const palabras = [...new Set((titulo.match(/[a-z]{4,}/g) || []).filter((p) => !comunes.has(p)))];
+  const notas = (deNotas?.get(String(ini.numero)) || []).filter((n) => {
+    const texto = plano(n.summary);
+    // El número asociado no basta si el resumen habla de otro tema.
+    // Filtro conservador de presentación: el dato se corrige en el backend.
+    const coincidencias = palabras.filter((p) => texto.includes(p)).length;
+    return palabras.length && coincidencias >= Math.min(2, palabras.length) &&
+      !/resumen semanal|lo mas destacado de la semana/.test(plano(n.titulo));
+  }).map((n) => n.summary);
+  const compacto = (t) => plano(t).replace(/[^a-z0-9]/g, '');
+  return [...notas, ...objetivos].find((r) => typeof r === 'string' && compacto(r) &&
     !/\btuit\b|seg[uú]n el t[ií]tulo|sin m[aá]s detalles/i.test(r) &&
-    (!titulo || !titulo.includes(plano(r)))) || null;
+    (!titulo || !compacto(titulo).includes(compacto(r)))) || null;
 }
 
 export function ListaIniciativas({ onPagina }) {
@@ -149,6 +159,7 @@ export function ListaIniciativas({ onPagina }) {
       {q.isError ? <Reintentar onPress={q.refetch}>No se pudieron traer las iniciativas.</Reintentar> : null}
       {notas.isError ? <Reintentar onPress={notas.refetch}>No se pudieron completar los avances.</Reintentar> : null}
       {!q.isLoading && !q.isError && !filas.length ? <Cargando>No hay iniciativas para esta búsqueda.</Cargando> : null}
+      <Paginado actual={actual} total={totalPaginas} onCambiar={cambiarPagina} />
       {visibles.map((ini) => (
         <Iniciativa key={ini.numero} ini={ini} resumen={resumenDe(ini, notas.data)} notas={notas.data?.get(String(ini.numero)) || []} />
       ))}
@@ -193,6 +204,7 @@ function Reintentar({ children, onPress }) {
 
 export function Iniciativa({ ini, resumen, notas = [] }) {
   const [abierta, setAbierta] = useState(false);
+  const [resumenAbierto, setResumenAbierto] = useState(false);
   const parada = ini.etapa ?? etapaDe(ini, notas);
   const rotulo = ROTULOS_ETAPA[parada];
   const enlace = enlaceDe(ini, notas);
@@ -211,9 +223,14 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
       </View>
       <Titulo>{limpiarTitulo(ini.titulo)}</Titulo>
       {resumen ? (
-        <Text numberOfLines={abierta ? undefined : 3} style={{ fontSize: 13.5, color: INK.body, lineHeight: 20, marginTop: 7 }}>
+        <View>
+        <Text numberOfLines={resumenAbierto ? undefined : 3} style={{ fontSize: 13.5, color: INK.body, lineHeight: 20, marginTop: 7 }}>
           {resumen}
         </Text>
+        <Pressable onPress={() => setResumenAbierto((v) => !v)} accessibilityRole="button" accessibilityLabel={`${resumenAbierto ? 'cerrar resumen' : 'leer resumen completo'}, iniciativa ${ini.numero}`} accessibilityState={{ expanded: resumenAbierto }} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 12, color: TINTA }}>{resumenAbierto ? 'resumir' : 'leer resumen completo'}</Text>
+        </Pressable>
+        </View>
       ) : <Text style={{ fontSize: 13, color: INK.meta, marginTop: 7 }}>Resumen aún no disponible. Podés consultar la fuente.</Text>}
       {parada ? <Camino etapa={parada} /> : null}
       {ponentes.length ? <Text style={{ fontSize: 12, color: INK.faint, marginTop: 8 }}>{ponentes.join(' · ')}</Text> : null}

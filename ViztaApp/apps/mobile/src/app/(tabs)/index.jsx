@@ -780,9 +780,9 @@ export default function Index() {
     const scroll = scrollFeed.current;
     if (!ancla || !scroll) return;
     ancla.measureInWindow((x, y) => {
-      scroll.measureInWindow((sx, sy) => scroll.scrollTo({ y: Math.max(0, desplazamientoFeed.current + y - sy - 12), animated: true }));
+      scroll.measureInWindow((sx, sy) => scroll.scrollTo({ y: Math.max(0, desplazamientoFeed.current + y - sy - insets.top - 12), animated: true }));
     });
-  }, []);
+  }, [insets.top]);
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
   const { data: diasCongreso, isLoading: cargandoCongreso } = useQuery({
     queryKey: ['congreso-feed'],

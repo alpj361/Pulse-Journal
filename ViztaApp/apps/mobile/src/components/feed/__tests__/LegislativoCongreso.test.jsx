@@ -15,7 +15,7 @@ const registro = Array.from({ length: 45 }, (_, i) => ({
   numero: 7000 - i, titulo: `Ley de prueba ${i}`, estado_actual: 'conocio_pleno',
   url_pdf: `https://congreso.gob.gt/${i}.pdf`, eventos_timeline: [],
 }));
-const notas = [{ id: 'n', iniciativa_numero: 6960, stage: 'dictamen', digest_date: '2026-10-24', summary: 'Resumen que explica los cambios de la propuesta.', url: 'https://congreso.gob.gt/nota' }];
+const notas = [{ id: 'n', iniciativa_numero: 6960, stage: 'dictamen', digest_date: '2026-10-24', summary: 'Resumen que explica los cambios de prueba de la propuesta.', url: 'https://congreso.gob.gt/nota' }];
 let renderer, cliente;
 const texto = () => JSON.stringify(renderer.toJSON());
 const boton = (etiqueta) => renderer.root.findAll((n) => n.props.accessibilityLabel === etiqueta && typeof n.props.onPress === 'function')[0];
@@ -104,4 +104,28 @@ test('prefiere el resumen de la noticia y conserva el objetivo como respaldo', (
   const notas = new Map([['1', [{ summary: 'La propuesta protege las fuentes de agua y modifica las obligaciones municipales.' }]]]);
   expect(resumenDe(ini, notas)).toBe(notas.get('1')[0].summary);
   expect(resumenDe(ini, new Map())).toBe('Establecer reglas para las municipalidades.');
+});
+
+
+test('omite el resumen semanal y elige la noticia del río Pinula', () => {
+  const ini = { numero: 6863, titulo: 'Ley de Mitigación de Riesgos del Río Pinula' };
+  const especifica = 'La iniciativa 6863 mitiga los riesgos del río Pinula y asigna recursos a familias afectadas.';
+  const notas = new Map([['6863', [
+    { titulo: 'LO MÁS DESTACADO DE LA SEMANA', summary: 'El Congreso juramentó a la presidenta de la Corte Suprema.' },
+    { titulo: 'PROPUESTA ATENDERÁ A LAS FAMILIAS AFECTADAS', summary: especifica },
+  ]]]);
+  expect(resumenDe(ini, notas)).toBe(especifica);
+  expect(resumenDe({ numero: 6842, titulo: 'Ley de Horarios Escalonados para la Movilidad Urbana' }, new Map([['6842', [
+    { summary: 'La iniciativa 6842 del Presupuesto 2027 asigna recursos al Minfin y a la SAT.' },
+  ]]]))).toBeNull();
+});
+
+test('abre el resumen completo sin abrir el recorrido', () => {
+  const resumen = 'La propuesta cambia las obligaciones municipales y protege las fuentes de agua. '.repeat(8);
+  act(() => { renderer = TestRenderer.create(<Iniciativa ini={registro[0]} resumen={resumen} />); });
+  const expansion = boton('leer resumen completo, iniciativa 7000');
+  expect(expansion.props.accessibilityState.expanded).toBe(false);
+  act(() => expansion.props.onPress());
+  expect(boton('cerrar resumen, iniciativa 7000').props.accessibilityState.expanded).toBe(true);
+  expect(renderer.root.findAll((n) => n.props.children === resumen && n.props.numberOfLines === undefined).length).toBeGreaterThan(0);
 });
