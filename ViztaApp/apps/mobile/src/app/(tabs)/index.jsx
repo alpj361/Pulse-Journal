@@ -23,6 +23,8 @@ import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
+import FiltroChips from "../../components/feed/FiltroChips";
+import { filtrarDias, opcionesCongreso, opcionesTemas } from "../../components/feed/filtros";
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
@@ -770,6 +772,17 @@ export default function Index() {
   const [feed, setFeed] = useState("pais");
   // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
   const [vistaCongreso, setVistaCongreso] = useState("tablero");
+  const [seccionCongreso, setSeccionCongreso] = useState('todo');
+  const [temaFeed, setTemaFeed] = useState('todo');
+  const scrollFeed = useRef(null);
+  const desplazamientoFeed = useRef(0);
+  const irAIniciativas = useCallback((ancla) => {
+    const scroll = scrollFeed.current;
+    if (!ancla || !scroll) return;
+    ancla.measureInWindow((x, y) => {
+      scroll.measureInWindow((sx, sy) => scroll.scrollTo({ y: Math.max(0, desplazamientoFeed.current + y - sy - insets.top - 12), animated: true }));
+    });
+  }, [insets.top]);
   // Lo del Congreso se pide recién cuando se elige: quien no lo abre no lo paga.
   const { data: diasCongreso, isLoading: cargandoCongreso } = useQuery({
     queryKey: ['congreso-feed'],
@@ -814,6 +827,10 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
+  const temasFeed = opcionesTemas(hotTopics);
+  const temaActivo = temasFeed.some((t) => t.clave === temaFeed) ? temaFeed : 'todo';
+  const noticiasVisibles = temaActivo === 'todo' ? hotTopics : hotTopics.filter((c) => temaDe(categoriaDe(c)) === temaActivo);
+  const diasVisiblesCongreso = filtrarDias(diasCongreso, seccionCongreso);
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
   const marcadoDelFeed =
@@ -845,6 +862,9 @@ export default function Index() {
         </View>
       ) : (
         <ScrollView
+          ref={scrollFeed}
+          onScroll={(e) => { desplazamientoFeed.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={16}
           style={{ flex: 1 }}
           contentContainerStyle={{
             paddingTop: insets.top + 20,
@@ -930,24 +950,29 @@ export default function Index() {
               <SelectorFeed valor={feed} onCambiar={setFeed} />
             </View>
 
+            {feed === "pais" && hotTopics.length ? <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} /> : null}
+            {feed === "congreso" && vistaCongreso === "tablero" ? (
+              <FiltroChips opciones={opcionesCongreso(diasCongreso)} valor={seccionCongreso} onCambiar={setSeccionCongreso} />
+            ) : null}
             {feed === "observatorio" ? <ObservatorioCC /> : null}
 
 
             {feed === "congreso" ? (
-              cargandoCongreso ? (
-                <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
-              ) : !diasCongreso?.length ? (
-                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
-              ) : vistaCongreso === "organizado" ? (
+              vistaCongreso === "organizado" ? (
                 <CongresoOrganizado
-                  dias={diasCongreso}
+                  dias={diasCongreso || []}
+                  onPagina={irAIniciativas}
                   onAbrir={(item) => {
                     evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
                     setNotaCongreso(item);
                   }}
                 />
+              ) : cargandoCongreso ? (
+                <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
+              ) : !diasCongreso?.length ? (
+                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
               ) : (
-                diasCongreso.map((dia, n) => (
+                !diasVisiblesCongreso.length ? <EstadoFeed sticker="vacio">No hay publicaciones de esta sección en estos días.</EstadoFeed> : diasVisiblesCongreso.map((dia, n) => (
                   <View key={dia.fecha}>
                     {/* Cada día lleva su fecha, también el primero: lo más
                         reciente del Congreso puede ser de ayer, y sin fecha
@@ -994,7 +1019,7 @@ export default function Index() {
             ) : feed === "observatorio" ? null : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
-              porDiaGT(hotTopics).map((grupo, g) => (
+              porDiaGT(noticiasVisibles).map((grupo, g) => (
                 <View key={grupo.dia}>
                   {/* El día se nombra siempre que no sea hoy, y también hoy si
                       abajo viene otro: así nunca se confunde lo de ayer con lo
