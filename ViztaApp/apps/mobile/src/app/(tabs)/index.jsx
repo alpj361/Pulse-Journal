@@ -70,7 +70,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
-import { Settings as SettingsIcon } from 'lucide-react-native';
+import { Settings as SettingsIcon, Users as UsersIcon } from 'lucide-react-native';
+import ColaboradoresSheet from '../../components/colaboradores/ColaboradoresSheet';
+import { alTocarAvisoDeColab } from '../../utils/notificaciones';
+import { puedeColaborar, TONO as TONO_COLAB } from '../../components/colaboradores/piezas';
+import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarStore';
 
 /** Lo único que el feed puede borrar del registro de «dónde me quedé». */
@@ -631,6 +635,18 @@ export default function Index() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
+  const [viendoColaboradores, setViendoColaboradores] = useState(false);
+  // Colaboradores es de la beta: con sesión y rol alfa, beta o admin.
+  const colabora = usePulseConnectionStore((s) => puedeColaborar(s.connectedUser));
+  // Tocar un aviso de Colaboraciones (te escribió, encontró algo) abre los avisos.
+  const [colabEnAvisos, setColabEnAvisos] = useState(false);
+  useEffect(() => {
+    if (!colabora) return undefined;
+    return alTocarAvisoDeColab(() => {
+      setColabEnAvisos(true);
+      setViendoColaboradores(true);
+    });
+  }, [colabora]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [notaCongreso, setNotaCongreso] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
@@ -905,6 +921,21 @@ export default function Index() {
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
               <Mundito size={30} onPress={() => setViendoMapa(true)} />
 
+              {/* Colaboradores, para la beta. Otra puerta de «salir del feed»,
+                  en el verde de la app: al lado del globo y la tuerca, un gris
+                  se leería apagado. */}
+              {colabora ? (
+                <Pressable
+                  onPress={() => setViendoColaboradores(true)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Colaboradores"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                >
+                  <UsersIcon size={23} color={TONO_COLAB.verde} strokeWidth={2} />
+                </Pressable>
+              ) : null}
+
               <Pressable
                 onPress={() => router.push('/settings')}
                 hitSlop={10}
@@ -1173,6 +1204,22 @@ export default function Index() {
       {viendoMapa ? (
         <MapaSheet
           onClose={() => setViendoMapa(false)}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+        />
+      ) : null}
+
+      {viendoColaboradores ? (
+        <ColaboradoresSheet
+          inicial={colabEnAvisos ? 'avisos' : null}
+          onClose={() => {
+            setViendoColaboradores(false);
+            setColabEnAvisos(false);
+          }}
+          onEntrar={() => {
+            setViendoColaboradores(false);
+            router.push('/settings');
+          }}
           topInset={insets.top}
           bottomInset={insets.bottom}
         />

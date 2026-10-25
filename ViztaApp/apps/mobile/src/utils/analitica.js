@@ -94,6 +94,11 @@ export const EV = {
 
   FEED_NOTICIA_ABIERTA: 'feed_noticia_abierta',
 
+  COLAB_ABIERTO: 'colab_abierto',
+  COLAB_CLIENTE_ELEGIDO: 'colab_cliente_elegido',
+  COLAB_AGENTE_SUMADO: 'colab_agente_sumado',
+  COLAB_MENSAJE_ENVIADO: 'colab_mensaje_enviado',
+
   // El seguro del grafo tuvo que rehacer el acomodo. Si aparece, hay un caso
   // que la prueba no cubre.
   GRAFO_RESCATADO: 'grafo_rescatado',

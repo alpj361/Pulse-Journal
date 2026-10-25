@@ -1,4 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EXTRACTORW_URL } from '../../utils/servicios';
+import { normalizarHallazgo, normalizarSeguimiento } from './logica';
 import { supabase } from '../../utils/supabase';
 
 /**
@@ -61,16 +63,23 @@ async function pedir(ruta, { method = 'GET', body, query } = {}) {
 /** Los colaboradores de la cuenta: permisos, pendientes y último mensaje. */
 export const listarColaboradores = async () => (await pedir('/colaboradores')).colaboradores || [];
 
-/** El Codex propio de un colaborador. Misma forma que /api/codex/items. */
+/**
+ * El Codex propio de un colaborador. Mezcla documentos (`codex_items`) y
+ * fichas del universo (Actor, Entidad, Source…); `origen_tabla` dice de cuál.
+ */
 export const itemsDeColaborador = (colaboradorId, { limit = 30, offset = 0, tipo } = {}) =>
   pedir(`/colaboradores/${encodeURIComponent(colaboradorId)}/items`, { query: { limit, offset, tipo } });
 
-/** Sumar un agente: nace activo, con leer y crear. No devuelve token. */
-export const crearAgente = (nombre) => pedir('/colaboraciones/agentes', { method: 'POST', body: { nombre } });
+/** Un ítem completo de un colaborador (con su contenido y sus campos). */
+export const itemDeColaborador = async (colaboradorId, itemId) =>
+  (await pedir(`/colaboradores/${encodeURIComponent(colaboradorId)}/items/${encodeURIComponent(itemId)}`)).item;
 
-/** Cambiar permisos (leer, crear, editar, eliminar) o estado de un colaborador del Codex. */
-export const cambiarColaborador = (id, cambios) =>
-  pedir(`/codex/colaboradores/${encodeURIComponent(id)}`, { method: 'PATCH', body: cambios });
+/**
+ * Cambiar permisos (leer, crear, editar, eliminar) o estado de un colaborador
+ * del Codex. Los permisos que no van se quedan como estaban.
+ */
+export const cambiarColaborador = (id, { permisos, estado }) =>
+  pedir(`/codex/colaboradores/${encodeURIComponent(id)}`, { method: 'PATCH', body: { permisos, estado } });
 
 /** Quitarle el acceso. */
 export const revocarColaborador = (id) =>
@@ -88,16 +97,60 @@ export const crearConversacion = async ({ participantes, titulo, tipo }) =>
 export const leerMensajes = (conversacionId, { limit = 30, antes } = {}) =>
   pedir(`/colaboraciones/conversaciones/${encodeURIComponent(conversacionId)}/mensajes`, { query: { limit, antes } });
 
-/** Envía texto como bloque. Los adjuntos van como bloques `attachment`. */
+/**
+ * Envía texto como bloque. Los adjuntos van como bloques `attachment`.
+ *
+ * El texto va también en `cuerpo`: la fila de la lista (`ultimo_mensaje`) y el
+ * aviso al otro lado leen `cuerpo`, no los bloques. Sin él, la lista mostraría
+ * el chat vacío aunque hubiera mensajes.
+ */
 export async function enviarMensaje(conversacionId, { texto, adjuntos = [] }) {
+  const limpio = texto && texto.trim() ? texto.trim() : null;
   const blocks = [];
-  if (texto && texto.trim()) blocks.push({ id: 't1', type: 'text', version: '1', payload: { text: texto.trim() } });
+  if (limpio) blocks.push({ id: 't1', type: 'text', version: '1', payload: { text: limpio } });
   adjuntos.forEach((a, i) => blocks.push({ id: `a${i + 1}`, type: 'attachment', version: '1', payload: a }));
   const r = await pedir(`/colaboraciones/conversaciones/${encodeURIComponent(conversacionId)}/mensajes`, {
     method: 'POST',
-    body: { schema_version: 'openui.v1', blocks },
+    body: { schema_version: 'openui.v1', blocks, ...(limpio ? { cuerpo: limpio } : {}) },
   });
   return r.mensaje;
+}
+
+/**
+ * El chat 1:1 con un colaborador.
+ *
+ * `GET /conversaciones` no trae los participantes, así que no hay cómo saber
+ * cuál es el de este agente. Se resuelve así: el del último mensaje (lo trae
+ * la lista), si no el que este teléfono ya abrió, y si no ninguno: el chat
+ * nace con el primer mensaje, no al abrirlo.
+ */
+const CHATS = 'vizta-colab-chats';
+
+export async function leerChats() {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(CHATS)) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+export async function chatDe(colaborador) {
+  const delServidor = colaborador?.ultimo_mensaje?.conversacion_id;
+  if (delServidor) return delServidor;
+  return (await leerChats())[colaborador?.id] || null;
+}
+
+export async function abrirChat(colaborador) {
+  const ya = await chatDe(colaborador);
+  if (ya) return ya;
+  const conv = await crearConversacion({
+    participantes: [{ tipo: colaborador.cuenta_tipo, id: colaborador.cuenta_id }],
+    tipo: 'directo',
+  });
+  const chats = await leerChats();
+  chats[colaborador.id] = conv.id;
+  await AsyncStorage.setItem(CHATS, JSON.stringify(chats)).catch(() => {});
+  return conv.id;
 }
 
 /** Contestar un bloque con botones (click). */
@@ -115,14 +168,182 @@ export const dejarDeCompartir = (id) => pedir(`/colaboraciones/compartidos/${enc
 
 export const listarSolicitudes = async () => (await pedir('/colaboraciones/solicitudes')).solicitudes || [];
 export const crearSolicitud = (body) => pedir('/colaboraciones/solicitudes', { method: 'POST', body });
-export const aprobarSolicitud = (id) => pedir(`/colaboraciones/solicitudes/${encodeURIComponent(id)}/aprobar`, { method: 'POST', body: {} });
+/** Aprobar. Con `campos`, solo esos (aprobación parcial, PR #56). */
+export const aprobarSolicitud = (id, { campos } = {}) =>
+  pedir(`/colaboraciones/solicitudes/${encodeURIComponent(id)}/aprobar`, {
+    method: 'POST',
+    body: Array.isArray(campos) && campos.length ? { campos } : {},
+  });
 export const rechazarSolicitud = (id) => pedir(`/colaboraciones/solicitudes/${encodeURIComponent(id)}/rechazar`, { method: 'POST', body: {} });
 
 /** Antes y después por campo, y si la versión ya cambió. */
 export const previsualizarMerge = (body) => pedir('/colaboraciones/merge/preview', { method: 'POST', body });
 export const aplicarMerge = (body) => pedir('/colaboraciones/merge', { method: 'POST', body });
 
+/**
+ * La vista previa de una solicitud de merge, contra la versión de ahora.
+ * `conflicto` dice si el recurso cambió desde que se hizo la propuesta.
+ */
+export const vistaDeSolicitud = (s) =>
+  previsualizarMerge({
+    recurso_tipo: s.tipo === 'merge_investigacion' ? 'proyecto' : 'item',
+    recurso_id: s.recurso_id,
+    parche: s.payload?.parche || s.payload,
+    version_base: s.version_base,
+  });
+
+/**
+ * El título de cada recurso de las solicitudes, en dos consultas. Son ítems e
+ * investigaciones de la propia cuenta, así que se leen directo de la base.
+ */
+export async function titulosDeRecursos(solicitudes) {
+  const ids = (tipo) => [...new Set((solicitudes || []).filter((s) => s.recurso_id && tipo(s)).map((s) => s.recurso_id))];
+  const items = ids((s) => s.tipo !== 'merge_investigacion' && s.recurso_tipo !== 'proyecto');
+  const proyectos = ids((s) => s.tipo === 'merge_investigacion' || s.recurso_tipo === 'proyecto');
+  const titulos = {};
+  const [a, b] = await Promise.all([
+    items.length ? supabase.from('codex_items').select('id, titulo').in('id', items) : { data: [] },
+    proyectos.length ? supabase.from('projects').select('id, title').in('id', proyectos) : { data: [] },
+  ]);
+  (a.data || []).forEach((r) => {
+    titulos[r.id] = r.titulo;
+  });
+  (b.data || []).forEach((r) => {
+    titulos[r.id] = r.title;
+  });
+  return titulos;
+}
+
 // ─── Avisos, artifacts, deshacer ─────────────────────────────────────────────
+
+/**
+ * Los títulos de las fuentes de un artifact que son del Codex (documentos o
+ * fichas). Las demás se nombran por su tipo.
+ */
+export async function titulosDeFuentes(fuentes) {
+  const ids = [...new Set((fuentes || []).filter((f) => f?.tipo === 'codex' && f.id).map((f) => f.id))];
+  if (!ids.length) return {};
+  const [a, b] = await Promise.all([
+    supabase.from('codex_items').select('id, titulo').in('id', ids),
+    supabase.from('codex_universe_items').select('id, name').in('id', ids),
+  ]);
+  const titulos = {};
+  (a.data || []).forEach((r) => {
+    titulos[r.id] = r.titulo;
+  });
+  (b.data || []).forEach((r) => {
+    titulos[r.id] = r.name;
+  });
+  return titulos;
+}
+
+/**
+ * Buscar en mi Codex para adjuntar: documentos y fichas, por título. Sin
+ * texto, lo más reciente. Se lee directo de la base (es la propia cuenta).
+ */
+export async function buscarEnMiCodex(texto, userId) {
+  const q = String(texto || '').trim().replace(/[%_,()]/g, ' ');
+  let a = supabase.from('codex_items').select('id, titulo, tipo, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
+  let b = supabase.from('codex_universe_items').select('id, name, tipo, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
+  if (q) {
+    a = a.ilike('titulo', `%${q}%`);
+    b = b.ilike('name', `%${q}%`);
+  }
+  const [ra, rb] = await Promise.all([a, b]);
+  const filas = [
+    ...(ra.data || []).map((r) => ({ id: r.id, titulo: r.titulo, tipo: r.tipo, created_at: r.created_at })),
+    ...(rb.data || []).map((r) => ({ id: r.id, titulo: r.name, tipo: r.tipo, created_at: r.created_at })),
+  ];
+  return filas.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, 20);
+}
+
+// ─── Lo que sigue el agente (sus monitoreos) ─────────────────────────────────
+//
+// Contrato propuesto a Vizta Dev (25-oct). Mientras la ruta no exista
+// (404), `seguimientosDe` devuelve null y la app no muestra la sección.
+
+const base = (colaboradorId) => `/colaboradores/${encodeURIComponent(colaboradorId)}/seguimientos`;
+
+/** Los temas que sigue un agente, con lo nuevo de cada uno. `null` si todavía no existe. */
+export async function seguimientosDe(colaboradorId) {
+  try {
+    const r = await pedir(base(colaboradorId));
+    return (r.seguimientos || r.items || []).map(normalizarSeguimiento);
+  } catch (e) {
+    if (e instanceof ErrorColab && (e.status === 404 || e.code === 'http_404')) return null;
+    throw e;
+  }
+}
+
+/** Lo que encontró en un tema, de lo más nuevo a lo más viejo. */
+export async function hallazgosDe(colaboradorId, seguimientoId, { limit = 30, antes, solo } = {}) {
+  const r = await pedir(`${base(colaboradorId)}/${encodeURIComponent(seguimientoId)}/hallazgos`, { query: { limit, antes, solo } });
+  return { ...r, items: (r.items || r.hallazgos || []).map(normalizarHallazgo) };
+}
+
+/** «importa» o «no es»: lo que opinás de un hallazgo. */
+export const opinarHallazgo = (colaboradorId, seguimientoId, hallazgoId, veredicto) =>
+  pedir(`${base(colaboradorId)}/${encodeURIComponent(seguimientoId)}/hallazgos/${encodeURIComponent(hallazgoId)}/veredicto`, {
+    method: 'POST',
+    body: { veredicto },
+  });
+
+/** Pausar o seguir (`estado`), cuándo avisar (`modo_aviso`: urgentes, todos, silencio) y a qué horas mira (`horas`). */
+export const cambiarSeguimiento = (colaboradorId, seguimientoId, cambios) =>
+  pedir(`${base(colaboradorId)}/${encodeURIComponent(seguimientoId)}`, { method: 'PATCH', body: cambios });
+
+/** Ya lo viste: lo nuevo deja de contar como nuevo. */
+export const marcarSeguimientoVisto = (colaboradorId, seguimientoId) =>
+  pedir(`${base(colaboradorId)}/${encodeURIComponent(seguimientoId)}/visto`, { method: 'POST', body: {} });
+
+/**
+ * Si el agente se entera al momento: si se conectó a sus avisos, qué recibe y
+ * cuándo le llegó el último. `null` si el backend todavía no lo tiene.
+ */
+export async function avisosDeAgente(colaboradorId) {
+  try {
+    return await pedir(`/colaboradores/${encodeURIComponent(colaboradorId)}/avisos-agente`);
+  } catch (e) {
+    if (e instanceof ErrorColab && (e.status === 404 || e.code === 'http_404')) return null;
+    throw e;
+  }
+}
+
+/** Silenciarlo (`activo`) o elegir qué le llega (`eventos`). */
+export const cambiarAvisosDeAgente = (colaboradorId, cambios) =>
+  pedir(`/colaboradores/${encodeURIComponent(colaboradorId)}/avisos-agente`, { method: 'PATCH', body: cambios });
+
+export const desconectarAvisosDeAgente = (colaboradorId) =>
+  pedir(`/colaboradores/${encodeURIComponent(colaboradorId)}/avisos-agente`, { method: 'DELETE' });
+
+// --- Ficha del agente: tareas, fuentes y espacios ---------------------------
+// Cada una devuelve `null` si el backend todavía no la tiene (404), y la
+// sección no se muestra.
+
+const ficha = (id, resto = '') => `/colaboradores/${encodeURIComponent(id)}/${resto}`;
+
+async function oNull(promesa) {
+  try {
+    return await promesa;
+  } catch (e) {
+    if (e instanceof ErrorColab && (e.status === 404 || e.code === 'http_404')) return null;
+    throw e;
+  }
+}
+
+export const tareasDe = (id) => oNull(pedir(ficha(id, 'tareas')));
+export const crearTarea = (id, tarea) => pedir(ficha(id, 'tareas'), { method: 'POST', body: tarea });
+export const cambiarTarea = (id, tid, cambios) => pedir(ficha(id, `tareas/${encodeURIComponent(tid)}`), { method: 'PATCH', body: cambios });
+export const borrarTarea = (id, tid) => pedir(ficha(id, `tareas/${encodeURIComponent(tid)}`), { method: 'DELETE' });
+
+export const fuentesDe = (id) => oNull(pedir(ficha(id, 'fuentes')));
+/** `confiabilidad`: confiable, no_confiable o sin_calificar. */
+export const calificarFuente = (id, fuente) =>
+  pedir(ficha(id, `fuentes/${encodeURIComponent(fuente.clave)}`), { method: 'PATCH', body: fuente });
+
+/** Los Espacios del agente, cada uno con lo que recuerda ahí. */
+export const espaciosDe = (id) => oNull(pedir(ficha(id, 'espacios')));
+export const quitarRecuerdo = (id, mid) => pedir(ficha(id, `memoria/${encodeURIComponent(mid)}`), { method: 'DELETE' });
 
 export const listarAvisos = async () => (await pedir('/colaboraciones/notificaciones')).notificaciones || [];
 export const marcarAvisoLeido = (id) => pedir(`/colaboraciones/notificaciones/${encodeURIComponent(id)}/leer`, { method: 'POST', body: {} });
@@ -132,13 +353,9 @@ export const leerArtifact = async (id) => (await pedir(`/colaboraciones/artifact
 export const previsualizarDeshacer = (body) => pedir('/colaboraciones/deshacer/preview', { method: 'POST', body });
 export const aplicarDeshacer = (body) => pedir('/colaboraciones/deshacer', { method: 'POST', body });
 
-/**
- * Traer a mi Codex un ítem de otra cuenta. El backend todavía no lo tiene
- * (pedido a Vizta Dev, 21-oct): queda acá para conectarlo con una línea.
- */
-export async function traerAMiCodex() {
-  throw new ErrorColab('no_disponible_aun', 'Traer a tu Codex todavía no está disponible.');
-}
+/** Traer a mi Codex un ítem de otra cuenta: queda una copia mía (v4.6.2). */
+export const traerAMiCodex = async (itemId) =>
+  (await pedir(`/colaboraciones/codex/items/${encodeURIComponent(itemId)}/copiar`, { method: 'POST', body: {} })).item;
 
 /**
  * ¿El servidor ya acepta colaborar entre personas? Hoy COLAB_HUMANOS=0 y no
