@@ -1,0 +1,20 @@
+[
+ ["wait",400],
+ ["move",".hc-stage",0.30,0.42],["wait",900],
+ ["eval","document.querySelector('[data-hint]').textContent + ' || ' + document.querySelector('[data-readout]').textContent"],
+ ["shot","shots/hover.png",null,1],
+ ["click",".hc-stage",0.30,0.42],["wait",500],
+ ["move",".hc-stage",0.52,0.30],["wait",900],
+ ["eval","document.querySelector('[data-hint]').textContent + ' || ' + document.querySelector('[data-readout]').textContent"],
+ ["click",".hc-stage",0.52,0.30],["wait",300],
+ ["move",".hc-stage",0.75,0.45],["wait",1000],
+ ["eval","document.querySelector('[data-hint]').textContent + ' || ' + document.querySelector('[data-readout]').textContent + ' || on=' + document.querySelectorAll('.cu[data-on]').length + ' pressed=' + document.querySelectorAll('.hc-bloc[aria-pressed=true]').length"],
+ ["shot","shots/picked.png",null,1],
+ ["move",".iso-plate",0.5,0.02],["wait",900],
+ ["eval","document.querySelector('[data-hint]').textContent + ' || ' + document.querySelector('[data-readout]').textContent + ' || on=' + document.querySelectorAll('.cu[data-on]').length"],
+ ["key","Escape",".hc-stage"],["wait",700],
+ ["key","ArrowRight",".hc-stage"],["key","ArrowRight",".hc-stage"],["key","ArrowRight",".hc-stage"],["key"," ",".hc-stage"],["wait",900],
+ ["eval","document.querySelector('[data-hint]').textContent + ' || ' + document.querySelector('[data-readout]').textContent + ' || live=' + document.querySelector('[data-live]').textContent"],
+ ["shot","shots/keys.png",null,1],
+ ["lines","shots/lines-picked.png"]
+]

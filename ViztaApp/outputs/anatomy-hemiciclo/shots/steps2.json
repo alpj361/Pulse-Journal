@@ -1,0 +1,10 @@
+[
+ ["wait",400],
+ ["eval","window.__clicks=[]; document.querySelector('.hc-stage svg').addEventListener('click', e => window.__clicks.push((e.target.closest('.cu')||{dataset:{}}).dataset.s || e.target.tagName + '.' + e.target.getAttribute('class')), true); 1"],
+ ["move",".hc-stage",0.30,0.42],["wait",600],
+ ["click",".hc-stage",0.30,0.42],["wait",500],
+ ["eval","JSON.stringify(window.__clicks) + ' pressed=' + document.querySelectorAll('.hc-bloc[aria-pressed=true]').length"],
+ ["move",".hc-stage",0.52,0.30],["wait",900],
+ ["click",".hc-stage",0.52,0.30],["wait",500],
+ ["eval","JSON.stringify(window.__clicks) + ' pressed=' + document.querySelectorAll('.hc-bloc[aria-pressed=true]').length + ' ' + document.querySelector('[data-readout]').textContent"]
+]

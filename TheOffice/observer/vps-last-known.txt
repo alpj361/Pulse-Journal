@@ -1,0 +1,9 @@
+/home/pj/NewsCron/clasificador_worker.log|1789436107|4282
+/home/pj/NewsCron/legal_agent.log|1786838789|0
+/home/pj/NewsCron/reality_agent.log|1789444004|2436
+/home/pj/NewsCron/fetch_profiles.log|1789462803|70731
+/home/pj/NewsCron/fetch_trending_and_tweets.log|1789434410|66628
+/home/pj/NewsCron/news_cards_cron.log|1789433489|0
+/home/pj/NewsCron/narrativa_cron.log|1789433489|0
+/home/pj/NewsCron/cron_news.log|1789433489|0
+/home/pj/NewsCron/director_state.json|1789423279|2189
