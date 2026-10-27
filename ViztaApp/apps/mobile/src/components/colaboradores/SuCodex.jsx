@@ -6,6 +6,7 @@ import {
   BookOpen,
   BookText,
   Check,
+  ChevronRight,
   Box,
   Building2,
   CalendarDays,
@@ -14,6 +15,7 @@ import {
   Lightbulb,
   Link2,
   MapPin,
+  Newspaper,
   Quote,
   Search,
   User,
@@ -22,11 +24,13 @@ import {
 import { CARD_SHADOW, INK, SERIF } from '../theme';
 import { TEMAS } from '../feed/temas';
 import { listo } from '../../utils/haptics';
+import { espaciosDe, itemDeColaborador, itemsDeColaborador, traerAMiCodex } from './api';
+import PortadaEspacio from '../codex/PortadaEspacio';
+import { camposDeFuente, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
+import ItemDetailSheet from '../codex/ItemDetailSheet';
 import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
-import { itemDeColaborador, itemsDeColaborador, traerAMiCodex } from './api';
-import { camposLegibles, claveTipo, cuerpoDe, filtrosDeTipos, nombreTipo, resumenPlano, sinTituloRepetido } from './logica';
-import { Boton, EstadoCentro, TONO } from './piezas';
+import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 
 /** Ícono y lavado por tipo (pantalla 8). Un tipo nuevo cae al de documento. */
@@ -72,7 +76,7 @@ const haceCuanto = (fecha) => {
  * en el tuyo (`coincidencia_humano_id`). Lo parecido no se trae (sería un
  * duplicado): se le pide al agente que proponga unirlo, y llega para aprobar.
  */
-export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, onPedir }) {
+export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, onPedir, onAbrirEspacio }) {
   const [abierto, setAbierto] = useState(null);
   const [filtro, setFiltro] = useState(null);
   const consulta = useQuery({
@@ -80,6 +84,14 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
     queryFn: () => itemsDeColaborador(colaborador.id, { limit: 100 }),
     staleTime: 1000 * 60,
   });
+  // Sus Espacios van arriba, como en tu Codex: al tocar uno se entra a él.
+  const espaciosConsulta = useQuery({
+    queryKey: ['colab-espacios', colaborador.id],
+    queryFn: () => espaciosDe(colaborador.id),
+    staleTime: 1000 * 60,
+    retry: false,
+  });
+  const espacios = useMemo(() => espaciosParaCarrusel(espaciosConsulta.data), [espaciosConsulta.data]);
   const items = useMemo(() => consulta.data?.items || [], [consulta.data]);
   const filtros = useMemo(() => filtrosDeTipos(items), [items]);
   const visibles = filtro ? items.filter((it) => claveTipo(it) === filtro) : items;
@@ -106,7 +118,7 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
       </EstadoCentro>
     );
   }
-  if (!items.length) {
+  if (!items.length && !espacios.length) {
     return <EstadoCentro titulo="Todavía no guardó nada" texto="Lo que investigue va a aparecer acá." />;
   }
 
@@ -116,6 +128,24 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
         contentContainerStyle={{ padding: 20, paddingBottom: bottomInset + 24, gap: 10 }}
         refreshControl={<RefreshControl refreshing={consulta.isRefetching} onRefresh={consulta.refetch} tintColor={INK.meta} />}
       >
+        {espacios.length ? (
+          <View style={{ gap: 10, marginBottom: 8 }}>
+            <Text style={ROTULO}>SUS ESPACIOS</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              snapToInterval={ANCHO_ESPACIO + 12}
+              decelerationRate="fast"
+              style={{ marginHorizontal: -20 }}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
+            >
+              {espacios.map((e) => (
+                <Espacio key={e.id} espacio={e} onPress={() => onAbrirEspacio?.(e)} />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+        {espacios.length && items.length ? <Text style={[ROTULO, { marginTop: 6 }]}>TODO LO QUE GUARDÓ</Text> : null}
         {filtros.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }} style={{ marginHorizontal: -20 }}>
             <View style={{ width: 14 }} />
@@ -147,6 +177,31 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Una carátula chica de sus Espacios. Van en fila y se corren con el dedo: el
+ * carrusel grande del Codex se comía la pantalla antes de llegar a lo guardado.
+ */
+const ANCHO_ESPACIO = 140;
+function Espacio({ espacio: e, onPress }) {
+  const n = e.itemIds?.length || 0;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${e.name}${n ? `, ${n} elementos` : ''}`}
+      style={({ pressed }) => ({ width: ANCHO_ESPACIO, gap: 7, transform: [{ scale: pressed ? 0.96 : 1 }] })}
+    >
+      <PortadaEspacio space={e} radius={16} ancho={ANCHO_ESPACIO} alto={96} style={{ width: ANCHO_ESPACIO, height: 96 }} />
+      <View style={{ gap: 1 }}>
+        <Text style={{ fontSize: 13.5, fontWeight: '700', lineHeight: 17, color: INK.title }} numberOfLines={2}>
+          {e.name}
+        </Text>
+        {n ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{n} {n === 1 ? 'elemento' : 'elementos'}</Text> : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -230,11 +285,19 @@ function Tarjeta({ item, onPress }) {
  * campos que se leen como texto, el enlace y las etiquetas. Pide el ítem
  * completo; mientras llega, muestra lo que trae la lista.
  */
-function Ficha({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
-  const queryClient = useQueryClient();
-  const [trayendo, setTrayendo] = useState(false);
-  const [traido, setTraido] = useState(false);
-  const [fallo, setFallo] = useState(false);
+/**
+ * La ficha de algo de su Codex. Actores, entidades, eventos… se abren con la
+ * misma ficha que en tu Codex (`ItemDetailSheet`), en lectura. Una fuente
+ * tiene la suya: de dónde es, el enlace y dónde aparece.
+ */
+export function Ficha(props) {
+  if (esFuente(props.item)) return <FichaFuente {...props} />;
+  if (esDocumento(props.item)) return <FichaDocumento {...props} />;
+  return <FichaCodex {...props} />;
+}
+
+/** Un documento o fragmento: se lee con su formato, como una nota. */
+function FichaDocumento({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
   const completo = useQuery({
     queryKey: ['colab-item', colaborador.id, deLista.id],
     queryFn: () => itemDeColaborador(colaborador.id, deLista.id),
@@ -242,15 +305,51 @@ function Ficha({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
     retry: false,
   });
   const item = { ...deLista, ...(completo.data || {}) };
+  const t = useTraer(colaborador, item);
   const { tema } = estiloDe(item);
-  const etiquetas = (Array.isArray(item.etiquetas) ? item.etiquetas : Array.isArray(item.tags) ? item.tags : []).filter(Boolean);
   const fecha = item.created_at || item.fecha;
   const cuerpo = sinTituloRepetido(cuerpoDe(item));
-  const campos = camposLegibles(item.details);
   const lineas = useMemo(() => (cuerpo ? parsear(cuerpo) : []), [cuerpo]);
-  const loTenes = !!(item.ya_en_mi_codex || traido);
-  const parecido = !loTenes && !!item.coincidencia_humano_id;
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(28,43,34,0.35)' }}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Cerrar" accessibilityRole="button" />
+        <View style={{ backgroundColor: '#FBFAF6', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '92%' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 24, paddingTop: 22, gap: 12 }}>
+            <View style={{ flex: 1, gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <View style={{ backgroundColor: tema.lavado[0], borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: tema.tinta }}>{nombreTipo(claveTipo(item))}</Text>
+                </View>
+                {fecha ? <Text style={{ fontSize: 12, color: INK.meta }}>{fechaLarga(fecha)}</Text> : null}
+              </View>
+              <Text style={{ fontFamily: SERIF, fontSize: 26, lineHeight: 30, color: INK.title }} accessibilityRole="header">
+                {item.titulo || item.name || 'Sin título'}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar" style={{ padding: 6 }}>
+              <X size={19} color={INK.faint} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 14, paddingBottom: 18 }}>
+            {lineas.length ? <TextoMarkdown lineas={lineas} color="#2E3B33" size={15} /> : null}
+            {!lineas.length && completo.isLoading ? <MorphingInfinity size={28} color={INK.meta} style={{ alignSelf: 'center' }} /> : null}
+          </ScrollView>
+          <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: bottomInset + 16 }}>
+            <Acciones item={item} traer={t} onPedir={onPedir} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
+/** Lo que se puede hacer con algo suyo: traerlo, o pedirle que lo una al tuyo. */
+function useTraer(colaborador, item) {
+  const queryClient = useQueryClient();
+  const [trayendo, setTrayendo] = useState(false);
+  const [traido, setTraido] = useState(false);
+  const [fallo, setFallo] = useState(false);
   const traer = async () => {
     setTrayendo(true);
     setFallo(false);
@@ -265,6 +364,93 @@ function Ficha({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
       setTrayendo(false);
     }
   };
+  return { trayendo, traido, fallo, traer };
+}
+
+function Acciones({ item, traer: t, onPedir }) {
+  const loTenes = !!(item.ya_en_mi_codex || t.traido);
+  const parecido = !loTenes && !!item.coincidencia_humano_id;
+  if (loTenes) {
+    return (
+      <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <Check size={17} color={TONO.verde} strokeWidth={2.4} />
+        <Text style={{ fontSize: 14.5, fontWeight: '600', color: TONO.verde }}>en tu Codex</Text>
+      </View>
+    );
+  }
+  const titulo = item.titulo || item.name;
+  if (parecido) {
+    return (
+      <View style={{ gap: 8 }}>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: TONO.ladrilloTinta, textAlign: 'center' }}>Ya tenés «{titulo}» en tu Codex.</Text>
+        {onPedir ? (
+          <Boton
+            texto="pedirle que lo una al tuyo"
+            primario
+            onPress={() => onPedir(`Tengo «${titulo}» en mi Codex. Proponeme unir el tuyo con el mío (colab_merge_proponer), así lo reviso campo por campo.`)}
+          />
+        ) : null}
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      {t.fallo ? <Text style={{ fontSize: 12.5, color: TONO.rojo, textAlign: 'center' }}>No se pudo traer. Probá de nuevo.</Text> : null}
+      <Boton texto="traer a mi Codex" onPress={t.traer} cargando={t.trayendo} />
+    </View>
+  );
+}
+
+/** Actores, entidades y demás: la ficha del Codex, en lectura, con lo suyo abajo. */
+function FichaCodex({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
+  const completo = useQuery({
+    queryKey: ['colab-item', colaborador.id, deLista.id],
+    queryFn: () => itemDeColaborador(colaborador.id, deLista.id),
+    staleTime: 1000 * 60,
+    retry: false,
+  });
+  const item = { ...deLista, ...(completo.data || {}) };
+  item.name = item.name || item.titulo;
+  const t = useTraer(colaborador, item);
+  // La ficha toma el ítem al abrirse: se espera a tenerlo entero.
+  if (completo.isLoading) {
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(28,43,34,0.35)' }}>
+          <MorphingInfinity size={34} color="#FFFFFF" />
+        </View>
+      </Modal>
+    );
+  }
+  return (
+    <ItemDetailSheet
+      item={item}
+      soloLectura
+      bottomInset={bottomInset}
+      onClose={onClose}
+      pie={<Acciones item={item} traer={t} onPedir={onPedir} />}
+    />
+  );
+}
+
+function FichaFuente({ colaborador, item: deLista, bottomInset, onClose, onPedir, onAbrirOtro }) {
+  const completo = useQuery({
+    queryKey: ['colab-item', colaborador.id, deLista.id],
+    queryFn: () => itemDeColaborador(colaborador.id, deLista.id),
+    staleTime: 1000 * 60,
+    retry: false,
+  });
+  const item = { ...deLista, ...(completo.data || {}) };
+  const t = useTraer(colaborador, item);
+  const d = item.details || {};
+  const enlace = enlaceDeFuente(item);
+  const dominio = dominioDe(enlace);
+  const publicada = d['Fecha de publicación'] || item.fecha;
+  const notas = resumenPlano(d['Notas de la fuente'] || item.descripcion || item.description || cuerpoDe(item));
+  const campos = camposDeFuente(d);
+  // Dónde aparece: lo de su Codex que la cita. Llega con el ítem si el
+  // backend ya lo sabe.
+  const apariciones = Array.isArray(item.apariciones) ? item.apariciones : [];
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -272,19 +458,15 @@ function Ficha({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Cerrar" accessibilityRole="button" />
         <View style={{ backgroundColor: '#FBFAF6', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '90%' }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 24, paddingTop: 22, gap: 12 }}>
-            <View style={{ flex: 1, gap: 8 }}>
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <View style={{ backgroundColor: tema.lavado[0], borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: tema.tinta }}>{nombreTipo(claveTipo(item))}</Text>
-                </View>
-                {fecha ? (
-                  <Text style={{ fontSize: 12, color: INK.meta }}>
-                    {new Date(fecha).toLocaleDateString('es-GT', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </Text>
-                ) : null}
-              </View>
-              <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title }} accessibilityRole="header">
-                {item.titulo || 'Sin título'}
+            <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: TONO.ladrilloLavado, alignItems: 'center', justifyContent: 'center' }} accessible={false}>
+              <Newspaper size={21} color={TONO.ladrilloTinta} strokeWidth={1.9} />
+            </View>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: TONO.ladrilloTinta }} numberOfLines={1}>
+                {[dominio, publicada ? fechaLarga(publicada) : null].filter(Boolean).join(' · ') || 'fuente'}
+              </Text>
+              <Text style={{ fontFamily: SERIF, fontSize: 24, lineHeight: 28, color: INK.title }} accessibilityRole="header">
+                {item.titulo || item.name || 'Sin título'}
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar" style={{ padding: 6 }}>
@@ -292,88 +474,98 @@ function Ficha({ colaborador, item: deLista, bottomInset, onClose, onPedir }) {
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 14, paddingBottom: 18, gap: 16 }}>
-            {lineas.length ? <TextoMarkdown lineas={lineas} color="#2E3B33" size={15} /> : null}
-            {!lineas.length && completo.isLoading ? <MorphingInfinity size={28} color={INK.meta} /> : null}
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 18, gap: 18 }}>
+            {enlace ? (
+              <Pressable
+                onPress={() => Linking.openURL(enlace).catch(() => {})}
+                accessibilityRole="link"
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: TONO.borde,
+                  borderRadius: 14,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <ExternalLink size={16} color={TONO.verde} />
+                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '600', color: TONO.verde }}>abrir la fuente</Text>
+                <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>
+                  {dominio}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {notas ? <Text style={{ fontSize: 15, lineHeight: 22, color: '#2E3B33' }}>{notas}</Text> : null}
+            {!notas && completo.isLoading ? <MorphingInfinity size={28} color={INK.meta} /> : null}
 
             {campos.length ? (
               <View style={{ backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(28,43,34,0.07)' }}>
                 {campos.map((c, i) => (
                   <View
                     key={c.clave}
-                    style={{ paddingVertical: 10, paddingHorizontal: 14, gap: 2, borderTopWidth: i ? 1 : 0, borderTopColor: 'rgba(28,43,34,0.06)' }}
+                    style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 11, paddingHorizontal: 14, borderTopWidth: i ? 1 : 0, borderTopColor: 'rgba(28,43,34,0.06)' }}
                   >
-                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta }}>{c.clave}</Text>
-                    {c.enlace ? (
-                      <Pressable onPress={() => Linking.openURL(c.valor).catch(() => {})} accessibilityRole="link">
-                        <Text style={{ fontSize: 14, color: TONO.verde, fontWeight: '600' }} numberOfLines={1}>
-                          {c.valor.replace(/^https?:\/\/(www\.)?/, '')}
-                        </Text>
-                      </Pressable>
-                    ) : (
-                      <Text selectable style={{ fontSize: 14, lineHeight: 20, color: INK.title }}>
-                        {c.valor}
-                      </Text>
-                    )}
+                    <Text style={{ fontSize: 13, color: INK.meta }}>{c.clave}</Text>
+                    <Text selectable style={{ flexShrink: 1, fontSize: 13.5, fontWeight: '600', color: INK.title, textAlign: 'right' }}>
+                      {c.clave === 'Confiabilidad' && /^\d$/.test(c.valor) ? `${c.valor} de 5` : c.valor}
+                    </Text>
                   </View>
                 ))}
               </View>
             ) : null}
 
-            {item.url ? (
-              <Pressable
-                onPress={() => Linking.openURL(item.url).catch(() => {})}
-                accessibilityRole="link"
-                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, opacity: pressed ? 0.6 : 1 })}
-              >
-                <ExternalLink size={15} color={TONO.verde} />
-                <Text style={{ flex: 1, fontSize: 14, color: TONO.verde, fontWeight: '600' }} numberOfLines={1}>
-                  {item.url.replace(/^https?:\/\/(www\.)?/, '')}
-                </Text>
-              </Pressable>
-            ) : null}
-
-            {etiquetas.length ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {etiquetas.map((e) => (
-                  <View key={String(e)} style={{ backgroundColor: 'rgba(28,43,34,0.05)', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4 }}>
-                    <Text style={{ fontSize: 12, color: INK.body }}>{String(e)}</Text>
-                  </View>
-                ))}
+            {apariciones.length ? (
+              <View style={{ gap: 8 }}>
+                <Text style={ROTULO}>DÓNDE APARECE</Text>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(28,43,34,0.07)', overflow: 'hidden' }}>
+                  {apariciones.map((a, i) => (
+                    <Pressable
+                      key={a.id}
+                      onPress={onAbrirOtro ? () => onAbrirOtro(a) : undefined}
+                      disabled={!onAbrirOtro}
+                      accessibilityRole={onAbrirOtro ? 'button' : undefined}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        paddingVertical: 11,
+                        paddingHorizontal: 14,
+                        borderTopWidth: i ? 1 : 0,
+                        borderTopColor: 'rgba(28,43,34,0.06)',
+                        opacity: pressed ? 0.6 : 1,
+                      })}
+                    >
+                      <View style={{ flex: 1, gap: 1 }}>
+                        <Text style={{ fontSize: 14.5, fontWeight: '600', color: INK.title }} numberOfLines={2}>
+                          {a.titulo || a.name}
+                        </Text>
+                        {a.tipo ? <Text style={{ fontSize: 12, color: INK.meta }}>{nombreTipo(claveTipo(a))}</Text> : null}
+                      </View>
+                      {onAbrirOtro ? <ChevronRight size={15} color={INK.meta} /> : null}
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             ) : null}
           </ScrollView>
 
-          <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: bottomInset + 16, gap: 8 }}>
-            {loTenes ? (
-              <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <Check size={17} color={TONO.verde} strokeWidth={2.4} />
-                <Text style={{ fontSize: 14.5, fontWeight: '600', color: TONO.verde }}>en tu Codex</Text>
-              </View>
-            ) : parecido ? (
-              <>
-                <Text style={{ fontSize: 13, lineHeight: 18, color: TONO.ladrilloTinta, textAlign: 'center' }}>
-                  Ya tenés «{item.titulo}» en tu Codex.
-                </Text>
-                {onPedir ? (
-                  <Boton
-                    texto="pedirle que lo una al tuyo"
-                    primario
-                    onPress={() =>
-                      onPedir(`Tengo «${item.titulo}» en mi Codex. Proponeme unir el tuyo con el mío (colab_merge_proponer), así lo reviso campo por campo.`)
-                    }
-                  />
-                ) : null}
-              </>
-            ) : (
-              <>
-                {fallo ? <Text style={{ fontSize: 12.5, color: TONO.rojo, textAlign: 'center' }}>No se pudo traer. Probá de nuevo.</Text> : null}
-                <Boton texto="traer a mi Codex" onPress={traer} cargando={trayendo} />
-              </>
-            )}
+          <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: bottomInset + 16 }}>
+            <Acciones item={item} traer={t} onPedir={onPedir} />
           </View>
         </View>
       </View>
     </Modal>
   );
 }
+
+const fechaLarga = (f) => {
+  // «2026-10-22» es un día, no un instante: leído como UTC, en Guatemala sale el 21.
+  const dia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(f));
+  const d = dia ? new Date(Number(dia[1]), Number(dia[2]) - 1, Number(dia[3])) : new Date(f);
+  return Number.isNaN(d.getTime()) ? String(f) : d.toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+};

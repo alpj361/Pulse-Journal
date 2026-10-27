@@ -156,8 +156,16 @@ Estado del backend (revisado): `monitors` + `monitor_hallazgos` existen pero son
 
 ## Perfil del agente: tareas, fuentes y espacios (25-oct, PJ)
 
-Son lo principal del agente, no ajustes. Al tocar su nombre en el chat (lleva una flecha) se abre su **perfil**: avatar, nombre, «haciendo ahora» y tres puertas grandes con ícono, **Tareas**, **Fuentes** y **Espacios**. Cada una abre su propia pantalla (`Ficha.jsx`). El ícono de ajustes del chat queda para los permisos, «Le avisamos» y quitar el acceso. Cada puerta aparece solo si su GET responde.
+Son lo principal del agente, no ajustes. En el encabezado del chat hay una **carpeta** al lado del ícono de ajustes, y abre su **perfil**: avatar, nombre, «haciendo ahora» y dos puertas grandes con ícono, **Tareas** y **Fuentes**. Cada una abre su propia pantalla (`Ficha.jsx`). El ícono de ajustes del chat queda para los permisos, «Le avisamos» y quitar el acceso. Cada puerta aparece solo si su GET responde.
 
 - **Tareas:** «haciendo ahora» sobre verde claro, lo pendiente y lo pausado. Al tocar una tarea se puede marcar hecha, pausar o borrar. Al final hay un campo «pedirle una tarea», y las terminadas se ven con «ver las hechas».
 - **Fuentes:** filtros todas, sin calificar, confiables y no confiables. Cada fuente lleva un ícono por tipo (medio, red, oficial, cuenta automática o web) y los botones «confiable» y «no confiable». Tienen que ser medios y cuentas reales (Soy502, Canal Antigua, @CanalAntigua), no categorías; eso lo arregla Vizta Dev.
-- **Espacios:** los que crea el agente. Al abrir uno se ven su historia y sus recuerdos, y si se mantiene apretado un recuerdo sale la opción «olvidar».
+- **Espacios (en «Su Codex», no en el perfil):** arriba de Su Codex, sus Espacios en una fila de carátulas chicas que se corre con el dedo (el carrusel grande del Codex ocupaba media pantalla). Al tocar uno se entra (`EspacioAgente.jsx`): carátula, descripción, historia («leer todo»), lo que recuerda (si se mantiene apretado un recuerdo, sale «olvidar») y lo que guardó ordenado por tipo, con actores primero. Cada cosa se abre en su ficha. El contenido por tipo usa `GET /colaboradores/:id/espacios/:eid`; si responde 404, solo se ven la historia y los recuerdos.
+
+## Fichas en Su Codex (27-oct, PJ)
+
+Cada cosa abre la ficha que le toca, no todas la misma:
+- **Actores, entidades, eventos, territorios…:** la ficha del Codex (`ItemDetailSheet`) en modo `soloLectura`, sin lápiz, sin «Más campos» y sin Ajustes. Abajo lleva una barra (`pie`) con «traer a mi Codex» o «pedirle que lo una al tuyo». Los campos (Profesión, Cargo, Afiliación…) salen de `details`; si el agente no los llenó, la ficha queda vacía. Que los llene es trabajo del backend: le pasa el catálogo de campos y le avisa qué falta.
+- **Fuentes (tipo Source):** su propia ficha. Muestra el medio (dominio) y la fecha de publicación, «abrir la fuente», las notas, los datos (confiabilidad «5 de 5», tipo, verificación) y «dónde aparece» (`apariciones`, cuando el backend las mande).
+- **Documentos y fragmentos:** un lector con formato (markdown).
+- **Fuentes del perfil (por medio):** al tocar Canal Antigua o Soy502 se abre su pantalla, con «confiable / no confiable», «dónde aparece» y «lo que encontró» (`GET /colaboradores/:id/fuentes/:clave`).

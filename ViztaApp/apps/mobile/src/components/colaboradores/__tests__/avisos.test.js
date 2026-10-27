@@ -87,8 +87,9 @@ describe('ficha del agente', () => {
 describe('perfil del agente', () => {
   const L = require('../logica');
   test('resúmenes de las tres puertas', () => {
-    expect(L.resumenTareas({ haciendo_ahora: { id: 'a', titulo: 'Revisar Foppa' }, items: [{ id: 'b', estado: 'pendiente' }, { id: 'c', estado: 'pausada' }] })).toBe('haciendo «Revisar Foppa» · 1 pendiente');
+    expect(L.resumenTareas({ haciendo_ahora: { id: 'a', titulo: 'Revisar Foppa' }, items: [{ id: 'b', estado: 'pendiente' }, { id: 'c', estado: 'pausada' }] })).toBe('1 pendiente');
     expect(L.resumenTareas({ items: [] })).toBe('sin tareas');
+    expect(L.resumenTareas({ items: [{ id: 'd', estado: 'completada' }, { id: 'e', estado: 'pendiente' }] })).toBe('1 pendiente · 1 hecha');
     expect(L.resumenFuentes({ items: [{ confiabilidad: 'confiable' }, { confiabilidad: 'no_confiable' }, {}] })).toBe('3 fuentes · 1 confiable · 1 no confiable');
     expect(L.resumenFuentes({ items: [] })).toBe('todavía ninguna');
     expect(L.resumenEspacios({ espacios: [{}, {}] })).toBe('2 espacios');
@@ -98,4 +99,12 @@ describe('perfil del agente', () => {
     expect(L.filtrarFuentes(items, 'sin_calificar')).toHaveLength(1);
     expect(L.filtrarFuentes(items, null)).toHaveLength(3);
   });
+});
+
+test('lo de un espacio, por tipo y en el orden del Codex', () => {
+  const L = require('../logica');
+  const g = L.itemsPorTipo([{ tipo: 'evento' }, { tipo: 'Actor' }, { subcategory: 'entidad' }, { tipo: 'actor' }]);
+  expect(g.map((x) => x.titulo)).toEqual(['Actores', 'Entidades', 'Eventos']);
+  expect(g[0].items).toHaveLength(2);
+  expect(L.espaciosParaCarrusel({ espacios: [{ id: 'a', nombre: 'Caso', items_count: 3 }] })[0]).toMatchObject({ name: 'Caso', itemIds: [undefined, undefined, undefined] });
 });

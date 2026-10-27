@@ -1,3 +1,5 @@
+import { TYPE_ORDER, normalizeTipo } from '../codex/tipos';
+
 /**
  * Colaboradores: lo que se calcula sin red (STA-259).
  *
@@ -575,14 +577,17 @@ export function metaEspacio(e) {
 }
 
 
-/** «haciendo «Revisar Foppa» · 2 pendientes», para el perfil. */
+/**
+ * «2 pendientes · 1 hecha», para el perfil. Lo que hace ahora ya está en su
+ * propia tarjeta arriba: acá no se repite.
+ */
 export function resumenTareas(datos) {
-  const { ahora, abiertas } = repartirTareas(datos);
+  const { abiertas, hechas } = repartirTareas(datos);
   const pendientes = abiertas.filter((t) => t.estado !== 'pausada').length;
   return [
-    ahora ? `haciendo «${ahora.titulo}»` : null,
     pendientes ? `${pendientes} ${pendientes === 1 ? 'pendiente' : 'pendientes'}` : null,
-  ].filter(Boolean).join(' · ') || 'sin tareas';
+    hechas.length ? `${hechas.length} ${hechas.length === 1 ? 'hecha' : 'hechas'}` : null,
+  ].filter(Boolean).join(' · ') || (datos?.haciendo_ahora ? 'nada más pendiente' : 'sin tareas');
 }
 
 /** «12 fuentes · 3 confiables · 1 no confiable». */
@@ -613,3 +618,58 @@ export const FILTROS_FUENTES = [
 
 export const filtrarFuentes = (items, filtro) =>
   filtro ? (items || []).filter((f) => (f.confiabilidad || 'sin_calificar') === filtro) : items || [];
+
+const PLURAL_TIPO = {
+  Actor: 'Actores', Entidad: 'Entidades', Territorio: 'Territorios', Evento: 'Eventos', Concepto: 'Conceptos',
+  Documento: 'Documentos', Evidencia: 'Evidencias', Historia: 'Historias', Objeto: 'Objetos', Artefacto: 'Artefactos',
+  Ref: 'Referencias', Snippet: 'Fragmentos', Post: 'Publicaciones',
+};
+
+/** Lo de un Espacio agrupado por tipo, en el orden del Codex: actores primero. */
+export function itemsPorTipo(items) {
+  const grupos = new Map();
+  for (const it of items || []) {
+    const tipo = normalizeTipo(it?.tipo || it?.subcategory);
+    if (!grupos.has(tipo)) grupos.set(tipo, []);
+    grupos.get(tipo).push(it);
+  }
+  const orden = (t) => {
+    const i = TYPE_ORDER.indexOf(t);
+    return i === -1 ? TYPE_ORDER.length : i;
+  };
+  return [...grupos.entries()]
+    .sort((a, b) => orden(a[0]) - orden(b[0]) || a[0].localeCompare(b[0]))
+    .map(([tipo, lista]) => ({ tipo, titulo: PLURAL_TIPO[tipo] || tipo, items: lista }));
+}
+
+/** Sus Espacios como los pinta el carrusel del Codex (`name`, `itemIds`). */
+export const espaciosParaCarrusel = (datos) =>
+  ordenarEspacios(datos).map((e) => ({
+    ...e,
+    name: e.nombre,
+    cover: e.cover || null,
+    itemIds: Array.isArray(e.item_ids) ? e.item_ids : Array.from({ length: Number(e.items_count) || 0 }),
+  }));
+
+/** Una fuente (un artículo, un documento citado) tiene su propia ficha. */
+export const esFuente = (item) => ['source', 'fuente'].includes(claveTipo(item));
+
+/** El enlace de una fuente: el suyo o el de sus campos. */
+export const enlaceDeFuente = (item) => {
+  const d = item?.details || {};
+  const url = item?.url || d['URL de la fuente'] || d.url || d.URL || null;
+  return typeof url === 'string' && /^https?:\/\//i.test(url.trim()) ? url.trim() : null;
+};
+
+/** «lahora.gt» de un enlace, para decir de qué medio es. */
+export const dominioDe = (url) => {
+  const m = /^https?:\/\/(?:www\.)?([^/]+)/i.exec(String(url || ''));
+  return m ? m[1] : null;
+};
+
+/** Los campos de una fuente que la ficha ya dice arriba no se repiten abajo. */
+export const camposDeFuente = (details) =>
+  camposLegibles(details).filter((c) => !['URL de la fuente', 'Notas de la fuente', 'Fecha de publicación'].includes(c.clave));
+
+/** Un documento o fragmento (texto largo con formato) se lee, no se ficha. */
+export const esDocumento = (item) => item?.origen_tabla === 'codex_items' || ['snippet', 'documento', 'document', 'nota'].includes(claveTipo(item));

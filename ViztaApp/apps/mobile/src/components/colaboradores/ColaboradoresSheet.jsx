@@ -19,7 +19,8 @@ import Solicitud from './Solicitud';
 import Avisos from './Avisos';
 import Artifact from './Artifact';
 import { Seguimiento } from './Seguimientos';
-import { PantallaEspacios, PantallaFuentes, PantallaTareas, Perfil } from './Ficha';
+import { PantallaFuente, PantallaFuentes, PantallaTareas, Perfil } from './Ficha';
+import EspacioAgente from './EspacioAgente';
 
 /** Cada cuánto se refrescan la lista, las solicitudes y los avisos mientras se ven. */
 const CADA = 1000 * 30;
@@ -176,6 +177,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         onVolver={volver}
         onPermisos={() => ir({ tipo: 'permisos', colaborador: vigente })}
         onPerfil={() => ir({ tipo: 'perfil', colaborador: vigente })}
+        onAbrirEspacio={(espacio) => ir({ tipo: 'espacio', colaborador: vigente, espacio })}
         onAbrirArtifact={(id) => ir({ tipo: 'artifact', id })}
         onAbrirSeguimiento={(s) => ir({ tipo: 'seguimiento', colaborador: vigente, seguimiento: s })}
         pestanaInicial={vista.pestana}
@@ -203,9 +205,39 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         onAbrir={(que) => ir({ tipo: que, colaborador: vigente })}
       />
     );
-  } else if (['tareas', 'fuentes', 'espacios'].includes(vista.tipo) && vigente) {
-    const P = { tareas: PantallaTareas, fuentes: PantallaFuentes, espacios: PantallaEspacios }[vista.tipo];
-    pantalla = <P colaborador={vigente} topInset={topInset} bottomInset={bottomInset} onVolver={volver} />;
+  } else if (vista.tipo === 'espacio' && vigente) {
+    pantalla = (
+      <EspacioAgente
+        colaborador={vigente}
+        espacio={vista.espacio}
+        topInset={topInset}
+        bottomInset={bottomInset}
+        onVolver={volver}
+        onPedir={(texto) => ir({ tipo: 'chat', colaborador: vigente, borrador: texto })}
+      />
+    );
+  } else if (vista.tipo === 'fuente' && vigente) {
+    pantalla = (
+      <PantallaFuente
+        colaborador={vigente}
+        fuente={vista.fuente}
+        topInset={topInset}
+        bottomInset={bottomInset}
+        onVolver={volver}
+        onPedir={(texto) => ir({ tipo: 'chat', colaborador: vigente, borrador: texto })}
+      />
+    );
+  } else if (['tareas', 'fuentes'].includes(vista.tipo) && vigente) {
+    const P = { tareas: PantallaTareas, fuentes: PantallaFuentes }[vista.tipo];
+    pantalla = (
+      <P
+        colaborador={vigente}
+        topInset={topInset}
+        bottomInset={bottomInset}
+        onVolver={volver}
+        onAbrirFuente={(fuente) => ir({ tipo: 'fuente', colaborador: vigente, fuente })}
+      />
+    );
   } else if (vista.tipo === 'bandeja') {
     pantalla = (
       <Bandeja

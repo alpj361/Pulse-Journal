@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ArrowUp, Plus, SlidersHorizontal } from 'lucide-react-native';
+import { ArrowUp, FolderOpen, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { INK, MOTION } from '../theme';
 import { EV, evento } from '../../utils/analitica';
 import { supabase } from '../../utils/supabase';
@@ -32,7 +32,7 @@ const CADA = 30000;
  * El chat con un colaborador (pantallas 4 y 8): Chat y Su Codex, en pestañas.
  * «Compartido» entra con la fase de compartir.
  */
-export default function Chat({ colaborador, yo, borrador, topInset, bottomInset, onVolver, onPermisos, onPerfil, onAbrirArtifact, onAbrirSeguimiento, pestanaInicial }) {
+export default function Chat({ colaborador, yo, borrador, topInset, bottomInset, onVolver, onPermisos, onPerfil, onAbrirEspacio, onAbrirArtifact, onAbrirSeguimiento, pestanaInicial }) {
   const [pestana, setPestana] = useState(pestanaInicial || 'chat');
   // Qué está haciendo ahora, bajo su nombre. Sin backend, `null`.
   const tareas = useQuery({
@@ -70,18 +70,31 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
           subtitulo={esAgente ? haciendoAhora(tareas.data) || 'agente · responde a vos' : null}
           onVolver={onVolver}
           volverLabel="Volver a Colaboradores"
-          onTocar={esAgente ? onPerfil : undefined}
           topInset={topInset}
           derecha={
-            <Pressable
-              onPress={onPermisos}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Qué puede hacer ${nombre}`}
-              style={({ pressed }) => ({ width: 44, height: 44, marginRight: -8, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
-            >
-              <SlidersHorizontal size={20} color={INK.body} strokeWidth={1.8} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: -8 }}>
+              {/* La carpeta abre lo suyo (tareas, fuentes, espacios); los ajustes, solo permisos y avisos. */}
+              {esAgente ? (
+                <Pressable
+                  onPress={onPerfil}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Tareas, fuentes y espacios de ${nombre}`}
+                  style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+                >
+                  <FolderOpen size={21} color={INK.body} strokeWidth={1.8} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={onPermisos}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={`Qué puede hacer ${nombre}`}
+                style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+              >
+                <SlidersHorizontal size={20} color={INK.body} strokeWidth={1.8} />
+              </Pressable>
+            </View>
           }
         />
         <View
@@ -132,6 +145,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
           bottomInset={bottomInset}
           abrirId={abrirId}
           onAbierto={() => setAbrirId(null)}
+          onAbrirEspacio={onAbrirEspacio}
           onPedir={(texto) => {
             setPedido(texto);
             setPestana('chat');

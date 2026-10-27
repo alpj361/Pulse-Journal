@@ -337,12 +337,16 @@ export const cambiarTarea = (id, tid, cambios) => pedir(ficha(id, `tareas/${enco
 export const borrarTarea = (id, tid) => pedir(ficha(id, `tareas/${encodeURIComponent(tid)}`), { method: 'DELETE' });
 
 export const fuentesDe = (id) => oNull(pedir(ficha(id, 'fuentes')));
+/** Un medio o cuenta: dónde aparece en su Codex y lo que encontró de él. */
+export const fuenteDe = (id, clave) => oNull(pedir(ficha(id, `fuentes/${encodeURIComponent(clave)}`)));
 /** `confiabilidad`: confiable, no_confiable o sin_calificar. */
 export const calificarFuente = (id, fuente) =>
   pedir(ficha(id, `fuentes/${encodeURIComponent(fuente.clave)}`), { method: 'PATCH', body: fuente });
 
 /** Los Espacios del agente, cada uno con lo que recuerda ahí. */
 export const espaciosDe = (id) => oNull(pedir(ficha(id, 'espacios')));
+/** Lo que hay adentro de uno de sus Espacios. `null` si el backend todavía no lo tiene. */
+export const espacioDe = (id, eid) => oNull(pedir(ficha(id, `espacios/${encodeURIComponent(eid)}`)));
 export const quitarRecuerdo = (id, mid) => pedir(ficha(id, `memoria/${encodeURIComponent(mid)}`), { method: 'DELETE' });
 
 export const listarAvisos = async () => (await pedir('/colaboraciones/notificaciones')).notificaciones || [];

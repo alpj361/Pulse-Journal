@@ -1,33 +1,30 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AtSign, Bot, ChevronDown, ChevronLeft, ChevronRight, FolderOpen, Globe, Landmark, ListChecks, Newspaper, Plus } from 'lucide-react-native';
+import { AtSign, Bot, ChevronLeft, ChevronRight, Globe, Landmark, ListChecks, Newspaper, Plus } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { roce } from '../../utils/haptics';
-import { borrarTarea, calificarFuente, cambiarTarea, crearTarea, espaciosDe, fuentesDe, quitarRecuerdo, tareasDe } from './api';
+import { borrarTarea, calificarFuente, cambiarTarea, crearTarea, fuenteDe, fuentesDe, tareasDe } from './api';
+import { Ficha as FichaItem } from './SuCodex';
+import MorphingInfinity from '../MorphingInfinity';
 import {
   ESTADO_TAREA,
   FILTROS_FUENTES,
-  TIPO_MEMORIA,
   filtrarFuentes,
-  resumenEspacios,
   resumenFuentes,
   resumenTareas,
-  metaEspacio,
   metaFuente,
-  ordenarEspacios,
   ordenarFuentes,
   repartirTareas,
-  resumenPlano,
   siguienteConfiabilidad,
 } from './logica';
-import { Avatar, TONO, nombreDe } from './piezas';
+import { Avatar, ROTULO, TONO, nombreDe } from './piezas';
 
 /**
  * El perfil de un agente: lo principal de él, no sus ajustes. Tareas (y qué
- * está haciendo), las fuentes que usa (y si confiás en ellas) y sus Espacios
- * con lo que recuerda en cada uno; cada cosa con su propia pantalla. Los
+ * está haciendo) y las fuentes que usa (y si confiás en ellas), cada cosa con
+ * su propia pantalla. Sus Espacios viven en «Su Codex», como en el tuyo. Los
  * permisos y los avisos quedan en ajustes (`Permisos`).
  *
  * Cada parte aparece solo si el backend ya la tiene.
@@ -52,7 +49,6 @@ const ICONO_FUENTE = {
 const PUERTAS = {
   tareas: { Icono: ListChecks, tinta: TONO.verde, fondo: TONO.verdeLavado },
   fuentes: { Icono: Newspaper, tinta: TONO.ladrilloTinta, fondo: TONO.ladrilloLavado },
-  espacios: { Icono: FolderOpen, tinta: TONO.arena, fondo: TONO.arenaLavado },
 };
 
 function Icono({ estilo, size = 20, caja = 40 }) {
@@ -179,7 +175,7 @@ function FilaTarea({ tarea: t, borde, onPress }) {
 }
 
 /** Las fuentes que usa, las que más primero, y si confiás en cada una. */
-export function Fuentes({ colaborador }) {
+export function Fuentes({ colaborador, onAbrir }) {
   const queryClient = useQueryClient();
   const clave = ['colab-fuentes', colaborador.id];
   const consulta = useQuery({ queryKey: clave, queryFn: () => fuentesDe(colaborador.id), staleTime: 1000 * 60, retry: false });
@@ -243,7 +239,13 @@ export function Fuentes({ colaborador }) {
         <Animated.View layout={LinearTransition} style={CAJA}>
           {visibles.map((f, i) => (
             <View key={f.clave || f.id} style={[{ paddingVertical: 12, paddingHorizontal: 16, gap: 8 }, i ? RAYA : null]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Pressable
+                onPress={onAbrir ? () => onAbrir(f) : undefined}
+                disabled={!onAbrir}
+                accessibilityRole={onAbrir ? 'button' : undefined}
+                accessibilityHint={onAbrir ? 'Ver dónde aparece' : undefined}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.6 : 1 })}
+              >
                 <Icono estilo={ICONO_FUENTE[f.tipo] || ICONO_FUENTE.web} size={17} caja={34} />
                 <View style={{ flex: 1, gap: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>
@@ -251,7 +253,8 @@ export function Fuentes({ colaborador }) {
                   </Text>
                   {metaFuente(f) ? <Text style={{ fontSize: 12.5, color: INK.meta }}>{metaFuente(f)}</Text> : null}
                 </View>
-              </View>
+                {onAbrir ? <ChevronRight size={16} color={INK.meta} /> : null}
+              </Pressable>
               <View style={{ flexDirection: 'row', gap: 8, marginLeft: 46 }} accessibilityRole="radiogroup" accessibilityLabel={`¿Confiás en ${f.nombre}?`}>
                 <Calificacion texto="confiable" activo={f.confiabilidad === 'confiable'} tono={TONO.verde} onPress={() => calificar(f, 'confiable')} />
                 <Calificacion texto="no confiable" activo={f.confiabilidad === 'no_confiable'} tono={TONO.ladrillo} onPress={() => calificar(f, 'no_confiable')} />
@@ -283,95 +286,6 @@ function Calificacion({ texto, activo, tono, onPress }) {
     >
       <Text style={{ fontSize: 13, fontWeight: '600', color: activo ? '#FFFFFF' : INK.body }}>{texto}</Text>
     </Pressable>
-  );
-}
-
-/** Sus Espacios; al abrir uno, su historia y lo que recuerda ahí. */
-export function Espacios({ colaborador }) {
-  const queryClient = useQueryClient();
-  const clave = ['colab-espacios', colaborador.id];
-  const consulta = useQuery({ queryKey: clave, queryFn: () => espaciosDe(colaborador.id), staleTime: 1000 * 60, retry: false });
-  const [abierto, setAbierto] = useState(null);
-  if (!consulta.data) return null;
-  const espacios = ordenarEspacios(consulta.data);
-
-  const olvidar = (r) => {
-    Alert.alert('¿Que lo olvide?', r.titulo || null, [
-      { text: 'cancelar', style: 'cancel' },
-      {
-        text: 'olvidar',
-        style: 'destructive',
-        onPress: () => quitarRecuerdo(colaborador.id, r.id).then(() => queryClient.invalidateQueries({ queryKey: clave }), NO_SALIO),
-      },
-    ]);
-  };
-
-  return (
-    <View style={{ gap: 8 }}>
-      {!espacios.length ? (
-        <Text style={{ fontSize: 13.5, color: INK.body }}>Todavía no armó ninguno.</Text>
-      ) : (
-        <Animated.View layout={LinearTransition} style={CAJA}>
-          {espacios.map((e, i) => {
-            const si = abierto === e.id;
-            const meta = metaEspacio(e);
-            return (
-              <View key={e.id} style={i ? RAYA : null}>
-                <Pressable
-                  onPress={() => {
-                    roce();
-                    setAbierto(si ? null : e.id);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: si }}
-                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, opacity: pressed ? 0.6 : 1 })}
-                >
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>
-                      {e.nombre}
-                    </Text>
-                    {meta || e.descripcion ? (
-                      <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>
-                        {meta || e.descripcion}
-                      </Text>
-                    ) : null}
-                  </View>
-                  {si ? <ChevronDown size={16} color={INK.meta} /> : <ChevronRight size={16} color={INK.meta} />}
-                </Pressable>
-                {si ? (
-                  <Animated.View entering={FadeIn.duration(200)} style={{ paddingHorizontal: 16, paddingBottom: 14, gap: 10 }}>
-                    {e.historia ? (
-                      <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.body }} numberOfLines={6}>
-                        {resumenPlano(e.historia)}
-                      </Text>
-                    ) : null}
-                    {(e.recuerdos || []).map((r) => (
-                      <Pressable
-                        key={r.id}
-                        onLongPress={() => olvidar(r)}
-                        accessibilityHint="Mantené apretado para que lo olvide"
-                        style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: TONO.borde, borderRadius: 12, padding: 12, gap: 3 }}
-                      >
-                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: INK.meta }}>{TIPO_MEMORIA[r.tipo] || 'recuerdo'}</Text>
-                        {r.titulo ? <Text style={{ fontSize: 14.5, fontWeight: '600', color: INK.title }}>{r.titulo}</Text> : null}
-                        {r.contenido ? (
-                          <Text style={{ fontSize: 13, lineHeight: 18, color: INK.body }} numberOfLines={4}>
-                            {resumenPlano(r.contenido)}
-                          </Text>
-                        ) : null}
-                      </Pressable>
-                    ))}
-                    {!e.historia && !(e.recuerdos || []).length ? (
-                      <Text style={{ fontSize: 13, color: INK.meta }}>Todavía no recuerda nada acá.</Text>
-                    ) : null}
-                  </Animated.View>
-                ) : null}
-              </View>
-            );
-          })}
-        </Animated.View>
-      )}
-    </View>
   );
 }
 
@@ -409,15 +323,129 @@ export const PantallaTareas = (p) => (
 
 export const PantallaFuentes = (p) => (
   <Pantalla titulo="Fuentes" {...p}>
-    <Fuentes colaborador={p.colaborador} />
+    <Fuentes colaborador={p.colaborador} onAbrir={p.onAbrirFuente} />
   </Pantalla>
 );
 
-export const PantallaEspacios = (p) => (
-  <Pantalla titulo="Espacios" {...p}>
-    <Espacios colaborador={p.colaborador} />
-  </Pantalla>
-);
+/**
+ * La ficha de un medio o una cuenta: si confiás en él, dónde aparece en su
+ * Codex (cada cosa abre su ficha) y lo que encontró de él en sus seguimientos.
+ */
+export function PantallaFuente({ colaborador, fuente: deLista, topInset, bottomInset, onVolver, onPedir }) {
+  const queryClient = useQueryClient();
+  const [abierto, setAbierto] = useState(null);
+  const consulta = useQuery({
+    queryKey: ['colab-fuente', colaborador.id, deLista.clave],
+    queryFn: () => fuenteDe(colaborador.id, deLista.clave),
+    staleTime: 1000 * 60,
+    retry: false,
+  });
+  const lista = queryClient.getQueryData(['colab-fuentes', colaborador.id]);
+  const f = { ...deLista, ...((lista?.items || []).find((x) => x.clave === deLista.clave) || {}), ...(consulta.data?.fuente || {}) };
+  const apariciones = consulta.data?.apariciones || [];
+  const hallazgos = consulta.data?.hallazgos || [];
+
+  const calificar = async (tocada) => {
+    roce();
+    const confiabilidad = siguienteConfiabilidad(f.confiabilidad, tocada);
+    const clave = ['colab-fuentes', colaborador.id];
+    const antes = queryClient.getQueryData(clave);
+    if (antes?.items) {
+      queryClient.setQueryData(clave, { ...antes, items: antes.items.map((x) => (x.clave === f.clave ? { ...x, confiabilidad } : x)) });
+    }
+    try {
+      await calificarFuente(colaborador.id, { clave: f.clave, nombre: f.nombre, tipo: f.tipo, confiabilidad });
+      queryClient.invalidateQueries({ queryKey: ['colab-fuente', colaborador.id, f.clave] });
+    } catch {
+      if (antes) queryClient.setQueryData(clave, antes);
+      NO_SALIO();
+    }
+  };
+
+  return (
+    <Pantalla titulo={f.nombre} colaborador={colaborador} topInset={topInset} bottomInset={bottomInset} onVolver={onVolver}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <Icono estilo={ICONO_FUENTE[f.tipo] || ICONO_FUENTE.web} size={20} caja={42} />
+        <Text style={{ flex: 1, fontSize: 13.5, color: INK.meta }}>{metaFuente(f)}</Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 8 }} accessibilityRole="radiogroup" accessibilityLabel={`¿Confiás en ${f.nombre}?`}>
+        <Calificacion texto="confiable" activo={f.confiabilidad === 'confiable'} tono={TONO.verde} onPress={() => calificar('confiable')} />
+        <Calificacion texto="no confiable" activo={f.confiabilidad === 'no_confiable'} tono={TONO.ladrillo} onPress={() => calificar('no_confiable')} />
+      </View>
+
+      {f.url ? (
+        <Pressable onPress={() => Linking.openURL(f.url).catch(() => {})} accessibilityRole="link" style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+          <Text style={{ fontSize: 14.5, fontWeight: '600', color: TONO.verde }} numberOfLines={1}>
+            {String(f.url).replace(/^https?:\/\/(www\.)?/, '')}
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {consulta.isLoading ? <MorphingInfinity size={24} color={INK.meta} style={{ alignSelf: 'center' }} /> : null}
+
+      {apariciones.length ? (
+        <View style={{ gap: 8 }}>
+          <Text style={ROTULO}>DÓNDE APARECE</Text>
+          <View style={CAJA}>
+            {apariciones.map((a, i) => (
+              <Pressable
+                key={`${a.origen_tabla || 'u'}-${a.id}`}
+                onPress={() => setAbierto(a)}
+                accessibilityRole="button"
+                style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, opacity: pressed ? 0.6 : 1 }, i ? RAYA : null]}
+              >
+                <View style={{ flex: 1, gap: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={2}>
+                    {a.titulo || a.name}
+                  </Text>
+                  {a.tipo ? <Text style={{ fontSize: 12.5, color: INK.meta }}>{String(a.tipo).toLowerCase()}</Text> : null}
+                </View>
+                <ChevronRight size={15} color={INK.meta} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {hallazgos.length ? (
+        <View style={{ gap: 8 }}>
+          <Text style={ROTULO}>LO QUE ENCONTRÓ</Text>
+          <View style={CAJA}>
+            {hallazgos.map((h, i) => (
+              <Pressable
+                key={h.id}
+                onPress={h.url ? () => Linking.openURL(h.url).catch(() => {}) : undefined}
+                disabled={!h.url}
+                accessibilityRole={h.url ? 'link' : undefined}
+                style={({ pressed }) => [{ paddingVertical: 12, paddingHorizontal: 16, gap: 2, opacity: pressed ? 0.6 : 1 }, i ? RAYA : null]}
+              >
+                <Text style={{ fontSize: 14.5, fontWeight: '600', color: INK.title }} numberOfLines={3}>
+                  {h.titulo}
+                </Text>
+                {h.seguimiento_tema ? (
+                  <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>
+                    {h.seguimiento_tema}
+                  </Text>
+                ) : null}
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {abierto ? (
+        <FichaItem
+          colaborador={colaborador}
+          item={abierto}
+          bottomInset={bottomInset}
+          onClose={() => setAbierto(null)}
+          onPedir={onPedir}
+        />
+      ) : null}
+    </Pantalla>
+  );
+}
 
 /**
  * El perfil (se abre tocando su nombre en el chat): quién es, qué está
@@ -427,14 +455,12 @@ export function Perfil({ colaborador, topInset, bottomInset, onVolver, onAbrir }
   const id = colaborador.id;
   const tareas = useQuery({ queryKey: claveTareas(id), queryFn: () => tareasDe(id), staleTime: 1000 * 30, retry: false });
   const fuentes = useQuery({ queryKey: ['colab-fuentes', id], queryFn: () => fuentesDe(id), staleTime: 1000 * 60, retry: false });
-  const espacios = useQuery({ queryKey: ['colab-espacios', id], queryFn: () => espaciosDe(id), staleTime: 1000 * 60, retry: false });
   const nombre = nombreDe(colaborador);
   const ahora = tareas.data?.haciendo_ahora;
 
   const entradas = [
     { clave: 'tareas', titulo: 'Tareas', consulta: tareas, resumen: resumenTareas },
     { clave: 'fuentes', titulo: 'Fuentes', consulta: fuentes, resumen: resumenFuentes },
-    { clave: 'espacios', titulo: 'Espacios', consulta: espacios, resumen: resumenEspacios },
   ].filter((e) => e.consulta.data || e.consulta.isLoading);
 
   return (
