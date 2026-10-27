@@ -31,6 +31,35 @@ hr{border:0;border-top:1px solid var(--pulzos-borde);margin:20px 0}
 const pagina = (html) =>
   `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${ESTILO_PULZOS}</style></head><body>${html}</body></html>`;
 
+/**
+ * Un dashboard trae su propio JavaScript (gráficos, filtros, pestañas). Corre
+ * encerrado: puede cargar librerías de los CDN conocidos y nada más, y no
+ * puede hablar con ningún servidor (`connect-src 'none'`), así que los datos
+ * van dentro del HTML y no salen de ahí. No hay puente con la app.
+ */
+const CDN = 'https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com';
+const CSP = [
+  "default-src 'none'",
+  `script-src 'unsafe-inline' ${CDN}`,
+  `style-src 'unsafe-inline' ${CDN} https://fonts.googleapis.com`,
+  "font-src https://fonts.gstatic.com data:",
+  'img-src https: data: blob:',
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "form-action 'none'",
+].join('; ');
+
+const paginaInteractiva = (html) => {
+  // Si el agente mandó un documento entero, se le agrega la política y los
+  // tokens en su <head>; si mandó solo el cuerpo, se arma la página.
+  const cabeza = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${ESTILO_PULZOS}</style>`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (h) => `${h}${cabeza}`);
+  return `<!doctype html><html><head><meta charset="utf-8">${cabeza}</head><body>${html}</body></html>`;
+};
+
+/** Un dashboard (interactivo) o un HTML de solo lectura. */
+export const esInteractivo = (a) => a?.tipo === 'dashboard' || a?.subtipo === 'dashboard' || a?.interactivo === true;
+
 const QUE_FUENTE = { dataset: 'conjunto de datos', codex: 'del Codex', noticia: 'noticia' };
 
 /**
@@ -72,7 +101,7 @@ export default function Artifact({ id, quien, topInset, bottomInset, onVolver })
         </Text>
         {a ? (
           <Text style={{ fontSize: 12, color: INK.meta }}>
-            {[a.version ? `versión ${a.version}` : null, autor ? `de ${autor.nombre}` : null].filter(Boolean).join(' · ')}
+            {[esInteractivo(a) ? 'dashboard' : null, a.version ? `versión ${a.version}` : null, autor ? `de ${autor.nombre}` : null].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
       </View>
@@ -114,7 +143,27 @@ export default function Artifact({ id, quien, topInset, bottomInset, onVolver })
   return (
     <View style={{ flex: 1 }}>
       {cabecera}
-      {a.tipo === 'html' && a.html ? (
+      {a.html && esInteractivo(a) ? (
+        <WebView
+          style={{ flex: 1, backgroundColor: '#FBFAF6' }}
+          originWhitelist={['about:blank']}
+          source={{ html: paginaInteractiva(a.html) }}
+          javaScriptEnabled
+          domStorageEnabled={false}
+          incognito
+          allowsLinkPreview={false}
+          allowFileAccess={false}
+          setSupportMultipleWindows={false}
+          javaScriptCanOpenWindowsAutomatically={false}
+          mediaPlaybackRequiresUserAction
+          onShouldStartLoadWithRequest={(r) => {
+            if (r.url === 'about:blank' || r.url.startsWith('about:') || r.url.startsWith('data:') || r.url.startsWith('#')) return true;
+            // Un enlace del dashboard se abre afuera; el dashboard no navega.
+            if (r.isTopFrame !== false && /^https?:\/\//i.test(r.url)) Linking.openURL(r.url).catch(() => {});
+            return false;
+          }}
+        />
+      ) : a.tipo === 'html' && a.html ? (
         <WebView
           style={{ flex: 1, backgroundColor: '#FBFAF6' }}
           originWhitelist={['*']}

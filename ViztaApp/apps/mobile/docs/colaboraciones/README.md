@@ -179,3 +179,11 @@ Cuando ChatGPT o Claude abren «Authorize», el servidor deja una solicitud pend
 - **Llega por enlace:** `com.standatpd.vizta://mcp-authorize?req=…&code=…`. Lo escucha `AbrirAutorizacion` en `app/_layout.jsx`, porque el enrutador no lo tomaba solo, y abre la ruta `app/mcp-authorize.jsx`. `app.json` declara `"scheme": "com.standatpd.vizta"`, el mismo que ya está en Info.plist, así que no hace falta recompilar.
 - **O por tarjeta:** mientras la lista de Colaboradores o «Conectar un agente» están abiertos, la app consulta `GET /api/mcp/solicitudes-oauth` cada 4 s y muestra «ChatGPT quiere conectarse · ABCD-1234 · revisar». Sirve cuando se conecta desde la computadora.
 - **Del lado del servidor (Vizta Dev):** el enlace de la página tiene que usar `com.standatpd.vizta://` (hoy dice `vizta://`, que no abre nada), y en el teléfono la página tiene que abrir la app sola.
+
+## Dashboards de los agentes (27-oct, PJ)
+
+Es un tipo de ítem solo para agentes: un artifact `dashboard`, o sea un HTML interactivo (gráficos, filtros, pestañas). En Su Codex aparece con ícono de tablero y se abre en el visor de `Artifact.jsx` en pantalla completa.
+
+Corre encerrado. Tiene JavaScript con una CSP que solo deja cargar librerías de jsdelivr, cdnjs y unpkg, y bloquea toda red (`connect-src 'none'`): los datos van dentro del HTML. No hay puente con la app ni almacenamiento, y los enlaces se abren afuera. La app le inyecta los tokens `--pulzos-*`.
+
+Las reglas para el agente (mobile primero, español con voseo, fuentes al pie) y las herramientas MCP (`colab_dashboard_crear`, `_actualizar`, `_listar`) las implementa Vizta Dev. El HTML estático (`tipo: 'html'`, sin JS) sigue como estaba.

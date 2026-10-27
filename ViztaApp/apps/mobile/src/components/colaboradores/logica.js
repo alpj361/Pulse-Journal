@@ -307,6 +307,8 @@ const NOMBRES_TIPO = {
   objeto: ['objeto', 'objetos'],
   artefacto: ['artefacto', 'artefactos'],
   memoria: ['memoria', 'memorias'],
+  artifact: ['dashboard', 'dashboards'],
+  dashboard: ['dashboard', 'dashboards'],
 };
 
 /** La clave de tipo de un ítem, en minúscula: `Actor` y `actor` son lo mismo. */
@@ -715,3 +717,6 @@ export function itemsDelEspacio(items, espacio) {
   const fuera = (espacio.items_fuera || []).filter((it) => it?.id && !ya.has(String(it.id)));
   return [...propios, ...fuera];
 }
+
+/** Un artifact (dashboard, página interactiva) se abre en su visor, no en una ficha. */
+export const esArtifact = (item) => item?.origen_tabla === 'artifacts' || ['artifact', 'dashboard'].includes(claveTipo(item));

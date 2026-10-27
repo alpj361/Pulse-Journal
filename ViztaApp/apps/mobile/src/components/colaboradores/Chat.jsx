@@ -146,6 +146,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
           abrirId={abrirId}
           onAbierto={() => setAbrirId(null)}
           onAbrirEspacio={onAbrirEspacio}
+          onAbrirArtifact={onAbrirArtifact}
           onPedir={(texto) => {
             setPedido(texto);
             setPestana('chat');

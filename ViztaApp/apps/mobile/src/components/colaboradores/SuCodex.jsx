@@ -4,6 +4,7 @@ import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTim
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlignLeft,
+  LayoutDashboard,
   Brain,
   BookOpen,
   BookText,
@@ -28,7 +29,7 @@ import { TEMAS } from '../feed/temas';
 import { listo, roce } from '../../utils/haptics';
 import { espaciosDe, itemDeColaborador, itemsDeColaborador, quitarRecuerdo, traerAMiCodex } from './api';
 import PortadaEspacio from '../codex/PortadaEspacio';
-import { camposDeFuente, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
+import { camposDeFuente, esArtifact, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
@@ -54,6 +55,8 @@ const ESTILO = {
   objeto: { Icono: Box, tema: TEMAS.Tecnología },
   artefacto: { Icono: Box, tema: TEMAS.Tecnología },
   memoria: { Icono: Brain, tema: TEMAS.Cultura },
+  artifact: { Icono: LayoutDashboard, tema: TEMAS.Tecnología },
+  dashboard: { Icono: LayoutDashboard, tema: TEMAS.Tecnología },
 };
 const estiloDe = (item) => ESTILO[claveTipo(item)] || { Icono: FileText, tema: TEMAS.Clima };
 
@@ -79,7 +82,7 @@ const haceCuanto = (fecha) => {
  * en el tuyo (`coincidencia_humano_id`). Lo parecido no se trae (sería un
  * duplicado): se le pide al agente que proponga unirlo, y llega para aprobar.
  */
-export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, onPedir, onAbrirEspacio }) {
+export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, onPedir, onAbrirEspacio, onAbrirArtifact }) {
   const [abierto, setAbierto] = useState(null);
   const [filtro, setFiltro] = useState(null);
   const consulta = useQuery({
@@ -203,7 +206,11 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
         ) : null}
         {elegido && !base.length ? <Text style={{ fontSize: 13.5, color: INK.body, paddingVertical: 8 }}>Todavía no hay nada en este espacio.</Text> : null}
         {visibles.map((it) => (
-          <Tarjeta key={`${it.origen_tabla || 'codex'}-${it.id}`} item={it} onPress={() => setAbierto(it)} />
+          <Tarjeta
+            key={`${it.origen_tabla || 'codex'}-${it.id}`}
+            item={it}
+            onPress={() => (esArtifact(it) && onAbrirArtifact ? onAbrirArtifact(it.artifact_id || it.id) : setAbierto(it))}
+          />
         ))}
       </ScrollView>
       {abierto && abierto.origen_tabla === 'memoria' ? (
