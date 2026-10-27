@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react-native';
@@ -67,7 +67,7 @@ const QUE_FUENTE = { dataset: 'conjunto de datos', codex: 'del Codex', noticia: 
  * muestra sin JavaScript; los enlaces se abren afuera. Una visualización o un
  * preset todavía no se dibujan en la app: se ve su título, versión y fuentes.
  */
-export default function Artifact({ id, quien, topInset, bottomInset, onVolver }) {
+export default function Artifact({ id, topInset, bottomInset, onVolver }) {
   const consulta = useQuery({
     queryKey: ['colab-artifact', id],
     queryFn: () => leerArtifact(id),
@@ -75,12 +75,13 @@ export default function Artifact({ id, quien, topInset, bottomInset, onVolver })
     retry: false,
   });
   const a = consulta.data;
-  const autor = a ? quien(a.dueno_tipo, a.dueno_id) : null;
+  // El HTML tarda un momento en dibujarse: mientras, el loader de la app.
+  const [dibujando, setDibujando] = useState(true);
   const fuentes = useMemo(() => (Array.isArray(a?.fuentes) ? a.fuentes : []), [a]);
   const titulos = useQuery({
     queryKey: ['colab-titulos-fuentes', id],
     queryFn: () => titulosDeFuentes(fuentes),
-    enabled: fuentes.length > 0,
+    enabled: fuentes.length > 0 && !esInteractivo(a),
     staleTime: 1000 * 60,
   });
 
@@ -95,16 +96,18 @@ export default function Artifact({ id, quien, topInset, bottomInset, onVolver })
       >
         <ChevronLeft size={24} color={INK.title} strokeWidth={2} />
       </Pressable>
-      <View style={{ flex: 1, gap: 1 }}>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: INK.title }} numberOfLines={1}>
-          {a?.titulo || 'Artifact'}
-        </Text>
-        {a ? (
-          <Text style={{ fontSize: 12, color: INK.meta }}>
-            {[esInteractivo(a) ? 'dashboard' : null, a.version ? `versión ${a.version}` : null, autor ? `de ${autor.nombre}` : null].filter(Boolean).join(' · ')}
-          </Text>
-        ) : null}
-      </View>
+      <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: INK.title }} numberOfLines={1}>
+        {a?.titulo || ''}
+      </Text>
+      {/* La versión, solo el número: sin rótulos debajo del título. */}
+      {a?.version ? (
+        <View
+          accessibilityLabel={`versión ${a.version}`}
+          style={{ minWidth: 26, height: 26, paddingHorizontal: 8, borderRadius: 13, borderWidth: 1, borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK.meta }}>{a.version}</Text>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -143,47 +146,57 @@ export default function Artifact({ id, quien, topInset, bottomInset, onVolver })
   return (
     <View style={{ flex: 1 }}>
       {cabecera}
-      {a.html && esInteractivo(a) ? (
-        <WebView
-          style={{ flex: 1, backgroundColor: '#FBFAF6' }}
-          originWhitelist={['about:blank']}
-          source={{ html: paginaInteractiva(a.html) }}
-          javaScriptEnabled
-          domStorageEnabled={false}
-          incognito
-          allowsLinkPreview={false}
-          allowFileAccess={false}
-          setSupportMultipleWindows={false}
-          javaScriptCanOpenWindowsAutomatically={false}
-          mediaPlaybackRequiresUserAction
-          onShouldStartLoadWithRequest={(r) => {
-            if (r.url === 'about:blank' || r.url.startsWith('about:') || r.url.startsWith('data:') || r.url.startsWith('#')) return true;
-            // Un enlace del dashboard se abre afuera; el dashboard no navega.
-            if (r.isTopFrame !== false && /^https?:\/\//i.test(r.url)) Linking.openURL(r.url).catch(() => {});
-            return false;
-          }}
-        />
-      ) : a.tipo === 'html' && a.html ? (
-        <WebView
-          style={{ flex: 1, backgroundColor: '#FBFAF6' }}
-          originWhitelist={['*']}
-          source={{ html: pagina(a.html) }}
-          javaScriptEnabled={false}
-          domStorageEnabled={false}
-          allowsLinkPreview={false}
-          setSupportMultipleWindows={false}
-          onShouldStartLoadWithRequest={(r) => {
-            if (r.url === 'about:blank' || r.url.startsWith('data:') || r.url.startsWith('#')) return true;
-            if (/^https?:\/\//i.test(r.url)) Linking.openURL(r.url).catch(() => {});
-            return false;
-          }}
-        />
-      ) : (
-        <ScrollView contentContainerStyle={{ padding: 20, gap: 8 }}>
-          <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title }}>{a.titulo}</Text>
-        </ScrollView>
-      )}
-      {listaFuentes}
+      <View style={{ flex: 1 }}>
+        {a.html && esInteractivo(a) ? (
+          <WebView
+            style={{ flex: 1, backgroundColor: '#FBFAF6' }}
+            onLoadEnd={() => setDibujando(false)}
+            originWhitelist={['about:blank']}
+            source={{ html: paginaInteractiva(a.html) }}
+            javaScriptEnabled
+            domStorageEnabled={false}
+            incognito
+            allowsLinkPreview={false}
+            allowFileAccess={false}
+            setSupportMultipleWindows={false}
+            javaScriptCanOpenWindowsAutomatically={false}
+            mediaPlaybackRequiresUserAction
+            onShouldStartLoadWithRequest={(r) => {
+              if (r.url === 'about:blank' || r.url.startsWith('about:') || r.url.startsWith('data:') || r.url.startsWith('#')) return true;
+              // Un enlace del dashboard se abre afuera; el dashboard no navega.
+              if (r.isTopFrame !== false && /^https?:\/\//i.test(r.url)) Linking.openURL(r.url).catch(() => {});
+              return false;
+            }}
+          />
+        ) : a.tipo === 'html' && a.html ? (
+          <WebView
+            style={{ flex: 1, backgroundColor: '#FBFAF6' }}
+            onLoadEnd={() => setDibujando(false)}
+            originWhitelist={['*']}
+            source={{ html: pagina(a.html) }}
+            javaScriptEnabled={false}
+            domStorageEnabled={false}
+            allowsLinkPreview={false}
+            setSupportMultipleWindows={false}
+            onShouldStartLoadWithRequest={(r) => {
+              if (r.url === 'about:blank' || r.url.startsWith('data:') || r.url.startsWith('#')) return true;
+              if (/^https?:\/\//i.test(r.url)) Linking.openURL(r.url).catch(() => {});
+              return false;
+            }}
+          />
+        ) : (
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 8 }}>
+            <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title }}>{a.titulo}</Text>
+          </ScrollView>
+        )}
+        {a.html && dibujando && (esInteractivo(a) || a.tipo === 'html') ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#FBFAF6' }]}>
+            <MorphingInfinity size={28} color={INK.meta} />
+          </View>
+        ) : null}
+      </View>
+      {/* El dashboard ya trae sus fuentes al pie: no se repiten afuera. */}
+      {esInteractivo(a) ? null : listaFuentes}
     </View>
   );
 }

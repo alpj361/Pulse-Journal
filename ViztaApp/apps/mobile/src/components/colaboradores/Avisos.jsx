@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react-native';
 import { INK } from '../theme';
 import { marcarAvisoLeido } from './api';
 import { agruparAvisos, esMerge, horaCorta, noLeidos, venceEn } from './logica';
-import { Avatar, Boton, EstadoCentro, ROTULO, TONO } from './piezas';
+import { Avatar, Boton, EstadoCentro, ROTULO, TONO, Refrescar } from './piezas';
 
 /**
  * Avisos (pantalla 2): lo nuevo, agrupado por día. Cada aviso lleva a su
@@ -60,7 +60,7 @@ export default function Avisos({ consulta, solicitudes, titulos, quien, deChat, 
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomInset + 24, gap: 6 }}
-          refreshControl={<RefreshControl refreshing={consulta.isRefetching} onRefresh={consulta.refetch} tintColor={INK.meta} />}
+          refreshControl={<Refrescar onRefresh={consulta.refetch} />}
         >
           {grupos.map((g) => (
             <View key={g.titulo} style={{ gap: 2, marginTop: 10 }}>

@@ -12,7 +12,7 @@ import { falla, roce, toque } from '../../utils/haptics';
 import { TYPE_ACCENT } from '../codex/tipos';
 import MorphingInfinity from '../MorphingInfinity';
 import { espacioDe, quitarRecuerdo } from './api';
-import { TIPO_MEMORIA, itemsPorTipo, resumenPlano } from './logica';
+import { TIPO_MEMORIA, esArtifact, itemsPorTipo, resumenPlano } from './logica';
 import { Ficha } from './SuCodex';
 import { ROTULO, TONO } from './piezas';
 
@@ -24,7 +24,7 @@ import { ROTULO, TONO } from './piezas';
  * Si el backend todavía no da el contenido, se ve lo que trae la lista: la
  * historia y los recuerdos.
  */
-export default function EspacioAgente({ colaborador, espacio: deLista, topInset, bottomInset, onVolver, onPedir }) {
+export default function EspacioAgente({ colaborador, espacio: deLista, topInset, bottomInset, onVolver, onPedir, onAbrirArtifact }) {
   const { width } = useWindowDimensions();
   const queryClient = useQueryClient();
   const [historiaEntera, setHistoriaEntera] = useState(false);
@@ -38,12 +38,17 @@ export default function EspacioAgente({ colaborador, espacio: deLista, topInset,
   const datos = consulta.data;
   const e = { ...deLista, ...(datos?.espacio || {}) };
   const recuerdos = datos?.recuerdos || deLista.recuerdos || [];
-  const grupos = itemsPorTipo(datos?.items);
+  // Lo suyo y lo tuyo que está en el espacio (`items_fuera`), juntos y por tipo.
+  const grupos = itemsPorTipo([...(datos?.items || []), ...(datos?.items_fuera || [])]);
   const historia = resumenPlano(e.historia);
+  // Las notas que dejó en el lienzo del espacio.
+  const notas = (e.notas || e.notes || []).filter((n) => resumenPlano(n?.content || n?.contenido || n?.texto));
 
   // La portada: la que puso el agente, o la que elijas vos. El espacio es tuyo
   // (está a tu nombre), así que se cambia igual que uno de tu Codex.
-  const [coverPath, setCoverPath] = useState(e.cover_path || e.coverPath || null);
+  // `undefined` = no la tocaste acá: vale la que traiga el espacio.
+  const [cambiada, setCoverPath] = useState(undefined);
+  const coverPath = cambiada === undefined ? e.cover_path || e.coverPath || null : cambiada;
   const [eligiendo, setEligiendo] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const refrescar = () => queryClient.invalidateQueries({ queryKey: ['colab-espacios', colaborador.id] });
@@ -162,6 +167,19 @@ export default function EspacioAgente({ colaborador, espacio: deLista, topInset,
           </Pressable>
         ) : null}
 
+        {notas.length ? (
+          <View style={{ gap: 8 }}>
+            <Text style={ROTULO}>NOTAS</Text>
+            {notas.map((n, i) => (
+              <View key={n.id || i} style={{ backgroundColor: TONO.arenaLavado, borderRadius: 14, padding: 14 }}>
+                <Text style={{ fontSize: 14, lineHeight: 20, color: INK.title }} numberOfLines={8}>
+                  {resumenPlano(n.content || n.contenido || n.texto)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {recuerdos.length ? (
           <View style={{ gap: 8 }}>
             <Text style={ROTULO}>LO QUE RECUERDA</Text>
@@ -197,7 +215,7 @@ export default function EspacioAgente({ colaborador, espacio: deLista, topInset,
               {g.items.map((it, i) => (
                 <Pressable
                   key={`${it.origen_tabla || 'codex'}-${it.id}`}
-                  onPress={() => setAbierto(it)}
+                  onPress={() => (esArtifact(it) && onAbrirArtifact ? onAbrirArtifact(it.artifact_id || it.id) : setAbierto(it))}
                   accessibilityRole="button"
                   style={({ pressed }) => ({
                     flexDirection: 'row',

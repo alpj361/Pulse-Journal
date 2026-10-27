@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { EV, evento } from '../../utils/analitica';
+import { useEnVivo } from '../../utils/enVivo';
 import { NoDisponible, espaciosDe, itemsDeColaborador, solicitudesOAuth, leerChats, leerMensajes, listarAvisos, listarColaboradores, listarSolicitudes, seguimientosDe, tareasDe, titulosDeRecursos } from './api';
 import { claveTareas } from './Ficha';
 import { colaboradorDeAviso, esMerge, noLeidos, repartirSolicitudes, visibles } from './logica';
@@ -25,6 +26,10 @@ import AutorizarConexion from './AutorizarConexion';
 
 /** Cada cuánto se refrescan la lista, las solicitudes y los avisos mientras se ven. */
 const CADA = 1000 * 30;
+// Lo que cambia cuando un agente guarda: sus filas no se ven directo, así que
+// la base deja un aviso en `colab_cambios` (sus ítems, Espacios y dashboards);
+// los vínculos con un Espacio (`workspace_resources`) sí están a tu nombre.
+const TABLAS_DEL_AGENTE = ['colab_cambios', 'workspace_resources'];
 
 /**
  * Colaboradores (STA-259). Se abre desde el encabezado del feed y vive en un
@@ -151,6 +156,20 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
     ? (consulta.data || []).find((c) => c.id === vista.colaborador.id) || vista.colaborador
     : null;
 
+  // Con un agente abierto, lo que mete en sus Espacios aparece sin cerrar y
+  // volver a abrir: se vuelven a pedir sus Espacios y su Codex. También al
+  // volver a la app y al reconectar (lo hace `useEnVivo`).
+  const agenteAbierto = vigente?.cuenta_tipo === 'agente' ? vigente.id : null;
+  useEnVivo(
+    TABLAS_DEL_AGENTE,
+    () => {
+      for (const clave of ['colab-espacios', 'colab-espacio', 'colab-items']) {
+        queryClient.invalidateQueries({ queryKey: [clave, agenteAbierto] });
+      }
+    },
+    { activo: !!agenteAbierto, espera: 600 }
+  );
+
   const tePiden = repartirSolicitudes(solicitudes.data, yo).tePiden;
   const sinLeer = noLeidos(avisos.data);
 
@@ -241,6 +260,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         bottomInset={bottomInset}
         onVolver={volver}
         onPedir={(texto) => ir({ tipo: 'chat', colaborador: vigente, borrador: texto })}
+        onAbrirArtifact={(id) => ir({ tipo: 'artifact', id })}
       />
     );
   } else if (vista.tipo === 'fuente' && vigente) {
@@ -308,7 +328,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
       <Seguimiento colaborador={vigente} seguimiento={vista.seguimiento} topInset={topInset} bottomInset={bottomInset} onVolver={volver} />
     );
   } else if (vista.tipo === 'artifact') {
-    pantalla = <Artifact id={vista.id} quien={quien} topInset={topInset} bottomInset={bottomInset} onVolver={volver} />;
+    pantalla = <Artifact id={vista.id} topInset={topInset} bottomInset={bottomInset} onVolver={volver} />;
   } else if (vista.tipo === 'avisos') {
     pantalla = (
       <Avisos

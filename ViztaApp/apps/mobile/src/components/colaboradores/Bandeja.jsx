@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { INK } from '../theme';
 import { listo } from '../../utils/haptics';
 import { aprobarSolicitud, rechazarSolicitud } from './api';
 import { camposEnPalabras, esMerge, repartirSolicitudes, vencio, venceEn } from './logica';
-import { Avatar, Boton, EstadoCentro, ROTULO, TONO } from './piezas';
+import { Avatar, Boton, EstadoCentro, ROTULO, TONO, Refrescar } from './piezas';
 
 /**
  * Por aprobar (pantalla 15): lo que te piden, lo que pediste y lo vencido.
@@ -73,7 +73,7 @@ export default function Bandeja({ consulta, titulos, quien, yo, soloDe, topInset
       ) : (
         <ScrollView
           contentContainerStyle={{ padding: 20, paddingBottom: bottomInset + 24, gap: 10 }}
-          refreshControl={<RefreshControl refreshing={consulta.isRefetching} onRefresh={consulta.refetch} tintColor={INK.meta} />}
+          refreshControl={<Refrescar onRefresh={consulta.refetch} />}
         >
           {lista.map((s) => (
             <Fila

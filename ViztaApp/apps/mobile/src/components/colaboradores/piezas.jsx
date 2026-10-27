@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, RefreshControl, Text, View } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { TEMAS } from '../feed/temas';
@@ -17,6 +18,24 @@ export const TONO = {
   borde: 'rgba(28,43,34,0.12)',
   tarjeta: 'rgba(255,255,255,0.86)',
 };
+/**
+ * «Tirar para refrescar» que gira solo cuando la persona tira. Las consultas
+ * se actualizan solas cada tanto; si la ruedita siguiera a esas, la pantalla
+ * saltaría sola.
+ */
+export function Refrescar({ onRefresh, ...props }) {
+  const [tirando, setTirando] = useState(false);
+  const refrescar = async () => {
+    setTirando(true);
+    try {
+      await onRefresh?.();
+    } finally {
+      setTirando(false);
+    }
+  };
+  return <RefreshControl refreshing={tirando} onRefresh={refrescar} tintColor={INK.meta} {...props} />;
+}
+
 export const ROTULO = { fontSize: 10.5, fontWeight: '800', letterSpacing: 1.1, color: INK.faint };
 
 /**

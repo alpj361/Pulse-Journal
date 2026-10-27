@@ -625,18 +625,27 @@ export const filtrarFuentes = (items, filtro) =>
 const PLURAL_TIPO = {
   Actor: 'Actores', Entidad: 'Entidades', Territorio: 'Territorios', Evento: 'Eventos', Concepto: 'Conceptos',
   Documento: 'Documentos', Evidencia: 'Evidencias', Historia: 'Historias', Objeto: 'Objetos', Artefacto: 'Artefactos',
-  Ref: 'Referencias', Snippet: 'Fragmentos', Post: 'Publicaciones',
+  Ref: 'Referencias', Snippet: 'Fragmentos', Post: 'Publicaciones', Dashboard: 'Dashboards',
 };
 
-/** Lo de un Espacio agrupado por tipo, en el orden del Codex: actores primero. */
+/**
+ * Lo de un Espacio agrupado por tipo, en el orden del Codex: los dashboards
+ * arriba (son lo que el agente armó para explicar el tema) y después actores,
+ * entidades… Un ítem repetido (propio y de afuera) va una sola vez.
+ */
 export function itemsPorTipo(items) {
   const grupos = new Map();
+  const vistos = new Set();
   for (const it of items || []) {
-    const tipo = normalizeTipo(it?.tipo || it?.subcategory);
+    const clave = `${it?.origen_tabla || 'codex'}-${it?.id}`;
+    if (it?.id != null && vistos.has(clave)) continue;
+    vistos.add(clave);
+    const tipo = esArtifact(it) ? 'Dashboard' : normalizeTipo(it?.tipo || it?.subcategory);
     if (!grupos.has(tipo)) grupos.set(tipo, []);
     grupos.get(tipo).push(it);
   }
   const orden = (t) => {
+    if (t === 'Dashboard') return -1;
     const i = TYPE_ORDER.indexOf(t);
     return i === -1 ? TYPE_ORDER.length : i;
   };

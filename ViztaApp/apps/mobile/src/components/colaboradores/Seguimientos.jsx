@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Linking, Pressable, RefreshControl, ScrollView, Switch, Text, View } from 'react-native';
+import { Alert, FlatList, Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellOff, ChevronLeft, ChevronRight, Radar } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
@@ -8,7 +8,7 @@ import { cambiarSeguimiento, hallazgosDe, marcarSeguimientoVisto, opinarHallazgo
 import { HorasDelTema } from './Enterarse';
 import { estadoAvisos, registrarAvisos } from '../../utils/notificaciones';
 import { avisaDe, cuandoMiro, cuandoMiraTexto, fuenteDe, horaCorta, resumenPlano, resumenSeguimiento, tituloHallazgo } from './logica';
-import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
+import { Boton, EstadoCentro, ROTULO, TONO, Refrescar } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 
 /**
@@ -47,7 +47,7 @@ export function Sigue({ consulta, nombre, bottomInset, onAbrir }) {
   return (
     <ScrollView
       contentContainerStyle={{ padding: 20, paddingBottom: bottomInset + 24, gap: 10 }}
-      refreshControl={<RefreshControl refreshing={consulta.isRefetching} onRefresh={consulta.refetch} tintColor={INK.meta} />}
+      refreshControl={<Refrescar onRefresh={consulta.refetch} />}
     >
       {lista.map((s) => (
         <Tema key={s.id} seguimiento={s} onPress={() => onAbrir(s)} />
@@ -263,7 +263,7 @@ export function Seguimiento({ colaborador, seguimiento: s, topInset, bottomInset
           contentContainerStyle={{ padding: 20, paddingBottom: bottomInset + 24, gap: 10 }}
           onEndReached={() => consulta.hasNextPage && !consulta.isFetchingNextPage && consulta.fetchNextPage()}
           onEndReachedThreshold={0.4}
-          refreshControl={<RefreshControl refreshing={consulta.isRefetching && !consulta.isFetchingNextPage} onRefresh={consulta.refetch} tintColor={INK.meta} />}
+          refreshControl={<Refrescar onRefresh={consulta.refetch} />}
           ListFooterComponent={consulta.isFetchingNextPage ? <MorphingInfinity size={20} color={INK.meta} style={{ marginVertical: 12, alignSelf: 'center' }} /> : null}
           renderItem={({ item }) => <Hallazgo colaborador={colaborador} seguimientoId={s.id} hallazgo={item} />}
         />

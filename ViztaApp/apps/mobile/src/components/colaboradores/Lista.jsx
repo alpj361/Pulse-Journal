@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Bell, ChevronRight, Plus, X } from 'lucide-react-native';
 import { INK } from '../theme';
 import { usePistasStore, PISTA } from '../../state/pistasStore';
 import { NoDisponible, humanosHabilitados } from './api';
 import { filtrar, horaCorta, ordenar, porAprobar, previa, queHace } from './logica';
-import { Avatar, Boton, Chip, EstadoCentro, TONO, nombreDe } from './piezas';
+import { Avatar, Boton, Chip, EstadoCentro, TONO, nombreDe, Refrescar } from './piezas';
 import { TarjetaConexion } from './AutorizarConexion';
 
 const FILTROS = ['todos', 'agentes', 'personas'];
@@ -30,7 +30,7 @@ export default function Lista({
   conexiones = [],
   onAutorizar,
 }) {
-  const { data, error, isLoading, isRefetching, refetch } = consulta;
+  const { data, error, isLoading, refetch } = consulta;
   const [filtro, setFiltro] = useState('todos');
   const humanos = humanosHabilitados();
   const lista = useMemo(() => ordenar(filtrar(data || [], filtro)), [data, filtro]);
@@ -129,7 +129,7 @@ export default function Lista({
     <View style={{ flex: 1 }}>
       <ScrollView
         contentContainerStyle={{ paddingTop: topInset + 20, paddingHorizontal: 24, paddingBottom: 24, gap: 16 }}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={INK.meta} />}
+        refreshControl={<Refrescar onRefresh={refetch} />}
       >
         {titulo}
 

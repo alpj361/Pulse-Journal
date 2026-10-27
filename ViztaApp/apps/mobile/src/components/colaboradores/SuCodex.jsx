@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -33,7 +33,7 @@ import { camposDeFuente, esArtifact, claveTipo, cuerpoDe, dominioDe, enlaceDeFue
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
-import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
+import { Boton, EstadoCentro, ROTULO, TONO, Refrescar } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 
 /** Ícono y lavado por tipo (pantalla 8). Un tipo nuevo cae al de documento. */
@@ -148,7 +148,7 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
     <>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: bottomInset + 24, gap: 10 }}
-        refreshControl={<RefreshControl refreshing={consulta.isRefetching} onRefresh={consulta.refetch} tintColor={INK.meta} />}
+        refreshControl={<Refrescar onRefresh={consulta.refetch} />}
       >
         {espaciosConsulta.isLoading ? (
           // Mientras llegan, su lugar ya está: sin esto aparecían de golpe y
