@@ -6,6 +6,7 @@ import { usePistasStore, PISTA } from '../../state/pistasStore';
 import { NoDisponible, humanosHabilitados } from './api';
 import { filtrar, horaCorta, ordenar, porAprobar, previa, queHace } from './logica';
 import { Avatar, Boton, Chip, EstadoCentro, TONO, nombreDe } from './piezas';
+import { TarjetaConexion } from './AutorizarConexion';
 
 const FILTROS = ['todos', 'agentes', 'personas'];
 
@@ -26,6 +27,8 @@ export default function Lista({
   onEntrar,
   onPorAprobar,
   onAvisos,
+  conexiones = [],
+  onAutorizar,
 }) {
   const { data, error, isLoading, isRefetching, refetch } = consulta;
   const [filtro, setFiltro] = useState('todos');
@@ -157,6 +160,10 @@ export default function Lista({
             })}
           </View>
         ) : null}
+
+        {conexiones.map((s) => (
+          <TarjetaConexion key={s.req_id} solicitud={s} onPress={() => onAutorizar?.(s)} />
+        ))}
 
         {cuantosPorAprobar ? (
           <Pressable

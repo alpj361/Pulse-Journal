@@ -169,3 +169,13 @@ Cada cosa abre la ficha que le toca, no todas la misma:
 - **Fuentes (tipo Source):** su propia ficha. Muestra el medio (dominio) y la fecha de publicación, «abrir la fuente», las notas, los datos (confiabilidad «5 de 5», tipo, verificación) y «dónde aparece» (`apariciones`, cuando el backend las mande).
 - **Documentos y fragmentos:** un lector con formato (markdown).
 - **Fuentes del perfil (por medio):** al tocar Canal Antigua o Soy502 se abre su pantalla, con «confiable / no confiable», «dónde aparece» y «lo que encontró» (`GET /colaboradores/:id/fuentes/:clave`).
+
+**Elegir un espacio en Su Codex (27-oct, PJ):** tocar una carátula elige ese espacio: queda marcado y los demás se apagan. La lista pasa a «Lo de este espacio», con los filtros por tipo recontados. Otro toque lo suelta, y «entrar al espacio ›» abre su pantalla. Lo que recuerda en cada espacio entra en la lista como tipo **memoria** (ícono de cerebro); al abrirlo se lee y tiene «que lo olvide». Para filtrar los ítems hace falta `item_ids` (y `items_fuera`) en `GET /espacios`; mientras no lleguen, al elegir un espacio se ven solo sus memorias.
+
+## Autorizar un agente desde el teléfono (27-oct, PJ)
+
+Cuando ChatGPT o Claude abren «Authorize», el servidor deja una solicitud pendiente con un código corto (`/oauth/authorize`, PR #64 de ExtractorW). La app la responde:
+- **Pantalla `AutorizarConexion`:** logo y nombre del cliente, el código para comparar, permisos (Leer y Crear prendidos; Editar y Borrar apagados) y los botones autorizar / rechazar. Al responder dice «quedó conectado. Volvé a ChatGPT»; la página del navegador sigue consultando y vuelve sola al cliente.
+- **Llega por enlace:** `com.standatpd.vizta://mcp-authorize?req=…&code=…`. Lo escucha `AbrirAutorizacion` en `app/_layout.jsx`, porque el enrutador no lo tomaba solo, y abre la ruta `app/mcp-authorize.jsx`. `app.json` declara `"scheme": "com.standatpd.vizta"`, el mismo que ya está en Info.plist, así que no hace falta recompilar.
+- **O por tarjeta:** mientras la lista de Colaboradores o «Conectar un agente» están abiertos, la app consulta `GET /api/mcp/solicitudes-oauth` cada 4 s y muestra «ChatGPT quiere conectarse · ABCD-1234 · revisar». Sirve cuando se conecta desde la computadora.
+- **Del lado del servidor (Vizta Dev):** el enlace de la página tiene que usar `com.standatpd.vizta://` (hoy dice `vizta://`, que no abre nada), y en el teléfono la página tiene que abrir la app sola.

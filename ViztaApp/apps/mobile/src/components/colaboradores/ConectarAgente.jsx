@@ -19,10 +19,11 @@ import { INK, MOTION, SERIF } from '../theme';
 import { listo, roce, toque } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
 import { listarColaboradores } from './api';
-import { CLIENTES, MCP_URL, nuevosAgentes, pedidoDeCuenta } from './clientes';
+import { MCP_URL, clientesPara, nuevosAgentes, pedidoDeCuenta } from './clientes';
 import { visibles } from './logica';
 import { LOGOS } from './logos';
 import { Boton, TONO } from './piezas';
+import { TarjetaConexion } from './AutorizarConexion';
 
 /** Cada cuánto se mira si el agente ya se creó su cuenta. */
 const CADA = 4000;
@@ -35,8 +36,9 @@ const CADA = 4000;
  * `agent_account_create`. La app no crea nada; muestra con qué se puede
  * conectar, los pasos para ese cliente, y espera a que la cuenta aparezca.
  */
-export default function ConectarAgente({ antes, miId, bottomInset, onListo, onCerrar }) {
-  const [elegido, setElegido] = useState(null);
+export default function ConectarAgente({ antes, miId, bottomInset, onListo, onCerrar, conexiones = [], onAutorizar }) {
+  const CLIENTES = clientesPara();
+  const [elegido, setElegido] = useState(CLIENTES.length === 1 ? CLIENTES[0] : null);
   const [nombre, setNombre] = useState('');
   const [llego, setLlego] = useState(null);
   const base = useRef(antes || []);
@@ -89,6 +91,11 @@ export default function ConectarAgente({ antes, miId, bottomInset, onListo, onCe
           >
             <View style={{ alignSelf: 'center', width: 34, height: 4, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.18)' }} />
 
+            {/* Si el agente ya pidió conectarse, se autoriza desde acá. */}
+            {conexiones.map((s) => (
+              <TarjetaConexion key={s.req_id} solicitud={s} onPress={() => onAutorizar?.(s)} />
+            ))}
+
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={{ fontFamily: SERIF, fontSize: 28, letterSpacing: -0.3, color: INK.title }} accessibilityRole="header">
@@ -107,7 +114,7 @@ export default function ConectarAgente({ antes, miId, bottomInset, onListo, onCe
               <Llego agente={llego} onVer={() => onListo(llego)} />
             ) : (
               <>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: CLIENTES.length < 3 ? 'flex-start' : 'space-between', gap: CLIENTES.length < 3 ? 12 : 0, rowGap: 12 }}>
                   {CLIENTES.map((c, i) => (
                     <Ficha
                       key={c.id}
@@ -116,10 +123,11 @@ export default function ConectarAgente({ antes, miId, bottomInset, onListo, onCe
                       elegida={elegido?.id === c.id}
                       apagada={!!elegido && elegido.id !== c.id}
                       onPress={() => elegir(c)}
+                      ancho={CLIENTES.length < 3 ? '47%' : '31%'}
                     />
                   ))}
                   {/* Relleno para que la última fila no se estire. */}
-                  {CLIENTES.length % 3 ? Array.from({ length: 3 - (CLIENTES.length % 3) }, (_, i) => <View key={`r${i}`} style={{ width: '31%' }} />) : null}
+                  {CLIENTES.length > 2 && CLIENTES.length % 3 ? Array.from({ length: 3 - (CLIENTES.length % 3) }, (_, i) => <View key={`r${i}`} style={{ width: '31%' }} />) : null}
                 </View>
 
                 {elegido ? <Pasos key={elegido.id} cliente={elegido} nombre={nombre} onNombre={setNombre} /> : null}
@@ -133,7 +141,7 @@ export default function ConectarAgente({ antes, miId, bottomInset, onListo, onCe
 }
 
 /** Un cliente: su logo en una baldosa. Se hunde al tocarla y salta al elegirla. */
-function Ficha({ cliente, indice, elegida, apagada, onPress }) {
+function Ficha({ cliente, indice, elegida, apagada, onPress, ancho = '31%' }) {
   const escala = useSharedValue(1);
   const giro = useSharedValue(0);
   const alto = useSharedValue(0);
@@ -153,7 +161,7 @@ function Ficha({ cliente, indice, elegida, apagada, onPress }) {
   return (
     <Animated.View
       entering={FadeInDown.delay(60 * indice).springify().damping(MOTION.enter.damping)}
-      style={[{ width: '31%' }, estilo]}
+      style={[{ width: ancho }, estilo]}
     >
       <Pressable
         onPress={onPress}
@@ -198,15 +206,27 @@ function Ficha({ cliente, indice, elegida, apagada, onPress }) {
 /** Los tres pasos para el cliente elegido. */
 function Pasos({ cliente, nombre, onNombre }) {
   const pedido = pedidoDeCuenta(nombre);
+  // Los chats de siempre traen su paso a paso; los técnicos, el de antes.
+  const propios = cliente.pasos || [
+    { titulo: 'Agregá Vizta como conector', texto: cliente.donde, copiar: 'url' },
+    { titulo: 'Autorizalo en Vizta', texto: 'Se abre una página de Vizta y, en tu teléfono, Vizta te pide autorizarlo.' },
+  ];
+  const ultimo = propios.length + 1;
   return (
     <Animated.View entering={FadeInDown.springify().damping(MOTION.enter.damping)} layout={LinearTransition} style={{ gap: 16 }}>
-      <Paso n={1} titulo="Agregá Vizta como conector" texto={cliente.donde}>
-        <Copiable valor={MCP_URL} etiqueta="Copiar la dirección" mono />
-      </Paso>
+      {cliente.antes ? (
+        <View style={{ backgroundColor: 'rgba(28,43,34,0.05)', borderRadius: 14, padding: 12 }}>
+          <Text style={{ fontSize: 13, lineHeight: 18, color: INK.body }}>{cliente.antes}</Text>
+        </View>
+      ) : null}
 
-      <Paso n={2} titulo="Entrá con tu cuenta de Vizta" texto="Se abre una página para aprobar el acceso. El agente trabaja a tu nombre y vos ves todo lo que hace." />
+      {propios.map((p, i) => (
+        <Paso key={p.titulo} n={i + 1} titulo={p.titulo} texto={p.texto}>
+          {p.copiar === 'url' ? <Copiable valor={MCP_URL} etiqueta="Copiar la dirección" mono /> : null}
+        </Paso>
+      ))}
 
-      <Paso n={3} titulo="Pedile que se cree su cuenta">
+      <Paso n={ultimo} titulo="Pedile que se cree su cuenta" texto={`Escribile esto en el chat de ${cliente.id === 'otro' ? 'tu agente' : cliente.nombre}. Elegí cómo se va a llamar.`}>
         <TextInput
           value={nombre}
           onChangeText={onNombre}

@@ -6,7 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { EV, evento } from '../../utils/analitica';
-import { NoDisponible, itemsDeColaborador, leerChats, leerMensajes, listarAvisos, listarColaboradores, listarSolicitudes, seguimientosDe, tareasDe, titulosDeRecursos } from './api';
+import { NoDisponible, espaciosDe, itemsDeColaborador, solicitudesOAuth, leerChats, leerMensajes, listarAvisos, listarColaboradores, listarSolicitudes, seguimientosDe, tareasDe, titulosDeRecursos } from './api';
 import { claveTareas } from './Ficha';
 import { colaboradorDeAviso, esMerge, noLeidos, repartirSolicitudes, visibles } from './logica';
 import { nombreDe } from './piezas';
@@ -21,6 +21,7 @@ import Artifact from './Artifact';
 import { Seguimiento } from './Seguimientos';
 import { PantallaFuente, PantallaFuentes, PantallaTareas, Perfil } from './Ficha';
 import EspacioAgente from './EspacioAgente';
+import AutorizarConexion from './AutorizarConexion';
 
 /** Cada cuánto se refrescan la lista, las solicitudes y los avisos mientras se ven. */
 const CADA = 1000 * 30;
@@ -64,6 +65,17 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
   });
   const habilitado = !!usuario?.id && !consulta.error;
 
+  // Un agente que pide conectarse (ChatGPT, Claude…) espera tu respuesta: se
+  // mira seguido mientras estás en la lista o conectando uno.
+  const conexiones = useQuery({
+    queryKey: ['mcp-solicitudes'],
+    queryFn: solicitudesOAuth,
+    enabled: !!usuario?.id && (enLista || sumando),
+    refetchInterval: 4000,
+    retry: false,
+  });
+  const pendientes = conexiones.data || [];
+
   // Con la lista a la vista se adelanta lo que se ve al abrir un chat (los
   // mensajes, su Codex, lo que sigue, lo que está haciendo): al tocarlo ya está.
   const queryClient = useQueryClient();
@@ -77,6 +89,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
       if (c.cuenta_tipo === 'agente') {
         queryClient.prefetchQuery({ queryKey: ['colab-seguimientos', c.id], queryFn: () => seguimientosDe(c.id), staleTime: CADA, retry: false });
         queryClient.prefetchQuery({ queryKey: claveTareas(c.id), queryFn: () => tareasDe(c.id), staleTime: CADA, retry: false });
+        queryClient.prefetchQuery({ queryKey: ['colab-espacios', c.id], queryFn: () => espaciosDe(c.id), staleTime: CADA, retry: false });
         queryClient.prefetchQuery({ queryKey: ['colab-items', c.id], queryFn: () => itemsDeColaborador(c.id, { limit: 100 }), staleTime: CADA });
       }
     }
@@ -205,6 +218,20 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         onAbrir={(que) => ir({ tipo: que, colaborador: vigente })}
       />
     );
+  } else if (vista.tipo === 'autorizar') {
+    pantalla = (
+      <AutorizarConexion
+        req={vista.req}
+        topInset={topInset}
+        bottomInset={bottomInset}
+        onCerrar={() => {
+          conexiones.refetch();
+          consulta.refetch();
+          volver();
+        }}
+        onEntrar={onEntrar}
+      />
+    );
   } else if (vista.tipo === 'espacio' && vigente) {
     pantalla = (
       <EspacioAgente
@@ -308,6 +335,8 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         onEntrar={onEntrar}
         onAbrir={(c) => ir({ tipo: 'chat', colaborador: c })}
         onPorAprobar={(c) => ir({ tipo: 'bandeja', soloDe: c || null })}
+        conexiones={pendientes}
+        onAutorizar={(sol) => ir({ tipo: 'autorizar', req: sol.req_id })}
         onAvisos={() => ir({ tipo: 'avisos' })}
         onSumar={() => setSumando(true)}
       />
@@ -328,6 +357,11 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
             miId={usuario?.id}
             bottomInset={bottomInset}
             onCerrar={() => setSumando(false)}
+            conexiones={pendientes}
+            onAutorizar={(s) => {
+              setSumando(false);
+              ir({ tipo: 'autorizar', req: s.req_id });
+            }}
             onListo={(c) => {
               setSumando(false);
               consulta.refetch();

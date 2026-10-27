@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, ImagePlus } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import PortadaEspacio from '../codex/PortadaEspacio';
+import BandejaFotos from '../codex/BandejaFotos';
+import { ajustarEspacio } from '../../utils/codexSpaces';
+import { borrarMedio, subirImagen } from '../../utils/subirMedio';
+import { falla, roce, toque } from '../../utils/haptics';
 import { TYPE_ACCENT } from '../codex/tipos';
 import MorphingInfinity from '../MorphingInfinity';
 import { espacioDe, quitarRecuerdo } from './api';
@@ -36,6 +40,46 @@ export default function EspacioAgente({ colaborador, espacio: deLista, topInset,
   const recuerdos = datos?.recuerdos || deLista.recuerdos || [];
   const grupos = itemsPorTipo(datos?.items);
   const historia = resumenPlano(e.historia);
+
+  // La portada: la que puso el agente, o la que elijas vos. El espacio es tuyo
+  // (está a tu nombre), así que se cambia igual que uno de tu Codex.
+  const [coverPath, setCoverPath] = useState(e.cover_path || e.coverPath || null);
+  const [eligiendo, setEligiendo] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const refrescar = () => queryClient.invalidateQueries({ queryKey: ['colab-espacios', colaborador.id] });
+
+  const ponerPortada = async ({ uri, ancho, alto }) => {
+    setEligiendo(false);
+    setSubiendo(true);
+    const vieja = coverPath;
+    try {
+      const subida = await subirImagen(uri, { ancho, alto, carpeta: 'espacios' });
+      await ajustarEspacio(e.id, { coverPath: subida.storage_path });
+      setCoverPath(subida.storage_path);
+      toque();
+      refrescar();
+      if (vieja) borrarMedio(vieja);
+    } catch (err) {
+      falla();
+      Alert.alert('No se pudo poner la portada', err?.message?.includes('cupo') ? err.message : 'Probá de nuevo.');
+    } finally {
+      setSubiendo(false);
+    }
+  };
+
+  const quitarPortada = async () => {
+    roce();
+    const vieja = coverPath;
+    try {
+      await ajustarEspacio(e.id, { quitarCover: true });
+      setCoverPath(null);
+      refrescar();
+      if (vieja) borrarMedio(vieja);
+    } catch {
+      falla();
+      Alert.alert('No se pudo quitar la portada', 'Probá de nuevo.');
+    }
+  };
 
   const olvidar = (r) => {
     Alert.alert('¿Que lo olvide?', r.titulo || null, [
@@ -70,7 +114,34 @@ export default function EspacioAgente({ colaborador, espacio: deLista, topInset,
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomInset + 28, gap: 22 }}>
         <View style={{ gap: 12 }}>
-          <PortadaEspacio space={e} radius={22} ancho={width - 40} alto={132} style={{ width: width - 40, height: 132 }} />
+          <View>
+            <PortadaEspacio space={{ ...e, coverPath }} radius={22} ancho={width - 40} alto={132} style={{ width: width - 40, height: 132 }} />
+            <Pressable
+              onPress={() => {
+                roce();
+                setEligiendo(true);
+              }}
+              disabled={subiendo}
+              accessibilityRole="button"
+              accessibilityLabel="Cambiar la portada"
+              style={({ pressed }) => ({
+                position: 'absolute',
+                right: 10,
+                bottom: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                height: 32,
+                paddingHorizontal: 11,
+                borderRadius: 16,
+                backgroundColor: 'rgba(12,18,14,0.45)',
+                opacity: pressed || subiendo ? 0.6 : 1,
+              })}
+            >
+              {subiendo ? <MorphingInfinity size={15} color="#FFFFFF" /> : <ImagePlus size={15} color="#FFFFFF" strokeWidth={2} />}
+              <Text style={{ fontSize: 12.5, fontWeight: '600', color: '#FFFFFF' }}>{subiendo ? 'subiendo' : 'portada'}</Text>
+            </Pressable>
+          </View>
           <View style={{ gap: 4 }}>
             <Text style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 34, color: INK.title }} accessibilityRole="header">
               {e.nombre}
@@ -156,6 +227,32 @@ export default function EspacioAgente({ colaborador, espacio: deLista, topInset,
           </Animated.View>
         ))}
       </ScrollView>
+
+      {eligiendo ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setEligiendo(false)}>
+          <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(28,43,34,0.35)' }]} onPress={() => setEligiendo(false)} accessibilityLabel="Cerrar" />
+            <View style={{ backgroundColor: '#FBFAF6', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 18, paddingBottom: bottomInset + 12, gap: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24 }}>
+                <Text style={{ flex: 1, fontFamily: SERIF, fontSize: 24, color: INK.title }}>Portada</Text>
+                {coverPath ? (
+                  <Pressable
+                    onPress={() => {
+                      setEligiendo(false);
+                      quitarPortada();
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ fontSize: 13.5, fontWeight: '600', color: INK.meta }}>quitar</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <BandejaFotos onFoto={ponerPortada} />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
 
       {abierto ? (
         <Ficha

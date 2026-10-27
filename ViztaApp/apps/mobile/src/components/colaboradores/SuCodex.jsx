@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlignLeft,
+  Brain,
   BookOpen,
   BookText,
   Check,
@@ -23,10 +25,10 @@ import {
 } from 'lucide-react-native';
 import { CARD_SHADOW, INK, SERIF } from '../theme';
 import { TEMAS } from '../feed/temas';
-import { listo } from '../../utils/haptics';
-import { espaciosDe, itemDeColaborador, itemsDeColaborador, traerAMiCodex } from './api';
+import { listo, roce } from '../../utils/haptics';
+import { espaciosDe, itemDeColaborador, itemsDeColaborador, quitarRecuerdo, traerAMiCodex } from './api';
 import PortadaEspacio from '../codex/PortadaEspacio';
-import { camposDeFuente, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
+import { camposDeFuente, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
@@ -51,6 +53,7 @@ const ESTILO = {
   concepto: { Icono: Lightbulb, tema: TEMAS.Deportes },
   objeto: { Icono: Box, tema: TEMAS.Tecnología },
   artefacto: { Icono: Box, tema: TEMAS.Tecnología },
+  memoria: { Icono: Brain, tema: TEMAS.Cultura },
 };
 const estiloDe = (item) => ESTILO[claveTipo(item)] || { Icono: FileText, tema: TEMAS.Clima };
 
@@ -93,8 +96,24 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
   });
   const espacios = useMemo(() => espaciosParaCarrusel(espaciosConsulta.data), [espaciosConsulta.data]);
   const items = useMemo(() => consulta.data?.items || [], [consulta.data]);
-  const filtros = useMemo(() => filtrosDeTipos(items), [items]);
-  const visibles = filtro ? items.filter((it) => claveTipo(it) === filtro) : items;
+
+  // Tocar un Espacio lo elige: «Todo lo que guardó» queda con lo de ese
+  // Espacio, y lo que recuerda entra como memoria. Otro toque lo suelta.
+  const [espacioSel, setEspacioSel] = useState(null);
+  const elegido = espacios.find((e) => e.id === espacioSel) || null;
+  const base = useMemo(() => {
+    const memorias = memoriasComoItems(espaciosConsulta.data?.espacios || espacios, espacioSel);
+    if (!elegido) return [...items, ...memorias];
+    // Si el backend todavía no dice qué tiene el Espacio, se ve solo lo que recuerda.
+    return [...(itemsDelEspacio(items, elegido) || []), ...memorias];
+  }, [items, espacios, espaciosConsulta.data, espacioSel, elegido]);
+  const filtros = useMemo(() => filtrosDeTipos(base), [base]);
+  const visibles = filtro ? base.filter((it) => claveTipo(it) === filtro) : base;
+  const elegir = (e) => {
+    roce();
+    setFiltro(null);
+    setEspacioSel((actual) => (actual === e.id ? null : e.id));
+  };
 
   // Un ítem tocado en el chat se abre acá en cuanto llega la lista.
   useEffect(() => {
@@ -128,8 +147,19 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
         contentContainerStyle={{ padding: 20, paddingBottom: bottomInset + 24, gap: 10 }}
         refreshControl={<RefreshControl refreshing={consulta.isRefetching} onRefresh={consulta.refetch} tintColor={INK.meta} />}
       >
-        {espacios.length ? (
+        {espaciosConsulta.isLoading ? (
+          // Mientras llegan, su lugar ya está: sin esto aparecían de golpe y
+          // empujaban la lista hacia abajo.
           <View style={{ gap: 10, marginBottom: 8 }}>
+            <Text style={ROTULO}>SUS ESPACIOS</Text>
+            <View style={{ flexDirection: 'row', gap: 12, overflow: 'hidden', marginRight: -20 }}>
+              {[0, 1, 2].map((i) => (
+                <EspacioCargando key={i} />
+              ))}
+            </View>
+          </View>
+        ) : espacios.length ? (
+          <Animated.View entering={FadeIn.duration(260)} style={{ gap: 10, marginBottom: 8 }}>
             <Text style={ROTULO}>SUS ESPACIOS</Text>
             <ScrollView
               horizontal
@@ -140,27 +170,45 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
               contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
             >
               {espacios.map((e) => (
-                <Espacio key={e.id} espacio={e} onPress={() => onAbrirEspacio?.(e)} />
+                <Espacio key={e.id} espacio={e} activo={espacioSel === e.id} apagado={!!espacioSel && espacioSel !== e.id} onPress={() => elegir(e)} />
               ))}
             </ScrollView>
-          </View>
+            {elegido ? (
+              <Animated.View entering={FadeIn.duration(180)}>
+                <Pressable
+                  onPress={() => onAbrirEspacio?.(elegido)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', opacity: pressed ? 0.5 : 1 })}
+                >
+                  <Text style={{ fontSize: 13.5, fontWeight: '600', color: TONO.verde }}>entrar al espacio</Text>
+                  <ChevronRight size={15} color={TONO.verde} />
+                </Pressable>
+              </Animated.View>
+            ) : null}
+          </Animated.View>
         ) : null}
-        {espacios.length && items.length ? <Text style={[ROTULO, { marginTop: 6 }]}>TODO LO QUE GUARDÓ</Text> : null}
+        {espacios.length && base.length ? (
+          <Text style={[ROTULO, { marginTop: 6 }]}>{elegido ? 'LO DE ESTE ESPACIO' : 'TODO LO QUE GUARDÓ'}</Text>
+        ) : null}
         {filtros.length > 1 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }} style={{ marginHorizontal: -20 }}>
             <View style={{ width: 14 }} />
-            <Chip texto={`todo · ${items.length}`} activo={!filtro} onPress={() => setFiltro(null)} />
+            <Chip texto={`todo · ${base.length}`} activo={!filtro} onPress={() => setFiltro(null)} />
             {filtros.map((f) => (
               <Chip key={f.clave} texto={`${f.etiqueta} · ${f.n}`} activo={filtro === f.clave} onPress={() => setFiltro(filtro === f.clave ? null : f.clave)} />
             ))}
             <View style={{ width: 14 }} />
           </ScrollView>
         ) : null}
+        {elegido && !base.length ? <Text style={{ fontSize: 13.5, color: INK.body, paddingVertical: 8 }}>Todavía no hay nada en este espacio.</Text> : null}
         {visibles.map((it) => (
           <Tarjeta key={`${it.origen_tabla || 'codex'}-${it.id}`} item={it} onPress={() => setAbierto(it)} />
         ))}
       </ScrollView>
-      {abierto ? (
+      {abierto && abierto.origen_tabla === 'memoria' ? (
+        <FichaMemoria colaborador={colaborador} memoria={abierto} bottomInset={bottomInset} onClose={() => setAbierto(null)} />
+      ) : abierto ? (
         <Ficha
           colaborador={colaborador}
           item={abierto}
@@ -185,16 +233,36 @@ export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, 
  * carrusel grande del Codex se comía la pantalla antes de llegar a lo guardado.
  */
 const ANCHO_ESPACIO = 140;
-function Espacio({ espacio: e, onPress }) {
+
+/** El lugar de una carátula mientras carga: late suave, del mismo tamaño. */
+function EspacioCargando() {
+  const opacidad = useSharedValue(0.5);
+  useEffect(() => {
+    opacidad.value = withRepeat(withTiming(1, { duration: 700 }), -1, true);
+  }, [opacidad]);
+  const estilo = useAnimatedStyle(() => ({ opacity: opacidad.value }));
+  return (
+    <Animated.View style={[{ width: ANCHO_ESPACIO, gap: 8 }, estilo]} accessible={false}>
+      <View style={{ width: ANCHO_ESPACIO, height: 96, borderRadius: 16, backgroundColor: 'rgba(28,43,34,0.07)' }} />
+      <View style={{ width: ANCHO_ESPACIO * 0.8, height: 11, borderRadius: 6, backgroundColor: 'rgba(28,43,34,0.07)' }} />
+      <View style={{ width: ANCHO_ESPACIO * 0.45, height: 9, borderRadius: 5, backgroundColor: 'rgba(28,43,34,0.05)' }} />
+    </Animated.View>
+  );
+}
+function Espacio({ espacio: e, activo, apagado, onPress }) {
   const n = e.itemIds?.length || 0;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${e.name}${n ? `, ${n} elementos` : ''}`}
-      style={({ pressed }) => ({ width: ANCHO_ESPACIO, gap: 7, transform: [{ scale: pressed ? 0.96 : 1 }] })}
+      accessibilityState={{ selected: !!activo }}
+      style={({ pressed }) => ({ width: ANCHO_ESPACIO, gap: 7, opacity: apagado ? 0.5 : 1, transform: [{ scale: pressed ? 0.96 : 1 }] })}
     >
-      <PortadaEspacio space={e} radius={16} ancho={ANCHO_ESPACIO} alto={96} style={{ width: ANCHO_ESPACIO, height: 96 }} />
+      {/* La portada se dibuja con Skia y se quedaba con el toque: no lo recibe. */}
+      <View pointerEvents="none" style={{ borderRadius: 19, borderWidth: 3, borderColor: activo ? TONO.verde : 'transparent', margin: -3 }}>
+        <PortadaEspacio space={e} radius={16} ancho={ANCHO_ESPACIO} alto={96} style={{ width: ANCHO_ESPACIO, height: 96 }} />
+      </View>
       <View style={{ gap: 1 }}>
         <Text style={{ fontSize: 13.5, fontWeight: '700', lineHeight: 17, color: INK.title }} numberOfLines={2}>
           {e.name}
@@ -202,6 +270,57 @@ function Espacio({ espacio: e, onPress }) {
         {n ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{n} {n === 1 ? 'elemento' : 'elementos'}</Text> : null}
       </View>
     </Pressable>
+  );
+}
+
+/** Lo que recuerda en un Espacio: se lee, y se le puede pedir que lo olvide. */
+function FichaMemoria({ colaborador, memoria: m, bottomInset, onClose }) {
+  const queryClient = useQueryClient();
+  const lineas = useMemo(() => (m.content ? parsear(m.content) : []), [m.content]);
+  const olvidar = () => {
+    Alert.alert('¿Que lo olvide?', m.titulo || null, [
+      { text: 'cancelar', style: 'cancel' },
+      {
+        text: 'olvidar',
+        style: 'destructive',
+        onPress: () =>
+          quitarRecuerdo(colaborador.id, m.recuerdo_id).then(
+            () => {
+              queryClient.invalidateQueries({ queryKey: ['colab-espacios', colaborador.id] });
+              onClose();
+            },
+            () => Alert.alert('No se pudo', 'Revisá la conexión y probá de nuevo.')
+          ),
+      },
+    ]);
+  };
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(28,43,34,0.35)' }}>
+        <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Cerrar" accessibilityRole="button" />
+        <View style={{ backgroundColor: '#FBFAF6', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '85%' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 24, paddingTop: 22, gap: 12 }}>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: TEMAS.Cultura.tinta }} numberOfLines={1}>
+                {['memoria', m.espacio_nombre].filter(Boolean).join(' · ')}
+              </Text>
+              <Text style={{ fontFamily: SERIF, fontSize: 24, lineHeight: 28, color: INK.title }} accessibilityRole="header">
+                {m.titulo}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar" style={{ padding: 6 }}>
+              <X size={19} color={INK.faint} />
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 14, paddingBottom: 18 }}>
+            {lineas.length ? <TextoMarkdown lineas={lineas} color="#2E3B33" size={15} /> : null}
+          </ScrollView>
+          <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: bottomInset + 16 }}>
+            <Boton texto="que lo olvide" onPress={olvidar} />
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 

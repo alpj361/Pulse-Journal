@@ -108,3 +108,17 @@ test('lo de un espacio, por tipo y en el orden del Codex', () => {
   expect(g[0].items).toHaveLength(2);
   expect(L.espaciosParaCarrusel({ espacios: [{ id: 'a', nombre: 'Caso', items_count: 3 }] })[0]).toMatchObject({ name: 'Caso', itemIds: [undefined, undefined, undefined] });
 });
+
+test('memorias como ítems y lo de un espacio', () => {
+  const L = require('../logica');
+  const espacios = [
+    { id: 'e1', nombre: 'Caso', recuerdos: [{ id: 'r1', titulo: 'Clave', contenido: 'x' }], item_ids: ['a'] },
+    { id: 'e2', nombre: 'Otro', recuerdos: [{ id: 'r2', titulo: 'Otra' }] },
+  ];
+  expect(L.memoriasComoItems(espacios)).toHaveLength(2);
+  expect(L.memoriasComoItems(espacios, 'e1')[0]).toMatchObject({ tipo: 'memoria', recuerdo_id: 'r1', espacio_nombre: 'Caso' });
+  const items = [{ id: 'a' }, { id: 'b' }];
+  expect(L.itemsDelEspacio(items, espacios[0]).map((i) => i.id)).toEqual(['a']);
+  expect(L.itemsDelEspacio(items, espacios[1])).toBeNull();
+  expect(L.nombreTipo('memoria', true)).toBe('memorias');
+});

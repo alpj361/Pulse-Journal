@@ -349,6 +349,20 @@ export const espaciosDe = (id) => oNull(pedir(ficha(id, 'espacios')));
 export const espacioDe = (id, eid) => oNull(pedir(ficha(id, `espacios/${encodeURIComponent(eid)}`)));
 export const quitarRecuerdo = (id, mid) => pedir(ficha(id, `memoria/${encodeURIComponent(mid)}`), { method: 'DELETE' });
 
+// --- Autorizar un cliente MCP (ChatGPT, Claude…) desde la app -------------
+
+/** Las solicitudes de conexión que esperan tu decisión. */
+export const solicitudesOAuth = async () => (await pedir('/mcp/solicitudes-oauth')).solicitudes || [];
+/** Una por su `req_id` o por el código corto que se ve en el navegador. */
+export const solicitudOAuth = async (reqOCodigo) => {
+  const r = await pedir(`/mcp/solicitudes-oauth/${encodeURIComponent(reqOCodigo)}`);
+  return r.solicitud || r;
+};
+/** `permisos`: { leer, crear, modificar, borrar }. */
+export const aprobarOAuth = (reqId, permisos) =>
+  pedir(`/mcp/solicitudes-oauth/${encodeURIComponent(reqId)}/aprobar`, { method: 'POST', body: { permisos } });
+export const rechazarOAuth = (reqId) => pedir(`/mcp/solicitudes-oauth/${encodeURIComponent(reqId)}/rechazar`, { method: 'POST', body: {} });
+
 export const listarAvisos = async () => (await pedir('/colaboraciones/notificaciones')).notificaciones || [];
 export const marcarAvisoLeido = (id) => pedir(`/colaboraciones/notificaciones/${encodeURIComponent(id)}/leer`, { method: 'POST', body: {} });
 

@@ -1,4 +1,4 @@
-import { CLIENTES, MCP_URL, nuevosAgentes, pedidoDeCuenta } from '../clientes';
+import { CLIENTES, MCP_URL, clientesPara, nuevosAgentes, pedidoDeCuenta } from '../clientes';
 import { LOGOS } from '../logos';
 
 describe('conectar un agente', () => {
@@ -28,5 +28,15 @@ describe('conectar un agente', () => {
 
   it('la dirección es la del MCP público', () => {
     expect(MCP_URL).toBe('https://mcp.standatpd.com/mcp');
+  });
+
+  it('se ven solo los chats de siempre, con su paso a paso', () => {
+    const basicos = clientesPara({ id: 'u', role: 'beta' });
+    expect(basicos.map((c) => c.id)).toEqual(['chatgpt', 'claude']);
+    for (const c of basicos) {
+      expect(c.pasos.length).toBeGreaterThan(2);
+      expect(c.pasos.some((p) => p.copiar === 'url')).toBe(true);
+    }
+    expect(clientesPara({ id: 'u', role: 'admin' }).map((c) => c.id)).toEqual(['chatgpt', 'claude']);
   });
 });

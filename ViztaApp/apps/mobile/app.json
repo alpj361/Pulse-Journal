@@ -2,6 +2,7 @@
   "expo": {
     "name": "Vizta",
     "slug": "vibecode",
+    "scheme": "com.standatpd.vizta",
     "version": "0.0.9.6",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

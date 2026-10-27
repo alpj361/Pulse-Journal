@@ -306,6 +306,7 @@ const NOMBRES_TIPO = {
   concepto: ['concepto', 'conceptos'],
   objeto: ['objeto', 'objetos'],
   artefacto: ['artefacto', 'artefactos'],
+  memoria: ['memoria', 'memorias'],
 };
 
 /** La clave de tipo de un ítem, en minúscula: `Actor` y `actor` son lo mismo. */
@@ -647,7 +648,8 @@ export const espaciosParaCarrusel = (datos) =>
   ordenarEspacios(datos).map((e) => ({
     ...e,
     name: e.nombre,
-    cover: e.cover || null,
+    cover: e.cover || e.portada_url || null,
+    coverPath: e.cover_path || e.coverPath || null,
     itemIds: Array.isArray(e.item_ids) ? e.item_ids : Array.from({ length: Number(e.items_count) || 0 }),
   }));
 
@@ -673,3 +675,43 @@ export const camposDeFuente = (details) =>
 
 /** Un documento o fragmento (texto largo con formato) se lee, no se ficha. */
 export const esDocumento = (item) => item?.origen_tabla === 'codex_items' || ['snippet', 'documento', 'document', 'nota'].includes(claveTipo(item));
+
+/**
+ * Lo que recuerda en cada Espacio, como un ítem más de «Todo lo que guardó»
+ * (tipo `memoria`). Con `espacioId`, solo las de ese Espacio.
+ */
+export function memoriasComoItems(espacios, espacioId = null) {
+  const out = [];
+  for (const e of espacios || []) {
+    if (espacioId && e.id !== espacioId) continue;
+    for (const r of e.recuerdos || []) {
+      out.push({
+        id: `memoria-${r.id}`,
+        recuerdo_id: r.id,
+        origen_tabla: 'memoria',
+        tipo: 'memoria',
+        titulo: r.titulo || 'Recuerdo',
+        descripcion: r.contenido || '',
+        content: r.contenido || '',
+        clase: r.tipo || null,
+        espacio_id: e.id,
+        espacio_nombre: e.nombre || e.name || null,
+        updated_at: r.updated_at || e.updated_at || null,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Lo guardado que es de un Espacio: lo suyo que está en `item_ids` y lo de
+ * otros (`items_fuera`). `null` si el backend todavía no dice qué tiene.
+ */
+export function itemsDelEspacio(items, espacio) {
+  if (!espacio || !Array.isArray(espacio.item_ids)) return null;
+  const ids = new Set(espacio.item_ids.map(String));
+  const propios = (items || []).filter((it) => ids.has(String(it.id)));
+  const ya = new Set(propios.map((it) => String(it.id)));
+  const fuera = (espacio.items_fuera || []).filter((it) => it?.id && !ya.has(String(it.id)));
+  return [...propios, ...fuera];
+}
