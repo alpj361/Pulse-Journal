@@ -3,7 +3,7 @@
     "name": "Vizta",
     "slug": "vibecode",
     "scheme": "com.standatpd.vizta",
-    "version": "0.0.9.6",
+    "version": "0.0.9.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.standatpd.vizta",
-      "buildNumber": "30",
+      "buildNumber": "31",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiresFullScreen": true,
