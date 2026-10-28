@@ -58,6 +58,21 @@ el tema no dice «Morrow lo está siguiendo»: eso ya está dicho. Tampoco se cu
 acciones sueltas arriba («pausar», «seguir»). Lo que se controla de algo va en
 su propia fila, con su interruptor, al lado de lo que controla.
 
+**Sin subtítulos de relleno.** Debajo de un nombre o un título solo va algo si
+dice algo nuevo y vigente. Nada que ya diga el lugar donde estás, el avatar o el
+título de arriba:
+
+| No va                                         | Por qué                                                   |
+| --------------------------------------------- | --------------------------------------------------------- |
+| «de Morrow» bajo «Tareas»                     | Entraste desde el perfil de Morrow: ya se sabe de quién es |
+| «agente» al lado del nombre                   | El avatar y la lista ya lo dicen                          |
+| «agente · responde a vos» bajo el nombre      | Es relleno: no cambia nada de lo que vas a hacer          |
+| «dashboard · versión 1 · de ChatGPT»          | El título y el número de versión alcanzan                 |
+
+Si no hay nada que decir, el renglón no existe: no se pone un texto de reemplazo.
+Lo que sí puede ir es lo que está pasando ahora («Organizar fichas del Codex»),
+y solo mientras sea cierto.
+
 **Lo que carga se ve igual en toda la app:** `MorphingInfinity`, nunca la
 ruedita del sistema (`ActivityIndicator`). Y lo nuevo sin leer se nota en la
 tinta del texto, no en un punto rojo.

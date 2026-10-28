@@ -84,7 +84,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
       <View style={{ paddingBottom: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: TONO.raya }}>
         <Cabecera
           colaborador={colaborador}
-          subtitulo={esAgente ? haciendoAhora(tareas.data) || 'agente · responde a vos' : null}
+          subtitulo={esAgente ? haciendoAhora(tareas.data) : null}
           onVolver={onVolver}
           volverLabel="Volver a Colaboradores"
           topInset={topInset}

@@ -290,7 +290,7 @@ function Calificacion({ texto, activo, tono, onPress }) {
 }
 
 /** Una pantalla del perfil: volver, título grande y lo suyo debajo. */
-function Pantalla({ titulo, colaborador, topInset, bottomInset, onVolver, children }) {
+function Pantalla({ titulo, topInset, bottomInset, onVolver, children }) {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingTop: topInset + 10, paddingHorizontal: 20, paddingBottom: 6 }}>
@@ -306,7 +306,6 @@ function Pantalla({ titulo, colaborador, topInset, bottomInset, onVolver, childr
         <Text style={{ fontFamily: SERIF, fontSize: 32, lineHeight: 36, color: INK.title }} accessibilityRole="header">
           {titulo}
         </Text>
-        {colaborador ? <Text style={{ fontSize: 13, color: INK.meta, marginTop: 2 }}>de {nombreDe(colaborador)}</Text> : null}
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 14, paddingBottom: bottomInset + 24, gap: 16 }}>
         {children}
@@ -363,7 +362,7 @@ export function PantallaFuente({ colaborador, fuente: deLista, topInset, bottomI
   };
 
   return (
-    <Pantalla titulo={f.nombre} colaborador={colaborador} topInset={topInset} bottomInset={bottomInset} onVolver={onVolver}>
+    <Pantalla titulo={f.nombre} topInset={topInset} bottomInset={bottomInset} onVolver={onVolver}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Icono estilo={ICONO_FUENTE[f.tipo] || ICONO_FUENTE.web} size={20} caja={42} />
         <Text style={{ flex: 1, fontSize: 13.5, color: INK.meta }}>{metaFuente(f)}</Text>

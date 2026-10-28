@@ -254,7 +254,6 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
           <Text style={{ fontSize: 16, fontWeight: '700', color: INK.title, flexShrink: 1 }} numberOfLines={1}>
             {nombre}
           </Text>
-          {c.cuenta_tipo === 'agente' ? <Text style={{ fontSize: 11.5, color: INK.meta }}>agente</Text> : null}
           <View style={{ flex: 1 }} />
           <Text style={{ fontSize: 12, color: INK.meta }}>{horaCorta(c.ultimo_mensaje?.created_at)}</Text>
         </View>
