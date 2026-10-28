@@ -8,7 +8,7 @@ import { EV, evento } from '../../utils/analitica';
 import { supabase } from '../../utils/supabase';
 import { abrirChat, chatDe, enviarMensaje, leerMensajes, seguimientosDe, tareasDe } from './api';
 import { claveTareas } from './Ficha';
-import { bloquesDe, esMio, esperandoAgente, haciendoAhora, seVe, unirMensajes } from './logica';
+import { bloquesDe, esMio, haciendoAhora, seVe, unirMensajes } from './logica';
 import Bloque from './Bloques';
 import SuCodex from './SuCodex';
 import Adjuntar from './Adjuntar';
@@ -296,7 +296,6 @@ function Conversacion({ colaborador, yo, borrador, bottomInset, onAbrirItem, onA
     }
   };
 
-  const espera = esperandoAgente(mensajes, yo, colaborador.cuenta_tipo);
   // Invertida: lo nuevo abajo y el teclado no lo tapa.
   const invertidos = useMemo(() => mensajes.filter(seVe).reverse(), [mensajes]);
   const cargando = !resuelto || (convId && recientes.isLoading);
@@ -322,7 +321,6 @@ function Conversacion({ colaborador, yo, borrador, bottomInset, onAbrirItem, onA
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 12 }}
           ItemSeparatorComponent={() => <View style={{ height: 9 }} />}
-          ListHeaderComponent={espera ? <Pendiente /> : null}
           ListFooterComponent={cargandoViejos ? <MorphingInfinity size={20} color={INK.meta} style={{ marginVertical: 12, alignSelf: 'center' }} /> : null}
           onEndReached={cargarViejos}
           onEndReachedThreshold={0.3}
@@ -446,17 +444,3 @@ function Mensaje({ mensaje, mio, onAbrirItem, onAbrirArtifact, onAbrirSeguimient
   );
 }
 
-/** El agente todavía no leyó lo último: lo hace cuando se conecte. */
-function Pendiente() {
-  const punto = { width: 5, height: 5, borderRadius: 3, backgroundColor: INK.faint };
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10, paddingHorizontal: 2 }}>
-      <View style={{ flexDirection: 'row', gap: 3 }} accessible={false}>
-        <View style={punto} />
-        <View style={punto} />
-        <View style={punto} />
-      </View>
-      <Text style={{ fontSize: 12.5, color: INK.meta, fontStyle: 'italic' }}>Te responde cuando se conecte</Text>
-    </View>
-  );
-}
