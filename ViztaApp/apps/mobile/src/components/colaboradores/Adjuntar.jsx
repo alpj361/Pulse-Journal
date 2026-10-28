@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -12,14 +12,17 @@ import {
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Code, Quote, Search } from "lucide-react-native";
+import { Check, Code, Folder, Quote, Search } from "lucide-react-native";
 import { INK, MOTION, SERIF } from "../theme";
 import { roce } from "../../utils/haptics";
-import { buscarEnMiCodex } from "./api";
+import { buscarEnMiCodex, misEspaciosParaAdjuntar, tiposDeMiCodex } from "./api";
 import { claveTipo, nombreTipo } from "./logica";
 import { Boton, ROTULO, TONO } from "./piezas";
 import MorphingInfinity from "../MorphingInfinity";
-import { Cara } from "./Elemento";
+import { Cara, estiloDe } from "./Elemento";
+
+/** Lo que acepta un mensaje. */
+const MAX_ADJUNTOS = 20;
 
 const MODOS = [
   { clave: "codex", texto: "de mi Codex", Icono: Search },
@@ -45,19 +48,52 @@ export default function Adjuntar({
   const [elegidos, setElegidos] = useState([]);
   const [texto, setTexto] = useState("");
 
-  const resultados = useQuery({
-    queryKey: ["colab-buscar-codex", busqueda.trim()],
-    queryFn: () => buscarEnMiCodex(busqueda, userId),
+  // Por espacio y por tipo, para encontrar lo que se quiere compartir.
+  const [espacioId, setEspacioId] = useState(null);
+  const [tipo, setTipo] = useState(null);
+  const espacios = useQuery({
+    queryKey: ["colab-adjuntar-espacios", userId],
+    queryFn: () => misEspaciosParaAdjuntar(userId),
     enabled: modo === "codex" && !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+  const espacio = useMemo(
+    () => (espacios.data || []).find((e) => e.id === espacioId) || null,
+    [espacios.data, espacioId],
+  );
+  const ids = espacio ? espacio.ids : null;
+  const tipos = useQuery({
+    queryKey: ["colab-adjuntar-tipos", userId, espacioId],
+    queryFn: () => tiposDeMiCodex(userId, { ids }),
+    enabled: modo === "codex" && !!userId && (!espacioId || !!espacio),
+    staleTime: 1000 * 60 * 5,
+  });
+  const resultados = useQuery({
+    queryKey: ["colab-buscar-codex", busqueda.trim(), espacioId, tipo],
+    queryFn: () => buscarEnMiCodex(busqueda, userId, { tipo, ids }),
+    enabled: modo === "codex" && !!userId && (!espacioId || !!espacio),
     staleTime: 1000 * 30,
   });
+  const lista = resultados.data || [];
+  // Elegir todo lo que se ve (un espacio entero, o un tipo dentro de él), hasta 20.
+  const todosElegidos = lista.length > 0 && lista.every((it) => elegidos.some((x) => x.id === it.id));
+  const elegirTodos = () => {
+    roce();
+    setElegidos((prev) => {
+      if (todosElegidos) return prev.filter((x) => !lista.some((it) => it.id === x.id));
+      const nuevos = lista.filter((it) => !prev.some((x) => x.id === it.id));
+      return [...prev, ...nuevos].slice(0, MAX_ADJUNTOS);
+    });
+  };
 
   const alternar = (it) => {
     roce();
     setElegidos((prev) =>
       prev.some((x) => x.id === it.id)
         ? prev.filter((x) => x.id !== it.id)
-        : [...prev, it],
+        : prev.length >= MAX_ADJUNTOS
+          ? prev
+          : [...prev, it],
     );
   };
 
@@ -69,8 +105,9 @@ export default function Adjuntar({
           meta: {
             titulo: String(it.titulo || "").slice(0, 500),
             tipo: nombreTipo(claveTipo(it)),
+            // La foto no viaja: el servidor no acepta textos de más de 500
+            // caracteres y los enlaces de Instagram pasan de eso (y vencen).
             clave: claveTipo(it),
-            ...(it.imagen ? { imagen: it.imagen } : {}),
           },
         }))
       : texto.trim()
@@ -200,16 +237,64 @@ export default function Adjuntar({
                     color: INK.title,
                   }}
                 />
+                {(espacios.data || []).length ? (
+                  <Fila>
+                    <Filtro
+                      texto="todo tu Codex"
+                      activo={!espacioId}
+                      onPress={() => {
+                        setEspacioId(null);
+                        setTipo(null);
+                      }}
+                    />
+                    {espacios.data.map((e) => (
+                      <Filtro
+                        key={e.id}
+                        texto={e.nombre}
+                        Icono={Folder}
+                        activo={espacioId === e.id}
+                        onPress={() => {
+                          setEspacioId(espacioId === e.id ? null : e.id);
+                          setTipo(null);
+                        }}
+                      />
+                    ))}
+                  </Fila>
+                ) : null}
+                {(tipos.data || []).length > 1 ? (
+                  <Fila>
+                    {tipos.data.map(({ clave, n }) => (
+                      <Filtro
+                        key={clave}
+                        texto={`${nombreTipo(clave, n !== 1)} · ${n}`}
+                        estilo={estiloDe({ tipo: clave })}
+                        activo={tipo === clave}
+                        onPress={() => setTipo(tipo === clave ? null : clave)}
+                      />
+                    ))}
+                  </Fila>
+                ) : null}
                 <ScrollView
-                  style={{ maxHeight: 320 }}
+                  style={{ maxHeight: 300 }}
                   keyboardShouldPersistTaps="handled"
                   contentContainerStyle={{ gap: 2 }}
                 >
-                  {busqueda.trim() ? null : (
+                  {busqueda.trim() || espacioId || tipo ? null : (
                     <Text style={[ROTULO, { marginBottom: 4 }]}>
                       LO MÁS RECIENTE
                     </Text>
                   )}
+                  {(espacioId || tipo) && lista.length > 1 && lista.length <= MAX_ADJUNTOS ? (
+                    <Pressable
+                      onPress={elegirTodos}
+                      accessibilityRole="button"
+                      style={({ pressed }) => ({ alignSelf: "flex-start", paddingVertical: 6, opacity: pressed ? 0.6 : 1 })}
+                    >
+                      <Text style={{ fontSize: 13.5, fontWeight: "700", color: TONO.verde }}>
+                        {todosElegidos ? "quitar todos" : `elegir los ${lista.length}`}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   {resultados.isLoading ? (
                     <MorphingInfinity
                       size={20}
@@ -217,7 +302,7 @@ export default function Adjuntar({
                       style={{ marginVertical: 12, alignSelf: "center" }}
                     />
                   ) : null}
-                  {(resultados.data || []).map((it) => {
+                  {lista.map((it) => {
                     const si = elegidos.some((x) => x.id === it.id);
                     return (
                       <Pressable
@@ -268,7 +353,7 @@ export default function Adjuntar({
                       </Pressable>
                     );
                   })}
-                  {!resultados.isLoading && !(resultados.data || []).length ? (
+                  {!resultados.isLoading && !lista.length ? (
                     <Text
                       style={{
                         fontSize: 13.5,
@@ -276,7 +361,7 @@ export default function Adjuntar({
                         paddingVertical: 10,
                       }}
                     >
-                      Nada con ese nombre en tu Codex.
+                      {busqueda.trim() ? "Nada con ese nombre." : "Nada por acá."}
                     </Text>
                   ) : null}
                 </ScrollView>
@@ -322,5 +407,51 @@ export default function Adjuntar({
         </KeyboardAvoidingView>
       </View>
     </Modal>
+  );
+}
+
+/** Una fila de filtros que se desliza de lado. */
+function Fila({ children }) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      style={{ marginHorizontal: -24, flexGrow: 0 }}
+      contentContainerStyle={{ paddingHorizontal: 24, gap: 6 }}
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+/** Un filtro: un espacio (con su carpeta) o un tipo (con su ícono y color). */
+function Filtro({ texto, activo, onPress, Icono, estilo }) {
+  const I = estilo?.Icono || Icono;
+  const tinta = activo ? "#FFFFFF" : estilo?.tema?.tinta || INK.body;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: activo }}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        height: 32,
+        maxWidth: 220,
+        paddingHorizontal: 11,
+        borderRadius: 16,
+        backgroundColor: activo ? INK.title : estilo ? estilo.tema.lavado[0] : "transparent",
+        borderWidth: activo ? 0 : 1,
+        borderColor: estilo ? estilo.tema.lavado[1] : TONO.borde,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      {I ? <I size={13} color={tinta} strokeWidth={2} /> : null}
+      <Text style={{ fontSize: 13, fontWeight: "600", color: tinta, flexShrink: 1 }} numberOfLines={1}>
+        {texto}
+      </Text>
+    </Pressable>
   );
 }

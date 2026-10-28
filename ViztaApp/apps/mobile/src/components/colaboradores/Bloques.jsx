@@ -112,6 +112,24 @@ const QUE_ES = {
   preset: 'preset',
 };
 
+/**
+ * La foto de algo del Codex, por su id: se busca al mostrarlo en vez de viajar
+ * en el mensaje. Si no es tuyo o no tiene, queda en nada y va el ícono.
+ */
+function useFotoDe(id, deMeta) {
+  const { data } = useQuery({
+    queryKey: ['codex-foto', id],
+    enabled: !!id && !deMeta,
+    staleTime: 1000 * 60 * 30,
+    retry: false,
+    queryFn: async () => {
+      const { data: fila } = await supabase.from('codex_universe_items').select('thumbnail_url').eq('id', id).maybeSingle();
+      return fila?.thumbnail_url || null;
+    },
+  });
+  return deMeta || data || null;
+}
+
 /** Algo de un Codex, una noticia o una visualización, por su id. */
 function Adjunto({ adjunto, mio, onAbrirItem }) {
   const meta = adjunto.meta || {};
@@ -120,11 +138,12 @@ function Adjunto({ adjunto, mio, onAbrirItem }) {
   const esItem = adjunto.tipo === 'item' && adjunto.ref_id;
   // Lo mío está en mi Codex; tocarlo en el chat del agente no lleva a ningún lado.
   const abrir = esItem && !mio && onAbrirItem ? () => onAbrirItem(adjunto.ref_id) : null;
+  const foto = useFotoDe(esItem ? adjunto.ref_id : null, meta.imagen || meta.thumbnail_url);
   return (
     <Elemento
       titulo={titulo}
       tipo={tipo}
-      imagen={meta.imagen || meta.thumbnail_url}
+      imagen={foto}
       mio={mio}
       onPress={abrir}
       derecha={abrir ? <ChevronRight size={16} color={INK.meta} /> : null}

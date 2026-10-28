@@ -241,20 +241,98 @@ export async function titulosDeFuentes(fuentes) {
  * Buscar en mi Codex para adjuntar: documentos y fichas, por título. Sin
  * texto, lo más reciente. Se lee directo de la base (es la propia cuenta).
  */
-export async function buscarEnMiCodex(texto, userId) {
-  const q = String(texto || '').trim().replace(/[%_,()]/g, ' ');
-  let a = supabase.from('codex_items').select('id, titulo, tipo, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
-  let b = supabase.from('codex_universe_items').select('id, name, tipo, thumbnail_url, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
-  if (q) {
-    a = a.ilike('titulo', `%${q}%`);
-    b = b.ilike('name', `%${q}%`);
+/**
+ * Los tipos por los que se filtra al adjuntar, con cómo se guardan. El universo
+ * guarda el tipo con mayúscula (y «post» de las dos formas); los documentos
+ * viven en `codex_items`.
+ */
+export const TIPOS_PARA_ADJUNTAR = [
+  { clave: 'actor', universo: ['Actor'] },
+  { clave: 'entidad', universo: ['Entidad'] },
+  { clave: 'territorio', universo: ['Territorio'] },
+  { clave: 'evento', universo: ['Evento'] },
+  { clave: 'post', universo: ['post', 'Post'] },
+  { clave: 'snippet', universo: ['Snippet'] },
+  { clave: 'source', universo: ['Source'] },
+  { clave: 'historia', universo: ['Historia'] },
+  { clave: 'objeto', universo: ['Objeto', 'Artefacto'] },
+  { clave: 'documento', items: true },
+];
+
+const limpiarBusqueda = (texto) => String(texto || '').trim().replace(/[%_,()]/g, ' ');
+
+/** Las dos consultas (universo y documentos) con el mismo filtro; `null` si ese lado no aplica. */
+function consultasDeMiCodex(userId, { tipo, ids, columnas, cabeza = false }) {
+  const def = TIPOS_PARA_ADJUNTAR.find((t) => t.clave === tipo);
+  const opciones = cabeza ? { count: 'exact', head: true } : undefined;
+  let a = def && !def.items ? null : supabase.from('codex_items').select(columnas.items, opciones).eq('user_id', userId);
+  let b = def?.items ? null : supabase.from('codex_universe_items').select(columnas.universo, opciones).eq('user_id', userId);
+  if (b && def?.universo) b = b.in('tipo', def.universo);
+  if (ids) {
+    if (a) a = a.in('id', ids);
+    if (b) b = b.in('id', ids);
   }
-  const [ra, rb] = await Promise.all([a, b]);
+  return { a, b };
+}
+
+/**
+ * Lo de mi Codex para adjuntar: lo más reciente, o lo que coincide con el
+ * texto. Se puede acotar a un tipo y a los elementos de un espacio (`ids`).
+ */
+export async function buscarEnMiCodex(texto, userId, { tipo = null, ids = null } = {}) {
+  const q = limpiarBusqueda(texto);
+  let { a, b } = consultasDeMiCodex(userId, {
+    tipo,
+    ids,
+    columnas: { items: 'id, titulo, tipo, created_at', universo: 'id, name, tipo, thumbnail_url, created_at' },
+  });
+  const tope = ids || tipo ? 60 : 20;
+  if (a) a = a.order('created_at', { ascending: false }).limit(tope);
+  if (b) b = b.order('created_at', { ascending: false }).limit(tope);
+  if (q) {
+    if (a) a = a.ilike('titulo', `%${q}%`);
+    if (b) b = b.ilike('name', `%${q}%`);
+  }
+  const [ra, rb] = await Promise.all([a || { data: [] }, b || { data: [] }]);
+  if (ra.error) throw ra.error;
+  if (rb.error) throw rb.error;
   const filas = [
     ...(ra.data || []).map((r) => ({ id: r.id, titulo: r.titulo, tipo: r.tipo, created_at: r.created_at })),
     ...(rb.data || []).map((r) => ({ id: r.id, titulo: r.name, tipo: r.tipo, imagen: r.thumbnail_url || null, created_at: r.created_at })),
   ];
-  return filas.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, 20);
+  return filas.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, tope);
+}
+
+/** Cuántos hay de cada tipo (en todo el Codex o en un espacio). Los que no tienen, no vienen. */
+export async function tiposDeMiCodex(userId, { ids = null } = {}) {
+  const cuentas = await Promise.all(
+    TIPOS_PARA_ADJUNTAR.map(async ({ clave }) => {
+      const { a, b } = consultasDeMiCodex(userId, { tipo: clave, ids, columnas: { items: 'id', universo: 'id' }, cabeza: true });
+      const [ra, rb] = await Promise.all([a || { count: 0 }, b || { count: 0 }]);
+      return { clave, n: (ra.count || 0) + (rb.count || 0) };
+    }),
+  );
+  return cuentas.filter((c) => c.n > 0).sort((x, y) => y.n - x.n);
+}
+
+/** Mis espacios, con lo que tiene cada uno (lienzo y recursos). */
+export async function misEspaciosParaAdjuntar(userId) {
+  const [rs, rr] = await Promise.all([
+    supabase.from('spaces').select('id, name, updated_at, data->canvasItems').eq('user_id', userId).or('cuenta_tipo.is.null,cuenta_tipo.eq.humano').order('updated_at', { ascending: false }).limit(40),
+    supabase.from('workspace_resources').select('space_id, resource_id').eq('user_id', userId).eq('resource_type', 'codex_item').limit(5000),
+  ]);
+  if (rs.error) throw rs.error;
+  const recursos = new Map();
+  for (const r of rr.data || []) {
+    if (!recursos.has(r.space_id)) recursos.set(r.space_id, new Set());
+    recursos.get(r.space_id).add(r.resource_id);
+  }
+  return (rs.data || [])
+    .map((e) => {
+      const ids = new Set([...(Array.isArray(e.canvasItems) ? e.canvasItems : []), ...(recursos.get(e.id) || [])]);
+      return { id: e.id, nombre: e.name || 'Sin nombre', ids: [...ids].filter((x) => typeof x === 'string').slice(0, 300) };
+    })
+    .filter((e) => e.ids.length > 0);
 }
 
 // ─── Lo que sigue el agente (sus monitoreos) ─────────────────────────────────
