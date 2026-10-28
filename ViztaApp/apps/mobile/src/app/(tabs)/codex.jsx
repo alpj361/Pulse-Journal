@@ -40,6 +40,8 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { supabase } from '../../utils/supabase';
+import { useQuery } from '@tanstack/react-query';
+import Artifact from '../../components/colaboradores/Artifact';
 import { ponerFila, useEnVivo, useFilasEnVivo } from '../../utils/enVivo';
 
 // Una ficha de `codex_universe_items` con la forma de las de `wiki_items`.
@@ -3103,6 +3105,27 @@ export default function CodexScreen() {
   const [openSpace, setOpenSpace] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
 
+  // Los dashboards que guardaste (copias tuyas en `artifacts`). Van en «Todo»
+  // como un tipo más y se abren en su visor, no en la ficha.
+  const [dashboardAbierto, setDashboardAbierto] = useState(null);
+  const { data: misDashboards = [] } = useQuery({
+    queryKey: ['codex-mis-dashboards', connectedUser?.id],
+    enabled: !!connectedUser?.id,
+    staleTime: 1000 * 60,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('artifacts')
+        .select('id, titulo, created_at')
+        .eq('dueno_tipo', 'humano')
+        .eq('dueno_id', connectedUser.id)
+        .eq('tipo', 'dashboard')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data || []).map((a) => ({ id: `dash-${a.id}`, artifact_id: a.id, name: a.titulo || 'Dashboard', tipo: 'Dashboard', created_at: a.created_at }));
+    },
+  });
+
   /**
    * Dónde se quedó la persona dentro del Codex.
    *
@@ -4284,11 +4307,11 @@ export default function CodexScreen() {
             /* ── Codex: la pila (Espacios / Todo) ── */
             <SpacesStack
               spaces={spaces}
-              universeItems={wikiItems}
+              universeItems={misDashboards.length ? [...misDashboards, ...wikiItems] : wikiItems}
               loading={isLoadingWiki || isLoadingSpaces}
               mode={stackMode}
               onModeChange={setStackMode}
-              onOpenItem={(item) => setDetailItem(item)}
+              onOpenItem={(item) => (item.artifact_id ? setDashboardAbierto(item.artifact_id) : setDetailItem(item))}
               onOpenSpace={(space, origen) => {
                 setOpenSpace(space);
               }}
@@ -4298,6 +4321,13 @@ export default function CodexScreen() {
           )}
         </View>
       )}
+      {dashboardAbierto ? (
+        <Modal visible animationType="slide" onRequestClose={() => setDashboardAbierto(null)}>
+          <View style={{ flex: 1, backgroundColor: '#FBFAF6' }}>
+            <Artifact id={dashboardAbierto} topInset={insets.top} bottomInset={insets.bottom} onVolver={() => setDashboardAbierto(null)} />
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }

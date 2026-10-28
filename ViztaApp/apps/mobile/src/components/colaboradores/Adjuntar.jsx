@@ -16,7 +16,7 @@ import { Check, Code, Folder, Quote, Search } from "lucide-react-native";
 import { INK, MOTION, SERIF } from "../theme";
 import { roce } from "../../utils/haptics";
 import { buscarEnMiCodex, misEspaciosParaAdjuntar, tiposDeMiCodex } from "./api";
-import { claveTipo, nombreTipo } from "./logica";
+import { adjuntoDe, claveTipo, nombreTipo } from "./logica";
 import { Boton, ROTULO, TONO } from "./piezas";
 import MorphingInfinity from "../MorphingInfinity";
 import { Cara, estiloDe } from "./Elemento";
@@ -99,17 +99,7 @@ export default function Adjuntar({
 
   const listos =
     modo === "codex"
-      ? elegidos.map((it) => ({
-          tipo: "item",
-          ref_id: it.id,
-          meta: {
-            titulo: String(it.titulo || "").slice(0, 500),
-            tipo: nombreTipo(claveTipo(it)),
-            // La foto no viaja: el servidor no acepta textos de más de 500
-            // caracteres y los enlaces de Instagram pasan de eso (y vencen).
-            clave: claveTipo(it),
-          },
-        }))
+      ? elegidos.map((it) => adjuntoDe(it))
       : texto.trim()
         ? [
             {

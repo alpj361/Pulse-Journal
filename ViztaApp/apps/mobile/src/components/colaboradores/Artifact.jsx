@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Forward } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bookmark, BookmarkCheck, ChevronLeft, Forward } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
-import { leerArtifact, titulosDeFuentes } from './api';
+import { guardarDashboard, leerArtifact, tengoDashboard, titulosDeFuentes } from './api';
+import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
+import { falla, listo } from '../../utils/haptics';
 import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 import Reenviar from './Reenviar';
@@ -79,6 +81,34 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
   // El HTML tarda un momento en dibujarse: mientras, el loader de la app.
   const [dibujando, setDibujando] = useState(true);
   const [reenviando, setReenviando] = useState(false);
+
+  // Guardarlo en tu Codex: queda una copia tuya. Lo tuyo no lleva marcador.
+  const queryClient = useQueryClient();
+  const yo = usePulseConnectionStore((s) => s.connectedUser?.id);
+  const esMio = a?.dueno_tipo === 'humano' && a?.dueno_id === yo;
+  const guardado = useQuery({
+    queryKey: ['dashboard-guardado', id, yo],
+    queryFn: () => tengoDashboard(id, yo),
+    enabled: !!a && !!yo && !esMio,
+    staleTime: 1000 * 60,
+  });
+  const [guardando, setGuardando] = useState(false);
+  const guardar = async () => {
+    if (guardando || guardado.data) return;
+    setGuardando(true);
+    try {
+      await guardarDashboard(id);
+      listo();
+      queryClient.setQueryData(['dashboard-guardado', id, yo], true);
+      queryClient.invalidateQueries({ queryKey: ['colab-buscar-codex'] });
+      queryClient.invalidateQueries({ queryKey: ['colab-adjuntar-tipos'] });
+      queryClient.invalidateQueries({ queryKey: ['codex-mis-dashboards'] });
+    } catch {
+      falla();
+    } finally {
+      setGuardando(false);
+    }
+  };
   const fuentes = useMemo(() => (Array.isArray(a?.fuentes) ? a.fuentes : []), [a]);
   const titulos = useQuery({
     queryKey: ['colab-titulos-fuentes', id],
@@ -93,7 +123,7 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
         onPress={onVolver}
         hitSlop={8}
         accessibilityRole="button"
-        accessibilityLabel="Volver al chat"
+        accessibilityLabel="Volver"
         style={({ pressed }) => ({ width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
       >
         <ChevronLeft size={24} color={INK.title} strokeWidth={2} />
@@ -109,6 +139,24 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
         >
           <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK.meta }}>{a.version}</Text>
         </View>
+      ) : null}
+      {a && !esMio ? (
+        <Pressable
+          onPress={guardar}
+          disabled={guardando || !!guardado.data}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={guardado.data ? 'En tu Codex' : 'Guardar en tu Codex'}
+          style={({ pressed }) => ({ width: 40, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+        >
+          {guardando ? (
+            <MorphingInfinity size={16} color={INK.title} />
+          ) : guardado.data ? (
+            <BookmarkCheck size={20} color={TONO.verde} strokeWidth={2} />
+          ) : (
+            <Bookmark size={20} color={INK.title} strokeWidth={1.9} />
+          )}
+        </Pressable>
       ) : null}
       {a ? (
         <Pressable

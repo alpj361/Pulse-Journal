@@ -247,6 +247,7 @@ export async function titulosDeFuentes(fuentes) {
  * viven en `codex_items`.
  */
 export const TIPOS_PARA_ADJUNTAR = [
+  { clave: 'dashboard', artifacts: true },
   { clave: 'actor', universo: ['Actor'] },
   { clave: 'entidad', universo: ['Entidad'] },
   { clave: 'territorio', universo: ['Territorio'] },
@@ -266,7 +267,12 @@ function consultasDeMiCodex(userId, { tipo, ids, columnas, cabeza = false }) {
   // Los documentos (`codex_items`) no se comparten todavía: del otro lado no
   // hay cómo leerlos.
   let a = null;
-  let b = def?.items ? null : supabase.from('codex_universe_items').select(columnas.universo, opciones).eq('user_id', userId);
+  let b = def?.items || def?.artifacts ? null : supabase.from('codex_universe_items').select(columnas.universo, opciones).eq('user_id', userId);
+  // Los dashboards guardados viven en `artifacts`, a nombre de la persona.
+  let c =
+    (def && !def.artifacts) || ids
+      ? null
+      : supabase.from('artifacts').select(columnas.artifacts || 'id', opciones).eq('dueno_tipo', 'humano').eq('dueno_id', userId).eq('tipo', 'dashboard');
   if (b && def?.universo) b = b.in('tipo', def.universo);
   // Las historias de un espacio no se comparten (por ahora); los hechos son
   // parte de su post.
@@ -275,7 +281,7 @@ function consultasDeMiCodex(userId, { tipo, ids, columnas, cabeza = false }) {
     if (a) a = a.in('id', ids);
     if (b) b = b.in('id', ids);
   }
-  return { a, b };
+  return { a, b, c };
 }
 
 /**
@@ -284,24 +290,27 @@ function consultasDeMiCodex(userId, { tipo, ids, columnas, cabeza = false }) {
  */
 export async function buscarEnMiCodex(texto, userId, { tipo = null, ids = null } = {}) {
   const q = limpiarBusqueda(texto);
-  let { a, b } = consultasDeMiCodex(userId, {
+  let { a, b, c } = consultasDeMiCodex(userId, {
     tipo,
     ids,
-    columnas: { items: 'id, titulo, tipo, created_at', universo: 'id, name, tipo, thumbnail_url, created_at' },
+    columnas: { items: 'id, titulo, tipo, created_at', universo: 'id, name, tipo, thumbnail_url, created_at', artifacts: 'id, titulo, created_at' },
   });
   const tope = ids || tipo ? 60 : 20;
   if (a) a = a.order('created_at', { ascending: false }).limit(tope);
   if (b) b = b.order('created_at', { ascending: false }).limit(tope);
+  if (c) c = c.order('created_at', { ascending: false }).limit(tope);
   if (q) {
     if (a) a = a.ilike('titulo', `%${q}%`);
     if (b) b = b.ilike('name', `%${q}%`);
+    if (c) c = c.ilike('titulo', `%${q}%`);
   }
-  const [ra, rb] = await Promise.all([a || { data: [] }, b || { data: [] }]);
+  const [ra, rb, rc] = await Promise.all([a || { data: [] }, b || { data: [] }, c || { data: [] }]);
   if (ra.error) throw ra.error;
   if (rb.error) throw rb.error;
   const filas = [
     ...(ra.data || []).map((r) => ({ id: r.id, titulo: r.titulo, tipo: r.tipo, created_at: r.created_at })),
     ...(rb.data || []).map((r) => ({ id: r.id, titulo: r.name, tipo: r.tipo, imagen: r.thumbnail_url || null, created_at: r.created_at })),
+    ...(rc?.data || []).map((r) => ({ id: r.id, titulo: r.titulo, tipo: 'dashboard', origen_tabla: 'artifacts', created_at: r.created_at })),
   ];
   return filas.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, tope);
 }
@@ -310,9 +319,9 @@ export async function buscarEnMiCodex(texto, userId, { tipo = null, ids = null }
 export async function tiposDeMiCodex(userId, { ids = null } = {}) {
   const cuentas = await Promise.all(
     TIPOS_PARA_ADJUNTAR.map(async ({ clave }) => {
-      const { a, b } = consultasDeMiCodex(userId, { tipo: clave, ids, columnas: { items: 'id', universo: 'id' }, cabeza: true });
-      const [ra, rb] = await Promise.all([a || { count: 0 }, b || { count: 0 }]);
-      return { clave, n: (ra.count || 0) + (rb.count || 0) };
+      const { a, b, c } = consultasDeMiCodex(userId, { tipo: clave, ids, columnas: { items: 'id', universo: 'id' }, cabeza: true });
+      const [ra, rb, rc] = await Promise.all([a || { count: 0 }, b || { count: 0 }, c || { count: 0 }]);
+      return { clave, n: (ra.count || 0) + (rb.count || 0) + (rc.count || 0) };
     }),
   );
   return cuentas.filter((c) => c.n > 0).sort((x, y) => y.n - x.n);
@@ -451,6 +460,24 @@ export const leerArtifact = async (id) => (await pedir(`/colaboraciones/artifact
 
 export const previsualizarDeshacer = (body) => pedir('/colaboraciones/deshacer/preview', { method: 'POST', body });
 export const aplicarDeshacer = (body) => pedir('/colaboraciones/deshacer', { method: 'POST', body });
+
+/** Guardar en mi Codex un dashboard de otra cuenta: queda una copia mía (PR #75). */
+export const guardarDashboard = async (id) =>
+  (await pedir(`/colaboraciones/artifacts/${encodeURIComponent(id)}/copiar`, { method: 'POST', body: {} })).artifact;
+
+/** ¿Ya tengo este dashboard? Mío, o una copia mía de él. */
+export async function tengoDashboard(id, userId) {
+  if (!id || !userId) return false;
+  const { data, error } = await supabase
+    .from('artifacts')
+    .select('id')
+    .eq('dueno_tipo', 'humano')
+    .eq('dueno_id', userId)
+    .or(`id.eq.${id},contenido->>copiado_de_id.eq.${id}`)
+    .limit(1);
+  if (error) throw error;
+  return (data || []).length > 0;
+}
 
 /** Traer a mi Codex un ítem de otra cuenta: queda una copia mía (v4.6.2). */
 export const traerAMiCodex = async (itemId) =>
