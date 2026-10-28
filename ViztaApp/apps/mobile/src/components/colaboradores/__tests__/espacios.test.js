@@ -42,3 +42,17 @@ describe('tareas quietas', () => {
     expect(estadoTarea({ estado: 'pendiente' }, ahora)).toBe('pendiente');
   });
 });
+
+describe('adjuntoDe', () => {
+  const { adjuntoDe } = require('../logica');
+  test('un dashboard va como artifact, con su id de artifact', () => {
+    expect(adjuntoDe({ id: 'x', origen_tabla: 'artifacts', artifact_id: 'a1', titulo: 'Zona 6' })).toEqual({
+      tipo: 'artifact',
+      ref_id: 'a1',
+      meta: { titulo: 'Zona 6', tipo: 'dashboard', clave: 'dashboard' },
+    });
+  });
+  test('lo demás va como item, con su tipo', () => {
+    expect(adjuntoDe({ id: 'i1', name: 'ONU', tipo: 'Actor' })).toEqual({ tipo: 'item', ref_id: 'i1', meta: { titulo: 'ONU', tipo: 'actor', clave: 'actor' } });
+  });
+});

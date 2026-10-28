@@ -19,7 +19,7 @@ import { TONO } from './piezas';
  * Texto, adjuntos, código y la referencia a un artifact. Lo demás todavía no
  * existe en la app y no se dibuja (ver `SE_VEN` en logica.js).
  */
-export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento }) {
+export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onReenviar }) {
   const p = bloque?.payload || {};
   switch (bloque?.type) {
     case 'text':
@@ -30,10 +30,10 @@ export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirAr
       return p.tipo === 'snippet' || p.tipo === 'code' ? (
         <Codigo contenido={p.contenido} />
       ) : (
-        <Adjunto adjunto={p} mio={mio} onAbrirItem={mio ? onAbrirMio : onAbrirItem} />
+        <Adjunto adjunto={p} mio={mio} onAbrirItem={mio ? onAbrirMio : onAbrirItem} onReenviar={onReenviar} />
       );
     case 'artifact_ref':
-      return <ArtifactRef id={p.ref_id} onAbrir={onAbrirArtifact} />;
+      return <ArtifactRef id={p.ref_id} onAbrir={onAbrirArtifact} onReenviar={onReenviar} />;
     case 'seguimiento_ref':
       return <SeguimientoRef ref_={p} onAbrir={onAbrirSeguimiento} />;
     default:
@@ -65,7 +65,7 @@ function Burbuja({ texto, mio }) {
   );
 }
 
-function Tarjeta({ children, onPress, accessibilityLabel }) {
+function Tarjeta({ children, onPress, onLongPress, accessibilityLabel }) {
   const estilo = {
     alignSelf: 'flex-start',
     width: '86%',
@@ -79,10 +79,12 @@ function Tarjeta({ children, onPress, accessibilityLabel }) {
     paddingVertical: 9,
     paddingHorizontal: 11,
   };
-  if (!onPress) return <View style={estilo}>{children}</View>;
+  if (!onPress && !onLongPress) return <View style={estilo}>{children}</View>;
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [estilo, { opacity: pressed ? 0.6 : 1 }]}
@@ -131,7 +133,7 @@ function useFotoDe(id, deMeta) {
 }
 
 /** Algo de un Codex, una noticia o una visualización, por su id. */
-function Adjunto({ adjunto, mio, onAbrirItem }) {
+function Adjunto({ adjunto, mio, onAbrirItem, onReenviar }) {
   const meta = adjunto.meta || {};
   const titulo = meta.titulo || meta.title || meta.nombre || QUE_ES[adjunto.tipo] || 'adjunto';
   const tipo = meta.clave || meta.tipo || QUE_ES[adjunto.tipo] || adjunto.tipo;
@@ -146,6 +148,7 @@ function Adjunto({ adjunto, mio, onAbrirItem }) {
       imagen={foto}
       mio={mio}
       onPress={abrir}
+      onLongPress={onReenviar && adjunto.ref_id ? () => onReenviar({ tipo: adjunto.tipo, ref_id: adjunto.ref_id, meta }) : null}
       derecha={abrir ? <ChevronRight size={16} color={INK.meta} /> : null}
     />
   );
@@ -166,7 +169,7 @@ function Codigo({ contenido }) {
 }
 
 /** Un artifact, por referencia: su título, versión y fuentes. Se abre al tocarlo. */
-function ArtifactRef({ id, onAbrir }) {
+function ArtifactRef({ id, onAbrir, onReenviar }) {
   const { data } = useQuery({
     queryKey: ['colab-artifact', id],
     queryFn: () => leerArtifact(id),
@@ -179,7 +182,11 @@ function ArtifactRef({ id, onAbrir }) {
     .filter(Boolean)
     .join(' · ');
   return (
-    <Tarjeta onPress={onAbrir && id ? () => onAbrir(id) : null} accessibilityLabel={`${data?.titulo || 'Artifact'}, ${detalle}`}>
+    <Tarjeta
+      onPress={onAbrir && id ? () => onAbrir(id) : null}
+      onLongPress={onReenviar && id ? () => onReenviar({ tipo: 'artifact', ref_id: id, meta: { titulo: String(data?.titulo || 'Dashboard').slice(0, 500), tipo: 'dashboard', clave: 'dashboard' } }) : null}
+      accessibilityLabel={`${data?.titulo || 'Artifact'}, ${detalle}`}
+    >
       <Icono Componente={PanelTop} tema={TEMAS.Economía} />
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK.title }} numberOfLines={2}>

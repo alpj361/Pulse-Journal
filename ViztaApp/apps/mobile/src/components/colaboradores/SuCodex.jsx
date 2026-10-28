@@ -8,19 +8,21 @@ import {
   ExternalLink,
   Newspaper,
   X,
+  Forward,
 } from 'lucide-react-native';
 import { CARD_SHADOW, INK, SERIF } from '../theme';
 import { TEMAS } from '../feed/temas';
 import { listo, roce } from '../../utils/haptics';
 import { espaciosDe, itemDeColaborador, itemsDeColaborador, quitarRecuerdo, traerAMiCodex } from './api';
 import PortadaEspacio from '../codex/PortadaEspacio';
-import { camposDeFuente, esArtifact, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
+import { adjuntoDe, camposDeFuente, esArtifact, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
 import { Boton, EstadoCentro, ROTULO, TONO, Refrescar } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 import { Cara, estiloDe } from './Elemento';
+import Reenviar from './Reenviar';
 
 
 const haceCuanto = (fecha) => {
@@ -451,7 +453,37 @@ function useTraer(colaborador, item) {
   return { trayendo, traido, fallo, traer };
 }
 
-function Acciones({ item, traer: t, onPedir }) {
+/** Lo de abajo de una ficha suya: traerla (o pedir unirla) y reenviarla. */
+function Acciones({ item, traer, onPedir }) {
+  const [reenviando, setReenviando] = useState(false);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flex: 1 }}>
+        <AccionPrincipal item={item} traer={traer} onPedir={onPedir} />
+      </View>
+      <Pressable
+        onPress={() => setReenviando(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Reenviar"
+        style={({ pressed }) => ({
+          width: 46,
+          height: 46,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: 'rgba(28,43,34,0.16)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.6 : 1,
+        })}
+      >
+        <Forward size={19} color={INK.title} strokeWidth={1.9} />
+      </Pressable>
+      {reenviando ? <Reenviar adjunto={adjuntoDe(item)} onCerrar={() => setReenviando(false)} /> : null}
+    </View>
+  );
+}
+
+function AccionPrincipal({ item, traer: t, onPedir }) {
   const loTenes = !!(item.ya_en_mi_codex || t.traido);
   const parecido = !loTenes && !!item.coincidencia_humano_id;
   if (loTenes) {

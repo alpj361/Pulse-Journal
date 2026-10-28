@@ -5,6 +5,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowUp, FolderOpen, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { INK, MOTION } from '../theme';
 import { EV, evento } from '../../utils/analitica';
+import { roce } from '../../utils/haptics';
 import { supabase } from '../../utils/supabase';
 import { abrirChat, chatDe, enviarMensaje, leerMensajes, seguimientosDe, tareasDe } from './api';
 import { claveTareas } from './Ficha';
@@ -14,6 +15,7 @@ import SuCodex from './SuCodex';
 import Adjuntar from './Adjuntar';
 import { Sigue } from './Seguimientos';
 import AbrirMio from './AbrirMio';
+import Reenviar from './Reenviar';
 import { Cabecera, TONO, nombreDe } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 
@@ -179,6 +181,8 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
 function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento }) {
   // Algo mío que le compartí: se abre con su propia pantalla.
   const [mioAbierto, setMioAbierto] = useState(null);
+  // Mantener presionado un adjunto: reenviarlo a otro chat.
+  const [reenviando, setReenviando] = useState(null);
   const queryClient = useQueryClient();
   const nombre = nombreDe(colaborador);
   // Si la lista ya trae la conversación, se abre sin esperar a nada.
@@ -335,6 +339,10 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
               mio={esMio(item, yo)}
               onAbrirItem={onAbrirItem}
               onAbrirMio={setMioAbierto}
+              onReenviar={(a) => {
+                roce();
+                setReenviando(a);
+              }}
               onAbrirArtifact={onAbrirArtifact}
               onAbrirSeguimiento={onAbrirSeguimiento}
               enviando={item.id === 'enviando'}
@@ -430,12 +438,13 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
           }}
         />
       ) : null}
+      {reenviando ? <Reenviar adjunto={reenviando} excluir={colaborador.id} bottomInset={bottomInset} onCerrar={() => setReenviando(null)} /> : null}
       {mioAbierto ? <AbrirMio id={mioAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setMioAbierto(null)} /> : null}
     </KeyboardAvoidingView>
   );
 }
 
-function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, enviando, enVivo }) {
+function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onReenviar, enviando, enVivo }) {
   const bloques = bloquesDe(mensaje);
   // Lo que llega en vivo sube desde abajo (la lista está invertida).
   return (
@@ -444,7 +453,7 @@ function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbr
       style={{ gap: 6, opacity: enviando ? 0.55 : 1 }}
     >
       {bloques.map((b) => (
-        <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirMio={onAbrirMio} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} />
+        <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirMio={onAbrirMio} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} onReenviar={onReenviar} />
       ))}
     </Animated.View>
   );

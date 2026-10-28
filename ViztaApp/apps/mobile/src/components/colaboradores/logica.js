@@ -756,3 +756,15 @@ export function itemsDelEspacio(items, espacio) {
 
 /** Un artifact (dashboard, página interactiva) se abre en su visor, no en una ficha. */
 export const esArtifact = (item) => item?.origen_tabla === 'artifacts' || ['artifact', 'dashboard'].includes(claveTipo(item));
+
+/**
+ * Algo del Codex como adjunto de un mensaje, para mandarlo o reenviarlo. Un
+ * dashboard va como `artifact`; lo demás, como `item`.
+ */
+export function adjuntoDe(item) {
+  const titulo = String(item?.titulo || item?.name || item?.nombre || '').slice(0, 500);
+  if (esArtifact(item) || claveTipo(item) === 'dashboard') {
+    return { tipo: 'artifact', ref_id: item.artifact_id || item.id, meta: { titulo, tipo: 'dashboard', clave: 'dashboard' } };
+  }
+  return { tipo: 'item', ref_id: item.id, meta: { titulo, tipo: nombreTipo(claveTipo(item)), clave: claveTipo(item) } };
+}

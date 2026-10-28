@@ -82,7 +82,7 @@ export function Cara({ item, imagen, size = 40 }) {
  * Algo del Codex adjunto a un mensaje: la cara, el título y el tipo, en una
  * tarjeta. Del lado de quien lo mandó.
  */
-export default function Elemento({ titulo, tipo, imagen, mio, onPress, derecha }) {
+export default function Elemento({ titulo, tipo, imagen, mio, onPress, onLongPress, derecha }) {
   const item = { tipo };
   const estilo = {
     alignSelf: mio ? 'flex-end' : 'flex-start',
@@ -112,7 +112,7 @@ export default function Elemento({ titulo, tipo, imagen, mio, onPress, derecha }
     </>
   );
   const etiqueta = `${titulo || 'Sin título'}, ${nombreTipo(claveTipo(item))}`;
-  if (!onPress) {
+  if (!onPress && !onLongPress) {
     return (
       <View style={estilo} accessible accessibilityLabel={etiqueta}>
         {contenido}
@@ -120,7 +120,7 @@ export default function Elemento({ titulo, tipo, imagen, mio, onPress, derecha }
     );
   }
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={etiqueta} style={({ pressed }) => [estilo, { opacity: pressed ? 0.7 : 1 }]}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={350} accessibilityRole="button" accessibilityLabel={etiqueta} style={({ pressed }) => [estilo, { opacity: pressed ? 0.7 : 1 }]}>
       {contenido}
     </Pressable>
   );

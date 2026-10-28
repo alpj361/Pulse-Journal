@@ -2,11 +2,12 @@ import { useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Forward } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { leerArtifact, titulosDeFuentes } from './api';
 import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
+import Reenviar from './Reenviar';
 
 /**
  * Los tokens de diseño que un artifact HTML puede usar (`var(--pulzos-*)` o
@@ -77,6 +78,7 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
   const a = consulta.data;
   // El HTML tarda un momento en dibujarse: mientras, el loader de la app.
   const [dibujando, setDibujando] = useState(true);
+  const [reenviando, setReenviando] = useState(false);
   const fuentes = useMemo(() => (Array.isArray(a?.fuentes) ? a.fuentes : []), [a]);
   const titulos = useQuery({
     queryKey: ['colab-titulos-fuentes', id],
@@ -107,6 +109,24 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
         >
           <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK.meta }}>{a.version}</Text>
         </View>
+      ) : null}
+      {a ? (
+        <Pressable
+          onPress={() => setReenviando(true)}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel="Reenviar"
+          style={({ pressed }) => ({ width: 40, height: 44, marginRight: -8, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+        >
+          <Forward size={20} color={INK.title} strokeWidth={1.9} />
+        </Pressable>
+      ) : null}
+      {reenviando && a ? (
+        <Reenviar
+          adjunto={{ tipo: 'artifact', ref_id: id, meta: { titulo: String(a.titulo || 'Dashboard').slice(0, 500), tipo: 'dashboard', clave: 'dashboard' } }}
+          bottomInset={bottomInset}
+          onCerrar={() => setReenviando(false)}
+        />
       ) : null}
     </View>
   );
