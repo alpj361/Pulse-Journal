@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EXTRACTORW_URL } from '../../utils/servicios';
-import { normalizarHallazgo, normalizarSeguimiento } from './logica';
+import { conTareasVivas, normalizarHallazgo, normalizarSeguimiento } from './logica';
 import { supabase } from '../../utils/supabase';
 
 /**
@@ -331,7 +331,7 @@ async function oNull(promesa) {
   }
 }
 
-export const tareasDe = (id) => oNull(pedir(ficha(id, 'tareas')));
+export const tareasDe = (id) => oNull(pedir(ficha(id, 'tareas'))).then((d) => conTareasVivas(d));
 export const crearTarea = (id, tarea) => pedir(ficha(id, 'tareas'), { method: 'POST', body: tarea });
 export const cambiarTarea = (id, tid, cambios) => pedir(ficha(id, `tareas/${encodeURIComponent(tid)}`), { method: 'PATCH', body: cambios });
 export const borrarTarea = (id, tid) => pedir(ficha(id, `tareas/${encodeURIComponent(tid)}`), { method: 'DELETE' });

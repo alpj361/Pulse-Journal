@@ -3,13 +3,14 @@ import { Linking, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { AlignLeft, ArrowUpRight, ChevronDown, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
+import { AlignLeft, BookOpen, ChevronDown, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
 import { INK } from '../theme';
 import { TEMAS } from '../feed/temas';
 import { supabase } from '../../utils/supabase';
 import MorphingInfinity from '../MorphingInfinity';
 import { leerArtifact } from './api';
-import { Boton, TONO } from './piezas';
+import { resumenPlano } from './logica';
+import { TONO } from './piezas';
 
 /**
  * Un bloque de un mensaje (contrato `openui.v1`, pantalla 4 del diseño).
@@ -252,7 +253,7 @@ function LaNota({ url, esNoticia }) {
       return filas?.[0] || null;
     },
   });
-  const resumen = String(data?.resumen || '').trim();
+  const resumen = resumenPlano(data?.resumen);
   const pie = [data?.fuente || dominio(url), diaCorto(data?.fecha)].filter(Boolean).join(' · ');
   return (
     <Animated.View entering={FadeIn.duration(180)} style={{ gap: 10, paddingLeft: 2 }}>
@@ -261,14 +262,29 @@ function LaNota({ url, esNoticia }) {
       ) : resumen ? (
         <Text style={{ fontSize: 13, lineHeight: 18.5, color: INK.body }}>{resumen}</Text>
       ) : null}
-      {pie ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{pie}</Text> : null}
-      <Boton
-        texto="leer la nota"
-        Icono={ArrowUpRight}
-        alto={38}
-        onPress={() => WebBrowser.openBrowserAsync(url).catch(() => Linking.openURL(url).catch(() => {}))}
-        style={{ alignSelf: 'flex-start' }}
-      />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text style={{ flex: 1, fontSize: 11.5, color: INK.meta }} numberOfLines={1}>
+          {pie}
+        </Text>
+        <Pressable
+          onPress={() => WebBrowser.openBrowserAsync(url).catch(() => Linking.openURL(url).catch(() => {}))}
+          hitSlop={6}
+          accessibilityRole="link"
+          accessibilityLabel="Leer la nota"
+          style={({ pressed }) => ({
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(28,43,34,0.16)',
+            opacity: pressed ? 0.6 : 1,
+          })}
+        >
+          <BookOpen size={17} color={INK.title} strokeWidth={1.9} />
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }

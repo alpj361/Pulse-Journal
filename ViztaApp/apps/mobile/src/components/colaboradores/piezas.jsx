@@ -117,8 +117,8 @@ export function Cabecera({ colaborador, subtitulo, onVolver, volverLabel = 'Volv
   );
 }
 
-/** Botón de la app: `primario` en tinta, el resto con borde. `Icono` va después del texto. */
-export function Boton({ texto, onPress, primario, peligro, cargando, disabled, alto = 46, style, accessibilityLabel, Icono }) {
+/** Botón de la app: `primario` en tinta, el resto con borde. */
+export function Boton({ texto, onPress, primario, peligro, cargando, disabled, alto = 46, style, accessibilityLabel }) {
   const apagado = disabled || cargando;
   return (
     <Pressable
@@ -145,12 +145,9 @@ export function Boton({ texto, onPress, primario, peligro, cargando, disabled, a
       {cargando ? (
         <MorphingInfinity size={18} color={primario ? '#FFFFFF' : INK.title} />
       ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 15, fontWeight: primario ? '700' : '600', color: primario ? '#FFFFFF' : peligro ? TONO.rojo : INK.title }}>
-            {texto}
-          </Text>
-          {Icono ? <Icono size={16} strokeWidth={2} color={primario ? '#FFFFFF' : peligro ? TONO.rojo : INK.title} /> : null}
-        </View>
+        <Text style={{ fontSize: 15, fontWeight: primario ? '700' : '600', color: primario ? '#FFFFFF' : peligro ? TONO.rojo : INK.title }}>
+          {texto}
+        </Text>
       )}
     </Pressable>
   );

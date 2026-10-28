@@ -374,6 +374,11 @@ export const resumenPlano = (texto) =>
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
+    .replace(/&#(\d{2,6});/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]{2,6});/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    // El pie que WordPress pega en sus resúmenes: «The post … appeared first on …».
+    .replace(/\s*The post [\s\S]{0,600}? appeared first on [\s\S]{0,120}$/i, '')
+    .replace(/\s*\[\s*(…|\.\.\.)\s*\]/g, '…')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, '')
     .replace(/[*_`~]+/g, '')
@@ -531,6 +536,28 @@ export const EVENTOS_DE_AGENTE = [
 
 /** Cómo se dice el estado de una tarea. */
 export const ESTADO_TAREA = { en_curso: 'haciendo', pendiente: 'pendiente', pausada: 'en pausa', completada: 'hecha' };
+
+/**
+ * Un agente deja una tarea «en curso» y a veces no la cierra. Si pasó más de
+ * una hora sin avance, ya no la está haciendo: no va como «haciendo ahora».
+ */
+export const QUIETA_MS = 60 * 60 * 1000;
+
+export function enMarcha(t, ahora = Date.now()) {
+  if (t?.estado !== 'en_curso') return false;
+  const ultima = Date.parse(t.updated_at || t.started_at || '');
+  return Number.isFinite(ultima) && ahora - ultima < QUIETA_MS;
+}
+
+/** Lo que trae el servidor, sin «haciendo ahora» si esa tarea quedó quieta. */
+export function conTareasVivas(datos, ahora = Date.now()) {
+  if (!datos || !datos.haciendo_ahora || enMarcha(datos.haciendo_ahora, ahora)) return datos;
+  return { ...datos, haciendo_ahora: null };
+}
+
+/** «haciendo», o «empezada» si quedó quieta. */
+export const estadoTarea = (t, ahora = Date.now()) =>
+  t?.estado === 'en_curso' && !enMarcha(t, ahora) ? 'empezada' : ESTADO_TAREA[t?.estado] || t?.estado;
 
 /** Las tareas que siguen abiertas, la que hace primero; y cuántas ya hizo. */
 export function repartirTareas(datos) {

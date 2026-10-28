@@ -9,7 +9,7 @@ import { borrarTarea, calificarFuente, cambiarTarea, crearTarea, fuenteDe, fuent
 import { Ficha as FichaItem } from './SuCodex';
 import MorphingInfinity from '../MorphingInfinity';
 import {
-  ESTADO_TAREA,
+  estadoTarea,
   FILTROS_FUENTES,
   filtrarFuentes,
   resumenFuentes,
@@ -156,7 +156,7 @@ function FilaTarea({ tarea: t, borde, onPress }) {
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${t.titulo}, ${ESTADO_TAREA[t.estado] || t.estado}`}
+      accessibilityLabel={`${t.titulo}, ${estadoTarea(t)}`}
       style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, opacity: pressed ? 0.6 : 1 }, borde ? RAYA : null]}
     >
       <View style={{ flex: 1, gap: 2 }}>
@@ -167,7 +167,7 @@ function FilaTarea({ tarea: t, borde, onPress }) {
           {t.titulo}
         </Text>
         <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>
-          {[ESTADO_TAREA[t.estado], t.espacio_nombre, t.origen === 'humano' ? 'se lo pediste vos' : null].filter(Boolean).join(' · ')}
+          {[estadoTarea(t), t.espacio_nombre, t.origen === 'humano' ? 'se lo pediste vos' : null].filter(Boolean).join(' · ')}
         </Text>
       </View>
     </Pressable>
