@@ -101,7 +101,7 @@ export function respuestaDe(mensaje, blockId) {
  * OpenUI y lo cifrado todavía no existen en la app: no se muestran ni se
  * anuncian. Cuando entren, se suman acá y en Bloques.jsx.
  */
-export const SE_VEN = ['text', 'code', 'attachment', 'artifact_ref', 'seguimiento_ref'];
+export const SE_VEN = ['text', 'code', 'attachment', 'artifact_ref', 'seguimiento_ref', 'contacto_ref'];
 
 /**
  * Los bloques de un mensaje que se dibujan. Un mensaje sin bloques pero con
@@ -307,6 +307,8 @@ const NOMBRES_TIPO = {
   objeto: ['objeto', 'objetos'],
   artefacto: ['artefacto', 'artefactos'],
   memoria: ['memoria', 'memorias'],
+  seguimiento: ['monitoreo', 'monitoreos'],
+  monitor: ['monitoreo', 'monitoreos'],
   artifact: ['dashboard', 'dashboards'],
   dashboard: ['dashboard', 'dashboards'],
 };
@@ -768,3 +770,6 @@ export function adjuntoDe(item) {
   }
   return { tipo: 'item', ref_id: item.id, meta: { titulo, tipo: nombreTipo(claveTipo(item)), clave: claveTipo(item) } };
 }
+
+/** Un agente de otra persona que te compartió: solo se le escribe (PR #75). */
+export const esContacto = (c) => !!(c?.es_contacto || c?.rol === 'contacto');

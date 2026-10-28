@@ -9,13 +9,15 @@ import { roce } from '../../utils/haptics';
 import { supabase } from '../../utils/supabase';
 import { abrirChat, chatDe, enviarMensaje, leerMensajes, seguimientosDe, tareasDe } from './api';
 import { claveTareas } from './Ficha';
-import { bloquesDe, esMio, haciendoAhora, seVe, unirMensajes } from './logica';
+import { bloquesDe, esContacto, esMio, haciendoAhora, seVe, unirMensajes } from './logica';
 import Bloque from './Bloques';
 import SuCodex from './SuCodex';
 import Adjuntar from './Adjuntar';
 import { Sigue } from './Seguimientos';
 import AbrirMio from './AbrirMio';
 import Reenviar from './Reenviar';
+import Compartido from './Compartido';
+import Monitoreo from './Monitoreo';
 import { Cabecera, TONO, nombreDe } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 
@@ -24,6 +26,12 @@ const PESTANAS = [
   { clave: 'codex', texto: 'Su Codex' },
   { clave: 'sigue', texto: 'Sigue' },
 ];
+/** Con una persona no hay Codex suyo: está lo que se compartieron. */
+const PESTANAS_PERSONA = [
+  { clave: 'chat', texto: 'Chat' },
+  { clave: 'compartido', texto: 'Compartido' },
+];
+
 
 /**
  * La última pestaña que se vio de cada colaborador: al volver a su chat se
@@ -38,11 +46,17 @@ const ULTIMA_PESTANA = new Map();
 const CADA = 30000;
 
 /**
- * El chat con un colaborador (pantallas 4 y 8): Chat y Su Codex, en pestañas.
- * «Compartido» entra con la fase de compartir.
+ * El chat con un colaborador (pantallas 4 y 8). Con un agente tuyo: Chat, Su
+ * Codex y Sigue. Con una persona: Chat y Compartido. Con el agente de otra
+ * persona (contacto): solo el chat.
  */
-export default function Chat({ colaborador, yo, borrador, topInset, bottomInset, onVolver, onPermisos, onPerfil, onAbrirEspacio, onAbrirArtifact, onAbrirSeguimiento, pestanaInicial }) {
-  const [pestana, setPestanaLocal] = useState(() => pestanaInicial || ULTIMA_PESTANA.get(colaborador.id) || 'chat');
+export default function Chat({ colaborador, yo, borrador, topInset, bottomInset, onVolver, onPermisos, onPerfil, onAbrirEspacio, onAbrirArtifact, onAbrirSeguimiento, onAbrirContacto, pestanaInicial }) {
+  const esPersona = colaborador.cuenta_tipo === 'humano';
+  const contacto = esContacto(colaborador);
+  const [pestana, setPestanaLocal] = useState(() => (contacto ? 'chat' : pestanaInicial || ULTIMA_PESTANA.get(colaborador.id) || 'chat'));
+  // Un monitoreo que llegó por el chat o en «Compartido».
+  const [monitoreo, setMonitoreo] = useState(null);
+  const [abriendoCompartido, setAbriendoCompartido] = useState(null);
   const setPestana = useCallback(
     (p) => {
       ULTIMA_PESTANA.set(colaborador.id, p);
@@ -54,7 +68,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   const tareas = useQuery({
     queryKey: claveTareas(colaborador.id),
     queryFn: () => tareasDe(colaborador.id),
-    enabled: colaborador.cuenta_tipo === 'agente',
+    enabled: colaborador.cuenta_tipo === 'agente' && !contacto,
     staleTime: 1000 * 30,
     refetchInterval: 1000 * 60,
     retry: false,
@@ -64,13 +78,13 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   const seguimientos = useQuery({
     queryKey: ['colab-seguimientos', colaborador.id],
     queryFn: () => seguimientosDe(colaborador.id),
-    enabled: colaborador.cuenta_tipo === 'agente',
+    enabled: colaborador.cuenta_tipo === 'agente' && !contacto,
     staleTime: 1000 * 60,
     refetchInterval: 1000 * 60 * 2,
     retry: false,
   });
   const conSigue = seguimientos.data != null || (seguimientos.isLoading && pestana === 'sigue');
-  const pestanas = PESTANAS.filter((p) => p.clave !== 'sigue' || conSigue);
+  const pestanas = contacto ? [] : esPersona ? PESTANAS_PERSONA : PESTANAS.filter((p) => p.clave !== 'sigue' || conSigue);
   // Si quedó en «Sigue» y el agente ya no sigue nada, vuelve al chat.
   useEffect(() => {
     if (pestana === 'sigue' && !conSigue) setPestana('chat');
@@ -80,14 +94,14 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   const [pedido, setPedido] = useState(null);
   const [abrirId, setAbrirId] = useState(null);
   const nombre = nombreDe(colaborador);
-  const esAgente = colaborador.cuenta_tipo === 'agente';
+  const esAgente = colaborador.cuenta_tipo === 'agente' && !contacto;
 
   return (
     <View style={{ flex: 1 }}>
       <View style={{ paddingBottom: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: TONO.raya }}>
         <Cabecera
           colaborador={colaborador}
-          subtitulo={esAgente ? haciendoAhora(tareas.data) : null}
+          subtitulo={esAgente ? haciendoAhora(tareas.data) : contacto && colaborador.owner_nombre ? `de ${colaborador.owner_nombre}` : null}
           onVolver={onVolver}
           volverLabel="Volver a Colaboradores"
           topInset={topInset}
@@ -105,6 +119,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
                   <FolderOpen size={21} color={INK.body} strokeWidth={1.8} />
                 </Pressable>
               ) : null}
+              {contacto ? null : (
               <Pressable
                 onPress={onPermisos}
                 hitSlop={6}
@@ -114,9 +129,11 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
               >
                 <SlidersHorizontal size={20} color={INK.body} strokeWidth={1.8} />
               </Pressable>
+              )}
             </View>
           }
         />
+        {pestanas.length ? (
         <View
           accessibilityRole="tablist"
           style={{ marginHorizontal: 20, flexDirection: 'row', gap: 4, padding: 4, backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 12 }}
@@ -138,6 +155,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
             );
           })}
         </View>
+        ) : null}
       </View>
 
       {pestana === 'chat' ? (
@@ -152,11 +170,27 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
             else setPestana('sigue');
           }}
           onAbrirArtifact={onAbrirArtifact}
+          onAbrirMonitoreo={setMonitoreo}
+          onAbrirContacto={onAbrirContacto}
           bottomInset={bottomInset}
-          onAbrirItem={(id) => {
-            setAbrirId(id);
-            setPestana('codex');
-          }}
+          // Lo de un agente tuyo se abre en Su Codex; lo de una persona o de un
+          // agente ajeno, en lectura ahí mismo.
+          onAbrirItem={
+            esAgente
+              ? (id) => {
+                  setAbrirId(id);
+                  setPestana('codex');
+                }
+              : null
+          }
+        />
+      ) : pestana === 'compartido' ? (
+        <Compartido
+          colaborador={colaborador}
+          bottomInset={bottomInset}
+          onAbrirArtifact={onAbrirArtifact}
+          onAbrirMonitoreo={setMonitoreo}
+          onAbrirItem={(id, ajeno) => setAbriendoCompartido({ id, ajeno })}
         />
       ) : pestana === 'sigue' ? (
         <Sigue consulta={seguimientos} nombre={nombreDe(colaborador)} bottomInset={bottomInset} onAbrir={(s) => onAbrirSeguimiento?.(s)} />
@@ -174,11 +208,15 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
           }}
         />
       )}
+      {abriendoCompartido ? (
+        <AbrirMio id={abriendoCompartido.id} ajeno={abriendoCompartido.ajeno} topInset={topInset} bottomInset={bottomInset} onClose={() => setAbriendoCompartido(null)} />
+      ) : null}
+      {monitoreo ? <Monitoreo id={monitoreo} bottomInset={bottomInset} onCerrar={() => setMonitoreo(null)} /> : null}
     </View>
   );
 }
 
-function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento }) {
+function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto }) {
   // Algo mío que le compartí: se abre con su propia pantalla.
   const [mioAbierto, setMioAbierto] = useState(null);
   // Mantener presionado un adjunto: reenviarlo a otro chat.
@@ -337,8 +375,10 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
             <Mensaje
               mensaje={item}
               mio={esMio(item, yo)}
-              onAbrirItem={onAbrirItem}
-              onAbrirMio={setMioAbierto}
+              onAbrirItem={onAbrirItem || ((id) => setMioAbierto({ id, ajeno: true }))}
+              onAbrirMio={(id) => setMioAbierto({ id, ajeno: false })}
+              onAbrirMonitoreo={onAbrirMonitoreo}
+              onAbrirContacto={onAbrirContacto}
               onReenviar={(a) => {
                 roce();
                 setReenviando(a);
@@ -430,6 +470,7 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
       {adjuntando ? (
         <Adjuntar
           userId={yo.id}
+          conPersona={colaborador.cuenta_tipo === 'humano'}
           bottomInset={bottomInset}
           onCerrar={() => setAdjuntando(false)}
           onAdjuntar={(adjuntos) => {
@@ -439,12 +480,12 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
         />
       ) : null}
       {reenviando ? <Reenviar adjunto={reenviando} excluir={colaborador.id} bottomInset={bottomInset} onCerrar={() => setReenviando(null)} /> : null}
-      {mioAbierto ? <AbrirMio id={mioAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setMioAbierto(null)} /> : null}
+      {mioAbierto ? <AbrirMio id={mioAbierto.id} ajeno={mioAbierto.ajeno} topInset={topInset} bottomInset={bottomInset} onClose={() => setMioAbierto(null)} /> : null}
     </KeyboardAvoidingView>
   );
 }
 
-function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onReenviar, enviando, enVivo }) {
+function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto, onReenviar, enviando, enVivo }) {
   const bloques = bloquesDe(mensaje);
   // Lo que llega en vivo sube desde abajo (la lista está invertida).
   return (
@@ -453,7 +494,7 @@ function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbr
       style={{ gap: 6, opacity: enviando ? 0.55 : 1 }}
     >
       {bloques.map((b) => (
-        <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirMio={onAbrirMio} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} onReenviar={onReenviar} />
+        <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirMio={onAbrirMio} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} onAbrirMonitoreo={onAbrirMonitoreo} onAbrirContacto={onAbrirContacto} onReenviar={onReenviar} />
       ))}
     </Animated.View>
   );

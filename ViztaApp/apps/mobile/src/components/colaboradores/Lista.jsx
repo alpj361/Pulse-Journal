@@ -4,7 +4,7 @@ import { Bell, ChevronRight, Plus, X } from 'lucide-react-native';
 import { INK } from '../theme';
 import { usePistasStore, PISTA } from '../../state/pistasStore';
 import { NoDisponible, humanosHabilitados } from './api';
-import { filtrar, horaCorta, ordenar, porAprobar, previa, queHace } from './logica';
+import { esContacto, filtrar, horaCorta, ordenar, porAprobar, previa, queHace } from './logica';
 import { Avatar, Boton, Chip, EstadoCentro, TONO, nombreDe, Refrescar } from './piezas';
 import { TarjetaConexion } from './AutorizarConexion';
 
@@ -258,7 +258,8 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
               <Chip texto={pendientes} />
             </Pressable>
           ) : null}
-          <Text style={{ fontSize: 11.5, color: INK.meta }}>{queHace(c.permisos)}</Text>
+          {/* De un agente ajeno se dice de quién es; sus permisos son de su dueño. */}
+          <Text style={{ fontSize: 11.5, color: INK.meta }}>{esContacto(c) ? (c.owner_nombre ? `de ${c.owner_nombre}` : '') : queHace(c.permisos)}</Text>
         </View>
       </View>
     </Pressable>

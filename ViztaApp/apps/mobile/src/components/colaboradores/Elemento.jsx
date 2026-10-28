@@ -15,6 +15,7 @@ import {
   Link2,
   MapPin,
   Quote,
+  Radar,
   Search,
   User,
 } from 'lucide-react-native';
@@ -45,6 +46,8 @@ const ESTILO = {
   artifact: { Icono: LayoutDashboard, tema: TEMAS.Tecnología },
   dashboard: { Icono: LayoutDashboard, tema: TEMAS.Tecnología },
   post: { Icono: AtSign, tema: TEMAS.Social },
+  seguimiento: { Icono: Radar, tema: TEMAS.Violencia },
+  monitor: { Icono: Radar, tema: TEMAS.Violencia },
 };
 
 export const estiloDe = (item) => ESTILO[claveTipo(item)] || { Icono: FileText, tema: TEMAS.Clima };

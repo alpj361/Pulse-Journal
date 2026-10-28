@@ -163,6 +163,19 @@ export const registrarAccion = (conversacionId, { mensajeId, blockId, action, la
 // ─── Compartir, solicitudes y merge ──────────────────────────────────────────
 
 export const listarCompartidos = async () => (await pedir('/colaboraciones/compartidos')).compartidos || [];
+/**
+ * Lo que nos compartimos con una persona, en los dos sentidos. Cada fila trae
+ * `titulo`, `tipo`, `direccion` (enviado | recibido) y `categoria` (codex |
+ * monitoreos). PR #75.
+ */
+export const compartidosCon = async (humanoId) =>
+  ((await pedir('/colaboraciones/compartidos', { query: { con: humanoId } })).compartidos || []).filter((f) => f.estado !== 'revocado');
+/** Algo que te compartieron, completo (lectura). */
+export const itemCompartido = async (id) => (await pedir(`/colaboraciones/codex/items/${encodeURIComponent(id)}`)).item;
+/** Un monitoreo compartido: el tema y su estructura (sin secretos). PR #75. */
+export const monitoreoCompartido = (id) => pedir(`/colaboraciones/seguimientos/${encodeURIComponent(id)}`);
+/** Ponerlo a correr con uno de tus agentes (o a tu nombre). PR #75. */
+export const usarMonitoreo = (id, body = {}) => pedir(`/colaboraciones/seguimientos/${encodeURIComponent(id)}/aplicar`, { method: 'POST', body });
 export const compartir = (body) => pedir('/colaboraciones/compartidos', { method: 'POST', body });
 export const dejarDeCompartir = (id) => pedir(`/colaboraciones/compartidos/${encodeURIComponent(id)}`, { method: 'DELETE' });
 

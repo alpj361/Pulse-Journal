@@ -12,12 +12,12 @@ import {
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Code, Folder, Quote, Search } from "lucide-react-native";
+import { Bot, Check, Code, Folder, Quote, Radar, Search } from "lucide-react-native";
 import { INK, MOTION, SERIF } from "../theme";
 import { roce } from "../../utils/haptics";
-import { buscarEnMiCodex, misEspaciosParaAdjuntar, tiposDeMiCodex } from "./api";
-import { adjuntoDe, claveTipo, nombreTipo } from "./logica";
-import { Boton, ROTULO, TONO } from "./piezas";
+import { buscarEnMiCodex, listarColaboradores, misEspaciosParaAdjuntar, seguimientosDe, tiposDeMiCodex } from "./api";
+import { adjuntoDe, claveTipo, esContacto, nombreTipo, visibles } from "./logica";
+import { Avatar, Boton, ROTULO, TONO, nombreDe } from "./piezas";
 import MorphingInfinity from "../MorphingInfinity";
 import { Cara, estiloDe } from "./Elemento";
 
@@ -26,6 +26,8 @@ const MAX_ADJUNTOS = 20;
 
 const MODOS = [
   { clave: "codex", texto: "de mi Codex", Icono: Search },
+  { clave: "monitoreo", texto: "monitoreo", Icono: Radar },
+  { clave: "agente", texto: "agente", Icono: Bot, soloPersona: true },
   { clave: "fragmento", texto: "fragmento", Icono: Quote },
   { clave: "codigo", texto: "código", Icono: Code },
 ];
@@ -39,11 +41,31 @@ const MODOS = [
  */
 export default function Adjuntar({
   userId,
+  // Con una persona se puede mandar además un agente tuyo, como contacto.
+  conPersona = false,
   bottomInset,
   onAdjuntar,
   onCerrar,
 }) {
   const [modo, setModo] = useState("codex");
+
+  // Tus agentes (para mandarlos como contacto) y lo que siguen (sus monitoreos).
+  const misAgentes = useQuery({
+    queryKey: ["colab-lista", userId],
+    queryFn: async () => visibles(await listarColaboradores(), userId),
+    enabled: (modo === "agente" || modo === "monitoreo") && !!userId,
+    staleTime: 1000 * 30,
+  });
+  const agentes = (misAgentes.data || []).filter((c) => c.cuenta_tipo === "agente" && !esContacto(c));
+  const monitoreos = useQuery({
+    queryKey: ["colab-adjuntar-monitoreos", agentes.map((a) => a.id).join(",")],
+    queryFn: async () => {
+      const listas = await Promise.all(agentes.map((a) => seguimientosDe(a.id).catch(() => null)));
+      return listas.flatMap((l, i) => (l || []).map((s) => ({ ...s, _agente: nombreDe(agentes[i]) })));
+    },
+    enabled: modo === "monitoreo" && agentes.length > 0,
+    staleTime: 1000 * 60,
+  });
   const [busqueda, setBusqueda] = useState("");
   const [elegidos, setElegidos] = useState([]);
   const [texto, setTexto] = useState("");
@@ -98,8 +120,8 @@ export default function Adjuntar({
   };
 
   const listos =
-    modo === "codex"
-      ? elegidos.map((it) => adjuntoDe(it))
+    modo === "codex" || modo === "monitoreo" || modo === "agente"
+      ? elegidos.map((it) => it._adjunto || adjuntoDe(it))
       : texto.trim()
         ? [
             {
@@ -164,8 +186,8 @@ export default function Adjuntar({
               Adjuntar
             </Text>
 
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              {MODOS.map(({ clave, texto: t, Icono }) => {
+            <Fila>
+              {MODOS.filter((m) => !m.soloPersona || conPersona).map(({ clave, texto: t, Icono }) => {
                 const activo = clave === modo;
                 return (
                   <Pressable
@@ -205,7 +227,7 @@ export default function Adjuntar({
                   </Pressable>
                 );
               })}
-            </View>
+            </Fila>
 
             {modo === "codex" ? (
               <>
@@ -356,6 +378,68 @@ export default function Adjuntar({
                   ) : null}
                 </ScrollView>
               </>
+            ) : modo === "monitoreo" || modo === "agente" ? (
+              <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 2 }}>
+                {misAgentes.isLoading || monitoreos.isLoading ? (
+                  <MorphingInfinity size={20} color={INK.meta} style={{ marginVertical: 12, alignSelf: "center" }} />
+                ) : null}
+                {(modo === "agente"
+                  ? agentes.map((c) => ({
+                      id: `agente-${c.id}`,
+                      titulo: nombreDe(c),
+                      meta: "como contacto",
+                      cara: <Avatar tipo="agente" nombre={nombreDe(c)} size={36} />,
+                      _adjunto: { tipo: "agente", ref_id: c.cuenta_id, meta: { nombre: nombreDe(c).slice(0, 200), titulo: nombreDe(c).slice(0, 200) } },
+                    }))
+                  : (monitoreos.data || []).map((m) => ({
+                      id: `monitoreo-${m.id}`,
+                      titulo: m.tema || "Sin tema",
+                      meta: m._agente,
+                      cara: <Cara item={{ tipo: "seguimiento" }} size={36} />,
+                      _adjunto: { tipo: "seguimiento", ref_id: m.id, meta: { titulo: String(m.tema || "Monitoreo").slice(0, 500), clave: "seguimiento" } },
+                    }))
+                ).map((it) => {
+                  const si = elegidos.some((x) => x.id === it.id);
+                  return (
+                    <Pressable
+                      key={it.id}
+                      onPress={() => alternar(it)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: si }}
+                      accessibilityLabel={it.titulo}
+                      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, opacity: pressed ? 0.6 : 1 })}
+                    >
+                      {it.cara}
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={{ fontSize: 14.5, fontWeight: "600", color: INK.title }} numberOfLines={1}>
+                          {it.titulo}
+                        </Text>
+                        {it.meta ? <Text style={{ fontSize: 12, color: INK.meta }}>{it.meta}</Text> : null}
+                      </View>
+                      <View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 12,
+                          borderWidth: si ? 0 : 1.5,
+                          borderColor: "rgba(28,43,34,0.2)",
+                          backgroundColor: si ? TONO.verde : "transparent",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {si ? <Check size={14} color="#FFFFFF" strokeWidth={3} /> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+                {modo === "monitoreo" && !monitoreos.isLoading && !(monitoreos.data || []).length ? (
+                  <Text style={{ fontSize: 13.5, color: INK.body, paddingVertical: 10 }}>Tus agentes todavía no siguen ningún tema.</Text>
+                ) : null}
+                {modo === "agente" && !misAgentes.isLoading && !agentes.length ? (
+                  <Text style={{ fontSize: 13.5, color: INK.body, paddingVertical: 10 }}>Todavía no tenés agentes.</Text>
+                ) : null}
+              </ScrollView>
             ) : (
               <TextInput
                 value={texto}

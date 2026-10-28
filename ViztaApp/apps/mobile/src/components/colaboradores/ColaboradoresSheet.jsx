@@ -215,6 +215,12 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         onAbrirEspacio={(espacio) => ir({ tipo: 'espacio', colaborador: vigente, espacio })}
         onAbrirArtifact={(id) => ir({ tipo: 'artifact', id })}
         onAbrirSeguimiento={(s) => ir({ tipo: 'seguimiento', colaborador: vigente, seguimiento: s })}
+        // Un agente que te mandaron como contacto: se abre su chat.
+        onAbrirContacto={async (agenteId) => {
+          const r = await consulta.refetch();
+          const c = (r.data || []).find((x) => x.cuenta_tipo === 'agente' && (x.cuenta_id === agenteId || x.id === agenteId));
+          if (c) ir({ tipo: 'chat', colaborador: c });
+        }}
         pestanaInicial={vista.pestana}
       />
     );

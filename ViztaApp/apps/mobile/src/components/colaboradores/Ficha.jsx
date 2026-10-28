@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AtSign, Bot, ChevronLeft, ChevronRight, Globe, Landmark, ListChecks, Newspaper, Plus } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { roce } from '../../utils/haptics';
-import { borrarTarea, calificarFuente, cambiarTarea, crearTarea, fuenteDe, fuentesDe, tareasDe } from './api';
+import { borrarTarea, calificarFuente, cambiarTarea, crearTarea, dejarDeCompartir, fuenteDe, fuentesDe, listarCompartidos, listarColaboradores, tareasDe } from './api';
 import { Ficha as FichaItem } from './SuCodex';
 import MorphingInfinity from '../MorphingInfinity';
 import {
@@ -528,7 +528,71 @@ export function Perfil({ colaborador, topInset, bottomInset, onVolver, onAbrir }
             </Pressable>
           ))}
         </View>
+
+        <LoTienen colaborador={colaborador} />
       </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Las personas que tienen a este agente como contacto (se lo mandaste por
+ * chat). Se le puede dejar de compartir a cada una.
+ */
+function LoTienen({ colaborador }) {
+  const queryClient = useQueryClient();
+  const compartidos = useQuery({
+    queryKey: ['colab-agente-compartido', colaborador.cuenta_id],
+    queryFn: async () =>
+      (await listarCompartidos()).filter((f) => f.recurso_tipo === 'agente' && f.recurso_id === colaborador.cuenta_id && f.estado !== 'revocado'),
+    staleTime: 1000 * 30,
+    retry: false,
+  });
+  const personas = useQuery({ queryKey: ['colab-personas-nombres'], queryFn: listarColaboradores, staleTime: 1000 * 60, enabled: !!compartidos.data?.length });
+  const [quitando, setQuitando] = useState(null);
+  const filas = compartidos.data || [];
+  if (!filas.length) return null;
+  const nombreDePersona = (id) => {
+    const c = (personas.data || []).find((x) => x.cuenta_tipo === 'humano' && x.cuenta_id === id);
+    return c ? nombreDe(c) : 'Alguien';
+  };
+  const quitar = (f) => {
+    const n = nombreDePersona(f.destinatario_id);
+    Alert.alert(`¿Dejar de compartir con ${n}?`, `${n} ya no va a poder escribirle a ${nombreDe(colaborador)}.`, [
+      { text: 'cancelar', style: 'cancel' },
+      {
+        text: 'dejar de compartir',
+        style: 'destructive',
+        onPress: async () => {
+          setQuitando(f.id);
+          try {
+            await dejarDeCompartir(f.id);
+            queryClient.invalidateQueries({ queryKey: ['colab-agente-compartido', colaborador.cuenta_id] });
+          } finally {
+            setQuitando(null);
+          }
+        },
+      },
+    ]);
+  };
+  return (
+    <View style={{ gap: 8, marginTop: 22 }}>
+      <Text style={ROTULO}>LO TIENEN</Text>
+      {filas.map((f) => (
+        <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 }}>
+          <Avatar tipo="humano" nombre={nombreDePersona(f.destinatario_id)} size={36} />
+          <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>
+            {nombreDePersona(f.destinatario_id)}
+          </Text>
+          {quitando === f.id ? (
+            <MorphingInfinity size={16} color={INK.meta} />
+          ) : (
+            <Pressable onPress={() => quitar(f)} hitSlop={8} accessibilityRole="button">
+              <Text style={{ fontSize: 13.5, fontWeight: '600', color: TONO.rojo }}>dejar de compartir</Text>
+            </Pressable>
+          )}
+        </View>
+      ))}
     </View>
   );
 }

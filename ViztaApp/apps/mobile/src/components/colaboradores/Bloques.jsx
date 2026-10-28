@@ -11,7 +11,7 @@ import MorphingInfinity from '../MorphingInfinity';
 import { leerArtifact } from './api';
 import { resumenPlano } from './logica';
 import Elemento from './Elemento';
-import { TONO } from './piezas';
+import { Avatar, TONO } from './piezas';
 
 /**
  * Un bloque de un mensaje (contrato `openui.v1`, pantalla 4 del diseño).
@@ -19,7 +19,7 @@ import { TONO } from './piezas';
  * Texto, adjuntos, código y la referencia a un artifact. Lo demás todavía no
  * existe en la app y no se dibuja (ver `SE_VEN` en logica.js).
  */
-export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onReenviar }) {
+export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto, onReenviar }) {
   const p = bloque?.payload || {};
   switch (bloque?.type) {
     case 'text':
@@ -27,6 +27,10 @@ export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirAr
     case 'code':
       return <Codigo contenido={p.contenido} />;
     case 'attachment':
+      if (p.tipo === 'seguimiento' || p.tipo === 'monitor') {
+        return <MonitoreoRef id={p.ref_id} tema={p.meta?.titulo || p.meta?.tema} onAbrir={onAbrirMonitoreo} onReenviar={onReenviar} adjunto={p} />;
+      }
+      if (p.tipo === 'agente') return <ContactoRef id={p.ref_id} nombre={p.meta?.nombre || p.meta?.titulo} de={p.meta?.de} mio={mio} onAbrir={onAbrirContacto} />;
       return p.tipo === 'snippet' || p.tipo === 'code' ? (
         <Codigo contenido={p.contenido} />
       ) : (
@@ -35,7 +39,13 @@ export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirAr
     case 'artifact_ref':
       return <ArtifactRef id={p.ref_id} onAbrir={onAbrirArtifact} onReenviar={onReenviar} />;
     case 'seguimiento_ref':
+      // Sin hallazgo es un monitoreo compartido (su estructura), no un aviso.
+      if (!p.hallazgo_id && !p.url) {
+        return <MonitoreoRef id={p.seguimiento_id} tema={p.tema || p.resumen?.tema} onAbrir={onAbrirMonitoreo} onReenviar={onReenviar} />;
+      }
       return <SeguimientoRef ref_={p} onAbrir={onAbrirSeguimiento} />;
+    case 'contacto_ref':
+      return <ContactoRef id={p.agent_id || p.agente_id || p.ref_id} nombre={p.nombre} de={p.de || p.owner_nombre} mio={mio} onAbrir={onAbrirContacto} />;
     default:
       return null;
   }
@@ -312,5 +322,69 @@ function LaNota({ url, esNoticia }) {
         </Pressable>
       </View>
     </Animated.View>
+  );
+}
+
+/**
+ * Un monitoreo compartido: su tema. Se abre en lectura y desde ahí se puede
+ * seguir con un agente tuyo.
+ */
+function MonitoreoRef({ id, tema, adjunto, onAbrir, onReenviar }) {
+  return (
+    <Tarjeta
+      onPress={onAbrir && id ? () => onAbrir(id) : null}
+      onLongPress={onReenviar && id ? () => onReenviar(adjunto || { tipo: 'seguimiento', ref_id: id, meta: { titulo: String(tema || 'Monitoreo').slice(0, 500), clave: 'seguimiento' } }) : null}
+      accessibilityLabel={`Monitoreo: ${tema || ''}`}
+    >
+      <Icono Componente={Radar} tema={TEMAS.Violencia} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: TONO.ladrillo }}>MONITOREO</Text>
+        <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK.title }} numberOfLines={2}>
+          {tema || 'Un tema'}
+        </Text>
+      </View>
+      {onAbrir ? <ChevronRight size={16} color={INK.meta} /> : null}
+    </Tarjeta>
+  );
+}
+
+/**
+ * Un agente compartido como contacto, como en WhatsApp. Quien lo recibe le
+ * puede escribir; su Codex sigue siendo de su dueño.
+ */
+function ContactoRef({ id, nombre, de, mio, onAbrir }) {
+  const n = nombre || 'Agente';
+  return (
+    <View
+      style={{
+        alignSelf: mio ? 'flex-end' : 'flex-start',
+        width: '72%',
+        backgroundColor: 'rgba(255,255,255,0.9)',
+        borderWidth: 1,
+        borderColor: 'rgba(28,43,34,0.1)',
+        borderRadius: 16,
+        overflow: 'hidden',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 }}>
+        <Avatar tipo="agente" nombre={n} size={44} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }} numberOfLines={1}>
+            {n}
+          </Text>
+          {de ? <Text style={{ fontSize: 12, color: INK.meta }}>{`de ${de}`}</Text> : null}
+        </View>
+      </View>
+      {!mio && onAbrir && id ? (
+        <Pressable
+          onPress={() => onAbrir(id)}
+          accessibilityRole="button"
+          accessibilityLabel={`Escribirle a ${n}`}
+          style={({ pressed }) => ({ borderTopWidth: 1, borderTopColor: 'rgba(28,43,34,0.08)', paddingVertical: 11, alignItems: 'center', opacity: pressed ? 0.6 : 1 })}
+        >
+          <Text style={{ fontSize: 14.5, fontWeight: '600', color: TONO.verde }}>escribirle</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
