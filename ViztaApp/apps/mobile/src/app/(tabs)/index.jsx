@@ -3,7 +3,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Animated,
   StyleSheet,
   Modal,
@@ -28,6 +27,7 @@ import { filtrarDias, opcionesCongreso, opcionesTemas } from "../../components/f
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
+import MorphingInfinity from "../../components/MorphingInfinity";
 
 /** Un momento del feed sin contenido: cargando, o sin nada que mostrar. */
 function EstadoFeed({ sticker, children }) {
@@ -46,6 +46,7 @@ import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
 import { SERIF } from "../../components/theme";
 import Mundito from "../../components/mapa/Mundito";
 import MapaSheet from "../../components/mapa/MapaSheet";
+import { puedeVerMapa } from "../../components/mapa/acceso";
 import { PAPEL } from "../../components/codex/Papel";
 import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
@@ -70,7 +71,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
-import { Settings as SettingsIcon } from 'lucide-react-native';
+import { Settings as SettingsIcon, Users as UsersIcon } from 'lucide-react-native';
+import ColaboradoresSheet from '../../components/colaboradores/ColaboradoresSheet';
+import { alTocarAvisoDeColab } from '../../utils/notificaciones';
+import { puedeColaborar, TONO as TONO_COLAB } from '../../components/colaboradores/piezas';
+import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarStore';
 
 /** Lo único que el feed puede borrar del registro de «dónde me quedé». */
@@ -186,7 +191,7 @@ function EntityWikiModal({ entityName, onClose }) {
           </View>
 
           {loading ? (
-            <ActivityIndicator size="small" color="rgba(165,180,252,0.8)" style={{ marginVertical: 16 }} />
+            <MorphingInfinity size={20} color="rgba(165,180,252,0.8)" style={{ marginVertical: 16, alignSelf: 'center' }} />
           ) : wikiItem ? (
             <View>
               <View style={{
@@ -236,7 +241,7 @@ function EntityWikiModal({ entityName, onClose }) {
               }}
             >
               {creating
-                ? <ActivityIndicator size="small" color="#fff" />
+                ? <MorphingInfinity size={16} color="#fff" />
                 : <Plus size={15} color="#fff" />
               }
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
@@ -577,7 +582,7 @@ function NewsCardModal({ card, onClose }) {
                 </View>
 
                 {entityLoading ? (
-                  <ActivityIndicator size="small" color={INK.faint} style={{ marginVertical: 12 }} />
+                  <MorphingInfinity size={20} color={INK.faint} style={{ marginVertical: 12 }} />
                 ) : entityWikiItem ? (
                   <View>
                     <Text style={{ fontSize: 10, fontWeight: '800', color: p.tinta, letterSpacing: 1, marginBottom: 7 }}>
@@ -612,7 +617,7 @@ function NewsCardModal({ card, onClose }) {
                       opacity: creating ? 0.6 : 1,
                     }}
                   >
-                    {creating ? <ActivityIndicator size="small" color={PAPEL} /> : <Plus size={14} color={PAPEL} />}
+                    {creating ? <MorphingInfinity size={14} color={PAPEL} /> : <Plus size={14} color={PAPEL} />}
                     <Text style={{ fontSize: 13, color: PAPEL }}>
                       {creating ? 'agregando…' : confirmPending ? 'tocá de nuevo para confirmar' : 'agregar al Codex'}
                     </Text>
@@ -631,6 +636,20 @@ export default function Index() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
+  // El mapa, por ahora, solo para alfa y admin.
+  const conMapa = usePulseConnectionStore((s) => puedeVerMapa(s.connectedUser));
+  const [viendoColaboradores, setViendoColaboradores] = useState(false);
+  // Colaboradores es de la beta: con sesión y rol alfa, beta o admin.
+  const colabora = usePulseConnectionStore((s) => puedeColaborar(s.connectedUser));
+  // Tocar un aviso de Colaboraciones (te escribió, encontró algo) abre los avisos.
+  const [colabEnAvisos, setColabEnAvisos] = useState(false);
+  useEffect(() => {
+    if (!colabora) return undefined;
+    return alTocarAvisoDeColab(() => {
+      setColabEnAvisos(true);
+      setViendoColaboradores(true);
+    });
+  }, [colabora]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [notaCongreso, setNotaCongreso] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
@@ -645,9 +664,9 @@ export default function Index() {
   const consumir = useUltimoLugarStore((s) => s.consumir);
 
   useEffect(() => {
-    if (porRestaurar?.tipo !== 'mapa') return;
+    if (porRestaurar?.tipo !== 'mapa' || !conMapa) return;
     if (consumir('mapa')) setViendoMapa(true);
-  }, [porRestaurar?.tipo, consumir]);
+  }, [porRestaurar?.tipo, consumir, conMapa]);
 
   // Realtime: notify when new news_cards are inserted
   useEffect(() => {
@@ -700,7 +719,7 @@ export default function Index() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: hotTopicsData } = useQuery({
+  const { data: hotTopicsData, isLoading: cargandoNoticias } = useQuery({
     queryKey: ['pulse-hot-topics'],
     queryFn: async () => {
       // La corrida más reciente, sin excepciones —contar tarjetas no dice si
@@ -855,10 +874,7 @@ export default function Index() {
 
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={INK.meta} />
-          <Text style={{ color: INK.meta, marginTop: 12, fontSize: 15 }}>
-            Cargando tendencias...
-          </Text>
+          <MorphingInfinity size={34} color={INK.meta} />
         </View>
       ) : (
         <ScrollView
@@ -903,7 +919,22 @@ export default function Index() {
               * que ya usan los puntos del mapa, así que no entra un color
               * nuevo a la app. */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-              <Mundito size={30} onPress={() => setViendoMapa(true)} />
+              {conMapa ? <Mundito size={30} onPress={() => setViendoMapa(true)} /> : null}
+
+              {/* Colaboradores, para la beta. Otra puerta de «salir del feed»,
+                  en el verde de la app: al lado del globo y la tuerca, un gris
+                  se leería apagado. */}
+              {colabora ? (
+                <Pressable
+                  onPress={() => setViendoColaboradores(true)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Colaboradores"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                >
+                  <UsersIcon size={23} color={TONO_COLAB.verde} strokeWidth={2} />
+                </Pressable>
+              ) : null}
 
               <Pressable
                 onPress={() => router.push('/settings')}
@@ -1016,7 +1047,9 @@ export default function Index() {
                   </View>
                 ))
               )
-            ) : feed === "observatorio" ? null : hotTopics.length === 0 ? (
+            ) : feed === "observatorio" ? null : hotTopics.length === 0 && cargandoNoticias ? (
+              <EstadoFeed sticker="cargando">Trayendo las noticias…</EstadoFeed>
+            ) : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
               porDiaGT(noticiasVisibles).map((grupo, g) => (
@@ -1170,9 +1203,25 @@ export default function Index() {
 
       {/* El mapa es un Modal, así que se dibuja sobre todo el feed. Va después
           del grano porque es una pantalla entera, no una capa del papel. */}
-      {viendoMapa ? (
+      {viendoMapa && conMapa ? (
         <MapaSheet
           onClose={() => setViendoMapa(false)}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+        />
+      ) : null}
+
+      {viendoColaboradores ? (
+        <ColaboradoresSheet
+          inicial={colabEnAvisos ? 'avisos' : null}
+          onClose={() => {
+            setViendoColaboradores(false);
+            setColabEnAvisos(false);
+          }}
+          onEntrar={() => {
+            setViendoColaboradores(false);
+            router.push('/settings');
+          }}
           topInset={insets.top}
           bottomInset={insets.bottom}
         />

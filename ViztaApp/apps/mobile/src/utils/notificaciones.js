@@ -40,6 +40,20 @@ export function prepararNotificaciones() {
   });
 }
 
+/**
+ * Si los avisos llegan a este teléfono: `si`, `no` (los apagó), `sin_preguntar`
+ * o `no_aplica` (simulador, web). No pregunta nada.
+ */
+export async function estadoAvisos() {
+  try {
+    if (!Device.isDevice || Platform.OS === 'web') return 'no_aplica';
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted' ? 'si' : status === 'undetermined' ? 'sin_preguntar' : 'no';
+  } catch {
+    return 'no_aplica';
+  }
+}
+
 let registrando = null;
 
 /**
@@ -78,6 +92,21 @@ export function registrarAvisos() {
     }
   })();
   return registrando;
+}
+
+/**
+ * Escuchar el toque sobre un aviso de Colaboraciones (un agente te escribió,
+ * encontró algo, te pide aprobar). `alAbrir(datos)` lo recibe también si la
+ * app arrancó por ese toque.
+ */
+export function alTocarAvisoDeColab(alAbrir) {
+  const atender = (respuesta) => {
+    const datos = respuesta?.notification?.request?.content?.data;
+    if (datos?.type === 'colaboracion') alAbrir(datos);
+  };
+  Notifications.getLastNotificationResponseAsync().then((r) => r && atender(r)).catch(() => {});
+  const sub = Notifications.addNotificationResponseReceivedListener(atender);
+  return () => sub.remove();
 }
 
 /**

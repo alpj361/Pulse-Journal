@@ -10,6 +10,7 @@
 // `tipo` viene con capitalización inconsistente ('Post' y 'post' conviven en la
 // base), así que se normaliza antes de agrupar.
 export const TYPE_ORDER = [
+  'Dashboard',
   'Actor',
   'Entidad',
   'Territorio',
@@ -26,6 +27,7 @@ export const TYPE_ORDER = [
 ];
 
 export const TYPE_ACCENT = {
+  Dashboard: '#0F766E',
   Actor: '#4B4FA6',
   Entidad: '#0E7490',
   Territorio: '#15803D',

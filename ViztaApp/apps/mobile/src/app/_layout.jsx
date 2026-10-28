@@ -1,9 +1,14 @@
 
 import { useFonts } from 'expo-font';
 import { useAuth } from '@/utils/auth/useAuth';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { solicitudesOAuth } from '../components/colaboradores/api';
+import { puedeColaborar } from '../components/colaboradores/piezas';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -58,6 +63,65 @@ const persistencia = {
   },
 };
 
+/** Las solicitudes ya abiertas, por enlace o solas: cada una se abre una vez. */
+const solicitudesAbiertas = new Set();
+
+/**
+ * El enlace de la página donde un agente pide conectarse
+ * (`com.standatpd.vizta://mcp-authorize?req=…&code=…`) abre la pantalla para
+ * autorizarlo, con la app abierta o cerrada. El enrutador no lo toma solo con
+ * este esquema, así que se escucha acá.
+ */
+function AbrirAutorizacion() {
+  const router = useRouter();
+  const url = Linking.useURL();
+  const ultimo = useRef(null);
+  useEffect(() => {
+    if (!url || url === ultimo.current) return;
+    const { hostname, path, queryParams } = Linking.parse(url);
+    const destino = String(path || hostname || '').replace(/^\/+/, '');
+    if (destino !== 'mcp-authorize') return;
+    const req = queryParams?.req || null;
+    const code = queryParams?.code || null;
+    if (!req && !code) return;
+    ultimo.current = url;
+    if (req) solicitudesAbiertas.add(req);
+    router.push({ pathname: '/mcp-authorize', params: { ...(req ? { req } : {}), ...(code ? { code } : {}) } });
+  }, [url, router]);
+  return null;
+}
+
+/**
+ * Cuando un agente pide conectarse desde ChatGPT o Claude, la solicitud aparece
+ * acá sola, estés donde estés en la app: se mira cada pocos segundos mientras
+ * la app está abierta (solo alfa, beta y admin, que son quienes conectan
+ * agentes). Una solicitud se abre una vez; si la cerrás, no vuelve a saltar.
+ */
+function EsperarAutorizacion() {
+  const router = useRouter();
+  const usuario = usePulseConnectionStore((s) => s.connectedUser);
+  const puede = puedeColaborar(usuario);
+  const [activa, setActiva] = useState(AppState.currentState === 'active');
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (e) => setActiva(e === 'active'));
+    return () => sub.remove();
+  }, []);
+  const consulta = useQuery({
+    queryKey: ['mcp-solicitudes'],
+    queryFn: solicitudesOAuth,
+    enabled: puede && activa,
+    refetchInterval: 5000,
+    retry: false,
+  });
+  useEffect(() => {
+    const nueva = (consulta.data || []).find((s) => s?.req_id && !solicitudesAbiertas.has(s.req_id));
+    if (!nueva) return;
+    solicitudesAbiertas.add(nueva.req_id);
+    router.push({ pathname: '/mcp-authorize', params: { req: nueva.req_id } });
+  }, [consulta.data, router]);
+  return null;
+}
+
 export default function RootLayout() {
   const { initiate, isReady } = useAuth();
 
@@ -103,6 +167,8 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }} initialRouteName="(tabs)">
           <Stack.Screen name="(tabs)" />
         </Stack>
+        <AbrirAutorizacion />
+        <EsperarAutorizacion />
       </GestureHandlerRootView>
     </PersistQueryClientProvider>
   );

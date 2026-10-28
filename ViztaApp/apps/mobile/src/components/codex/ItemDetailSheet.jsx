@@ -435,6 +435,11 @@ export default function ItemDetailSheet({
   onSaved,
   creando: creandoPedido = false,
   bottomInset = 0,
+  // Lo de otra cuenta (el Codex de un agente) se mira, no se edita acá: los
+  // cambios a lo suyo van como propuesta, desde el chat.
+  soloLectura = false,
+  // Una barra fija abajo mientras se lee (p. ej. «traer a mi Codex»).
+  pie = null,
 }) {
   /**
    * Crear no cierra la ficha: el item recién creado pasa a mostrarse acá
@@ -622,7 +627,7 @@ export default function ItemDetailSheet({
     { k: 'menciones', label: 'Menciones', badge: menciones?.length || undefined },
     { k: 'relaciones', label: 'Relaciones', badge: relaciones?.length || undefined },
     // Solo los del universo tienen menciones que rastrear.
-    ...(admiteAlias ? [{ k: 'ajustes', label: 'Ajustes' }] : []),
+    ...(admiteAlias && !soloLectura ? [{ k: 'ajustes', label: 'Ajustes' }] : []),
   ];
 
   const ALTO_PORTADA = 208;
@@ -646,7 +651,7 @@ export default function ItemDetailSheet({
         >
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: bottomInset + (editando ? 104 : 34) }}
+            contentContainerStyle={{ paddingBottom: bottomInset + (editando || pie ? 104 : 34) }}
             showsVerticalScrollIndicator={false}
             /**
              * El teclado deja de tapar el campo que se está llenando.
@@ -696,7 +701,7 @@ export default function ItemDetailSheet({
               {/* Esquina derecha: el lápiz alterna leer/editar, y la × cierra.
                   Sutiles los dos — sobre la portada no compiten con el nombre. */}
               <View style={{ position: 'absolute', top: 14, right: 16, flexDirection: 'row', gap: 8 }}>
-                {creando ? null : (
+                {creando || soloLectura ? null : (
                 <Pressable
                   onPress={() => {
                     roce();
@@ -1200,13 +1205,13 @@ export default function ItemDetailSheet({
                         dato, rotularlo «con datos» no distingue nada de nada. */}
                     {conDatos.length > 0 ? (
                       conDatos.map((f, i) => (
-                        <FilaCampo key={`c${i}`} {...f} accent={accent} onPress={() => setEditando(true)} />
+                        <FilaCampo key={`c${i}`} {...f} accent={accent} onPress={soloLectura ? undefined : () => setEditando(true)} />
                       ))
                     ) : (
                       <Vacio>Ningún campo tiene dato todavía.</Vacio>
                     )}
 
-                    {true ? (
+                    {!soloLectura ? (
                       <Pressable
                         onPress={() => {
                           roce();
@@ -1493,6 +1498,20 @@ export default function ItemDetailSheet({
               ) : null}
             </View>
           </ScrollView>
+
+          {pie && !editando ? (
+            <View
+              style={{
+                position: 'absolute', left: 0, right: 0, bottom: 0,
+                paddingHorizontal: 20, paddingTop: 12, paddingBottom: bottomInset + 14,
+                backgroundColor: 'rgba(247,248,245,0.97)',
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: 'rgba(28,43,34,0.10)',
+              }}
+            >
+              {pie}
+            </View>
+          ) : null}
 
           {/* Barra de guardado. Fija abajo y solo en edición: mientras se lee no
               hay nada que confirmar, y un botón que no hace nada es ruido. */}

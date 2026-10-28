@@ -30,6 +30,8 @@ const TABLAS = [
   'workspace_resources',
   'post_folders',
   'nota_documentos',
+  // «Qué cambió» de lo que guarda un agente: sus filas no se ven directo.
+  'colab_cambios',
 ];
 
 const oyentes = new Set(); // { tablas: Set, fn }

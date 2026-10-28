@@ -16,7 +16,7 @@
 
     "Items.dc.html": { "x": 0, "y": 2600, "w": 390, "h": 844, "title": "8 · Su Codex y sus espacios", "radius": 44 },
     "Panel.dc.html": { "x": 470, "y": 2600, "w": 390, "h": 844, "title": "9 · Permisos del agente", "radius": 44 },
-    "CrearAgente.dc.html": { "x": 940, "y": 2600, "w": 390, "h": 844, "title": "10 · Sumar un agente", "radius": 44 },
+    "CrearAgente.dc.html": { "x": 940, "y": 2600, "w": 390, "h": 844, "title": "10 · Conectar un agente", "radius": 44 },
     "Actividad.dc.html": { "x": 1410, "y": 2600, "w": 390, "h": 844, "title": "11 · Actividad (30 días)", "radius": 44 },
     "Deshacer.dc.html": { "x": 1880, "y": 2600, "w": 390, "h": 844, "title": "12 · Deshacer una conexión", "radius": 44 },
 

@@ -48,4 +48,7 @@ export const PISTA = {
   GRABAR: 'grabar',
   POST_EN_CURSO: 'post_en_curso',
   VOCES: 'voces',
+  // Colaboradores: «pronto vas a poder colaborar también con colegas». Se va
+  // con la cruz, no con una acción: no hay nada que hacer todavía.
+  COLAB_COLEGAS: 'colab_colegas',
 };

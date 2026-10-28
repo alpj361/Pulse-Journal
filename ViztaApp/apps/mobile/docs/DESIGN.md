@@ -46,6 +46,37 @@ timeouts, los nombres de las tablas— es asunto nuestro.
   andás» dice lo mismo que «monitoreo de regiones en segundo plano», y además
   se entiende.
 
+## Cómo se ve
+
+**Nunca puntos de viñeta.** No van al lado de un rótulo («REDES ●»), ni
+antes de un título, ni como «pulso» de algo que está activo. En la app se ven
+como ruido. Si algo es importante, se nota en el texto, en el color de la
+tarjeta o en un filtro; no en un punto suelto.
+
+**El encabezado no repite lo que ya se sabe.** Si estás en el chat de Morrow,
+el tema no dice «Morrow lo está siguiendo»: eso ya está dicho. Tampoco se cuelgan
+acciones sueltas arriba («pausar», «seguir»). Lo que se controla de algo va en
+su propia fila, con su interruptor, al lado de lo que controla.
+
+**Sin subtítulos de relleno.** Debajo de un nombre o un título solo va algo si
+dice algo nuevo y vigente. Nada que ya diga el lugar donde estás, el avatar o el
+título de arriba:
+
+| No va                                         | Por qué                                                   |
+| --------------------------------------------- | --------------------------------------------------------- |
+| «de Morrow» bajo «Tareas»                     | Entraste desde el perfil de Morrow: ya se sabe de quién es |
+| «agente» al lado del nombre                   | El avatar y la lista ya lo dicen                          |
+| «agente · responde a vos» bajo el nombre      | Es relleno: no cambia nada de lo que vas a hacer          |
+| «dashboard · versión 1 · de ChatGPT»          | El título y el número de versión alcanzan                 |
+
+Si no hay nada que decir, el renglón no existe: no se pone un texto de reemplazo.
+Lo que sí puede ir es lo que está pasando ahora («Organizar fichas del Codex»),
+y solo mientras sea cierto.
+
+**Lo que carga se ve igual en toda la app:** `MorphingInfinity`, nunca la
+ruedita del sistema (`ActivityIndicator`). Y lo nuevo sin leer se nota en la
+tinta del texto, no en un punto rojo.
+
 ## Permisos: la excepción formal
 
 Los diálogos de permiso del sistema (`Info.plist`) son **la única superficie

@@ -25,6 +25,7 @@ import { TYPE_ACCENT, normalizeTipo } from '../codex/tipos';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import MorphingInfinity from '../MorphingInfinity';
 import pedirAnalisis from './analizarPost';
+import { SoloLecturaPost, useSoloLecturaPost } from './lectura';
 import useAnalisisPost from './useAnalisisPost';
 import CarruselPost from './CarruselPost';
 import SugerenciaHablante from './SugerenciaHablante';
@@ -106,7 +107,15 @@ const NOMBRE_FUENTE = { tmdb: 'TMDB', openlibrary: 'Open Library', musicbrainz: 
  * reparto, o la web—, y guardarlo lo lleva al Codex como Ref, o como el tipo
  * que propuso el análisis si es un lugar que querés como territorio.
  */
-export default function PostDetailSheet({ post, onClose, onActualizado, topInset = 0, bottomInset = 0 }) {
+export default function PostDetailSheet({ soloLectura = false, ...props }) {
+  return (
+    <SoloLecturaPost.Provider value={soloLectura}>
+      <HojaPost {...props} soloLectura={soloLectura} />
+    </SoloLecturaPost.Provider>
+  );
+}
+
+function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0, soloLectura = false }) {
   const { width: W } = useWindowDimensions();
 
   // Un caso de muestra (`casosDeMuestra`): nada sale del teléfono. El ojo
@@ -236,6 +245,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
       setVista((v) => (v === 'anotado' ? 'organizado' : 'anotado'));
       return;
     }
+    if (soloLectura) return;
     setPidiendo(true);
     setError(null);
     if (muestra) {
@@ -283,7 +293,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
 
   /** Volver a pedirlo, después de un fallo o de uno que se quedó colgado. */
   const reintentar = async () => {
-    if (pidiendo) return;
+    if (pidiendo || soloLectura) return;
     roce();
     setPidiendo(true);
     setError(null);
@@ -368,7 +378,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
 
   /** Guardar un material en el Codex: como Ref, o como el tipo que se pide. */
   const guardarRef = async (mencion, comoTipo = null) => {
-    if (ocupado || muestra) return;
+    if (ocupado || muestra || soloLectura) return;
     setOcupado(`material:${mencion.texto}`);
     setErrorAccion(null);
     try {
@@ -384,7 +394,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   };
 
   const guardarHecho = async (hecho) => {
-    if (ocupado || muestra) return;
+    if (ocupado || muestra || soloLectura) return;
     if (hecho.fact_id) {
       abrirEnCodex({ id: hecho.fact_id });
       return;
@@ -404,7 +414,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
   };
 
   const conectar = async (relacion) => {
-    if (ocupado || muestra || relacion.relation_id) return;
+    if (ocupado || muestra || soloLectura || relacion.relation_id) return;
     setOcupado(claveRelacion(relacion));
     setErrorAccion(null);
     try {
@@ -471,7 +481,8 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
             </Pressable>
           ) : null}
 
-          <OjoBoton onPress={extraer} cargando={cargando} activo={!!analisis} />
+          {/* Sin análisis, el ojo no va: pedirlo le toca al dueño del post. */}
+          {soloLectura && !analisis ? null : <OjoBoton onPress={extraer} cargando={cargando} activo={!!analisis} />}
         </View>
 
         <ScrollView
@@ -569,9 +580,11 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
                     qué pasó, y al lado, cómo seguir. */}
                 {error || (colgado ? 'El análisis está tardando más de lo normal.' : 'No se pudo analizar este post.')}
               </Text>
-              <AccionTexto onPress={reintentar} etiqueta="Volver a analizar el post" arriba={10}>
-                volver a intentar
-              </AccionTexto>
+              {soloLectura ? null : (
+                <AccionTexto onPress={reintentar} etiqueta="Volver a analizar el post" arriba={10}>
+                  volver a intentar
+                </AccionTexto>
+              )}
             </Animated.View>
           ) : null}
 
@@ -818,6 +831,7 @@ export default function PostDetailSheet({ post, onClose, onActualizado, topInset
           item={itemAbierto}
           onClose={() => setItemAbierto(null)}
           onSaved={(guardado) => setItemAbierto((prev) => (prev ? { ...prev, ...guardado } : prev))}
+          soloLectura={soloLectura}
           bottomInset={bottomInset}
         />
       ) : null}
@@ -860,6 +874,7 @@ function FichaMencion({
   guardando,
   onGuardar,
 }) {
+  const lectura = useSoloLecturaPost();
   const color = colorDe(mencion);
   const candidatos = mencion.codex ? [] : mencion.candidatos || [];
   const [portadaRota, setPortadaRota] = useState(false);
@@ -920,7 +935,7 @@ function FichaMencion({
         </Pressable>
       ) : null}
 
-      {material && !mencion.codex ? (
+      {material && !mencion.codex && !lectura ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 18, rowGap: 8, marginTop: 14 }}>
           {guardando ? (
             <MorphingInfinity size={15} color={INK.title} />
@@ -1099,6 +1114,7 @@ function FilaHecho({ hecho, voz = null, quienDeVoz, ultima, ocupado, onGuardar }
  * de responder: la conexión ya existe y tocar de nuevo no agrega nada.
  */
 function FilaRelacion({ relacion, menciones, ocupado, onMas, compacta = false }) {
+  const lectura = useSoloLecturaPost();
   const ma = menciones.find((m) => m.texto === relacion.a);
   const mb = menciones.find((m) => m.texto === relacion.b);
   const hecha = !!relacion.relation_id;
@@ -1111,9 +1127,10 @@ function FilaRelacion({ relacion, menciones, ocupado, onMas, compacta = false })
         <Text style={{ color: colorDe(mb) }}>{relacion.b}</Text>
       </Text>
 
+      {lectura && !hecha ? null : (
       <Pressable
         onPress={onMas}
-        disabled={hecha || ocupado}
+        disabled={hecha || ocupado || lectura}
         hitSlop={12}
         style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
         accessibilityRole="button"
@@ -1129,6 +1146,7 @@ function FilaRelacion({ relacion, menciones, ocupado, onMas, compacta = false })
           <Plus size={17} color={INK.title} />
         )}
       </Pressable>
+      )}
     </View>
   );
 }

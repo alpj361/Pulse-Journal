@@ -43,6 +43,8 @@ import { appleDisponible } from '../../utils/appleAuth';
 import * as Notifications from 'expo-notifications';
 import { Avatar, AvatarBuilderModal } from '../../components/avatar';
 import SeccionPlan from '../../components/ajustes/SeccionPlan';
+import SeccionPerfil from '../../components/ajustes/SeccionPerfil';
+import { puedeColaborar } from '../../components/colaboradores/piezas';
 import SeccionUso from '../../components/ajustes/SeccionUso';
 import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimiento';
 import SeccionAnalisisAutomatico from '../../components/ajustes/SeccionAnalisisAutomatico';
@@ -1060,6 +1062,8 @@ export default function SettingsScreen() {
              Solo para cuentas Beta con sesión. Quien entra a probar —sin
              cuenta, o con una cuenta Alpha— no ve nada que comprar: la app
              se prueba sin que nadie le ofrezca un plan. ── */}
+        {/* Nombre y usuario: con eso te encuentran para colaborar. */}
+        {isConnected && puedeColaborar(connectedUser) ? <SeccionPerfil /> : null}
         {isConnected && /^beta$/i.test(connectedUser?.user_type || '') ? <SeccionPlan /> : null}
         <SeccionUso />
         {/* Solo aparece si la cuenta tiene el flag; para el resto no existe. */}
