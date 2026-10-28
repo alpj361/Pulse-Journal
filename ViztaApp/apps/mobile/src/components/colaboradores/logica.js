@@ -262,6 +262,16 @@ export const AVISOS_QUE_SE_VEN = ['mensaje', 'solicitud', 'solicitud_aprobada', 
 export const noLeidos = (avisos) =>
   (avisos || []).filter((a) => AVISOS_QUE_SE_VEN.includes(a.tipo) && !a.leida_at).length;
 
+/**
+ * El número de la campana: lo sin leer que llegó **después** de la última vez
+ * que se abrieron los avisos. Abrirlos lo baja a cero aunque no se toque cada
+ * uno; vuelve a subir solo con lo nuevo.
+ */
+export const nuevosDesde = (avisos, vistoHasta) =>
+  (avisos || []).filter(
+    (a) => AVISOS_QUE_SE_VEN.includes(a.tipo) && !a.leida_at && (!vistoHasta || Date.parse(a.created_at || 0) > vistoHasta)
+  ).length;
+
 /** «HOY», «ESTA SEMANA», «ANTES». */
 export function grupoDe(fecha, ahora = new Date()) {
   const d = new Date(fecha);

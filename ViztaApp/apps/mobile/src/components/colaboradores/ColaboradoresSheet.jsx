@@ -9,7 +9,10 @@ import { EV, evento } from '../../utils/analitica';
 import { useEnVivo } from '../../utils/enVivo';
 import { NoDisponible, espaciosDe, itemsDeColaborador, solicitudesOAuth, leerChats, leerMensajes, listarAvisos, listarColaboradores, listarSolicitudes, seguimientosDe, tareasDe, titulosDeRecursos } from './api';
 import { claveTareas } from './Ficha';
-import { colaboradorDeAviso, esMerge, noLeidos, repartirSolicitudes, visibles } from './logica';
+import { colaboradorDeAviso, esMerge, nuevosDesde, repartirSolicitudes, visibles } from './logica';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const AVISOS_VISTOS = 'vizta-colab-avisos-vistos';
 import { nombreDe } from './piezas';
 import Lista from './Lista';
 import Chat from './Chat';
@@ -173,7 +176,20 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
   );
 
   const tePiden = repartirSolicitudes(solicitudes.data, yo).tePiden;
-  const sinLeer = noLeidos(avisos.data);
+  // Cuándo se abrieron los avisos por última vez (en este teléfono).
+  const [vistoHasta, setVistoHasta] = useState(null);
+  useEffect(() => {
+    AsyncStorage.getItem(AVISOS_VISTOS)
+      .then((v) => v && setVistoHasta(Number(v) || null))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (vista.tipo !== 'avisos') return;
+    const ahora = Date.now();
+    setVistoHasta(ahora);
+    AsyncStorage.setItem(AVISOS_VISTOS, String(ahora)).catch(() => {});
+  }, [vista.tipo, avisos.data]);
+  const sinLeer = nuevosDesde(avisos.data, vistoHasta);
 
   const abrirAviso = (a) => {
     const p = a.payload || {};

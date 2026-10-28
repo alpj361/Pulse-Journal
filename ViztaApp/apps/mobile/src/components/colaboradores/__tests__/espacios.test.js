@@ -56,3 +56,17 @@ describe('adjuntoDe', () => {
     expect(adjuntoDe({ id: 'i1', name: 'ONU', tipo: 'Actor' })).toEqual({ tipo: 'item', ref_id: 'i1', meta: { titulo: 'ONU', tipo: 'actor', clave: 'actor' } });
   });
 });
+
+describe('nuevosDesde', () => {
+  const { nuevosDesde } = require('../logica');
+  const avisos = [
+    { tipo: 'mensaje', created_at: '2026-10-28T08:00:00Z' },
+    { tipo: 'mensaje', created_at: '2026-10-28T10:00:00Z' },
+    { tipo: 'mensaje', created_at: '2026-10-28T11:00:00Z', leida_at: '2026-10-28T11:05:00Z' },
+  ];
+  test('sin haberlos abierto cuenta todo lo sin leer', () => expect(nuevosDesde(avisos, null)).toBe(2));
+  test('después de abrirlos solo cuenta lo que llegó luego', () => {
+    expect(nuevosDesde(avisos, Date.parse('2026-10-28T09:00:00Z'))).toBe(1);
+    expect(nuevosDesde(avisos, Date.parse('2026-10-28T12:00:00Z'))).toBe(0);
+  });
+});
