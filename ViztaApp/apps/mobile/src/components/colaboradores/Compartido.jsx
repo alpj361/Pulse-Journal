@@ -35,7 +35,8 @@ export default function Compartido({ colaborador, bottomInset = 0, onAbrirItem, 
     retry: false,
   });
   const filas = useMemo(() => {
-    const todas = consulta.data || [];
+    // Un agente compartido no es algo que se abra acá: es un contacto, y ya está en la lista.
+    const todas = (consulta.data || []).filter((f) => !['agente', 'contacto'].includes(String(f.tipo || f.recurso_tipo)));
     const de = (c) => todas.filter((f) => (f.categoria || (tipoDe(f) === 'seguimiento' ? 'monitoreos' : 'codex')) === c);
     return { codex: de('codex'), monitoreos: de('monitoreos') };
   }, [consulta.data]);

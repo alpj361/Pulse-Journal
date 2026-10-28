@@ -30,7 +30,7 @@ export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirAr
       if (p.tipo === 'seguimiento' || p.tipo === 'monitor') {
         return <MonitoreoRef id={p.ref_id} tema={p.meta?.titulo || p.meta?.tema} onAbrir={onAbrirMonitoreo} onReenviar={onReenviar} adjunto={p} />;
       }
-      if (p.tipo === 'agente') return <ContactoRef id={p.ref_id} nombre={p.meta?.nombre || p.meta?.titulo} de={p.meta?.de} mio={mio} onAbrir={onAbrirContacto} />;
+      if (p.tipo === 'agente' || p.tipo === 'contacto') return <ContactoRef id={p.ref_id} nombre={p.meta?.nombre || p.meta?.titulo || p.titulo} de={p.meta?.de} mio={mio} onAbrir={onAbrirContacto} />;
       return p.tipo === 'snippet' || p.tipo === 'code' ? (
         <Codigo contenido={p.contenido} />
       ) : (
