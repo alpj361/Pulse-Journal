@@ -483,9 +483,30 @@ export async function tengoDashboard(id, userId) {
 export const traerAMiCodex = async (itemId) =>
   (await pedir(`/colaboraciones/codex/items/${encodeURIComponent(itemId)}/copiar`, { method: 'POST', body: {} })).item;
 
+/** Colaborar entre personas: encendido en el servidor (COLAB_HUMANOS=1, 28-oct). */
+export const humanosHabilitados = () => true;
+
+/** Buscar personas por nombre o usuario (mín. 2 letras, hasta 10; sin correo). */
+export async function buscarPersonas(q) {
+  const texto = String(q || '').trim();
+  if (texto.length < 2) return [];
+  const r = await pedir('/colaboraciones/personas', { query: { q: texto } });
+  return r.personas || r.resultados || r.items || [];
+}
+
 /**
- * ¿El servidor ya acepta colaborar entre personas? Hoy COLAB_HUMANOS=0 y no
- * hay endpoint que lo diga: la app lo deja en falso y la pantalla cambia sola
- * el día que esto devuelva true.
+ * Empezar el chat con una persona: la conversación la suma a tus
+ * colaboradores. Devuelve el colaborador ya en la lista (o null si el
+ * servidor tarda en mostrarlo) y deja el chat recordado para no abrir otro.
  */
-export const humanosHabilitados = () => false;
+export async function empezarConPersona(persona) {
+  const conv = await crearConversacion({ participantes: [{ tipo: 'humano', id: persona.id }], tipo: 'directo' });
+  const lista = await listarColaboradores();
+  const c = lista.find((x) => x.cuenta_tipo === 'humano' && x.cuenta_id === persona.id) || null;
+  if (c) {
+    const chats = await leerChats();
+    chats[c.id] = conv.id;
+    await AsyncStorage.setItem(CHATS, JSON.stringify(chats)).catch(() => {});
+  }
+  return c;
+}

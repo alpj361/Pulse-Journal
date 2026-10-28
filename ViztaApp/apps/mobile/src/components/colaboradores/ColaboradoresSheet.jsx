@@ -15,6 +15,7 @@ import Lista from './Lista';
 import Chat from './Chat';
 import Permisos from './Permisos';
 import ConectarAgente from './ConectarAgente';
+import BuscarPersona from './BuscarPersona';
 import Bandeja from './Bandeja';
 import Solicitud from './Solicitud';
 import Avisos from './Avisos';
@@ -47,6 +48,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
   // `inicial: 'avisos'` cuando se abre desde un aviso del teléfono.
   const [pila, setPila] = useState(() => (inicial === 'avisos' ? [{ tipo: 'lista' }, { tipo: 'avisos' }] : [{ tipo: 'lista' }]));
   const [sumando, setSumando] = useState(false);
+  const [buscandoPersona, setBuscandoPersona] = useState(false);
   const [chats, setChats] = useState({});
   const vista = pila[pila.length - 1];
   const ir = (v) => setPila((p) => [...p, v]);
@@ -192,6 +194,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
 
   const cerrar = () => {
     if (sumando) return setSumando(false);
+    if (buscandoPersona) return setBuscandoPersona(false);
     if (pila.length > 1) return volver();
     return onClose();
   };
@@ -359,6 +362,7 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         onAutorizar={(sol) => ir({ tipo: 'autorizar', req: sol.req_id })}
         onAvisos={() => ir({ tipo: 'avisos' })}
         onSumar={() => setSumando(true)}
+        onBuscarPersona={() => setBuscandoPersona(true)}
       />
     );
   }
@@ -371,6 +375,17 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
 
         <View style={{ flex: 1 }}>{pantalla}</View>
 
+        {buscandoPersona ? (
+          <BuscarPersona
+            bottomInset={bottomInset}
+            onCerrar={() => setBuscandoPersona(false)}
+            onListo={(c) => {
+              setBuscandoPersona(false);
+              consulta.refetch();
+              if (c) ir({ tipo: 'chat', colaborador: c });
+            }}
+          />
+        ) : null}
         {sumando ? (
           <ConectarAgente
             antes={consulta.data}

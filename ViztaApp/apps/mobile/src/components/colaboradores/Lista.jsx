@@ -23,6 +23,7 @@ export default function Lista({
   bottomInset,
   onAbrir,
   onSumar,
+  onBuscarPersona,
   onCerrar,
   onEntrar,
   onPorAprobar,
@@ -103,13 +104,14 @@ export default function Lista({
     return marco(
       <>
         {humanos ? (
-          // «invitar a un colega» todavía no tiene cómo hacerse: el botón
-          // entra cuando el backend diga cómo se invita (duda 4 del README).
           <EstadoCentro
             titulo="Todavía no trabajás con nadie"
-            texto="Conectá un agente que investigue por vos, o invitá a un colega a compartir lo que tienen."
+            texto="Conectá un agente que investigue por vos, o buscá a alguien para compartir lo que tienen."
           >
-            <Boton texto="conectar un agente" primario onPress={onSumar} />
+            <View style={{ gap: 10, alignSelf: 'stretch' }}>
+              <Boton texto="conectar un agente" primario onPress={onSumar} />
+              <Boton texto="buscar una persona" onPress={onBuscarPersona} />
+            </View>
           </EstadoCentro>
         ) : (
           <EstadoCentro
@@ -204,25 +206,10 @@ export default function Lista({
 
       <View style={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: bottomInset + 16, gap: 12 }}>
         {humanos ? null : <AvisoColegas />}
-        <Pressable
-          onPress={onSumar}
-          accessibilityRole="button"
-          style={({ pressed }) => ({
-            height: 50,
-            borderRadius: 15,
-            borderWidth: 1,
-            borderStyle: 'dashed',
-            borderColor: 'rgba(61,95,70,0.45)',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            opacity: pressed ? 0.6 : 1,
-          })}
-        >
-          <Plus size={16} color={TONO.verde} strokeWidth={2.2} />
-          <Text style={{ fontSize: 14.5, fontWeight: '600', color: TONO.verde }}>conectar un agente</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Agregar texto="agente" onPress={onSumar} />
+          {humanos ? <Agregar texto="persona" onPress={onBuscarPersona} /> : null}
+        </View>
       </View>
     </View>
   );
@@ -371,6 +358,33 @@ function Campana({ sinLeer, onPress }) {
           <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#FFFFFF' }}>{sinLeer > 9 ? '9+' : sinLeer}</Text>
         </View>
       ) : null}
+    </Pressable>
+  );
+}
+
+/** Sumar a alguien: un agente que se conecta, o una persona que se busca. */
+function Agregar({ texto, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={texto === 'agente' ? 'Conectar un agente' : 'Buscar una persona'}
+      style={({ pressed }) => ({
+        flex: 1,
+        height: 50,
+        borderRadius: 15,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: 'rgba(61,95,70,0.45)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Plus size={16} color={TONO.verde} strokeWidth={2.2} />
+      <Text style={{ fontSize: 14.5, fontWeight: '600', color: TONO.verde }}>{texto}</Text>
     </Pressable>
   );
 }
