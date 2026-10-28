@@ -3,13 +3,14 @@ import { Linking, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { AlignLeft, BookOpen, ChevronDown, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
+import { BookOpen, ChevronDown, ChevronRight, Code, PanelTop, Radar } from 'lucide-react-native';
 import { INK } from '../theme';
 import { TEMAS } from '../feed/temas';
 import { supabase } from '../../utils/supabase';
 import MorphingInfinity from '../MorphingInfinity';
 import { leerArtifact } from './api';
 import { resumenPlano } from './logica';
+import Elemento from './Elemento';
 import { TONO } from './piezas';
 
 /**
@@ -29,7 +30,7 @@ export default function Bloque({ bloque, mio, onAbrirItem, onAbrirArtifact, onAb
       return p.tipo === 'snippet' || p.tipo === 'code' ? (
         <Codigo contenido={p.contenido} />
       ) : (
-        <Adjunto adjunto={p} onAbrirItem={onAbrirItem} />
+        <Adjunto adjunto={p} mio={mio} onAbrirItem={onAbrirItem} />
       );
     case 'artifact_ref':
       return <ArtifactRef id={p.ref_id} onAbrir={onAbrirArtifact} />;
@@ -112,23 +113,22 @@ const QUE_ES = {
 };
 
 /** Algo de un Codex, una noticia o una visualización, por su id. */
-function Adjunto({ adjunto, onAbrirItem }) {
+function Adjunto({ adjunto, mio, onAbrirItem }) {
   const meta = adjunto.meta || {};
   const titulo = meta.titulo || meta.title || meta.nombre || QUE_ES[adjunto.tipo] || 'adjunto';
-  const tipo = meta.tipo ? String(meta.tipo).toLowerCase() : QUE_ES[adjunto.tipo] || adjunto.tipo;
+  const tipo = meta.clave || meta.tipo || QUE_ES[adjunto.tipo] || adjunto.tipo;
   const esItem = adjunto.tipo === 'item' && adjunto.ref_id;
-  const abrir = esItem && onAbrirItem ? () => onAbrirItem(adjunto.ref_id) : null;
+  // Lo mío está en mi Codex; tocarlo en el chat del agente no lleva a ningún lado.
+  const abrir = esItem && !mio && onAbrirItem ? () => onAbrirItem(adjunto.ref_id) : null;
   return (
-    <Tarjeta onPress={abrir} accessibilityLabel={`${titulo}, ${tipo}`}>
-      <Icono Componente={adjunto.tipo === 'item' ? AlignLeft : Link2} tema={adjunto.tipo === 'item' ? TEMAS.Política : TEMAS.Economía} />
-      <View style={{ flex: 1, gap: 1 }}>
-        <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK.title }} numberOfLines={2}>
-          {titulo}
-        </Text>
-        <Text style={{ fontSize: 11.5, color: INK.meta }}>{esItem ? `${tipo} · en su Codex` : tipo}</Text>
-      </View>
-      {abrir ? <ChevronRight size={16} color={INK.meta} /> : null}
-    </Tarjeta>
+    <Elemento
+      titulo={titulo}
+      tipo={tipo}
+      imagen={meta.imagen || meta.thumbnail_url}
+      mio={mio}
+      onPress={abrir}
+      derecha={abrir ? <ChevronRight size={16} color={INK.meta} /> : null}
+    />
   );
 }
 

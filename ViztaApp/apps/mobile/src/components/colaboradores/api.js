@@ -244,7 +244,7 @@ export async function titulosDeFuentes(fuentes) {
 export async function buscarEnMiCodex(texto, userId) {
   const q = String(texto || '').trim().replace(/[%_,()]/g, ' ');
   let a = supabase.from('codex_items').select('id, titulo, tipo, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
-  let b = supabase.from('codex_universe_items').select('id, name, tipo, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
+  let b = supabase.from('codex_universe_items').select('id, name, tipo, thumbnail_url, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(15);
   if (q) {
     a = a.ilike('titulo', `%${q}%`);
     b = b.ilike('name', `%${q}%`);
@@ -252,7 +252,7 @@ export async function buscarEnMiCodex(texto, userId) {
   const [ra, rb] = await Promise.all([a, b]);
   const filas = [
     ...(ra.data || []).map((r) => ({ id: r.id, titulo: r.titulo, tipo: r.tipo, created_at: r.created_at })),
-    ...(rb.data || []).map((r) => ({ id: r.id, titulo: r.name, tipo: r.tipo, created_at: r.created_at })),
+    ...(rb.data || []).map((r) => ({ id: r.id, titulo: r.name, tipo: r.tipo, imagen: r.thumbnail_url || null, created_at: r.created_at })),
   ];
   return filas.sort((x, y) => String(y.created_at).localeCompare(String(x.created_at))).slice(0, 20);
 }

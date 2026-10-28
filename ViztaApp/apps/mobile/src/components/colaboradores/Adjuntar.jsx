@@ -19,6 +19,7 @@ import { buscarEnMiCodex } from "./api";
 import { claveTipo, nombreTipo } from "./logica";
 import { Boton, ROTULO, TONO } from "./piezas";
 import MorphingInfinity from "../MorphingInfinity";
+import { Cara } from "./Elemento";
 
 const MODOS = [
   { clave: "codex", texto: "de mi Codex", Icono: Search },
@@ -68,6 +69,8 @@ export default function Adjuntar({
           meta: {
             titulo: String(it.titulo || "").slice(0, 500),
             tipo: nombreTipo(claveTipo(it)),
+            clave: claveTipo(it),
+            ...(it.imagen ? { imagen: it.imagen } : {}),
           },
         }))
       : texto.trim()
@@ -230,6 +233,7 @@ export default function Adjuntar({
                           opacity: pressed ? 0.6 : 1,
                         })}
                       >
+                        <Cara item={it} imagen={it.imagen} size={36} />
                         <View style={{ flex: 1, gap: 2 }}>
                           <Text
                             style={{

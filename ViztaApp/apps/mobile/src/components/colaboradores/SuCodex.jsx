@@ -3,25 +3,10 @@ import { Alert, Linking, Modal, Pressable, ScrollView, Text, View } from 'react-
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlignLeft,
-  LayoutDashboard,
-  Brain,
-  BookOpen,
-  BookText,
   Check,
   ChevronRight,
-  Box,
-  Building2,
-  CalendarDays,
   ExternalLink,
-  FileText,
-  Lightbulb,
-  Link2,
-  MapPin,
   Newspaper,
-  Quote,
-  Search,
-  User,
   X,
 } from 'lucide-react-native';
 import { CARD_SHADOW, INK, SERIF } from '../theme';
@@ -35,30 +20,8 @@ import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
 import { Boton, EstadoCentro, ROTULO, TONO, Refrescar } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
+import { Cara, estiloDe } from './Elemento';
 
-/** Ícono y lavado por tipo (pantalla 8). Un tipo nuevo cae al de documento. */
-const ESTILO = {
-  actor: { Icono: User, tema: TEMAS.Política },
-  entidad: { Icono: Building2, tema: TEMAS.Movilidad },
-  source: { Icono: BookOpen, tema: TEMAS.Economía },
-  fuente: { Icono: BookOpen, tema: TEMAS.Economía },
-  evidencia: { Icono: BookOpen, tema: TEMAS.Economía },
-  evento: { Icono: CalendarDays, tema: TEMAS.Entretenimiento },
-  historia: { Icono: BookText, tema: TEMAS.Cultura },
-  snippet: { Icono: Quote, tema: TEMAS.Justicia },
-  nota: { Icono: AlignLeft, tema: TEMAS.Política },
-  enlace: { Icono: Link2, tema: TEMAS.Economía },
-  investigación: { Icono: Search, tema: TEMAS.Social },
-  investigacion: { Icono: Search, tema: TEMAS.Social },
-  territorio: { Icono: MapPin, tema: TEMAS.Social },
-  concepto: { Icono: Lightbulb, tema: TEMAS.Deportes },
-  objeto: { Icono: Box, tema: TEMAS.Tecnología },
-  artefacto: { Icono: Box, tema: TEMAS.Tecnología },
-  memoria: { Icono: Brain, tema: TEMAS.Cultura },
-  artifact: { Icono: LayoutDashboard, tema: TEMAS.Tecnología },
-  dashboard: { Icono: LayoutDashboard, tema: TEMAS.Tecnología },
-};
-const estiloDe = (item) => ESTILO[claveTipo(item)] || { Icono: FileText, tema: TEMAS.Clima };
 
 const haceCuanto = (fecha) => {
   if (!fecha) return '';
@@ -353,7 +316,7 @@ function Chip({ texto, activo, onPress }) {
 }
 
 function Tarjeta({ item, onPress }) {
-  const { Icono, tema } = estiloDe(item);
+  const { tema } = estiloDe(item);
   const tipo = nombreTipo(claveTipo(item));
   const resumen = resumenPlano(item.descripcion || item.description);
   return (
@@ -374,12 +337,7 @@ function Tarjeta({ item, onPress }) {
         shadowOpacity: 0.05,
       })}
     >
-      <View
-        accessible={false}
-        style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: tema.lavado[0], borderWidth: 1, borderColor: tema.lavado[1], alignItems: 'center', justifyContent: 'center' }}
-      >
-        <Icono size={18} color={tema.tinta} strokeWidth={1.8} />
-      </View>
+      <Cara item={item} imagen={item.thumbnail_url || item.imagen} size={36} />
       <View style={{ flex: 1, gap: 6 }}>
         <Text style={{ fontSize: 15, fontWeight: '700', lineHeight: 21, color: INK.title }} numberOfLines={2}>
           {item.titulo || 'Sin título'}
