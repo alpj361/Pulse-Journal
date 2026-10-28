@@ -255,7 +255,6 @@ export const TIPOS_PARA_ADJUNTAR = [
   { clave: 'snippet', universo: ['Snippet'] },
   { clave: 'source', universo: ['Source'] },
   { clave: 'objeto', universo: ['Objeto', 'Artefacto'] },
-  { clave: 'documento', items: true },
 ];
 
 const limpiarBusqueda = (texto) => String(texto || '').trim().replace(/[%_,()]/g, ' ');
@@ -264,12 +263,14 @@ const limpiarBusqueda = (texto) => String(texto || '').trim().replace(/[%_,()]/g
 function consultasDeMiCodex(userId, { tipo, ids, columnas, cabeza = false }) {
   const def = TIPOS_PARA_ADJUNTAR.find((t) => t.clave === tipo);
   const opciones = cabeza ? { count: 'exact', head: true } : undefined;
-  let a = def && !def.items ? null : supabase.from('codex_items').select(columnas.items, opciones).eq('user_id', userId);
+  // Los documentos (`codex_items`) no se comparten todavía: del otro lado no
+  // hay cómo leerlos.
+  let a = null;
   let b = def?.items ? null : supabase.from('codex_universe_items').select(columnas.universo, opciones).eq('user_id', userId);
   if (b && def?.universo) b = b.in('tipo', def.universo);
   // Las historias de un espacio no se comparten (por ahora); los hechos son
   // parte de su post.
-  else if (b) b = b.not('tipo', 'in', '("Historia","Fact")');
+  else if (b) b = b.not('tipo', 'in', '("Historia","Fact","Documento")');
   if (ids) {
     if (a) a = a.in('id', ids);
     if (b) b = b.in('id', ids);
