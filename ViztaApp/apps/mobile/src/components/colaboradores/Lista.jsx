@@ -258,8 +258,8 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
               <Chip texto={pendientes} />
             </Pressable>
           ) : null}
-          {/* De un agente ajeno se dice de quién es; sus permisos son de su dueño. */}
-          <Text style={{ fontSize: 11.5, color: INK.meta }}>{esContacto(c) ? (c.owner_nombre ? `de ${c.owner_nombre}` : '') : queHace(c.permisos)}</Text>
+          {/* De un agente ajeno se dice de quién es; de una persona, nada (sus permisos no aplican). */}
+          <Text style={{ fontSize: 11.5, color: INK.meta }}>{esContacto(c) ? (c.owner_nombre ? `de ${c.owner_nombre}` : '') : c.cuenta_tipo === 'humano' ? '' : queHace(c.permisos)}</Text>
         </View>
       </View>
     </Pressable>

@@ -496,6 +496,10 @@ export async function tengoDashboard(id, userId) {
 export const traerAMiCodex = async (itemId) =>
   (await pedir(`/colaboraciones/codex/items/${encodeURIComponent(itemId)}/copiar`, { method: 'POST', body: {} })).item;
 
+/** Tu nombre y usuario: con eso te encuentran para escribirte (PR #76). */
+export const leerPerfil = async () => (await pedir('/colaboraciones/perfil')).perfil || null;
+export const guardarPerfil = async (cambios) => (await pedir('/colaboraciones/perfil', { method: 'PATCH', body: cambios })).perfil;
+
 /** Colaborar entre personas: encendido en el servidor (COLAB_HUMANOS=1, 28-oct). */
 export const humanosHabilitados = () => true;
 
