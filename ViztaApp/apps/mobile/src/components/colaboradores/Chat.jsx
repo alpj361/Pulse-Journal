@@ -13,6 +13,7 @@ import Bloque from './Bloques';
 import SuCodex from './SuCodex';
 import Adjuntar from './Adjuntar';
 import { Sigue } from './Seguimientos';
+import AbrirMio from './AbrirMio';
 import { Cabecera, TONO, nombreDe } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 
@@ -141,6 +142,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
         <Conversacion
           colaborador={colaborador}
           yo={yo}
+          topInset={topInset}
           borrador={pedido || borrador}
           onAbrirSeguimiento={(sid) => {
             const s = (seguimientos.data || []).find((x) => x.id === sid);
@@ -174,7 +176,9 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   );
 }
 
-function Conversacion({ colaborador, yo, borrador, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento }) {
+function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento }) {
+  // Algo mío que le compartí: se abre con su propia pantalla.
+  const [mioAbierto, setMioAbierto] = useState(null);
   const queryClient = useQueryClient();
   const nombre = nombreDe(colaborador);
   // Si la lista ya trae la conversación, se abre sin esperar a nada.
@@ -330,6 +334,7 @@ function Conversacion({ colaborador, yo, borrador, bottomInset, onAbrirItem, onA
               mensaje={item}
               mio={esMio(item, yo)}
               onAbrirItem={onAbrirItem}
+              onAbrirMio={setMioAbierto}
               onAbrirArtifact={onAbrirArtifact}
               onAbrirSeguimiento={onAbrirSeguimiento}
               enviando={item.id === 'enviando'}
@@ -425,11 +430,12 @@ function Conversacion({ colaborador, yo, borrador, bottomInset, onAbrirItem, onA
           }}
         />
       ) : null}
+      {mioAbierto ? <AbrirMio id={mioAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setMioAbierto(null)} /> : null}
     </KeyboardAvoidingView>
   );
 }
 
-function Mensaje({ mensaje, mio, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento, enviando, enVivo }) {
+function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, enviando, enVivo }) {
   const bloques = bloquesDe(mensaje);
   // Lo que llega en vivo sube desde abajo (la lista está invertida).
   return (
@@ -438,7 +444,7 @@ function Mensaje({ mensaje, mio, onAbrirItem, onAbrirArtifact, onAbrirSeguimient
       style={{ gap: 6, opacity: enviando ? 0.55 : 1 }}
     >
       {bloques.map((b) => (
-        <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} />
+        <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirMio={onAbrirMio} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} />
       ))}
     </Animated.View>
   );

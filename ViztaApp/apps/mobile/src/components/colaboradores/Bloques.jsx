@@ -19,7 +19,7 @@ import { TONO } from './piezas';
  * Texto, adjuntos, código y la referencia a un artifact. Lo demás todavía no
  * existe en la app y no se dibuja (ver `SE_VEN` en logica.js).
  */
-export default function Bloque({ bloque, mio, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento }) {
+export default function Bloque({ bloque, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento }) {
   const p = bloque?.payload || {};
   switch (bloque?.type) {
     case 'text':
@@ -30,7 +30,7 @@ export default function Bloque({ bloque, mio, onAbrirItem, onAbrirArtifact, onAb
       return p.tipo === 'snippet' || p.tipo === 'code' ? (
         <Codigo contenido={p.contenido} />
       ) : (
-        <Adjunto adjunto={p} mio={mio} onAbrirItem={onAbrirItem} />
+        <Adjunto adjunto={p} mio={mio} onAbrirItem={mio ? onAbrirMio : onAbrirItem} />
       );
     case 'artifact_ref':
       return <ArtifactRef id={p.ref_id} onAbrir={onAbrirArtifact} />;
@@ -136,8 +136,8 @@ function Adjunto({ adjunto, mio, onAbrirItem }) {
   const titulo = meta.titulo || meta.title || meta.nombre || QUE_ES[adjunto.tipo] || 'adjunto';
   const tipo = meta.clave || meta.tipo || QUE_ES[adjunto.tipo] || adjunto.tipo;
   const esItem = adjunto.tipo === 'item' && adjunto.ref_id;
-  // Lo mío está en mi Codex; tocarlo en el chat del agente no lleva a ningún lado.
-  const abrir = esItem && !mio && onAbrirItem ? () => onAbrirItem(adjunto.ref_id) : null;
+  // Lo del agente se abre en Su Codex; lo mío, en su propia pantalla.
+  const abrir = esItem && onAbrirItem ? () => onAbrirItem(adjunto.ref_id) : null;
   const foto = useFotoDe(esItem ? adjunto.ref_id : null, meta.imagen || meta.thumbnail_url);
   return (
     <Elemento

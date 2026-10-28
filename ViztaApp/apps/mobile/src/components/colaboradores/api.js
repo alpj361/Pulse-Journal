@@ -254,7 +254,6 @@ export const TIPOS_PARA_ADJUNTAR = [
   { clave: 'post', universo: ['post', 'Post'] },
   { clave: 'snippet', universo: ['Snippet'] },
   { clave: 'source', universo: ['Source'] },
-  { clave: 'historia', universo: ['Historia'] },
   { clave: 'objeto', universo: ['Objeto', 'Artefacto'] },
   { clave: 'documento', items: true },
 ];
@@ -268,6 +267,9 @@ function consultasDeMiCodex(userId, { tipo, ids, columnas, cabeza = false }) {
   let a = def && !def.items ? null : supabase.from('codex_items').select(columnas.items, opciones).eq('user_id', userId);
   let b = def?.items ? null : supabase.from('codex_universe_items').select(columnas.universo, opciones).eq('user_id', userId);
   if (b && def?.universo) b = b.in('tipo', def.universo);
+  // Las historias de un espacio no se comparten (por ahora); los hechos son
+  // parte de su post.
+  else if (b) b = b.not('tipo', 'in', '("Historia","Fact")');
   if (ids) {
     if (a) a = a.in('id', ids);
     if (b) b = b.in('id', ids);

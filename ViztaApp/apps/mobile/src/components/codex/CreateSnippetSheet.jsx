@@ -262,6 +262,12 @@ export default function CreateSnippetSheet({
   onNota,
   bottomInset = 0,
   topInset = 0,
+  /**
+   * Solo leer la nota que llega en `restaurarId`: sin escribir, sin cambiar
+   * de sección y sin guardar al cerrar. Lo usa el chat con un agente, al
+   * tocar una nota que le compartiste.
+   */
+  soloLectura = false,
 }) {
   const { width: W } = useWindowDimensions();
 
@@ -340,7 +346,9 @@ export default function CreateSnippetSheet({
    * decidió el borrado de `autoFocus`, llevado hasta el final: el teclado no
    * aparece si nadie lo pidió, y pedirlo son dos toques.
    */
-  const [escribiendo, setEscribiendo] = useState(false);
+  const [escribiendoPedido, setEscribiendoPedido] = useState(false);
+  const escribiendo = soloLectura ? false : escribiendoPedido;
+  const setEscribiendo = useCallback((v) => (soloLectura ? null : setEscribiendoPedido(v)), [soloLectura]);
 
   /**
    * Dónde pasó esto.
@@ -1692,7 +1700,7 @@ export default function CreateSnippetSheet({
     // Con el editor de bloques, una nota que ya existe se guarda sola al
     // salir: es lo que promete el guardado automático. Una nueva que nunca se
     // guardó se descarta como siempre, y su borrador local con ella.
-    if (bloquesActivo) {
+    if (bloquesActivo && !soloLectura) {
       if (editandoId) edicion.guardarYa();
       else borrarBorrador(null);
     }
@@ -1706,7 +1714,7 @@ export default function CreateSnippetSheet({
     // abandonar una nota, lo segundo es solo salir.
     evento(EV.NOTA_DESCARTADA, { tenia_texto: cuerpo.trim().length > 0 });
     onClose();
-  }, [fotos, audios, documentos, cuerpo, onClose, soltarFotos, soltarDocumentos, bloquesActivo, editandoId, edicion]);
+  }, [fotos, audios, documentos, cuerpo, onClose, soltarFotos, soltarDocumentos, bloquesActivo, editandoId, edicion, soloLectura]);
 
   /**
    * Poner dónde estoy.
@@ -2064,7 +2072,7 @@ export default function CreateSnippetSheet({
                   modelo, y entre cambiar de pantalla a mitad de una pregunta y
                   ver con qué se está preguntando, lo segundo es lo que hace falta
                   en ese momento. */}
-              {!preguntando ? (
+              {!preguntando && !soloLectura ? (
                 <Animated.View
                   style={[{ overflow: 'hidden', borderRadius: 999, marginLeft: 4 }, estiloSwitch]}
                 >
@@ -2150,7 +2158,7 @@ export default function CreateSnippetSheet({
               ) : null}
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0, opacity: soloLectura ? 0 : 1 }} pointerEvents={soloLectura ? 'none' : 'auto'}>
               {/* La lupa, en las dos pantallas. En Notas enciende el
                   autocompletado del Codex —solo en la página de la nota: es lo
                   que se escribe lo que se busca—. En Espacios, adentro de un
@@ -2343,6 +2351,7 @@ export default function CreateSnippetSheet({
             ref={pager}
             horizontal
             pagingEnabled
+            scrollEnabled={!soloLectura}
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
@@ -2432,14 +2441,14 @@ export default function CreateSnippetSheet({
                 }
                 desplazar={desplazar}
                 fotos={enElTexto.size ? fotos.filter((f) => fuera(f.storage_path, f.id)) : fotos}
-                onQuitarFoto={quitar}
+                onQuitarFoto={soloLectura ? undefined : quitar}
                 onVerFoto={setFotoAbierta}
                 audios={enElTexto.size ? audios.filter((a) => fuera(a.storage_path, a.id)) : audios}
-                onQuitarAudio={quitarAudio}
+                onQuitarAudio={soloLectura ? undefined : quitarAudio}
                 documentos={enElTexto.size ? documentos.filter((d) => fuera(d.storage_path, d.clave)) : documentos}
                 esHistoria={!!principalDe}
                 onAbrirDocumento={abrirDocumento}
-                onQuitarDocumento={quitarDocumento}
+                onQuitarDocumento={soloLectura ? undefined : quitarDocumento}
                 escribiendo={escribiendo}
                 vacio={!cuerpo.trim()}
                 marcador={marcador}
