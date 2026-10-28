@@ -3,7 +3,7 @@ import { Linking, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { AlignLeft, ChevronDown, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
+import { AlignLeft, ArrowUpRight, ChevronDown, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
 import { INK } from '../theme';
 import { TEMAS } from '../feed/temas';
 import { supabase } from '../../utils/supabase';
@@ -264,6 +264,7 @@ function LaNota({ url, esNoticia }) {
       {pie ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{pie}</Text> : null}
       <Boton
         texto="leer la nota"
+        Icono={ArrowUpRight}
         alto={38}
         onPress={() => WebBrowser.openBrowserAsync(url).catch(() => Linking.openURL(url).catch(() => {}))}
         style={{ alignSelf: 'flex-start' }}
