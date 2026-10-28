@@ -46,6 +46,7 @@ import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
 import { SERIF } from "../../components/theme";
 import Mundito from "../../components/mapa/Mundito";
 import MapaSheet from "../../components/mapa/MapaSheet";
+import { puedeVerMapa } from "../../components/mapa/acceso";
 import { PAPEL } from "../../components/codex/Papel";
 import Pegatina from "../../components/feed/Pegatina";
 import { paletaDe } from "../../components/feed/temas";
@@ -635,6 +636,8 @@ export default function Index() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
+  // El mapa, por ahora, solo para alfa y admin.
+  const conMapa = usePulseConnectionStore((s) => puedeVerMapa(s.connectedUser));
   const [viendoColaboradores, setViendoColaboradores] = useState(false);
   // Colaboradores es de la beta: con sesión y rol alfa, beta o admin.
   const colabora = usePulseConnectionStore((s) => puedeColaborar(s.connectedUser));
@@ -661,9 +664,9 @@ export default function Index() {
   const consumir = useUltimoLugarStore((s) => s.consumir);
 
   useEffect(() => {
-    if (porRestaurar?.tipo !== 'mapa') return;
+    if (porRestaurar?.tipo !== 'mapa' || !conMapa) return;
     if (consumir('mapa')) setViendoMapa(true);
-  }, [porRestaurar?.tipo, consumir]);
+  }, [porRestaurar?.tipo, consumir, conMapa]);
 
   // Realtime: notify when new news_cards are inserted
   useEffect(() => {
@@ -916,7 +919,7 @@ export default function Index() {
               * que ya usan los puntos del mapa, así que no entra un color
               * nuevo a la app. */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-              <Mundito size={30} onPress={() => setViendoMapa(true)} />
+              {conMapa ? <Mundito size={30} onPress={() => setViendoMapa(true)} /> : null}
 
               {/* Colaboradores, para la beta. Otra puerta de «salir del feed»,
                   en el verde de la app: al lado del globo y la tuerca, un gris
@@ -1200,7 +1203,7 @@ export default function Index() {
 
       {/* El mapa es un Modal, así que se dibuja sobre todo el feed. Va después
           del grano porque es una pantalla entera, no una capa del papel. */}
-      {viendoMapa ? (
+      {viendoMapa && conMapa ? (
         <MapaSheet
           onClose={() => setViendoMapa(false)}
           topInset={insets.top}
