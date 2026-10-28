@@ -3,7 +3,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Animated,
   StyleSheet,
   Modal,
@@ -28,6 +27,7 @@ import { filtrarDias, opcionesCongreso, opcionesTemas } from "../../components/f
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
+import MorphingInfinity from "../../components/MorphingInfinity";
 
 /** Un momento del feed sin contenido: cargando, o sin nada que mostrar. */
 function EstadoFeed({ sticker, children }) {
@@ -190,7 +190,7 @@ function EntityWikiModal({ entityName, onClose }) {
           </View>
 
           {loading ? (
-            <ActivityIndicator size="small" color="rgba(165,180,252,0.8)" style={{ marginVertical: 16 }} />
+            <MorphingInfinity size={20} color="rgba(165,180,252,0.8)" style={{ marginVertical: 16, alignSelf: 'center' }} />
           ) : wikiItem ? (
             <View>
               <View style={{
@@ -240,7 +240,7 @@ function EntityWikiModal({ entityName, onClose }) {
               }}
             >
               {creating
-                ? <ActivityIndicator size="small" color="#fff" />
+                ? <MorphingInfinity size={16} color="#fff" />
                 : <Plus size={15} color="#fff" />
               }
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
@@ -581,7 +581,7 @@ function NewsCardModal({ card, onClose }) {
                 </View>
 
                 {entityLoading ? (
-                  <ActivityIndicator size="small" color={INK.faint} style={{ marginVertical: 12 }} />
+                  <MorphingInfinity size={20} color={INK.faint} style={{ marginVertical: 12 }} />
                 ) : entityWikiItem ? (
                   <View>
                     <Text style={{ fontSize: 10, fontWeight: '800', color: p.tinta, letterSpacing: 1, marginBottom: 7 }}>
@@ -616,7 +616,7 @@ function NewsCardModal({ card, onClose }) {
                       opacity: creating ? 0.6 : 1,
                     }}
                   >
-                    {creating ? <ActivityIndicator size="small" color={PAPEL} /> : <Plus size={14} color={PAPEL} />}
+                    {creating ? <MorphingInfinity size={14} color={PAPEL} /> : <Plus size={14} color={PAPEL} />}
                     <Text style={{ fontSize: 13, color: PAPEL }}>
                       {creating ? 'agregando…' : confirmPending ? 'tocá de nuevo para confirmar' : 'agregar al Codex'}
                     </Text>
@@ -716,7 +716,7 @@ export default function Index() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: hotTopicsData } = useQuery({
+  const { data: hotTopicsData, isLoading: cargandoNoticias } = useQuery({
     queryKey: ['pulse-hot-topics'],
     queryFn: async () => {
       // La corrida más reciente, sin excepciones —contar tarjetas no dice si
@@ -871,10 +871,7 @@ export default function Index() {
 
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={INK.meta} />
-          <Text style={{ color: INK.meta, marginTop: 12, fontSize: 15 }}>
-            Cargando tendencias...
-          </Text>
+          <MorphingInfinity size={34} color={INK.meta} />
         </View>
       ) : (
         <ScrollView
@@ -1047,7 +1044,9 @@ export default function Index() {
                   </View>
                 ))
               )
-            ) : feed === "observatorio" ? null : hotTopics.length === 0 ? (
+            ) : feed === "observatorio" ? null : hotTopics.length === 0 && cargandoNoticias ? (
+              <EstadoFeed sticker="cargando">Trayendo las noticias…</EstadoFeed>
+            ) : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
             ) : (
               porDiaGT(noticiasVisibles).map((grupo, g) => (
