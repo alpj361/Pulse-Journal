@@ -1,4 +1,5 @@
-import { Pressable, Text, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
 import { AlignLeft, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
 import { INK } from '../theme';
@@ -169,12 +170,18 @@ function ArtifactRef({ id, onAbrir }) {
 
 /**
  * Algo urgente de un tema que sigue el agente: el tema, lo que encontró y de
- * dónde. Se abre en el tema (pestaña «Sigue»).
+ * dónde. Se abre en lo que encontró (la nota misma); solo si no trae enlace,
+ * en el tema.
  */
 function SeguimientoRef({ ref_: p, onAbrir }) {
   const fuente = { noticias: 'noticia', congreso_items: 'Congreso', iniciativas: 'iniciativa', pc_items: 'Poder Ciudadano', trending_tweets: 'redes' }[p.fuente_tipo] || p.fuente_nombre || '';
+  const abrir = p.url
+    ? () => WebBrowser.openBrowserAsync(p.url).catch(() => Linking.openURL(p.url).catch(() => {}))
+    : onAbrir && p.seguimiento_id
+      ? () => onAbrir(p.seguimiento_id)
+      : null;
   return (
-    <Tarjeta onPress={onAbrir && p.seguimiento_id ? () => onAbrir(p.seguimiento_id) : null} accessibilityLabel={`Urgente en ${p.tema || 'un tema'}: ${p.titulo || ''}`}>
+    <Tarjeta onPress={abrir} accessibilityLabel={`Urgente en ${p.tema || 'un tema'}: ${p.titulo || ''}`}>
       <Icono Componente={Radar} tema={TEMAS.Violencia} />
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: TONO.ladrillo }} numberOfLines={1}>
@@ -185,7 +192,7 @@ function SeguimientoRef({ ref_: p, onAbrir }) {
         </Text>
         {fuente ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{fuente}</Text> : null}
       </View>
-      {onAbrir ? <ChevronRight size={16} color={INK.meta} /> : null}
+      {abrir ? <ChevronRight size={16} color={INK.meta} /> : null}
     </Tarjeta>
   );
 }

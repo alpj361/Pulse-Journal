@@ -23,6 +23,12 @@ const PESTANAS = [
 ];
 
 /**
+ * La última pestaña que se vio de cada colaborador: al volver a su chat se
+ * abre donde quedó (Su Codex, Sigue), mientras la app siga abierta.
+ */
+const ULTIMA_PESTANA = new Map();
+
+/**
  * Lo nuevo entra en vivo (Realtime sobre `mensajes`). La consulta periódica
  * queda de respaldo, por si el canal se corta.
  */
@@ -33,7 +39,14 @@ const CADA = 30000;
  * «Compartido» entra con la fase de compartir.
  */
 export default function Chat({ colaborador, yo, borrador, topInset, bottomInset, onVolver, onPermisos, onPerfil, onAbrirEspacio, onAbrirArtifact, onAbrirSeguimiento, pestanaInicial }) {
-  const [pestana, setPestana] = useState(pestanaInicial || 'chat');
+  const [pestana, setPestanaLocal] = useState(() => pestanaInicial || ULTIMA_PESTANA.get(colaborador.id) || 'chat');
+  const setPestana = useCallback(
+    (p) => {
+      ULTIMA_PESTANA.set(colaborador.id, p);
+      setPestanaLocal(p);
+    },
+    [colaborador.id],
+  );
   // Qué está haciendo ahora, bajo su nombre. Sin backend, `null`.
   const tareas = useQuery({
     queryKey: claveTareas(colaborador.id),
@@ -55,6 +68,10 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   });
   const conSigue = seguimientos.data != null || (seguimientos.isLoading && pestana === 'sigue');
   const pestanas = PESTANAS.filter((p) => p.clave !== 'sigue' || conSigue);
+  // Si quedó en «Sigue» y el agente ya no sigue nada, vuelve al chat.
+  useEffect(() => {
+    if (pestana === 'sigue' && !conSigue) setPestana('chat');
+  }, [pestana, conSigue, setPestana]);
   // Un pedido armado desde Su Codex (p. ej. «proponeme unirlo»): abre el chat
   // con el texto escrito, sin mandarlo.
   const [pedido, setPedido] = useState(null);
