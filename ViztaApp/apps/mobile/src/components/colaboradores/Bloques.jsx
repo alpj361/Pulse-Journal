@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
-import { AlignLeft, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { AlignLeft, ChevronDown, ChevronRight, Code, Link2, PanelTop, Radar } from 'lucide-react-native';
 import { INK } from '../theme';
 import { TEMAS } from '../feed/temas';
+import { supabase } from '../../utils/supabase';
+import MorphingInfinity from '../MorphingInfinity';
 import { leerArtifact } from './api';
-import { TONO } from './piezas';
+import { Boton, TONO } from './piezas';
 
 /**
  * Un bloque de un mensaje (contrato `openui.v1`, pantalla 4 del diseño).
@@ -170,29 +174,100 @@ function ArtifactRef({ id, onAbrir }) {
 
 /**
  * Algo urgente de un tema que sigue el agente: el tema, lo que encontró y de
- * dónde. Se abre en lo que encontró (la nota misma); solo si no trae enlace,
- * en el tema.
+ * dónde. Al tocarla se abre ahí mismo (título entero, resumen, medio y fecha)
+ * para decidir antes de ir a la nota; solo si no trae enlace, va al tema.
  */
 function SeguimientoRef({ ref_: p, onAbrir }) {
+  const [abierta, setAbierta] = useState(false);
   const fuente = { noticias: 'noticia', congreso_items: 'Congreso', iniciativas: 'iniciativa', pc_items: 'Poder Ciudadano', trending_tweets: 'redes' }[p.fuente_tipo] || p.fuente_nombre || '';
-  const abrir = p.url
-    ? () => WebBrowser.openBrowserAsync(p.url).catch(() => Linking.openURL(p.url).catch(() => {}))
-    : onAbrir && p.seguimiento_id
-      ? () => onAbrir(p.seguimiento_id)
-      : null;
+  const alTocar = p.url ? () => setAbierta((a) => !a) : onAbrir && p.seguimiento_id ? () => onAbrir(p.seguimiento_id) : null;
   return (
-    <Tarjeta onPress={abrir} accessibilityLabel={`Urgente en ${p.tema || 'un tema'}: ${p.titulo || ''}`}>
-      <Icono Componente={Radar} tema={TEMAS.Violencia} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: TONO.ladrillo }} numberOfLines={1}>
-          {`URGENTE${p.tema ? ` · ${String(p.tema).toUpperCase()}` : ''}`}
-        </Text>
-        <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK.title }} numberOfLines={3}>
-          {p.titulo || 'Encontró algo'}
-        </Text>
-        {fuente ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{fuente}</Text> : null}
+    <Pressable
+      onPress={alTocar}
+      disabled={!alTocar}
+      accessibilityRole="button"
+      accessibilityState={p.url ? { expanded: abierta } : undefined}
+      accessibilityLabel={`Urgente en ${p.tema || 'un tema'}: ${p.titulo || ''}`}
+      style={({ pressed }) => ({
+        alignSelf: 'flex-start',
+        width: '86%',
+        backgroundColor: TONO.tarjeta,
+        borderWidth: 1,
+        borderColor: 'rgba(28,43,34,0.08)',
+        borderRadius: 14,
+        paddingVertical: 9,
+        paddingHorizontal: 11,
+        gap: 10,
+        opacity: pressed ? 0.75 : 1,
+      })}
+    >
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+        <Icono Componente={Radar} tema={TEMAS.Violencia} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: TONO.ladrillo }} numberOfLines={abierta ? undefined : 1}>
+            {`URGENTE${p.tema ? ` · ${String(p.tema).toUpperCase()}` : ''}`}
+          </Text>
+          <Text style={{ fontSize: 13.5, fontWeight: '700', color: INK.title }} numberOfLines={abierta ? undefined : 3}>
+            {p.titulo || 'Encontró algo'}
+          </Text>
+          {fuente && !abierta ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{fuente}</Text> : null}
+        </View>
+        {!alTocar ? null : p.url && abierta ? <ChevronDown size={16} color={INK.meta} /> : <ChevronRight size={16} color={INK.meta} />}
       </View>
-      {abrir ? <ChevronRight size={16} color={INK.meta} /> : null}
-    </Tarjeta>
+      {abierta ? <LaNota url={p.url} esNoticia={p.fuente_tipo === 'noticias'} /> : null}
+    </Pressable>
+  );
+}
+
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** «hoy», «ayer» o «27 oct», de una fecha `AAAA-MM-DD`. */
+function diaCorto(fecha, ahora = new Date()) {
+  const [a, m, d] = String(fecha || '').slice(0, 10).split('-').map(Number);
+  if (!a || !m || !d) return '';
+  const dias = Math.round((new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate()) - new Date(a, m - 1, d)) / 86400000);
+  if (dias === 0) return 'hoy';
+  if (dias === 1) return 'ayer';
+  return `${d} ${MESES[m - 1]}`;
+}
+
+function dominio(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/** Lo que dice la nota, antes de abrirla: resumen, medio y fecha. */
+function LaNota({ url, esNoticia }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['nota-por-url', url],
+    enabled: esNoticia && !!url,
+    staleTime: 1000 * 60 * 60,
+    retry: false,
+    queryFn: async () => {
+      const { data: filas, error } = await supabase.from('news').select('titulo, resumen, fuente, fecha').eq('url', url).order('fecha', { ascending: false }).limit(1);
+      if (error) throw error;
+      return filas?.[0] || null;
+    },
+  });
+  const resumen = String(data?.resumen || '').trim();
+  const pie = [data?.fuente || dominio(url), diaCorto(data?.fecha)].filter(Boolean).join(' · ');
+  return (
+    <Animated.View entering={FadeIn.duration(180)} style={{ gap: 10, paddingLeft: 2 }}>
+      {esNoticia && isLoading ? (
+        <MorphingInfinity size={18} color={INK.meta} style={{ alignSelf: 'flex-start' }} />
+      ) : resumen ? (
+        <Text style={{ fontSize: 13, lineHeight: 18.5, color: INK.body }}>{resumen}</Text>
+      ) : null}
+      {pie ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{pie}</Text> : null}
+      <Boton
+        texto="leer la nota"
+        alto={38}
+        onPress={() => WebBrowser.openBrowserAsync(url).catch(() => Linking.openURL(url).catch(() => {}))}
+        style={{ alignSelf: 'flex-start' }}
+      />
+    </Animated.View>
   );
 }
