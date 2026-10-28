@@ -46,6 +46,11 @@ import PortadaEspacio from './PortadaEspacio';
 import usePortada from '../../utils/portada';
 import { formaValida, avisoDeForma } from '../../utils/formaCampo';
 import { supabase } from '../../utils/supabase';
+import { useQuery } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Fingerprint } from 'lucide-react-native';
+import { autoresDeFicha } from '../huella/api';
+import HuellaAutor from '../huella/HuellaAutor';
 
 /**
  * Ficha de item.
@@ -632,6 +637,19 @@ export default function ItemDetailSheet({
 
   const ALTO_PORTADA = 208;
 
+  // Las cuentas que publican como esta ficha (solo Actor o Entidad tuyos): su
+  // huella de autor. Sin cuentas vinculadas no se muestra nada.
+  const insets = useSafeAreaInsets();
+  const [huellaDe, setHuellaDe] = useState(null);
+  const conHuella = !creando && !soloLectura && ['Actor', 'Entidad'].includes(tipo) && /^[0-9a-f-]{36}$/i.test(String(dbId || ''));
+  const { data: autoresVinculados = [] } = useQuery({
+    queryKey: ['huella-autores-ficha', dbId],
+    enabled: conHuella,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+    queryFn: async () => (await autoresDeFicha(dbId)).autores || [],
+  });
+
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(20,28,22,0.4)', justifyContent: 'flex-end' }}>
@@ -900,6 +918,28 @@ export default function ItemDetailSheet({
                     );
                   })}
                 </Animated.View>
+              ) : null}
+
+              {tab === 'detalle' && autoresVinculados.length ? (
+                <View style={{ marginTop: 14, gap: 4 }}>
+                  {autoresVinculados.map((a) => (
+                    <Pressable
+                      key={a.id}
+                      onPress={() => {
+                        roce();
+                        setHuellaDe(a);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Huella de autor de ${a.usuario || a.nombre || 'la cuenta'}`}
+                      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, opacity: pressed ? 0.5 : 1 })}
+                    >
+                      <Fingerprint size={15} color={INK.title} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>
+                        {[a.usuario ? `@${a.usuario}` : a.nombre, a.plataforma].filter(Boolean).join(' · ')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               ) : null}
 
               {/* ── Detalle ── */}
@@ -1667,6 +1707,9 @@ export default function ItemDetailSheet({
           ) : null}
         </View>
       </View>
+      {huellaDe ? (
+        <HuellaAutor autorId={huellaDe.id} nombre={huellaDe.nombre} topInset={insets.top} bottomInset={insets.bottom} onClose={() => setHuellaDe(null)} />
+      ) : null}
     </Modal>
   );
 }

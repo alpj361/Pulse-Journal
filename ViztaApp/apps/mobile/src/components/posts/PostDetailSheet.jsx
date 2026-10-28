@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { X, Eye, ExternalLink, Play, Plus, Check } from 'lucide-react-native';
+import { X, Eye, ExternalLink, Play, Plus, Check, Fingerprint } from 'lucide-react-native';
 import { INK, MOTION, RADIUS } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
@@ -38,6 +38,8 @@ import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeV
 import { armarPiezas, norm } from './piezas';
 import { Pieza, Refs, Saltos } from './Saltos';
 import { supabase } from '../../utils/supabase';
+import { useQuery } from '@tanstack/react-query';
+import HuellaAutor from '../huella/HuellaAutor';
 import { registrarAvisos } from '../../utils/notificaciones';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
@@ -174,6 +176,19 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const [ocupado, setOcupado] = useState(null); // la acción en curso
   const [errorAccion, setErrorAccion] = useState(null);
   const [itemAbierto, setItemAbierto] = useState(null);
+
+  // Quién publicó, como autor social (no quien guardó el post): su huella.
+  // Un post que te compartieron es de otra cuenta y su autor no es tuyo.
+  const [viendoHuella, setViendoHuella] = useState(false);
+  const { data: autorId = null } = useQuery({
+    queryKey: ['post-autor', post?.id],
+    enabled: !!post?.id && !muestra && !soloLectura,
+    staleTime: 1000 * 60 * 10,
+    queryFn: async () => {
+      const { data } = await supabase.from('post_analisis').select('autor_id').eq('post_id', post.id).maybeSingle();
+      return data?.autor_id || null;
+    },
+  });
   // Lo que se pidió sosteniendo un material, mientras llega por la fila en vivo:
   // { [texto]: { cargando } | { datos } | { error } }.
   const [detalles, setDetalles] = useState({});
@@ -540,7 +555,21 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
-            {autor ? (
+            {autor && autorId ? (
+              <Pressable
+                onPress={() => {
+                  roce();
+                  setViendoHuella(true);
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Huella de autor de ${autor}`}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, opacity: pressed ? 0.5 : 1 })}
+              >
+                <Fingerprint size={14} color={INK.title} strokeWidth={1.8} />
+                <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, textDecorationLine: 'underline' }}>{autor}</Text>
+              </Pressable>
+            ) : autor ? (
               <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>{autor}</Text>
             ) : null}
             {fecha ? (
@@ -826,6 +855,9 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
 
       {/* La ficha del Codex cuelga de esta hoja y no se abre al lado: iOS
           presenta un Modal a la vez, y como hermana no aparecería. */}
+      {viendoHuella && autorId ? (
+        <HuellaAutor autorId={autorId} nombre={autor} topInset={topInset} bottomInset={bottomInset} onClose={() => setViendoHuella(false)} />
+      ) : null}
       {itemAbierto ? (
         <ItemDetailSheet
           item={itemAbierto}
