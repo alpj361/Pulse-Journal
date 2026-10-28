@@ -9,6 +9,7 @@ import MorphingInfinity from '../MorphingInfinity';
 import Pista from '../Pista';
 import { usePistasStore, PISTA } from '../../state/pistasStore';
 import { ChipRef, Pieza, Refs } from './Saltos';
+import { useSoloLecturaPost } from './lectura';
 
 /**
  * Las secciones del análisis de un post.
@@ -440,6 +441,7 @@ function fraccion(c) {
  * de tu Codex (y entonces tocarlo lo abre).
  */
 export function GuardarHecho({ hecho, ocupado, onGuardar }) {
+  if (useSoloLecturaPost()) return null;
   return (
     <Pressable
       onPress={onGuardar}

@@ -32,7 +32,7 @@ export default function AbrirMio({ id, topInset = 0, bottomInset = 0, onClose })
   if (!item) return null;
   const clave = claveDe(item);
   if (clave === 'post') {
-    return <PostDetailSheet post={item} onClose={onClose} topInset={topInset} bottomInset={bottomInset} />;
+    return <PostDetailSheet post={item} soloLectura onClose={onClose} topInset={topInset} bottomInset={bottomInset} />;
   }
   if (clave === 'snippet') {
     return <CreateSnippetSheet restaurarId={item.id} soloLectura onClose={onClose} topInset={topInset} bottomInset={bottomInset} />;
