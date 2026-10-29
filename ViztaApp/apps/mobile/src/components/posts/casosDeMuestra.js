@@ -57,6 +57,18 @@ function caso({ n, titulo, cuenta, texto = '', dicho = null, carrusel = false, a
   };
 }
 
+/**
+ * Posts reales de prueba: no son inventados, se leen de la base al tocarlos y
+ * se abren con todo lo que tienen, incluida la huella de su autor. Solo los ve
+ * quien tiene acceso al post (el RLS decide); si no, la fila lo dice.
+ */
+export const POSTS_DE_PRUEBA = [
+  {
+    id: '9c002d3e-d478-4c30-910c-6fd5eb4f030e',
+    titulo: 'Tan/Gente — iglesias evangélicas · huella de autor',
+  },
+];
+
 export const CASOS = [
   caso({
     n: 1, titulo: 'Política a cámara que anuncia algo', cuenta: 'Marta Recinos',

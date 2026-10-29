@@ -86,7 +86,14 @@ function paisEn(texto) {
   return null;
 }
 
+/**
+ * **Cuenta** es el primer grupo y el único que no sale del análisis: un post
+ * recién traído ya sabe de qué cuenta es. Cuenta con un solo post también se
+ * ofrece —buscar «lo de Quorum» sirve aunque haya uno— y, como pueden ser
+ * decenas, el panel la muestra con buscador (`buscable`).
+ */
 export const FACETAS = [
+  { id: 'cuenta', titulo: 'cuenta', minimo: 1, buscable: true },
   { id: 'pais', titulo: 'país', minimo: 1 },
   { id: 'tema', titulo: 'tema', minimo: 2 },
   { id: 'lugar', titulo: 'lugares', minimo: 2 },
@@ -114,6 +121,26 @@ function esTerritorio(m) {
 }
 
 const vacias = () => Object.fromEntries(FACETAS.map((f) => [f.id, new Map()]));
+
+/**
+ * La cuenta de un post: `{clave, etiqueta, usuario}` o null. Se agrupa por el
+ * nombre normalizado y no por el usuario, porque el usuario falta en la mayoría
+ * de los posts; sin emojis ni mayúsculas, «Raíces Guatemala 🌱» es una sola.
+ */
+export function cuentaDe(post) {
+  const d = post?.details || {};
+  const nombre = String(d.author || d.author_name || d.author_handle || (post?.name || '').match(/^@([^—]+)/)?.[1] || '').trim();
+  const clave = normalizar(nombre);
+  if (!clave) return null;
+  return { clave, etiqueta: nombre, usuario: d.author_handle || null };
+}
+
+/** Las etiquetas de un post, con su cuenta aunque no esté analizado. */
+function todasDe(post) {
+  const e = etiquetasDe(post);
+  const c = cuentaDe(post);
+  return c ? { ...e, cuenta: new Map([[c.clave, c.etiqueta]]) } : e;
+}
 const SIN_ANALISIS = vacias();
 
 // Por análisis y no por post: el objeto `analysis` cambia de identidad cuando
@@ -180,8 +207,11 @@ export function etiquetasDe(post) {
 export function facetasDe(posts) {
   const cuenta = Object.fromEntries(FACETAS.map((f) => [f.id, new Map()]));
 
+  const usuarios = new Map();
   for (const p of posts || []) {
-    const e = etiquetasDe(p);
+    const e = todasDe(p);
+    const c = cuentaDe(p);
+    if (c?.usuario) usuarios.set(c.clave, c.usuario);
     for (const f of FACETAS) {
       for (const [clave, etiqueta] of e[f.id]) {
         const v = cuenta[f.id].get(clave) || { clave, etiqueta, posts: 0 };
@@ -191,9 +221,15 @@ export function facetasDe(posts) {
     }
   }
 
+  for (const [clave, usuario] of usuarios) {
+    const v = cuenta.cuenta.get(clave);
+    if (v) v.usuario = usuario;
+  }
+
   return FACETAS.map((f) => ({
     id: f.id,
     titulo: f.titulo,
+    buscable: !!f.buscable,
     valores: [...cuenta[f.id].values()]
       .filter((v) => v.posts >= f.minimo)
       .sort((x, y) => y.posts - x.posts || x.etiqueta.localeCompare(y.etiqueta, 'es')),
@@ -202,6 +238,13 @@ export function facetasDe(posts) {
 
 /** Si un post tiene todo lo elegido: un valor por grupo, y los grupos suman. */
 export function cumple(post, seleccion) {
-  const e = etiquetasDe(post);
+  const e = todasDe(post);
   return Object.entries(seleccion || {}).every(([faceta, clave]) => !clave || !!e[faceta]?.has(clave));
+}
+
+/** Si un valor coincide con lo escrito en el buscador del grupo (nombre o usuario). */
+export function coincide(valor, texto) {
+  const q = normalizar(texto);
+  if (!q) return true;
+  return normalizar(valor?.etiqueta).includes(q) || normalizar(valor?.usuario).includes(q);
 }
