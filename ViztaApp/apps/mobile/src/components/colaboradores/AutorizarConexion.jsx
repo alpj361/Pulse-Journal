@@ -3,21 +3,28 @@ import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SvgXml } from 'react-native-svg';
-import { Check, ChevronRight, X } from 'lucide-react-native';
+import { Check, ChevronRight, CircleQuestionMark, FolderInput, Inbox, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { falla, roce, toque } from '../../utils/haptics';
 import MorphingInfinity from '../MorphingInfinity';
 import { NoDisponible, aprobarOAuth, rechazarOAuth, solicitudOAuth } from './api';
 import { LOGOS } from './logos';
 import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
+import { CATALOGO_PERMISOS } from './logica';
+import GuiaPermisos, { ICONO_PERMISO } from './GuiaPermisos';
 
-/** Lo que puede hacer en tu Vizta. Leer y crear vienen prendidos; tocar lo tuyo, no. */
+/**
+ * Lo que puede hacer en tu Vizta, con el catálogo del contrato v4.8. La
+ * conexión MCP nombra distinto dos claves (`modificar` es «editar», `borrar`
+ * es «eliminar»), pero son los mismos interruptores que en Colaboradores.
+ * Consultar y proponer vienen activos; escribir en tu cuenta, no.
+ */
 const PERMISOS = [
-  { clave: 'leer', titulo: 'Leer', texto: 'Busca en lo que guardaste', inicial: true },
-  { clave: 'crear', titulo: 'Crear', texto: 'Guarda cosas nuevas en su Codex', inicial: true },
-  { clave: 'modificar', titulo: 'Editar', texto: 'Sin esto, sus cambios te llegan para aprobar', inicial: false },
-  { clave: 'borrar', titulo: 'Borrar', texto: 'Quita lo que ya no sirve', inicial: false },
-];
+  { clave: 'leer', de: 'leer', inicial: true },
+  { clave: 'crear', de: 'crear', inicial: true },
+  { clave: 'modificar', de: 'editar', inicial: false },
+  { clave: 'borrar', de: 'eliminar', inicial: false },
+].map((p) => ({ ...p, ...CATALOGO_PERMISOS[p.de], Icono: ICONO_PERMISO[p.de] }));
 
 const logoDe = (nombre) => LOGOS[String(nombre || '').toLowerCase().replace(/[^a-z]/g, '')] || null;
 
@@ -35,6 +42,7 @@ export default function AutorizarConexion({ req, codigo, topInset = 0, bottomIns
   const [permisos, setPermisos] = useState(() => Object.fromEntries(PERMISOS.map((p) => [p.clave, p.inicial])));
   const [enviando, setEnviando] = useState(null);
   const [resultado, setResultado] = useState(null);
+  const [guia, setGuia] = useState(false);
   const consulta = useQuery({
     queryKey: ['mcp-solicitud', clave],
     queryFn: () => solicitudOAuth(clave),
@@ -149,16 +157,24 @@ export default function AutorizarConexion({ req, codigo, topInset = 0, bottomIns
         ) : null}
 
         <View style={{ gap: 8 }}>
-          <Text style={ROTULO}>EN TU VIZTA PUEDE</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[ROTULO, { flex: 1 }]}>PERMISOS</Text>
+            <Pressable onPress={() => setGuia(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Qué significa cada permiso">
+              <CircleQuestionMark size={19} color={INK.meta} strokeWidth={1.8} />
+            </Pressable>
+          </View>
           <View style={{ backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: 'rgba(28,43,34,0.08)', borderRadius: 18, overflow: 'hidden' }}>
             {PERMISOS.map((p, i) => (
               <View
                 key={p.clave}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: i ? 1 : 0, borderTopColor: 'rgba(28,43,34,0.06)' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderTopWidth: i ? 1 : 0, borderTopColor: 'rgba(28,43,34,0.06)' }}
               >
+                <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: p.de === 'eliminar' ? 'rgba(154,83,71,0.1)' : 'rgba(28,43,34,0.06)', alignItems: 'center', justifyContent: 'center' }}>
+                  <p.Icono size={16} color={p.de === 'eliminar' ? TONO.ladrillo : INK.body} strokeWidth={1.9} />
+                </View>
                 <View style={{ flex: 1, gap: 1 }}>
                   <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }}>{p.titulo}</Text>
-                  <Text style={{ fontSize: 12.5, color: INK.meta }}>{p.texto}</Text>
+                  <Text style={{ fontSize: 12.5, color: INK.meta }}>{p.corto}</Text>
                 </View>
                 <Switch
                   value={!!permisos[p.clave]}
@@ -169,9 +185,16 @@ export default function AutorizarConexion({ req, codigo, topInset = 0, bottomIns
                   trackColor={{ true: TONO.verde, false: 'rgba(28,43,34,0.14)' }}
                   ios_backgroundColor="rgba(28,43,34,0.14)"
                   accessibilityLabel={p.titulo}
+                  accessibilityHint={p.texto}
                 />
               </View>
             ))}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingTop: 4 }}>
+            {permisos.modificar ? <FolderInput size={16} color="#8A6420" strokeWidth={1.9} /> : <Inbox size={16} color={INK.meta} strokeWidth={1.9} />}
+            <Text style={{ flex: 1, fontSize: 13, color: INK.body }}>
+              {permisos.modificar ? 'Lo que crea va directo a tu cuenta' : 'Lo que crea te llega para aprobar'}
+            </Text>
           </View>
         </View>
 
@@ -183,6 +206,7 @@ export default function AutorizarConexion({ req, codigo, topInset = 0, bottomIns
         <Boton texto="autorizar" primario onPress={() => decidir(true)} cargando={enviando === 'aprobar'} disabled={!!enviando} />
         <Boton texto="rechazar" onPress={() => decidir(false)} cargando={enviando === 'rechazar'} disabled={!!enviando} />
       </View>
+      {guia ? <GuiaPermisos nombre={cliente} bottomInset={bottomInset} onClose={() => setGuia(false)} /> : null}
     </View>
   );
 }

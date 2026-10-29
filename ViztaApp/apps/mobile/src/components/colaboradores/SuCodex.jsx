@@ -45,7 +45,7 @@ const haceCuanto = (fecha) => {
  * Lo del agente vive en su Codex (PR #56). «ya lo tenés» marca lo que trajiste
  * al tuyo (`ya_en_mi_codex`); «se parece a uno tuyo», lo que tiene un homónimo
  * en el tuyo (`coincidencia_humano_id`). Lo parecido no se trae (sería un
- * duplicado): se le pide al agente que proponga unirlo, y llega para aprobar.
+ * duplicado); por ahora solo se avisa que ya lo tenés.
  */
 export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, onPedir, onAbrirEspacio, onAbrirArtifact }) {
   const [abierto, setAbierto] = useState(null);
@@ -453,13 +453,13 @@ function useTraer(colaborador, item) {
   return { trayendo, traido, fallo, traer };
 }
 
-/** Lo de abajo de una ficha suya: traerla (o pedir unirla) y reenviarla. */
-function Acciones({ item, traer, onPedir }) {
+/** Lo de abajo de una ficha suya: traerla y reenviarla. */
+function Acciones({ item, traer }) {
   const [reenviando, setReenviando] = useState(false);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
       <View style={{ flex: 1 }}>
-        <AccionPrincipal item={item} traer={traer} onPedir={onPedir} />
+        <AccionPrincipal item={item} traer={traer} />
       </View>
       <Pressable
         onPress={() => setReenviando(true)}
@@ -483,7 +483,7 @@ function Acciones({ item, traer, onPedir }) {
   );
 }
 
-function AccionPrincipal({ item, traer: t, onPedir }) {
+function AccionPrincipal({ item, traer: t }) {
   const loTenes = !!(item.ya_en_mi_codex || t.traido);
   const parecido = !loTenes && !!item.coincidencia_humano_id;
   if (loTenes) {
@@ -495,17 +495,12 @@ function AccionPrincipal({ item, traer: t, onPedir }) {
     );
   }
   const titulo = item.titulo || item.name;
+  // Unir lo suyo con lo tuyo quedó fuera mientras se rediseña (PJ, 29-oct):
+  // solo se avisa que ya lo tenés.
   if (parecido) {
     return (
-      <View style={{ gap: 8 }}>
+      <View style={{ height: 46, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 13, lineHeight: 18, color: TONO.ladrilloTinta, textAlign: 'center' }}>Ya tenés «{titulo}» en tu Codex.</Text>
-        {onPedir ? (
-          <Boton
-            texto="pedirle que lo una al tuyo"
-            primario
-            onPress={() => onPedir(`Tengo «${titulo}» en mi Codex. Proponeme unir el tuyo con el mío (colab_merge_proponer), así lo reviso campo por campo.`)}
-          />
-        ) : null}
       </View>
     );
   }
