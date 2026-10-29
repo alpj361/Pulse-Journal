@@ -106,6 +106,14 @@ cambia con ella.
 veces seguidas lo mismo, y si el sistema ya no va a preguntar, se dice dónde
 está la llave —con un botón que abre Ajustes— una vez y en paz.
 
+## Términos exactos en cifras sensibles
+
+Cuando una cifra habla de violencia, víctimas o daños, se usa el término
+técnico y no uno coloquial. Nunca «lo normal» para una cantidad de muertos o
+de hechos violentos: se dice «Promedio de 7 días: 4». Lo mismo con niveles y
+estados: «Incidencia moderada», no «Cargado»; «en actualización», no «hasta
+ahora». El tono casual de Vizta queda para los controles, no para los datos.
+
 ## Ayudas: van en una guía, no en la pantalla
 
 Una pantalla con información (la huella de autor, un análisis) muestra solo

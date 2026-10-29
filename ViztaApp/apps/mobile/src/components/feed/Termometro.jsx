@@ -21,7 +21,7 @@ import {
 } from './termometro';
 
 /**
- * Cómo está el día, a un toque del feed.
+ * El termómetro del día, a un toque del feed.
  *
  * Arriba, una franja con cuatro medidas (intensidad, violencia, gobierno y
  * Congreso, volumen). Al tocarla, una hoja con todas las medidas, la semana,
@@ -60,11 +60,11 @@ export default function Termometro({ pais, style }) {
       <Pressable
         onPress={() => setAbierta(true)}
         accessibilityRole="button"
-        accessibilityLabel="Cómo está el día"
+        accessibilityLabel="Termómetro del día"
         style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.7 : 1 }, style]}
       >
         {/* Con barra solo lo que tiene con qué medirse: la intensidad (escala
-            fija) y los conteos cuando ya hay «lo normal». Los demás van como
+            fija) y los conteos cuando ya hay promedio de 7 días. Los demás van como
             fichas con el número del día. */}
         {conBarra.map((k) => {
           const p = puntosDe(k, hoy);
@@ -122,7 +122,7 @@ function Hoja({ data, onClose }) {
           </Pressable>
 
           <ScrollView contentContainerStyle={{ paddingHorizontal: 26, paddingTop: 18, paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
-            <Text style={{ fontFamily: SERIF, fontSize: 26, color: INK.title, letterSpacing: -0.3 }}>Cómo está el día</Text>
+            <Text style={{ fontFamily: SERIF, fontSize: 26, color: INK.title, letterSpacing: -0.3 }}>Termómetro del día</Text>
 
             <Semana dias={dias} elegido={d.dia} onElegir={setElegido} />
 
@@ -131,7 +131,7 @@ function Hoja({ data, onClose }) {
                   cuál —una sola vez, acá—, para que no se lea como de toda la
                   semana. */}
               <Text style={ROTULO}>
-                {[nombreDelDia(d.dia), d.parcial ? 'hasta ahora' : null, d.datosParciales ? 'con datos incompletos' : null]
+                {[nombreDelDia(d.dia), d.parcial ? 'en actualización' : null, d.datosParciales ? 'con datos incompletos' : null]
                   .filter(Boolean)
                   .join(' · ')
                   .toUpperCase()}
@@ -145,7 +145,7 @@ function Hoja({ data, onClose }) {
 
             {temas.length ? (
               <View style={{ marginTop: 24 }}>
-                <Text style={ROTULO}>DE QUÉ SE HABLA</Text>
+                <Text style={ROTULO}>TEMAS DEL DÍA</Text>
                 {temas.map((t) => (
                   <Tema key={t.id || t.titulo} t={t} />
                 ))}
@@ -169,11 +169,15 @@ const TARJETA = {
 };
 const NUMERO = { fontFamily: SERIF, color: INK.title, letterSpacing: -0.5 };
 
-/** «lo normal, 6», cuando el servidor ya junta días para comparar. */
+/**
+ * «Promedio de 7 días: 6», cuando el servidor ya junta días para comparar.
+ * Es el término exacto: hablamos de violencia, y llamarle «lo normal» a una
+ * cantidad de homicidios no corresponde (PJ, 29-oct).
+ */
 function Normal({ clave, d, style }) {
   const n = normalDe(clave, d);
   if (n == null) return null;
-  return <Text style={[{ fontSize: 11, color: INK.faint }, style]}>{`lo normal, ${n}`}</Text>;
+  return <Text style={[{ fontSize: 11, color: INK.faint }, style]}>{`Promedio de 7 días: ${n}`}</Text>;
 }
 
 /**
@@ -185,9 +189,9 @@ function Intensidad({ d }) {
   const c = d.componentes;
   const color = colorIntensidad(p);
   const partes = [
-    ['Seguimiento', c.seguimiento, c.maxDesarrollos != null ? `la más seguida, ${c.maxDesarrollos} ${c.maxDesarrollos === 1 ? 'vez' : 'veces'}` : null, 1],
+    ['Seguimiento', c.seguimiento, c.maxDesarrollos != null ? `Historia principal: ${c.maxDesarrollos} ${c.maxDesarrollos === 1 ? 'publicación' : 'publicaciones'}` : null, 1],
     ['Amplitud', c.amplitud, d.volumen != null ? `${d.volumen} ${d.volumen === 1 ? 'historia' : 'historias'}` : null, 0.66],
-    ['Alto impacto', c.altoImpacto, c.historiasAltoImpacto != null ? `${c.historiasAltoImpacto} con 5 medios o más` : null, 0.38],
+    ['Alto impacto', c.altoImpacto, c.historiasAltoImpacto != null ? `${c.historiasAltoImpacto} ${c.historiasAltoImpacto === 1 ? 'historia' : 'historias'} en 5 medios o más` : null, 0.38],
   ];
   return (
     <View style={[TARJETA, { marginTop: 10 }]}>
@@ -288,7 +292,8 @@ const esDeHoy = (fila, dia) => !!fila?.generated_at && diaGT(fila.generated_at) 
 function Calles({ d, fila }) {
   const eventos = esDeHoy(fila, d.dia) ? eventosActivos(fila) : [];
   const nivel = eventos.length || esDeHoy(fila, d.dia) ? nivelCalles(eventos) : null;
-  // Se abre solo si se toca: no es un letrero fijo. Cuando el mapa tenga el
+  // Se abre solo si se toca: no es un letrero fijo. Va en registro formal e
+  // instructivo, como toda ayuda (DESIGN.md › Ayudas). Cuando el mapa tenga el
   // tráfico en vivo, hora por hora, esto cambia.
   const [ayuda, setAyuda] = useState(false);
   return (
@@ -296,7 +301,7 @@ function Calles({ d, fila }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Sticker nombre={nivel ? `trafico-${nivel.clave}` : 'movilidad'} respaldo="movilidad" size={40} />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, color: INK.meta }}>Calles</Text>
+          <Text style={{ fontSize: 13, color: INK.meta }}>Incidencia en las calles</Text>
           {nivel ? (
             <Text style={[NUMERO, { fontSize: 30, lineHeight: 34, color: nivel.color }]}>{nivel.nombre}</Text>
           ) : null}
@@ -305,7 +310,7 @@ function Calles({ d, fila }) {
           onPress={() => setAyuda((v) => !v)}
           hitSlop={12}
           accessibilityRole="button"
-          accessibilityLabel="Qué muestra Calles"
+          accessibilityLabel="Qué muestra el indicador de calles"
           style={{ alignSelf: 'flex-start' }}
         >
           <HelpCircle size={18} color={ayuda ? INK.title : INK.faint} />
@@ -314,13 +319,13 @@ function Calles({ d, fila }) {
       {ayuda ? (
         <Pressable onPress={() => setAyuda(false)} style={{ backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 10, padding: 10, marginTop: 10 }}>
           <Text style={{ fontSize: 12.5, color: INK.body, lineHeight: 17 }}>
-            Es cómo estuvo el día en las calles, según las noticias. No es el tráfico de este momento: se arma una vez al día.
+            Este indicador resume la situación de las calles durante el día a partir de las noticias publicadas: accidentes, incendios, cierres y bloqueos. No muestra el tráfico en tiempo real; se actualiza una vez al día.
           </Text>
         </Pressable>
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         <Etiqueta n={d.accidentes ?? 0} texto={d.accidentes === 1 ? 'accidente, incendio o cierre' : 'accidentes, incendios o cierres'} />
-        {eventos.length ? <Etiqueta n={eventos.length} texto={eventos.length === 1 ? 'sigue activo' : 'siguen activos'} /> : null}
+        {eventos.length ? <Etiqueta n={eventos.length} texto={eventos.length === 1 ? 'evento activo' : 'eventos activos'} /> : null}
       </View>
       {eventos.slice(0, 4).map((e) => (
         <Evento key={e.id || `${e.tipo}-${e.zona}`} e={e} />
@@ -393,7 +398,7 @@ function Semana({ dias, elegido, onElegir }) {
   const ultimos = dias.slice(-7);
   return (
     <View style={{ marginTop: 18 }}>
-      <Text style={ROTULO}>LA SEMANA</Text>
+      <Text style={ROTULO}>ÚLTIMOS 7 DÍAS</Text>
       <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
         {ultimos.map((x) => {
           const activo = x.dia === elegido;
@@ -432,7 +437,7 @@ function Mes({ dias, elegido, onElegir }) {
   const nombreMes = primero.toLocaleDateString('es-GT', { month: 'long', year: 'numeric' });
   return (
     <View style={{ marginTop: 24 }}>
-      <Text style={ROTULO}>{`EL MES · ${nombreMes.toUpperCase()}`}</Text>
+      <Text style={ROTULO}>{nombreMes.toUpperCase()}</Text>
       <View style={{ flexDirection: 'row', marginTop: 8 }}>
         {['l', 'm', 'm', 'j', 'v', 's', 'd'].map((x, i) => (
           <Text key={i} style={{ flex: 1, textAlign: 'center', fontSize: 10, color: INK.faint }}>
@@ -478,7 +483,7 @@ function Tema({ t }) {
           {t.titulo}
         </Text>
         <Text style={{ fontSize: 11, color: INK.faint, marginTop: 2 }}>
-          {`${t.veces} ${t.veces === 1 ? 'vez' : 'veces'} · ${t.medios} ${t.medios === 1 ? 'medio' : 'medios'}`}
+          {`${t.veces} ${t.veces === 1 ? 'publicación' : 'publicaciones'} · ${t.medios} ${t.medios === 1 ? 'medio' : 'medios'}`}
         </Text>
       </View>
       {t.rumbo === 'nueva' ? null : <Flecha size={15} color={t.rumbo === 'sube' ? '#C0453B' : INK.meta} />}

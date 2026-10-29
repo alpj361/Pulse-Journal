@@ -1,5 +1,5 @@
 /**
- * Cómo está el día: lo calcula NewsCron (tabla `termometro_diario`) con los
+ * El termómetro del día: lo calcula NewsCron (tabla `termometro_diario`) con los
  * campos del catálogo de cada tarjeta, sin listas de palabras ni IA, y la app
  * lo lee de ExtractorW (`GET /api/termometro`). Acá solo se le da forma.
  *
@@ -8,7 +8,7 @@
  * acompañan a Violencia.
  *
  * Los demás indicadores son conteos de historias nuevas del día. Se comparan
- * contra «lo normal» solo cuando el servidor junta 7 días comparables
+ * contra su promedio solo cuando el servidor junta 7 días comparables
  * (`comparacion.disponible`); antes de eso se muestra el número y nada más.
  */
 import { EXTRACTORW_URL } from '../../utils/servicios';
@@ -64,7 +64,7 @@ export function formaDia(d) {
   };
 }
 
-/** 0–100 contra lo normal: 50 = el promedio, 100 = el doble o más. Sin promedio, null. */
+/** 0–100 contra el promedio de 7 días: 50 = el promedio, 100 = el doble o más. Sin promedio, null. */
 export function contraLoNormal(valor, promedio) {
   if (valor == null || promedio == null) return null;
   if (!promedio) return valor ? 100 : 50;
@@ -80,7 +80,7 @@ export function colorIntensidad(p) {
   return '#C0453B';
 }
 
-/** Color de un indicador contra lo normal. El rojo, solo en violencia y accidentes (Morrow). */
+/** Color de un indicador contra su promedio. El rojo, solo en violencia y accidentes (Morrow). */
 export function colorDe(p, clave) {
   if (p == null) return 'rgba(28,43,34,0.12)';
   if (clave !== 'violencia' && clave !== 'accidentes') return '#5F6F66';
@@ -168,13 +168,13 @@ export const EN_LA_FRANJA = ['intensidad', 'violencia', 'gobierno', 'volumen'];
 
 const PROMEDIO = { volumen: 'volumen', violencia: 'violencia', gobierno: 'gobierno_congreso', accidentes: 'accidentes', clima: 'clima' };
 
-/** El puntaje 0–100 de un indicador contra lo normal, o null si todavía no hay con qué comparar. */
+/** El puntaje 0–100 de un indicador contra su promedio, o null si todavía no hay con qué comparar. */
 export function puntosDe(clave, d) {
   if (clave === 'intensidad') return d.intensidad;
   return contraLoNormal(d[clave], d.promedios?.[PROMEDIO[clave]]);
 }
 
-/** Lo normal de un indicador, redondeado, si ya existe. */
+/** El promedio de 7 días de un indicador, redondeado, si ya existe. */
 export function normalDe(clave, d) {
   const p = d.promedios?.[PROMEDIO[clave]];
   return p == null ? null : Math.round(p);
