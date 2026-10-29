@@ -154,3 +154,69 @@ export function motivoDeError(e) {
       return 'No se pudo cargar. Probá de nuevo.';
   }
 }
+
+/**
+ * Los pasos para que un tema llegue a patrón, con cómo va este autor. Salen
+ * de `reglas.tema_editorial` y la cobertura del perfil (criterio provisional).
+ */
+export function pasosPatron(perfil) {
+  const regla = perfil?.reglas?.tema_editorial || { posts_patron: 4, dias_patron: 7 };
+  const c = perfil?.cobertura || {};
+  const temas = (perfil?.lecturas || []).filter((l) => l.clase === 'tema_editorial');
+  const mejor = Math.max(0, ...temas.map((t) => t.respaldo?.posts || 0));
+  const posts = c.posts || 0;
+  const conFecha = c.con_fecha || 0;
+  return [
+    {
+      clave: 'publicaciones',
+      titulo: `${regla.posts_patron} publicaciones sobre un mismo tema`,
+      ok: mejor >= regla.posts_patron,
+      detalle: mejor >= regla.posts_patron ? 'Listo' : `El tema con más tiene ${mejor}`,
+      avance: Math.min(1, mejor / regla.posts_patron),
+    },
+    {
+      clave: 'tiempo',
+      titulo: `${regla.dias_patron} días entre la primera y la última`,
+      ok: (c.dias || 0) >= regla.dias_patron,
+      detalle:
+        (c.dias || 0) >= regla.dias_patron
+          ? 'Listo'
+          : posts < 2
+            ? 'Con una publicación no hay tiempo que medir'
+            : conFecha < 2
+              ? 'Sin fechas no se puede medir'
+              : `Hoy cubre ${c.dias} ${c.dias === 1 ? 'día' : 'días'}`,
+      avance: Math.min(1, (c.dias || 0) / regla.dias_patron),
+    },
+    {
+      clave: 'fechas',
+      titulo: 'Fecha de publicación en cada una',
+      ok: posts > 0 && conFecha === posts,
+      detalle: posts > 0 && conFecha === posts ? 'Todas tienen fecha' : `${posts - conFecha} de ${posts} sin fecha`,
+      avance: posts ? conFecha / posts : 0,
+    },
+    {
+      clave: 'cuenta',
+      titulo: 'Cuenta confirmada',
+      ok: perfil?.autor?.usuario_confirmado === true,
+      detalle: perfil?.autor?.usuario_confirmado === true ? 'Confirmada' : 'Falta confirmar la cuenta',
+      avance: perfil?.autor?.usuario_confirmado === true ? 1 : 0,
+    },
+  ];
+}
+
+/** Cuánto le falta a un tema para el umbral de publicaciones: {tiene, meta, avance}. */
+export function avanceTema(l, perfil) {
+  const meta = perfil?.reglas?.tema_editorial?.posts_patron || 4;
+  const tiene = l?.respaldo?.posts || 0;
+  return { tiene, meta, avance: Math.min(1, tiene / meta) };
+}
+
+export const SENTIDOS = {
+  a_favor: { texto: 'A favor', tono: 'verde' },
+  en_contra: { texto: 'En contra', tono: 'rojo' },
+  informa: { texto: 'Informa', tono: 'azul' },
+  mixto: { texto: 'Mixto', tono: 'neutro' },
+};
+
+export const EJES = { politico: 'político', economico: 'económico', social: 'social', cultural: 'cultural', especifico: 'específico' };

@@ -81,3 +81,24 @@ describe('acciones', () => {
     expect(motivoDeError({ status: 409 })).toMatch(/cambió/);
   });
 });
+
+describe('diseño: pasos y avance', () => {
+  const { pasosPatron, avanceTema } = require('../logica');
+  const perfil = {
+    autor: { usuario_confirmado: true },
+    reglas: { tema_editorial: { posts_patron: 4, dias_patron: 7 } },
+    cobertura: { posts: 5, con_fecha: 0, dias: 0 },
+    lecturas: [{ clase: 'tema_editorial', respaldo: { posts: 2 } }],
+  };
+  test('pasos con su estado', () => {
+    const p = pasosPatron(perfil);
+    expect(p.map((x) => x.ok)).toEqual([false, false, false, true]);
+    expect(p[0].detalle).toBe('El tema con más tiene 2');
+    expect(p[1].detalle).toBe('Sin fechas no se puede medir');
+    expect(p[2].detalle).toBe('5 de 5 sin fecha');
+  });
+  test('una sola publicación no tiene tiempo que medir', () => {
+    expect(pasosPatron({ ...perfil, cobertura: { posts: 1, con_fecha: 1, dias: 0 } })[1].detalle).toBe('Con una publicación no hay tiempo que medir');
+  });
+  test('avance de un tema', () => expect(avanceTema({ respaldo: { posts: 1 } }, perfil)).toEqual({ tiene: 1, meta: 4, avance: 0.25 }));
+});
