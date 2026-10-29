@@ -53,7 +53,7 @@ describe('lecturas', () => {
       falta({ estado: 'lectura_inicial', evidencia_necesaria: { posts_adicionales_minimos: 3, requiere_fechas: true, requiere_identidad: true } })
     ).toEqual(['3 publicaciones más', 'fechas de publicación', 'confirmar la cuenta']);
     expect(falta({ clase: 'narrativa_publicada', evidencia_necesaria: { requiere_atribucion: true, posts_adicionales_minimos: null } })).toEqual([
-      'saber quién lo dice',
+      'confirmar quién lo dijo',
     ]);
     expect(falta({ estado: 'patron_respaldado', evidencia_necesaria: { requiere_fechas: true } })).toEqual([]);
   });
@@ -93,12 +93,19 @@ describe('diseño: pasos y avance', () => {
   test('pasos con su estado', () => {
     const p = pasosPatron(perfil);
     expect(p.map((x) => x.ok)).toEqual([false, false, false, true]);
-    expect(p[0].detalle).toBe('El tema con más tiene 2');
-    expect(p[1].detalle).toBe('Sin fechas no se puede medir');
-    expect(p[2].detalle).toBe('5 de 5 sin fecha');
+    expect(p[0].detalle).toBe('El tema con más publicaciones tiene 2');
+    expect(p[1].detalle).toBe('Sin fechas de publicación no se puede medir');
+    expect(p[2].detalle).toBe('5 de 5 no tienen fecha');
   });
   test('una sola publicación no tiene tiempo que medir', () => {
-    expect(pasosPatron({ ...perfil, cobertura: { posts: 1, con_fecha: 1, dias: 0 } })[1].detalle).toBe('Con una publicación no hay tiempo que medir');
+    expect(pasosPatron({ ...perfil, cobertura: { posts: 1, con_fecha: 1, dias: 0 } })[1].detalle).toBe('Con una sola publicación no hay tiempo que medir');
+  });
+  test('la huella se llena con lo que más cuesta juntar', () => {
+    const { llenadoHuella } = require('../logica');
+    expect(llenadoHuella(null)).toBe(0);
+    expect(llenadoHuella({ ...perfil, estado: 'patron_respaldado' })).toBe(1);
+    // 2 de 4 publicaciones (0.225) + cuenta confirmada (0.1); sin fechas ni tiempo.
+    expect(llenadoHuella(perfil)).toBe(0.33);
   });
   test('avance de un tema', () => expect(avanceTema({ respaldo: { posts: 1 } }, perfil)).toEqual({ tiene: 1, meta: 4, avance: 0.25 }));
 });

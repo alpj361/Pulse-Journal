@@ -30,7 +30,7 @@ export function situacion(r) {
 }
 
 export const PERFIL = {
-  evidencia_insuficiente: 'Todavía no hay lecturas',
+  evidencia_insuficiente: 'Sin datos suficientes',
   lectura_inicial: 'Lectura inicial',
   patron_respaldado: 'Patrón respaldado',
 };
@@ -89,7 +89,7 @@ export function falta(l) {
   const e = l?.evidencia_necesaria || {};
   if (l?.estado === 'patron_respaldado') return [];
   const out = [];
-  if (e.requiere_atribucion) out.push('saber quién lo dice');
+  if (e.requiere_atribucion) out.push('confirmar quién lo dijo');
   if (e.posts_adicionales_minimos > 0) {
     out.push(`${e.posts_adicionales_minimos} ${e.posts_adicionales_minimos === 1 ? 'publicación más' : 'publicaciones más'}`);
   }
@@ -101,13 +101,13 @@ export function falta(l) {
 
 /** Quién dice la cita de una evidencia. */
 export const ATRIBUCION = {
-  publicacion_de_cuenta: 'publicado por la cuenta',
-  autor_segun_analisis: 'lo dice el autor',
-  tercero: 'lo dice otra persona',
-  sin_atribucion: 'sin saber quién lo dice',
-  atribucion_probable: 'probablemente el autor',
-  cita_ambigua: 'la dicen varias voces',
-  cita_sin_turno: 'sin turno identificado',
+  publicacion_de_cuenta: 'Publicado por la cuenta',
+  autor_segun_analisis: 'Lo dijo el autor',
+  tercero: 'Lo dijo otra persona',
+  sin_atribucion: 'No se sabe quién lo dijo',
+  atribucion_probable: 'Probablemente el autor, sin confirmar',
+  cita_ambigua: 'Hablan varias personas',
+  cita_sin_turno: 'No se distingue quién habla',
 };
 
 /** Fecha de publicación; sin fecha no se inventa (la de análisis no la reemplaza). */
@@ -125,8 +125,8 @@ export const enfriamientoRestante = (ultimoPedido, ahora = Date.now()) =>
 /** Una corrección válida antes de mandarla (el servidor valida igual). */
 export function validarCorreccion({ decision, comentario }) {
   const c = String(comentario || '').trim();
-  if (!['aceptar', 'descartar'].includes(decision)) return 'Elegí aceptar o descartar.';
-  if (decision === 'descartar' && !c) return 'Contá por qué la descartás.';
+  if (!['aceptar', 'descartar'].includes(decision)) return 'Falta elegir si es correcta o no.';
+  if (decision === 'descartar' && !c) return 'Falta escribir por qué no es correcta.';
   if (c.length > MAX_COMENTARIO) return `Hasta ${MAX_COMENTARIO} caracteres.`;
   return null;
 }
@@ -135,23 +135,23 @@ export function validarCorreccion({ decision, comentario }) {
 export function motivoDeError(e) {
   switch (e?.status) {
     case 0:
-      return 'Sin conexión. Probá de nuevo.';
+      return 'Sin conexión a internet.';
     case 401:
-      return 'Tu sesión venció. Volvé a entrar.';
+      return 'La sesión venció. Hay que volver a entrar.';
     case 403:
       return 'Esta cuenta no tiene huella de autor.';
     case 404:
       return 'Este autor ya no está disponible.';
     case 409:
-      return 'La lectura cambió. Ya la estamos recargando.';
+      return 'La huella cambió mientras se veía. Se está recargando.';
     case 422:
       return 'Este tipo de ficha no tiene huella de autor.';
     case 503:
-      return 'La huella no está disponible ahora. Probá más tarde.';
+      return 'La huella no está disponible en este momento.';
     case 400:
       return e?.message || 'No se pudo hacer.';
     default:
-      return 'No se pudo cargar. Probá de nuevo.';
+      return 'No se pudo cargar la huella.';
   }
 }
 
@@ -171,7 +171,7 @@ export function pasosPatron(perfil) {
       clave: 'publicaciones',
       titulo: `${regla.posts_patron} publicaciones sobre un mismo tema`,
       ok: mejor >= regla.posts_patron,
-      detalle: mejor >= regla.posts_patron ? 'Listo' : `El tema con más tiene ${mejor}`,
+      detalle: mejor >= regla.posts_patron ? 'Listo' : `El tema con más publicaciones tiene ${mejor}`,
       avance: Math.min(1, mejor / regla.posts_patron),
     },
     {
@@ -182,24 +182,24 @@ export function pasosPatron(perfil) {
         (c.dias || 0) >= regla.dias_patron
           ? 'Listo'
           : posts < 2
-            ? 'Con una publicación no hay tiempo que medir'
+            ? 'Con una sola publicación no hay tiempo que medir'
             : conFecha < 2
-              ? 'Sin fechas no se puede medir'
-              : `Hoy cubre ${c.dias} ${c.dias === 1 ? 'día' : 'días'}`,
+              ? 'Sin fechas de publicación no se puede medir'
+              : `Sus publicaciones abarcan ${c.dias} ${c.dias === 1 ? 'día' : 'días'}`,
       avance: Math.min(1, (c.dias || 0) / regla.dias_patron),
     },
     {
       clave: 'fechas',
       titulo: 'Fecha de publicación en cada una',
       ok: posts > 0 && conFecha === posts,
-      detalle: posts > 0 && conFecha === posts ? 'Todas tienen fecha' : `${posts - conFecha} de ${posts} sin fecha`,
+      detalle: posts > 0 && conFecha === posts ? 'Todas tienen fecha' : `${posts - conFecha} de ${posts} no tienen fecha`,
       avance: posts ? conFecha / posts : 0,
     },
     {
       clave: 'cuenta',
       titulo: 'Cuenta confirmada',
       ok: perfil?.autor?.usuario_confirmado === true,
-      detalle: perfil?.autor?.usuario_confirmado === true ? 'Confirmada' : 'Falta confirmar la cuenta',
+      detalle: perfil?.autor?.usuario_confirmado === true ? 'Listo' : 'Falta confirmar que la cuenta es de quien dice ser',
       avance: perfil?.autor?.usuario_confirmado === true ? 1 : 0,
     },
   ];
@@ -220,3 +220,16 @@ export const SENTIDOS = {
 };
 
 export const EJES = { politico: 'político', economico: 'económico', social: 'social', cultural: 'cultural', especifico: 'específico' };
+
+/**
+ * Cuánto se llenó la huella, de 0 a 1: lo que dibuja el ícono grande. Pesa más
+ * lo que más cuesta juntar (publicaciones sobre un tema y tiempo cubierto) que
+ * lo que se resuelve de una vez (fechas, cuenta confirmada).
+ */
+export function llenadoHuella(perfil) {
+  if (!perfil) return 0;
+  if (perfil.estado === 'patron_respaldado') return 1;
+  const PESO = { publicaciones: 0.45, tiempo: 0.35, fechas: 0.1, cuenta: 0.1 };
+  const total = pasosPatron(perfil).reduce((n, p) => n + (PESO[p.clave] || 0) * p.avance, 0);
+  return Math.round(Math.min(1, total) * 100) / 100;
+}

@@ -106,6 +106,23 @@ cambia con ella.
 veces seguidas lo mismo, y si el sistema ya no va a preguntar, se dice dónde
 está la llave —con un botón que abre Ajustes— una vez y en paz.
 
+## Ayudas: van en una guía, no en la pantalla
+
+Una pantalla con información (la huella de autor, un análisis) muestra solo
+la información. Las explicaciones de qué es cada cosa no van en cajas ni en
+subtítulos al lado de los datos. Van en una **guía** que se abre sola la
+primera vez y después con el «?» de arriba. Ejemplo: `huella/GuiaHuella.jsx`.
+
+- **La guía se escribe en frases completas y en registro neutro**, sin voseo
+  ni frases cortadas. «Aparecen en lo que publica, no son su postura» no se
+  entiende; «Ideas que aparecen en sus publicaciones, con la frase exacta. No
+  son necesariamente la opinión de la cuenta» sí.
+- **Cada concepto, con el mismo ícono y el mismo nombre** que tiene en la
+  pantalla, para que se reconozca al volver.
+- **Los rótulos de la pantalla dicen el hecho completo**: «1 de 4
+  publicaciones», no «1 de 4»; «No se sabe quién lo dijo», no «Falta saber
+  quién lo dice».
+
 ## Estados vacíos y errores
 
 Un cero es una respuesta legítima, no una falla: «nada de lo escrito nombra un
