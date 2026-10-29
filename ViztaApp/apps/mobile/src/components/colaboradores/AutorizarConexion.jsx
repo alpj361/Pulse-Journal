@@ -193,7 +193,7 @@ export default function AutorizarConexion({ req, codigo, topInset = 0, bottomIns
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingTop: 4 }}>
             {permisos.modificar ? <FolderInput size={16} color="#8A6420" strokeWidth={1.9} /> : <Inbox size={16} color={INK.meta} strokeWidth={1.9} />}
             <Text style={{ flex: 1, fontSize: 13, color: INK.body }}>
-              {permisos.modificar ? 'Lo que crea va directo a tu cuenta' : 'Lo que crea te llega para aprobar'}
+              {permisos.modificar ? 'Lo que crea va directo a tu cuenta' : 'Lo que crea queda en su espacio; pasarlo a tu cuenta te llega para aprobar'}
             </Text>
           </View>
         </View>

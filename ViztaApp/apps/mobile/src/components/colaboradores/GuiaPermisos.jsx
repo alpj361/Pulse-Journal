@@ -44,7 +44,7 @@ export default function GuiaPermisos({ nombre = 'el agente', bottomInset = 0, on
 
           <Seccion titulo="Dónde queda lo que crea">
             <Concepto Icono={Inbox} titulo="Sin «Editar tu cuenta»">
-              {`Lo que hace ${nombre} queda en su propio espacio de agente. Cada cambio a tus fichas o espacios te llega como propuesta en «por aprobar» y no se aplica hasta que lo apruebes.`}
+              {`Lo que crea ${nombre} queda en su propio espacio de agente, y lo ves en «Su Codex». Desde ahí puedes traer a tu Codex lo que te sirva. Cuando el agente quiere pasar algo a tu cuenta, o juntar una ficha suya con una tuya, te llega como propuesta en «por aprobar» y no se aplica hasta que la apruebes.`}
             </Concepto>
             <Concepto Icono={FolderInput} tono="ambar" titulo="Con «Editar tu cuenta»">
               {`${nombre[0].toUpperCase()}${nombre.slice(1)} crea y actualiza espacios y fichas directamente en tu cuenta personal, sin pedirte aprobación. Todo lo que hace queda marcado como hecho por el agente.`}
@@ -53,7 +53,7 @@ export default function GuiaPermisos({ nombre = 'el agente', bottomInset = 0, on
 
           <Seccion titulo="Recomendación">
             <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.body }}>
-              Para empezar, activa solo «Consultar» y «Proponer». Así revisas cada cambio antes de que llegue a tu cuenta. Activa «Editar tu cuenta» cuando confíes en el trabajo del agente.
+              Para empezar, activa solo «Consultar» y «Proponer». Así nada entra a tu cuenta sin que lo apruebes. Activa «Editar tu cuenta» cuando confíes en el trabajo del agente.
             </Text>
             <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.body }}>
               Si una conexión de ChatGPT o Claude se autorizó solo para consultar, esa conexión no escribe en tu cuenta aunque aquí esté activo «Editar tu cuenta».

@@ -14,8 +14,9 @@ export const PERMISOS = ['leer', 'crear', 'editar', 'eliminar'];
  * ExtractorW (STA-259, «permisos de agentes sobre la cuenta personal»). El
  * servidor manda el mismo texto en `catalogo_permisos`; este es el respaldo.
  *
- * Lo central: sin «editar», el agente trabaja en su propio espacio y lo que
- * hace llega como propuesta para aprobar. Con «editar», crea y actualiza
+ * Lo central: sin «editar», el agente trabaja en su propio espacio (lo nuevo
+ * queda en su cuenta, visible en Su Codex) y solo pasar algo a la cuenta
+ * personal llega como propuesta para aprobar. Con «editar», crea y actualiza
  * directo en la cuenta personal, y queda marcado como hecho por el agente.
  * Los mismos interruptores valen para Colaboradores y para la conexión MCP.
  */

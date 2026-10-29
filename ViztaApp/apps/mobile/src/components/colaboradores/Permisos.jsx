@@ -189,7 +189,11 @@ export default function Permisos({ colaborador, porAprobar = 0, topInset, bottom
   );
 }
 
-/** Dónde queda lo que crea, según «editar»: el dato, no la explicación (esa está en la guía). */
+/**
+ * Dónde queda lo que crea, según «editar»: el dato, no la explicación (esa
+ * está en la guía). Sin «editar» no todo pasa por aprobación: lo nuevo queda
+ * en su cuenta de agente (Su Codex); solo pasarlo a la tuya es una propuesta.
+ */
 function Destino({ permisos }) {
   const directo = destinoDe(permisos) === 'cuenta';
   const Icono = directo ? FolderInput : Inbox;
@@ -197,7 +201,7 @@ function Destino({ permisos }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingTop: 4 }}>
       <Icono size={16} color={directo ? '#8A6420' : INK.meta} strokeWidth={1.9} />
       <Text style={{ flex: 1, fontSize: 13, color: INK.body }}>
-        {directo ? 'Lo que crea va directo a tu cuenta' : 'Lo que crea te llega para aprobar'}
+        {directo ? 'Lo que crea va directo a tu cuenta' : 'Lo que crea queda en su espacio; pasarlo a tu cuenta te llega para aprobar'}
       </Text>
     </View>
   );
