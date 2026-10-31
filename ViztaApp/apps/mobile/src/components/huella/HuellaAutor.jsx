@@ -10,25 +10,18 @@ import {
   ChevronDown,
   ChevronLeft,
   CircleQuestionMark,
-  Coins,
   FileVideo,
   Fingerprint,
+  History,
   Hourglass,
-  Info,
-  Landmark,
+  Layers,
+  Mic,
   Newspaper,
-  Palette,
-  Plus,
   RefreshCw,
-  Scale,
   ShieldAlert,
   Sprout,
-  Tags,
-  Target,
-  ThumbsDown,
-  ThumbsUp,
-  UserCheck,
-  Users,
+  TriangleAlert,
+  UserRoundCheck,
   X,
 } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
@@ -38,60 +31,51 @@ import { supabase } from '../../utils/supabase';
 import MorphingInfinity from '../MorphingInfinity';
 import { Boton, EstadoCentro, ROTULO, TONO } from '../colaboradores/piezas';
 import PostDetailSheet from '../posts/PostDetailSheet';
-import useHuellaAutor, { useEvidencias } from './useHuellaAutor';
+import useHuellaAutor from './useHuellaAutor';
 import GuiaHuella from './GuiaHuella';
 import HuellaLlena from './HuellaLlena';
 import { TONOS } from './tonos';
 import {
-  ATRIBUCION,
-  CLASES,
-  EJES,
-  MAX_COMENTARIO,
-  PERFIL,
-  SENTIDOS,
-  avanceTema,
+  FACETAS,
+  MADUREZ,
+  MOTIVO_MAX,
+  NIVELES,
+  OPCIONES_VOZ,
+  PESTANAS,
+  RESPALDO,
+  TRAYECTORIA,
+  delAutor,
   enfriamientoRestante,
-  falta,
+  faltaDe,
   fechaPublicacion,
+  fechasCubiertas,
   llenadoHuella,
   motivoDeError,
-  nombreLectura,
-  porClase,
-  respaldoCorto,
+  nivelDimension,
+  publicacionesDe,
+  quienHabla,
+  repartir,
+  revisionDeVoz,
   situacion,
 } from './logica';
 
 const capital = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
-const CAMPOS_POST = 'id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id';
-
+const CAMPOS_POST ='id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id';
 const GUIA_VISTA = 'vizta-huella-guia-vista';
-const ICONO_EJE = { politico: Landmark, economico: Coins, social: Users, cultural: Palette, especifico: Target };
-const ICONO_SENTIDO = { a_favor: ThumbsUp, en_contra: ThumbsDown, informa: Info, mixto: Scale };
-const ESTADO_PERFIL = {
-  evidencia_insuficiente: { Icono: Hourglass, tono: 'neutro' },
-  lectura_inicial: { Icono: Sprout, tono: 'ambar' },
-  patron_respaldado: { Icono: BadgeCheck, tono: 'verde' },
-};
-/** Por qué una frase no cuenta como postura de la cuenta. */
-const EXCLUSION = {
-  sin_atribucion: 'No se sabe quién la dijo',
-  tercero: 'La dijo otra persona',
-  atribucion_probable: 'Probablemente suya, sin confirmar',
-  cita_no_verificada: 'No aparece en el texto',
-  cita_ambigua: 'Hablan varias personas a la vez',
-  cita_sin_turno: 'No se distingue quién habla',
-  audio_ajeno: 'Es audio de otra fuente o una canción',
-  eje_incompleto: 'El análisis quedó incompleto',
-};
+const DE_A = 20;
+
+const ICONO_MADUREZ = { sin_observaciones: Hourglass, impresiones_iniciales: Sprout, en_formacion: Layers, dimensiones_respaldadas: BadgeCheck };
+const ICONO_NIVEL = { sin_observaciones: Hourglass, impresion_inicial: Sprout, en_formacion: Layers, en_revision: TriangleAlert, huella_respaldada: BadgeCheck };
 
 /**
  * La huella de autor de una cuenta. Diseño tomado de la referencia hecha con
  * OpenUI (openui-demo/huella): la huella grande que se llena, etiquetas con
- * ícono, pestañas por clase de lectura y tarjetas con la cita.
+ * ícono, pestañas y tarjetas con la cita.
  *
- * La pantalla solo muestra información. Lo que explica —qué es cada pestaña,
- * qué significa cada etiqueta, qué le falta para un patrón— vive en la guía
- * (GuiaHuella), que se abre sola la primera vez y después con el «?».
+ * Muestra lo observado aunque todavía no haya huella respaldada: terminar el
+ * cálculo no completa la huella, pero las impresiones con su evidencia sí se
+ * pueden revisar. Lo que explica —niveles, pestañas, qué falta comprobar—
+ * vive en la guía (GuiaHuella), que se abre sola la primera vez.
  *
  * `autorId` es el autor social (`post_analisis.autor_id` / `autores.id`), no
  * quien creó un registro del Codex.
@@ -106,15 +90,17 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
 
   const r = h.respuesta;
   const caso = h.consulta.error ? 'error' : situacion(r);
-  const perfil = r?.huella?.perfil || null;
-  const autor = perfil?.autor || r?.autor || null;
+  const breve = caso === 'lista' ? r?.lectura_breve || null : null;
+  const madurez = caso === 'lista' ? r?.impresiones?.madurez || breve?.madurez || 'sin_observaciones' : null;
+  const cuenta = h.cuenta;
   const espera = enfriamientoRestante(h.ultimoPedido, h.ahora);
-  const llenado = llenadoHuella(perfil);
-  const tonoHuella = perfil?.estado === 'patron_respaldado' ? 'verde' : 'ambar';
+  const llenado = llenadoHuella(breve);
+  const tonoHuella = MADUREZ[madurez]?.tono === 'verde' ? 'verde' : 'ambar';
+  const tarjetas = h.tarjetas.data || [];
 
   // La guía se abre sola la primera vez que se ve una huella; después, con el «?».
   useEffect(() => {
-    if (caso !== 'vigente') return;
+    if (caso !== 'lista') return;
     AsyncStorage.getItem(GUIA_VISTA)
       .then((v) => {
         if (!v) setGuia(true);
@@ -147,23 +133,23 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
     if (data) setPostAbierto(data);
   };
 
-  // La lectura abierta, siempre la de la versión vigente (si cambió, se cierra).
-  const lectura = abierta && perfil ? [...perfil.lecturas, ...perfil.descartadas].find((l) => l.clave === abierta) : null;
-  const titulo = autor?.nombre || nombre || (autor?.usuario ? `@${autor.usuario}` : 'Autor');
-  const subtitulo = [autor?.usuario ? `@${autor.usuario}` : null, autor?.plataforma].filter(Boolean).join(' · ');
+  // La tarjeta abierta, siempre de la revisión vigente (si cambió, se cierra).
+  const tarjeta = abierta ? tarjetas.find((t) => t.id === abierta) || null : null;
+  const titulo = cuenta?.nombre || nombre || (cuenta?.usuario ? `@${cuenta.usuario}` : 'Autor');
+  const subtitulo = [cuenta?.usuario ? `@${cuenta.usuario}` : null, cuenta?.plataforma].filter(Boolean).join(' · ');
 
   return (
-    <Modal visible animationType="slide" onRequestClose={lectura ? () => setAbierta(null) : onClose}>
+    <Modal visible animationType="slide" onRequestClose={tarjeta ? () => setAbierta(null) : onClose}>
       <View style={{ flex: 1, backgroundColor: PAPEL }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: topInset + 12, paddingHorizontal: 18, paddingBottom: 4 }}>
           <Pressable
-            onPress={lectura ? () => setAbierta(null) : onClose}
+            onPress={tarjeta ? () => setAbierta(null) : onClose}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel={lectura ? 'Volver' : 'Cerrar'}
+            accessibilityLabel={tarjeta ? 'Volver' : 'Cerrar'}
             style={{ padding: 6 }}
           >
-            {lectura ? <ChevronLeft size={22} color={INK.title} /> : <X size={19} color={INK.faint} />}
+            {tarjeta ? <ChevronLeft size={22} color={INK.title} /> : <X size={19} color={INK.faint} />}
           </Pressable>
           <Pressable
             onPress={() => {
@@ -179,15 +165,23 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
           </Pressable>
         </View>
 
-        {lectura ? (
-          <Lectura autorId={autorId} huellaId={r.huella.id} lectura={lectura} corregir={h.corregir} bottomInset={bottomInset} onAbrirPost={abrirPost} />
+        {tarjeta ? (
+          <DetalleTarjeta
+            tarjeta={tarjeta}
+            posicion={posicionDe(r, tarjeta)}
+            titulos={h.titulos}
+            identidad={h.identidad}
+            revisar={h.revisar}
+            bottomInset={bottomInset}
+            onAbrirPost={abrirPost}
+          />
         ) : (
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: bottomInset + 32, gap: 18 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: bottomInset + 32, gap: 18 }} keyboardShouldPersistTaps="handled">
             <Cabecera
               titulo={titulo}
               subtitulo={subtitulo}
-              perfil={perfil}
-              autor={autor}
+              madurez={madurez}
+              cuenta={cuenta}
               llenado={llenado}
               tono={tonoHuella}
               onHuella={() => {
@@ -214,35 +208,50 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
                 <Boton texto={espera ? `en ${espera} s` : caso === 'fallo' ? 'volver a intentar' : 'crear la huella'} primario cargando={pidiendo} disabled={!!espera} onPress={actualizar} />
               </View>
             ) : (
-              <Vigente
-                autorId={autorId}
-                huellaId={r.huella.id}
-                perfil={perfil}
-                onAbrir={(l) => {
+              <Observado
+                respuesta={r}
+                consulta={h.tarjetas}
+                tarjetas={tarjetas}
+                titulos={h.titulos}
+                identidad={h.identidad}
+                onAbrir={(t) => {
                   roce();
-                  setAbierta(l.clave);
+                  setAbierta(t.id);
                 }}
                 onAbrirPost={abrirPost}
               />
             )}
 
-            {caso === 'vigente' ? (
+            {caso === 'lista' ? (
               <Boton texto={espera ? `actualizar en ${espera} s` : 'actualizar'} alto={42} cargando={pidiendo} disabled={!!espera} onPress={actualizar} />
             ) : null}
             {errorAccion ? <Text style={{ fontSize: 13, color: TONO.rojo }}>{errorAccion}</Text> : null}
           </ScrollView>
         )}
 
-        {guia ? <GuiaHuella perfil={perfil} nombre={titulo} llenado={llenado} tono={tonoHuella} bottomInset={bottomInset} onClose={cerrarGuia} /> : null}
+        {guia ? (
+          <GuiaHuella
+            lecturaBreve={breve}
+            parcial={!!breve?.procesamiento?.parcial || !!r?.impresiones?.parcial}
+            nombre={titulo}
+            llenado={llenado}
+            tono={tonoHuella}
+            bottomInset={bottomInset}
+            onClose={cerrarGuia}
+          />
+        ) : null}
         {postAbierto ? <PostDetailSheet post={postAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setPostAbierto(null)} /> : null}
       </View>
     </Modal>
   );
 }
 
+/** La posición de la caracterización que corresponde a una lectura por dimensión. */
+const posicionDe = (r, t) => (t?.dimension_id ? (r?.caracterizacion?.posiciones || []).find((p) => p.dimension_id === t.dimension_id) || null : null);
+
 // ─── Piezas ────────────────────────────────────────────────────────────────
 
-/** Etiqueta con ícono: estados, sentidos, ejes y lo que falta. */
+/** Etiqueta con ícono: niveles, quién habla, respaldo. */
 function Etiqueta({ Icono, texto, tono = 'neutro', chica = false }) {
   const t = TONOS[tono] || TONOS.neutro;
   return (
@@ -263,6 +272,16 @@ function Etiqueta({ Icono, texto, tono = 'neutro', chica = false }) {
   );
 }
 
+function EtiquetaNivel({ nivel, chica }) {
+  const n = NIVELES[nivel] || NIVELES.impresion_inicial;
+  return <Etiqueta chica={chica} Icono={ICONO_NIVEL[nivel] || Sprout} texto={n.texto} tono={n.tono} />;
+}
+
+function EtiquetaVoz({ evidencia, revision, chica = true }) {
+  const q = quienHabla(evidencia, revision);
+  return <Etiqueta chica={chica} Icono={q.tono === 'verde' ? UserRoundCheck : evidencia?.voz_local ? Mic : CircleQuestionMark} texto={q.texto} tono={q.tono} />;
+}
+
 /** Caja con ícono, título y una línea: avisos y estados vacíos. */
 function Aviso({ Icono, tono = 'azul', titulo, children }) {
   const t = TONOS[tono] || TONOS.neutro;
@@ -278,8 +297,9 @@ function Aviso({ Icono, tono = 'azul', titulo, children }) {
 }
 
 /** Nombre de la cuenta con la huella grande al lado, que se llena con lo que hay. */
-function Cabecera({ titulo, subtitulo, perfil, autor, llenado, tono, onHuella }) {
-  const e = perfil ? ESTADO_PERFIL[perfil.estado] : null;
+function Cabecera({ titulo, subtitulo, madurez, cuenta, llenado, tono, onHuella }) {
+  const m = madurez ? MADUREZ[madurez] || MADUREZ.sin_observaciones : null;
+  const IconoMadurez = ICONO_MADUREZ[madurez] || Hourglass;
   return (
     <View style={{ gap: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
@@ -294,14 +314,16 @@ function Cabecera({ titulo, subtitulo, perfil, autor, llenado, tono, onHuella })
           <HuellaLlena llenado={llenado} tono={tono} size={78} />
         </Pressable>
       </View>
-      {perfil ? (
+      {m ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          <Etiqueta Icono={e.Icono} texto={PERFIL[perfil.estado]} tono={e.tono} />
-          {autor?.usuario_confirmado ? (
-            <Etiqueta Icono={BadgeCheck} texto="Cuenta confirmada" tono="verde" />
-          ) : (
-            <Etiqueta Icono={ShieldAlert} texto="Cuenta sin confirmar" tono="ambar" />
-          )}
+          <Etiqueta Icono={IconoMadurez} texto={m.texto} tono={m.tono} />
+          {cuenta ? (
+            cuenta.usuario_confirmado ? (
+              <Etiqueta Icono={BadgeCheck} texto="Cuenta confirmada" tono="verde" />
+            ) : (
+              <Etiqueta Icono={ShieldAlert} texto="Cuenta sin confirmar" tono="ambar" />
+            )
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -329,166 +351,20 @@ function Vacio({ children }) {
   return <Text style={{ fontSize: 15, color: INK.meta, paddingVertical: 8 }}>{children}</Text>;
 }
 
-/** Barra de avance hacia un umbral. */
-function Barra({ avance, tono = 'verde' }) {
-  const t = TONOS[tono] || TONOS.verde;
+/** La cita, en su recuadro. */
+function Cita({ texto, lineas }) {
   return (
-    <View style={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(28,43,34,0.08)', overflow: 'hidden' }}>
-      <View style={{ width: `${Math.round(Math.max(0.04, avance) * 100)}%`, height: '100%', borderRadius: 3, backgroundColor: t.tinta }} />
+    <View style={{ backgroundColor: 'rgba(28,43,34,0.04)', borderRadius: 12, padding: 12 }}>
+      <View style={{ borderLeftWidth: 3, borderLeftColor: 'rgba(28,43,34,0.35)', paddingLeft: 10 }}>
+        <Text style={{ fontSize: 15, lineHeight: 21, color: INK.title }} numberOfLines={lineas}>{`«${texto}»`}</Text>
+      </View>
     </View>
   );
 }
 
-// ─── Huella vigente ────────────────────────────────────────────────────────
-
-function Vigente({ autorId, huellaId, perfil, onAbrir, onAbrirPost }) {
-  const c = perfil.cobertura || {};
-  const grupos = useMemo(() => Object.fromEntries(porClase(perfil.lecturas).map((g) => [g.clase, g.lecturas])), [perfil]);
-  const temas = grupos.tema_editorial || [];
-  const narrativas = grupos.narrativa_publicada || [];
-  const posturas = grupos.postura_atribuida || [];
-  const [pestana, setPestana] = useState(temas.length ? 'temas' : narrativas.length ? 'narrativas' : 'posturas');
-  const excluidas = Object.entries(c.posturas_excluidas || {});
-
-  return (
-    <Animated.View entering={FadeIn.duration(200)} style={{ gap: 18 }}>
-      {/* Las cifras de lo que se leyó; cuántos temas, narrativas y posturas ya lo dicen las pestañas. */}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Cifra Icono={Newspaper} etiqueta="publicaciones analizadas" valor={c.posts || 0} />
-        <Cifra
-          Icono={c.con_fecha < c.posts ? CalendarX : CalendarCheck}
-          tono={c.con_fecha < c.posts ? 'ambar' : 'verde'}
-          etiqueta="tienen fecha"
-          valor={`${c.con_fecha || 0} de ${c.posts || 0}`}
-        />
-      </View>
-
-      {/* Lecturas, por clase. */}
-      <View style={{ flexDirection: 'row', gap: 18, borderBottomWidth: 1, borderBottomColor: TONO.raya }} accessibilityRole="tablist">
-        {[
-          ['temas', `Temas · ${temas.length}`],
-          ['narrativas', `Narrativas · ${narrativas.length}`],
-          ['posturas', `Posturas · ${posturas.length}`],
-        ].map(([k, t]) => {
-          const on = pestana === k;
-          return (
-            <Pressable
-              key={k}
-              onPress={() => setPestana(k)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-              style={{ paddingBottom: 9, borderBottomWidth: 2, borderBottomColor: on ? INK.title : 'transparent', marginBottom: -1 }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: on ? '700' : '500', color: on ? INK.title : INK.meta }}>{t}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {pestana === 'temas' ? (
-        temas.length ? (
-          <View style={{ gap: 2 }}>
-            {temas.map((t, i) => (
-              <FilaTema key={t.clave} autorId={autorId} huellaId={huellaId} lectura={t} perfil={perfil} borde={i > 0} onAbrir={() => onAbrir(t)} onAbrirPost={onAbrirPost} />
-            ))}
-          </View>
-        ) : (
-          <Vacio>Todavía no aparece ningún tema.</Vacio>
-        )
-      ) : pestana === 'narrativas' ? (
-        <View style={{ gap: 12 }}>
-          {narrativas.map((n) => (
-            <TarjetaNarrativa key={n.clave} autorId={autorId} huellaId={huellaId} lectura={n} onAbrir={() => onAbrir(n)} onAbrirPost={onAbrirPost} />
-          ))}
-        </View>
-      ) : posturas.length ? (
-        <View style={{ gap: 12 }}>
-          {posturas.map((n) => (
-            <TarjetaNarrativa key={n.clave} autorId={autorId} huellaId={huellaId} lectura={n} onAbrir={() => onAbrir(n)} onAbrirPost={onAbrirPost} />
-          ))}
-        </View>
-      ) : (
-        <Vacio>Todavía no hay opiniones confirmadas de la propia cuenta.</Vacio>
-      )}
-
-      {perfil.fuentes_citadas?.length ? (
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: INK.title }}>Fuentes que cita</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {perfil.fuentes_citadas.map((f) => (
-              <Etiqueta key={f.nombre} Icono={Newspaper} texto={`${f.nombre} · ${f.posts}`} tono="azul" />
-            ))}
-          </View>
-        </View>
-      ) : null}
-
-      {excluidas.length ? (
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: INK.title }}>Frases que no cuentan como suyas</Text>
-          {excluidas.map(([k, n]) => (
-            <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}>
-              <CircleQuestionMark size={16} color={TONOS.ambar.tinta} strokeWidth={1.9} />
-              <Text style={{ flex: 1, fontSize: 14.5, color: INK.title }}>{EXCLUSION[k] || k}</Text>
-              <Text style={{ fontSize: 15, fontWeight: '800', color: INK.title }}>{n}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-    </Animated.View>
-  );
-}
-
-/** Un tema: cuánto tiene hacia el umbral, qué le falta y, al abrirlo, de qué publicaciones sale. */
-function FilaTema({ autorId, huellaId, lectura: l, perfil, borde, onAbrir, onAbrirPost }) {
-  const [abierto, setAbierto] = useState(false);
-  const a = avanceTema(l, perfil);
-  const patron = l.estado === 'patron_respaldado';
-  return (
-    <View style={{ borderTopWidth: borde ? 1 : 0, borderTopColor: TONO.raya }}>
-      <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }} style={{ paddingVertical: 13, gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: INK.title }} numberOfLines={2}>
-            {l.tema}
-          </Text>
-          <Text style={{ fontSize: 13, fontWeight: '700', color: patron ? TONOS.verde.tinta : INK.meta }}>{`${a.tiene} de ${a.meta} publicaciones`}</Text>
-          <ChevronDown size={18} color={INK.meta} style={{ transform: [{ rotate: abierto ? '180deg' : '0deg' }] }} />
-        </View>
-        <Barra avance={a.avance} tono={patron ? 'verde' : 'azul'} />
-      </Pressable>
-      {abierto ? <DetalleTema autorId={autorId} huellaId={huellaId} lectura={l} onAbrir={onAbrir} onAbrirPost={onAbrirPost} /> : null}
-    </View>
-  );
-}
-
-function DetalleTema({ autorId, huellaId, lectura: l, onAbrir, onAbrirPost }) {
-  const ev = useEvidencias(autorId, l.clave, huellaId);
-  const evidencias = (ev.data?.pages || []).flatMap((p) => p.evidencias || []);
-  const e = l.evidencia_necesaria || {};
-  return (
-    <Animated.View entering={FadeIn.duration(160)} style={{ gap: 10, paddingBottom: 14 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {l.estado === 'patron_respaldado' ? <Etiqueta chica Icono={BadgeCheck} texto="Patrón respaldado" tono="verde" /> : null}
-        {e.posts_adicionales_minimos > 0 ? (
-          <Etiqueta chica Icono={Plus} texto={`Faltan ${e.posts_adicionales_minimos} ${e.posts_adicionales_minimos === 1 ? 'publicación' : 'publicaciones'}`} tono="ambar" />
-        ) : null}
-        {e.requiere_fechas ? <Etiqueta chica Icono={CalendarX} texto="Falta la fecha" tono="ambar" /> : null}
-        {e.requiere_cobertura_temporal ? <Etiqueta chica Icono={Hourglass} texto="Abarca poco tiempo" /> : null}
-        {e.requiere_identidad ? <Etiqueta chica Icono={ShieldAlert} texto="Cuenta sin confirmar" tono="ambar" /> : null}
-      </View>
-      {ev.isLoading ? <MorphingInfinity size={18} color={INK.meta} /> : null}
-      {evidencias.map((x, i) => (
-        <Fuente key={`${x.post_id}-${i}`} evidencia={x} numero={i + 1} onPress={() => onAbrirPost(x.post_id)} />
-      ))}
-      <Pressable onPress={onAbrir} hitSlop={8} accessibilityRole="button" style={{ alignSelf: 'flex-start' }}>
-        <Text style={{ fontSize: 13.5, fontWeight: '600', color: TONO.verde }}>ver detalle</Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-/** Una publicación de donde sale una lectura. */
-function Fuente({ evidencia: x, numero, onPress }) {
+/** Una publicación de donde sale algo: su título y su fecha de publicación. */
+function Fuente({ postId, fecha, titulos, numero, onPress }) {
+  const titulo = String(titulos?.[postId] || 'Publicación').replace(/^@[^—]+—\s*/, '');
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.6 : 1 })}>
       <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: 'rgba(28,43,34,0.06)', alignItems: 'center', justifyContent: 'center' }}>
@@ -496,127 +372,348 @@ function Fuente({ evidencia: x, numero, onPress }) {
       </View>
       <View style={{ flex: 1, gap: 1 }}>
         <Text style={{ fontSize: 14, color: INK.title }} numberOfLines={1}>
-          {String(x.titulo || 'Publicación').replace(/^@[^—]+—\s*/, '')}
+          {titulo}
         </Text>
-        <Text style={{ fontSize: 12.5, color: INK.meta }}>{fechaPublicacion(x.publicado_en)}</Text>
+        <Text style={{ fontSize: 12.5, color: INK.meta }}>{fechaPublicacion(fecha)}</Text>
       </View>
     </Pressable>
   );
 }
 
-/** Una narrativa (o postura): sentido, eje, la cita y de dónde sale. */
-function TarjetaNarrativa({ autorId, huellaId, lectura: l, onAbrir, onAbrirPost }) {
-  const ev = useEvidencias(autorId, l.clave, huellaId);
-  const x = ev.data?.pages?.[0]?.evidencias?.[0] || null;
-  const se = SENTIDOS[l.sentido] || null;
-  const IconoSentido = ICONO_SENTIDO[l.sentido] || Info;
-  const IconoEje = ICONO_EJE[l.eje] || Tags;
-  const atribuida = l.clase === 'postura_atribuida';
-  const igual = String(l.hacia || '').trim().toLowerCase() === String(l.tema || '').trim().toLowerCase();
+// ─── Lo observado ──────────────────────────────────────────────────────────
+
+function Observado({ respuesta: r, consulta, tarjetas, titulos, identidad, onAbrir, onAbrirPost }) {
+  const breve = r?.lectura_breve || null;
+  const carac = r?.caracterizacion || null;
+  const { temas, declaraciones } = useMemo(() => repartir(tarjetas), [tarjetas]);
+  const argumentos = carac?.argumentos || [];
+  const evolucion = carac?.evolucion || {};
+  const nTiempo = (evolucion.eventos || []).length + (evolucion.linea_tiempo || []).length;
+  const cuantos = { temas: temas.length, declaraciones: declaraciones.length, argumentos: argumentos.length, tiempo: nTiempo };
+  const [pestana, setPestana] = useState(null);
+  const activa = pestana || PESTANAS.find((p) => cuantos[p.id] > 0)?.id || 'temas';
+  const fechas = fechasCubiertas(tarjetas);
+  const publicaciones = breve?.cobertura?.publicaciones_con_observaciones ?? r?.cobertura?.n_items ?? 0;
+  const nivel = nivelDimension(breve, PESTANAS.find((p) => p.id === activa).dimension);
+
+  return (
+    <Animated.View entering={FadeIn.duration(200)} style={{ gap: 18 }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Cifra Icono={Newspaper} etiqueta="publicaciones analizadas" valor={publicaciones} />
+        {fechas.total ? (
+          <Cifra
+            Icono={fechas.con < fechas.total ? CalendarX : CalendarCheck}
+            tono={fechas.con < fechas.total ? 'ambar' : 'verde'}
+            etiqueta="tienen fecha"
+            valor={`${fechas.con} de ${fechas.total}`}
+          />
+        ) : null}
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 18 }} style={{ borderBottomWidth: 1, borderBottomColor: TONO.raya, flexGrow: 0 }}>
+        <View style={{ flexDirection: 'row', gap: 18 }} accessibilityRole="tablist">
+          {PESTANAS.map((p) => {
+            const on = activa === p.id;
+            return (
+              <Pressable
+                key={p.id}
+                onPress={() => setPestana(p.id)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                style={{ paddingBottom: 9, borderBottomWidth: 2, borderBottomColor: on ? INK.title : 'transparent' }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: on ? '700' : '500', color: on ? INK.title : INK.meta }}>{`${p.titulo} · ${cuantos[p.id]}`}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+
+      {/* El nivel de la dimensión; «sin observaciones» no se rotula sobre una lista con contenido. */}
+      {nivel !== 'sin_observaciones' ? (
+        <View style={{ flexDirection: 'row' }}>
+          <EtiquetaNivel nivel={nivel} />
+        </View>
+      ) : null}
+
+      {(activa === 'temas' || activa === 'declaraciones') && consulta.isLoading ? (
+        <MorphingInfinity size={22} color={INK.meta} style={{ alignSelf: 'center', marginVertical: 12 }} />
+      ) : (activa === 'temas' || activa === 'declaraciones') && consulta.error ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontSize: 13.5, color: INK.body }}>{motivoDeError(consulta.error)}</Text>
+          <Boton texto="probar de nuevo" alto={40} onPress={() => consulta.refetch()} />
+        </View>
+      ) : activa === 'temas' ? (
+        temas.length ? (
+          <View style={{ gap: 2 }}>
+            {temas.map((t, i) => (
+              <FilaTema key={t.id} tarjeta={t} titulos={titulos} borde={i > 0} onAbrirPost={onAbrirPost} />
+            ))}
+          </View>
+        ) : (
+          <Vacio>Todavía no aparece ningún tema.</Vacio>
+        )
+      ) : activa === 'declaraciones' ? (
+        <Declaraciones lista={declaraciones} titulos={titulos} identidad={identidad} onAbrir={onAbrir} onAbrirPost={onAbrirPost} carac={carac} />
+      ) : activa === 'argumentos' ? (
+        argumentos.length ? (
+          <View style={{ gap: 12 }}>
+            {argumentos.map((a) => (
+              <Argumento key={a.faceta} argumento={a} titulos={titulos} onAbrirPost={onAbrirPost} />
+            ))}
+          </View>
+        ) : (
+          <Vacio>Todavía no hay argumentos explícitos comprobados.</Vacio>
+        )
+      ) : (
+        <Tiempo evolucion={evolucion} titulos={titulos} onAbrirPost={onAbrirPost} />
+      )}
+    </Animated.View>
+  );
+}
+
+/** Un tema: en cuántas publicaciones aparece y, al abrirlo, cuáles son. */
+function FilaTema({ tarjeta: t, titulos, borde, onAbrirPost }) {
+  const [abierto, setAbierto] = useState(false);
+  const n = publicacionesDe(t);
+  return (
+    <View style={{ borderTopWidth: borde ? 1 : 0, borderTopColor: TONO.raya }}>
+      <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }} style={{ paddingVertical: 13 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: INK.title }} numberOfLines={2}>
+            {capital(t.titulo)}
+          </Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: INK.meta }}>{`${n} ${n === 1 ? 'publicación' : 'publicaciones'}`}</Text>
+          <ChevronDown size={18} color={INK.meta} style={{ transform: [{ rotate: abierto ? '180deg' : '0deg' }] }} />
+        </View>
+      </Pressable>
+      {abierto ? (
+        <Animated.View entering={FadeIn.duration(160)} style={{ gap: 10, paddingBottom: 14 }}>
+          {t.evidencia.map((e, i) => (
+            <Fuente key={`${e.post_id}-${i}`} postId={e.post_id} fecha={e.fecha} titulos={titulos} numero={i + 1} onPress={() => onAbrirPost(e.post_id)} />
+          ))}
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Las declaraciones con cita; si hay de los dos tipos, se filtran por quién habla. */
+function Declaraciones({ lista, titulos, identidad, carac, onAbrir, onAbrirPost }) {
+  const [filtro, setFiltro] = useState('todas');
+  const [cuantas, setCuantas] = useState(DE_A);
+  const propias = lista.filter(delAutor);
+  const otras = lista.filter((t) => !delAutor(t));
+  const visibles = filtro === 'cuenta' ? propias : filtro === 'otras' ? otras : lista;
+  if (!lista.length) return <Vacio>Todavía no hay declaraciones con cita.</Vacio>;
+  return (
+    <View style={{ gap: 12 }}>
+      {propias.length && otras.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {[
+            ['todas', `todas · ${lista.length}`],
+            ['cuenta', `de la cuenta · ${propias.length}`],
+            ['otras', `sin identificar · ${otras.length}`],
+          ].map(([k, texto]) => {
+            const on = filtro === k;
+            return (
+              <Pressable
+                key={k}
+                onPress={() => {
+                  setFiltro(k);
+                  setCuantas(DE_A);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: on ? INK.title : 'rgba(28,43,34,0.06)' }}
+              >
+                <Text style={{ fontSize: 13.5, fontWeight: '600', color: on ? '#FFFFFF' : INK.body }}>{texto}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {visibles.slice(0, cuantas).map((t) =>
+        t.clase === 'lectura_por_dimension' ? (
+          <TarjetaLectura key={t.id} tarjeta={t} carac={carac} onAbrir={() => onAbrir(t)} />
+        ) : (
+          <TarjetaDeclaracion key={t.id} tarjeta={t} titulos={titulos} identidad={identidad} onAbrir={() => onAbrir(t)} onAbrirPost={onAbrirPost} />
+        )
+      )}
+      {visibles.length > cuantas ? <Boton texto={`ver más · ${visibles.length - cuantas}`} alto={40} onPress={() => setCuantas((n) => n + DE_A)} /> : null}
+    </View>
+  );
+}
+
+/** Una declaración: la cita, quién la dice y de qué publicación sale. */
+function TarjetaDeclaracion({ tarjeta: t, titulos, identidad, onAbrir, onAbrirPost }) {
+  const e = t.evidencia[0] || {};
+  const r = RESPALDO[t.respaldo];
   return (
     <Pressable
       onPress={onAbrir}
       accessibilityRole="button"
       style={({ pressed }) => ({ backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 16, padding: 14, gap: 10, opacity: pressed ? 0.85 : 1 })}
     >
-      <View style={{ gap: 2 }}>
-        <Text style={{ fontSize: 16.5, fontWeight: '800', color: INK.title }}>{l.tema}</Text>
-        {l.hacia && !igual ? <Text style={{ fontSize: 13.5, color: INK.meta }}>{`hacia ${l.hacia}`}</Text> : null}
-      </View>
+      {e.cita ? <Cita texto={e.cita} lineas={5} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {se ? <Etiqueta chica Icono={IconoSentido} texto={se.texto} tono={se.tono} /> : null}
-        {l.eje ? <Etiqueta chica Icono={IconoEje} texto={capital(EJES[l.eje] || l.eje)} /> : null}
-        {atribuida ? (
-          <Etiqueta chica Icono={UserCheck} texto="Lo dijo el autor" tono="verde" />
-        ) : (
-          <Etiqueta chica Icono={CircleQuestionMark} texto="No se sabe quién lo dijo" tono="ambar" />
-        )}
+        <EtiquetaVoz evidencia={e} revision={revisionDeVoz(identidad, e.post_id, e.voz_local)} />
+        {r ? <Etiqueta chica Icono={r.tono === 'verde' ? Check : TriangleAlert} texto={r.texto} tono={r.tono} /> : null}
       </View>
-      {x?.cita ? (
-        <View style={{ backgroundColor: 'rgba(28,43,34,0.04)', borderRadius: 12, padding: 12 }}>
-          <View style={{ borderLeftWidth: 3, borderLeftColor: 'rgba(28,43,34,0.35)', paddingLeft: 10 }}>
-            <Text style={{ fontSize: 15, color: INK.title }}>{`«${x.cita}»`}</Text>
-          </View>
-        </View>
-      ) : ev.isLoading ? (
-        <MorphingInfinity size={18} color={INK.meta} />
-      ) : null}
-      {x?.postura ? <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.body }}>{x.postura}</Text> : null}
-      {x ? <Fuente evidencia={x} onPress={() => onAbrirPost(x.post_id)} /> : null}
+      <Fuente postId={e.post_id} fecha={e.fecha} titulos={titulos} onPress={() => onAbrirPost(e.post_id)} />
     </Pressable>
   );
 }
 
-// ─── Una lectura abierta: revisar y corregir ───────────────────────────────
-
-function Lectura({ autorId, huellaId, lectura: l, corregir, bottomInset, onAbrirPost }) {
-  const ev = useEvidencias(autorId, l.clave, huellaId);
-  const evidencias = useMemo(() => (ev.data?.pages || []).flatMap((p) => p.evidencias || []), [ev.data]);
-  const total = ev.data?.pages?.[0]?.total ?? l.evidencias_total ?? 0;
-  const faltan = falta(l);
-
+/** Una lectura que reúne declaraciones equivalentes de varias fuentes. */
+function TarjetaLectura({ tarjeta: t, carac, onAbrir }) {
+  const p = (carac?.posiciones || []).find((x) => x.dimension_id === t.dimension_id);
+  const titulo = p?.proposiciones?.[0] || (p?.referentes || []).filter(Boolean).join(', ') || NIVELES[t.nivel]?.texto;
+  const n = publicacionesDe(t);
   return (
-    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: bottomInset + 32, gap: 18 }}>
-      <View style={{ gap: 8 }}>
-        <Text style={ROTULO}>{(CLASES[l.clase]?.singular || '').toUpperCase()}</Text>
-        <Text style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 34, color: INK.title }} accessibilityRole="header">
-          {nombreLectura(l)}
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          <Etiqueta Icono={l.estado === 'patron_respaldado' ? BadgeCheck : Sprout} texto={l.estado === 'patron_respaldado' ? 'Patrón respaldado' : 'Lectura inicial'} tono={l.estado === 'patron_respaldado' ? 'verde' : 'ambar'} />
-          <Etiqueta Icono={Newspaper} texto={respaldoCorto(l.respaldo)} />
+    <Pressable
+      onPress={onAbrir}
+      accessibilityRole="button"
+      style={({ pressed }) => ({ backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 16, padding: 14, gap: 10, opacity: pressed ? 0.85 : 1 })}
+    >
+      <Text style={{ fontSize: 16.5, fontWeight: '800', color: INK.title }}>{titulo}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        <EtiquetaNivel chica nivel={t.nivel} />
+        <Etiqueta chica Icono={Newspaper} texto={`${n} ${n === 1 ? 'publicación' : 'publicaciones'}`} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** Un tipo de argumento explícito, con sus citas. */
+function Argumento({ argumento: a, titulos, onAbrirPost }) {
+  const citas = (a.evidencia || []).filter((e) => e.cita);
+  return (
+    <View style={{ backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 16, padding: 14, gap: 10 }}>
+      <Text style={{ fontSize: 16.5, fontWeight: '800', color: INK.title }}>{FACETAS[a.faceta] || a.faceta}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {a.alcance === 'intervenciones_atribuidas' ? <Etiqueta chica Icono={UserRoundCheck} texto="Lo dijo la cuenta" tono="verde" /> : null}
+        <Etiqueta chica Icono={Newspaper} texto={`${a.publicaciones} ${a.publicaciones === 1 ? 'publicación' : 'publicaciones'}`} />
+      </View>
+      {citas.slice(0, 3).map((e) => (
+        <View key={e.observacion_id} style={{ gap: 8 }}>
+          <Cita texto={e.cita} lineas={4} />
+          <Fuente postId={e.post_id} fecha={e.fecha} titulos={titulos} onPress={() => onAbrirPost(e.post_id)} />
         </View>
-        {faltan.length ? <Text style={{ fontSize: 13.5, color: INK.meta }}>{`Para considerarlo un patrón falta ${faltan.join(', ')}.`}</Text> : null}
+      ))}
+    </View>
+  );
+}
+
+/** Lo que se puede ordenar en el tiempo: relaciones entre intervenciones y la línea por fecha. */
+function Tiempo({ evolucion, titulos, onAbrirPost }) {
+  const eventos = evolucion.eventos || [];
+  const linea = evolucion.linea_tiempo || [];
+  const sinFecha = (evolucion.sin_fecha || []).length;
+  if (!eventos.length && !linea.length) {
+    return <Vacio>{sinFecha ? `Hay ${sinFecha} ${sinFecha === 1 ? 'declaración comprobada' : 'declaraciones comprobadas'} sin fecha; sin fecha no se pueden ordenar.` : 'Todavía no hay declaraciones con fecha para comparar.'}</Vacio>;
+  }
+  return (
+    <View style={{ gap: 16 }}>
+      {eventos.map((ev, i) => {
+        const tipo = TRAYECTORIA[ev.tipo] || { texto: ev.tipo, tono: 'neutro' };
+        return (
+          <View key={`${ev.tipo}-${i}`} style={{ backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 16, padding: 14, gap: 10 }}>
+            <View style={{ flexDirection: 'row' }}>
+              <Etiqueta chica Icono={History} texto={tipo.texto} tono={tipo.tono} />
+            </View>
+            {(ev.evidencia || []).map((e) => (
+              <View key={e.observacion_id} style={{ gap: 6 }}>
+                {e.cita ? <Cita texto={e.cita} lineas={3} /> : null}
+                <Fuente postId={e.post_id} fecha={e.fecha} titulos={titulos} onPress={() => onAbrirPost(e.post_id)} />
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      {linea.length ? (
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: INK.title }}>Por fecha de publicación</Text>
+          {linea.map((e) => (
+            <Pressable key={e.observacion_id} onPress={() => onAbrirPost(e.post_id)} accessibilityRole="button" style={({ pressed }) => ({ flexDirection: 'row', gap: 12, opacity: pressed ? 0.6 : 1 })}>
+              <Text style={{ width: 84, fontSize: 12.5, fontWeight: '700', color: INK.meta, paddingTop: 2 }}>{fechaPublicacion(e.fecha)}</Text>
+              <Text style={{ flex: 1, fontSize: 14.5, lineHeight: 20, color: INK.title }} numberOfLines={3}>{`«${e.cita}»`}</Text>
+            </Pressable>
+          ))}
+          {sinFecha ? <Text style={{ fontSize: 13.5, color: INK.meta }}>{`${sinFecha} sin fecha, fuera de la línea.`}</Text> : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ─── Una tarjeta abierta: sus citas y quién las dice ───────────────────────
+
+function DetalleTarjeta({ tarjeta: t, posicion, titulos, identidad, revisar, bottomInset, onAbrirPost }) {
+  const lectura = t.clase === 'lectura_por_dimension';
+  const faltan = faltaDe(t);
+  const r = RESPALDO[t.respaldo];
+  const contra = (t.contraevidencia || []).length;
+  return (
+    <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: bottomInset + 32, gap: 18 }} keyboardShouldPersistTaps="handled">
+      <View style={{ gap: 8 }}>
+        <Text style={ROTULO}>{lectura ? 'LECTURA' : 'DECLARACIÓN'}</Text>
+        {lectura ? (
+          <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title }} accessibilityRole="header">
+            {posicion?.proposiciones?.[0] || NIVELES[t.nivel]?.texto}
+          </Text>
+        ) : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <EtiquetaNivel nivel={t.nivel} />
+          {r ? <Etiqueta Icono={r.tono === 'verde' ? Check : TriangleAlert} texto={r.texto} tono={r.tono} /> : null}
+          {contra ? <Etiqueta Icono={TriangleAlert} texto={`${contra} ${contra === 1 ? 'evidencia' : 'evidencias'} en contra`} tono="rojo" /> : null}
+        </View>
+        {faltan.length ? <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.meta }}>{`Falta ${faltan.join(', ')}.`}</Text> : null}
       </View>
 
-      <Correccion lectura={l} corregir={corregir} />
-
-      <View style={{ gap: 10 }}>
-        <Text style={{ fontSize: 16, fontWeight: '800', color: INK.title }}>{`De dónde sale · ${total}`}</Text>
-        {ev.isLoading ? <MorphingInfinity size={22} color={INK.meta} style={{ alignSelf: 'center', marginVertical: 12 }} /> : null}
-        {ev.error ? (
-          <View style={{ gap: 8 }}>
-            <Text style={{ fontSize: 13.5, color: INK.body }}>{motivoDeError(ev.error)}</Text>
-            {ev.error?.status === 409 ? null : <Boton texto="probar de nuevo" alto={40} onPress={() => ev.refetch()} />}
-          </View>
-        ) : null}
-        {evidencias.map((x, i) => (
-          <View key={`${x.post_id}-${i}`} style={{ backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 14, padding: 12, gap: 8 }}>
-            {x.cita ? <Text style={{ fontSize: 15, color: INK.title }}>{`«${x.cita}»`}</Text> : null}
-            {x.postura ? <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.body }}>{x.postura}</Text> : null}
-            {x.atribucion && x.atribucion !== 'publicacion_de_cuenta' ? (
-              <Etiqueta chica Icono={x.atribucion === 'autor_segun_analisis' ? UserCheck : CircleQuestionMark} texto={ATRIBUCION[x.atribucion] || x.atribucion} tono={x.atribucion === 'autor_segun_analisis' ? 'verde' : 'ambar'} />
+      <View style={{ gap: 14 }}>
+        {lectura ? <Text style={{ fontSize: 16, fontWeight: '800', color: INK.title }}>{`De dónde sale · ${t.evidencia.length}`}</Text> : null}
+        {t.evidencia.map((e) => (
+          <View key={e.observacion_id} style={{ gap: 10 }}>
+            {e.cita ? <Cita texto={e.cita} /> : null}
+            <View style={{ flexDirection: 'row' }}>
+              <EtiquetaVoz chica={false} evidencia={e} revision={revisionDeVoz(identidad, e.post_id, e.voz_local)} />
+            </View>
+            <Fuente postId={e.post_id} fecha={e.fecha} titulos={titulos} onPress={() => onAbrirPost(e.post_id)} />
+            {e.voz_local && (!e.atribuida_al_autor || revisionDeVoz(identidad, e.post_id, e.voz_local)) ? (
+              <RevisarVoz key={`${e.post_id}-${e.voz_local}`} evidencia={e} revision={revisionDeVoz(identidad, e.post_id, e.voz_local)} revisar={revisar} />
             ) : null}
-            <Fuente evidencia={x} onPress={() => onAbrirPost(x.post_id)} />
           </View>
         ))}
-        {ev.hasNextPage ? <Boton texto="ver más" alto={40} cargando={ev.isFetchingNextPage} onPress={() => ev.fetchNextPage()} /> : null}
       </View>
     </ScrollView>
   );
 }
 
-/** Aceptar o descartar la lectura. Descartar pide por qué; una descartada se puede volver a incluir. */
-function Correccion({ lectura: l, corregir }) {
-  const [descartando, setDescartando] = useState(false);
-  const [comentario, setComentario] = useState('');
+/**
+ * Decir quién habla en una voz (H1, H2…) de una publicación. Lleva cómo lo
+ * sabes, queda registrado y la huella se vuelve a calcular.
+ */
+function RevisarVoz({ evidencia: e, revision, revisar }) {
+  const [abierto, setAbierto] = useState(false);
+  const [opcion, setOpcion] = useState(null);
+  const [motivo, setMotivo] = useState('');
   const [mandando, setMandando] = useState(false);
   const [error, setError] = useState(null);
-  const [hecho, setHecho] = useState(false);
-  const c = l.correccion;
-  const descartada = c?.decision === 'descartar';
+  const [hecho, setHecho] = useState(null);
 
-  const mandar = async (decision) => {
+  const mandar = async (operacion) => {
     setMandando(true);
     setError(null);
     try {
-      await corregir({ clave: l.clave, decision, comentario: decision === 'descartar' ? comentario : '' });
+      const o = OPCIONES_VOZ.find((x) => x.id === opcion);
+      await revisar(operacion, { post_id: e.post_id, voz: e.voz_local, rol: o?.rol, relacion: o?.relacion, motivo });
       listo();
-      setHecho(true);
-      setDescartando(false);
-    } catch (e) {
+      setHecho(operacion);
+      setAbierto(false);
+    } catch (err) {
       falla();
-      setError(motivoDeError(e));
+      setError(motivoDeError(err));
     } finally {
       setMandando(false);
     }
@@ -624,45 +721,60 @@ function Correccion({ lectura: l, corregir }) {
 
   if (hecho) {
     return (
-      <Aviso Icono={Check} tono="verde" titulo="Listo">
-        La huella se recalcula con esta corrección.
+      <Aviso Icono={Check} tono="verde" titulo="Guardado">
+        La huella se vuelve a calcular con esta revisión.
       </Aviso>
     );
   }
-
+  if (!abierto) {
+    return (
+      <Boton
+        texto={revision ? `cambiar quién es la voz ${e.voz_local}` : `decir quién es la voz ${e.voz_local}`}
+        alto={40}
+        onPress={() => {
+          roce();
+          setAbierto(true);
+        }}
+      />
+    );
+  }
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ gap: 10 }}>
-      {c?.comentario ? (
-        <View style={{ borderLeftWidth: 3, borderLeftColor: 'rgba(28,43,34,0.18)', paddingLeft: 12 }}>
-          <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.body }}>{c.comentario}</Text>
-        </View>
-      ) : null}
-      {descartada ? (
-        <Boton texto="volver a incluir" alto={42} cargando={mandando} onPress={() => mandar('aceptar')} />
-      ) : descartando ? (
-        <View style={{ gap: 8 }}>
-          <TextInput
-            value={comentario}
-            onChangeText={setComentario}
-            placeholder="por qué no es correcta (por ejemplo: lo dijo un invitado)"
-            placeholderTextColor={INK.faint}
-            multiline
-            maxLength={MAX_COMENTARIO}
-            autoFocus
-            accessibilityLabel="Por qué no es correcta"
-            style={{ minHeight: 70, borderRadius: 12, borderWidth: 1, borderColor: TONO.borde, backgroundColor: '#FFFFFF', padding: 12, fontSize: 15, color: INK.title }}
-          />
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Boton texto="cancelar" alto={42} style={{ flex: 1 }} onPress={() => setDescartando(false)} />
-            <Boton texto="descartar" alto={42} primario style={{ flex: 1 }} cargando={mandando} disabled={!comentario.trim()} onPress={() => mandar('descartar')} />
-          </View>
-        </View>
-      ) : (
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {c?.decision === 'aceptar' ? null : <Boton texto="es correcta" alto={42} style={{ flex: 1 }} cargando={mandando} onPress={() => mandar('aceptar')} />}
-          <Boton texto="no es correcta" alto={42} style={{ flex: 1 }} onPress={() => setDescartando(true)} />
-        </View>
-      )}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ gap: 10, backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 14, padding: 12 }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{`¿Quién es la voz ${e.voz_local}?`}</Text>
+      <View style={{ gap: 6 }}>
+        {OPCIONES_VOZ.map((o) => {
+          const on = opcion === o.id;
+          return (
+            <Pressable
+              key={o.id}
+              onPress={() => setOpcion(o.id)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+            >
+              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: on ? INK.title : 'rgba(28,43,34,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                {on ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: INK.title }} /> : null}
+              </View>
+              <Text style={{ fontSize: 15, color: INK.title }}>{o.texto}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <TextInput
+        value={motivo}
+        onChangeText={setMotivo}
+        placeholder="cómo lo sabes (por ejemplo: se presenta por su nombre al inicio)"
+        placeholderTextColor={INK.faint}
+        multiline
+        maxLength={MOTIVO_MAX}
+        accessibilityLabel="Cómo lo sabes"
+        style={{ minHeight: 70, borderRadius: 12, borderWidth: 1, borderColor: TONO.borde, backgroundColor: '#FFFFFF', padding: 12, fontSize: 15, color: INK.title }}
+      />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Boton texto="cancelar" alto={42} style={{ flex: 1 }} onPress={() => setAbierto(false)} />
+        <Boton texto="guardar" alto={42} primario style={{ flex: 1 }} cargando={mandando} disabled={!opcion || motivo.trim().length < 8} onPress={() => mandar('voz')} />
+      </View>
+      {revision ? <Boton texto="quitar la revisión" alto={40} cargando={mandando} disabled={motivo.trim().length < 8} onPress={() => mandar('quitar_voz')} /> : null}
       {error ? <Text style={{ fontSize: 13, color: TONO.rojo }}>{error}</Text> : null}
     </KeyboardAvoidingView>
   );

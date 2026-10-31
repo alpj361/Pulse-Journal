@@ -1,111 +1,138 @@
 import {
+  delAutor,
   enCurso,
   enfriamientoRestante,
-  falta,
+  faltaDe,
   fechaPublicacion,
+  fechasCubiertas,
+  hayQueSondear,
+  llenadoHuella,
   motivoDeError,
-  nombreLectura,
-  porClase,
-  respaldoCorto,
+  nivelDimension,
+  postsDe,
+  quienHabla,
+  repartir,
+  revisionDeVoz,
   situacion,
-  validarCorreccion,
+  validarMotivo,
 } from '../logica';
 
-describe('situacion: estado del trabajo, separado del perfil', () => {
-  test('con huella vigente', () => expect(situacion({ estado: 'listo', huella: { id: 'h' } })).toBe('vigente'));
-  test('sin calcular', () => expect(situacion({ estado: 'sin_calcular', huella: null })).toBe('sin_calcular'));
+// Formas tomadas de la respuesta real de Tan/Gente (revisión 9, 29-oct).
+const terminada = {
+  estado: 'evidencia_insuficiente',
+  estado_trabajo: 'listo',
+  elegibilidad: 'evidencia_insuficiente',
+  terminal: true,
+  huella: null,
+  base_id: '52f08bf2-9c9d-46cf-ae23-d0c59851706f',
+};
+const ev = (post_id, extra = {}) => ({ observacion_id: `o-${post_id}`, post_id, fecha: '2026-09-29T00:31:17.000Z', voz_local: null, atribuida_al_autor: false, cita: null, ...extra });
+
+describe('situacion: el trabajo, separado de la suficiencia', () => {
+  test('terminada con evidencia insuficiente es un resultado, no una espera', () => {
+    expect(situacion(terminada)).toBe('lista');
+    expect(enCurso(terminada)).toBe(false);
+    expect(hayQueSondear(terminada)).toBe(false);
+  });
+  test('con huella respaldada también', () => expect(situacion({ ...terminada, estado: 'parcial', huella: { dimensiones: [] } })).toBe('lista'));
+  test('sin calcular', () => expect(situacion({ estado: 'sin_calcular', estado_trabajo: 'sin_calcular', huella: null })).toBe('sin_calcular'));
   test('pendiente o procesando se sondea', () => {
-    expect(situacion({ estado: 'pendiente', huella: null })).toBe('calculando');
+    expect(situacion({ estado: 'pendiente', estado_trabajo: 'pendiente', huella: null })).toBe('calculando');
     expect(enCurso({ estado: 'procesando', huella: null })).toBe(true);
+    expect(hayQueSondear({ estado: 'procesando', huella: null })).toBe(true);
   });
   test('desactualizada: se recalcula y no se muestra la anterior', () => {
     expect(situacion({ estado: 'pendiente', huella: null, desactualizada: true })).toBe('recalculando');
   });
   test('error', () => expect(situacion({ estado: 'error', huella: null })).toBe('fallo'));
-  test('listo sin huella (invalidada entre lecturas) se vuelve a pedir', () =>
-    expect(situacion({ estado: 'listo', huella: null, desactualizada: true })).toBe('calculando'));
-});
-
-describe('lecturas', () => {
-  const tema = (t, posts, estado = 'lectura_inicial') => ({ clase: 'tema_editorial', tema: t, estado, respaldo: { posts } });
-  test('por clase: posturas, temas y narrativas, sin clases vacías', () => {
-    const g = porClase([tema('agua', 1), { clase: 'narrativa_publicada', tema: 'x', respaldo: { posts: 1 } }, tema('luz', 3)]);
-    expect(g.map((x) => x.clase)).toEqual(['tema_editorial', 'narrativa_publicada']);
-    expect(g[0].lecturas.map((l) => l.tema)).toEqual(['luz', 'agua']);
-  });
-  test('los patrones van primero', () => {
-    const g = porClase([tema('a', 9), tema('b', 4, 'patron_respaldado')]);
-    expect(g[0].lecturas[0].tema).toBe('b');
-  });
-  test('nombre: un tema es solo el tema; una postura dice sentido y hacia', () => {
-    expect(nombreLectura({ clase: 'tema_editorial', tema: 'Agua' })).toBe('Agua');
-    expect(nombreLectura({ clase: 'postura_atribuida', tema: 'Agua', sentido: 'en_contra', hacia: 'EMPAGUA' })).toBe('Agua · en contra EMPAGUA');
-    expect(nombreLectura({ clase: 'narrativa_publicada', tema: 'libertad religiosa', sentido: 'a_favor', hacia: 'Libertad religiosa' })).toBe(
-      'libertad religiosa · a favor'
-    );
-  });
-  test('respaldo corto', () => {
-    expect(respaldoCorto({ posts: 1, dias: 0 })).toBe('1 publicación');
-    expect(respaldoCorto({ posts: 4, dias: 12 })).toBe('4 publicaciones · 12 días');
-  });
-  test('qué falta para ser patrón', () => {
-    expect(
-      falta({ estado: 'lectura_inicial', evidencia_necesaria: { posts_adicionales_minimos: 3, requiere_fechas: true, requiere_identidad: true } })
-    ).toEqual(['3 publicaciones más', 'fechas de publicación', 'confirmar la cuenta']);
-    expect(falta({ clase: 'narrativa_publicada', evidencia_necesaria: { requiere_atribucion: true, posts_adicionales_minimos: null } })).toEqual([
-      'confirmar quién lo dijo',
-    ]);
-    expect(falta({ estado: 'patron_respaldado', evidencia_necesaria: { requiere_fechas: true } })).toEqual([]);
-  });
-  test('sin fecha de publicación no se inventa', () => {
-    expect(fechaPublicacion(null)).toBe('fecha desconocida');
-    expect(fechaPublicacion('no-fecha')).toBe('fecha desconocida');
+  test('listo sin base (invalidada entre lecturas) se vuelve a pedir', () => {
+    const r = { estado: 'listo', huella: null, desactualizada: true };
+    expect(situacion(r)).toBe('calculando');
+    expect(hayQueSondear(r)).toBe(true);
   });
 });
 
-describe('acciones', () => {
-  test('descartar exige comentario; hasta 2000', () => {
-    expect(validarCorreccion({ decision: 'descartar', comentario: ' ' })).toBeTruthy();
-    expect(validarCorreccion({ decision: 'descartar', comentario: 'era del invitado' })).toBeNull();
-    expect(validarCorreccion({ decision: 'aceptar' })).toBeNull();
-    expect(validarCorreccion({ decision: 'aceptar', comentario: 'x'.repeat(2001) })).toBeTruthy();
-    expect(validarCorreccion({ decision: 'otra' })).toBeTruthy();
-  });
-  test('enfriamiento de 30 s', () => {
-    expect(enfriamientoRestante(null)).toBe(0);
-    expect(enfriamientoRestante(1000, 11000)).toBe(20);
-    expect(enfriamientoRestante(1000, 40000)).toBe(0);
-  });
-  test('cada estado HTTP tiene su mensaje', () => {
-    for (const s of [0, 401, 403, 404, 409, 422, 503]) expect(motivoDeError({ status: s })).toBeTruthy();
-    expect(motivoDeError({ status: 409 })).toMatch(/cambió/);
-  });
-});
-
-describe('diseño: pasos y avance', () => {
-  const { pasosPatron, avanceTema } = require('../logica');
-  const perfil = {
-    autor: { usuario_confirmado: true },
-    reglas: { tema_editorial: { posts_patron: 4, dias_patron: 7 } },
-    cobertura: { posts: 5, con_fecha: 0, dias: 0 },
-    lecturas: [{ clase: 'tema_editorial', respaldo: { posts: 2 } }],
+describe('llenado y niveles', () => {
+  const breve = {
+    dimensiones: [
+      { clave: 'seleccion_editorial', nivel: 'impresion_inicial' },
+      { clave: 'voces', nivel: 'impresion_inicial' },
+      { clave: 'posiciones', nivel: 'impresion_inicial' },
+      { clave: 'argumentos', nivel: 'sin_observaciones' },
+      { clave: 'evolucion', nivel: 'sin_observaciones' },
+    ],
   };
-  test('pasos con su estado', () => {
-    const p = pasosPatron(perfil);
-    expect(p.map((x) => x.ok)).toEqual([false, false, false, true]);
-    expect(p[0].detalle).toBe('El tema con más publicaciones tiene 2');
-    expect(p[1].detalle).toBe('Sin fechas de publicación no se puede medir');
-    expect(p[2].detalle).toBe('5 de 5 no tienen fecha');
+  test('Tan/Gente: tres impresiones iniciales llenan poco', () => expect(llenadoHuella(breve)).toBe(0.15));
+  test('todo respaldado llena entera', () =>
+    expect(llenadoHuella({ dimensiones: breve.dimensiones.map((d) => ({ ...d, nivel: 'huella_respaldada' })) })).toBe(1));
+  test('sin lectura breve, vacía', () => expect(llenadoHuella(null)).toBe(0));
+  test('nivel por dimensión, con respaldo si falta', () => {
+    expect(nivelDimension(breve, 'posiciones')).toBe('impresion_inicial');
+    expect(nivelDimension(breve, 'otra')).toBe('sin_observaciones');
   });
-  test('una sola publicación no tiene tiempo que medir', () => {
-    expect(pasosPatron({ ...perfil, cobertura: { posts: 1, con_fecha: 1, dias: 0 } })[1].detalle).toBe('Con una sola publicación no hay tiempo que medir');
+});
+
+describe('tarjetas', () => {
+  const tema = (titulo, posts) => ({ id: titulo, clase: 'referencia_tematica', titulo, evidencia: posts.map((p) => ev(p)) });
+  const decl = (id, extra = {}) => ({ id, clase: 'declaracion_observada', nivel: 'impresion_inicial', evidencia: [ev(id, { cita: 'una frase', ...extra })] });
+
+  test('se reparten por pestaña; los temas con más publicaciones primero', () => {
+    const { temas, declaraciones } = repartir([tema('Justicia', ['a']), tema('Agua', ['a', 'b']), decl('d1'), { id: 'x', clase: 'otra' }]);
+    expect(temas.map((t) => t.titulo)).toEqual(['Agua', 'Justicia']);
+    expect(declaraciones.map((t) => t.id)).toEqual(['d1']);
   });
-  test('la huella se llena con lo que más cuesta juntar', () => {
-    const { llenadoHuella } = require('../logica');
-    expect(llenadoHuella(null)).toBe(0);
-    expect(llenadoHuella({ ...perfil, estado: 'patron_respaldado' })).toBe(1);
-    // 2 de 4 publicaciones (0.225) + cuenta confirmada (0.1); sin fechas ni tiempo.
-    expect(llenadoHuella(perfil)).toBe(0.33);
+  test('las lecturas que reúnen fuentes van antes que las declaraciones sueltas', () => {
+    const lectura = { id: 'l', clase: 'lectura_por_dimension', nivel: 'en_formacion', evidencia: [ev('a'), ev('b')] };
+    expect(repartir([decl('d1'), lectura]).declaraciones[0].id).toBe('l');
   });
-  test('avance de un tema', () => expect(avanceTema({ respaldo: { posts: 1 } }, perfil)).toEqual({ tiene: 1, meta: 4, avance: 0.25 }));
+  test('de la cuenta solo si todas sus citas lo están', () => {
+    expect(delAutor(decl('d', { atribuida_al_autor: true }))).toBe(true);
+    expect(delAutor(decl('d'))).toBe(false);
+    expect(delAutor({ evidencia: [] })).toBe(false);
+  });
+  test('fechas cubiertas, por publicación', () => {
+    expect(fechasCubiertas([tema('A', ['a', 'b']), { evidencia: [ev('c', { fecha: null })] }])).toEqual({ con: 2, total: 3 });
+  });
+  test('ids de publicación únicos para traer títulos', () => expect(postsDe([tema('A', ['b', 'a']), tema('B', ['a'])])).toEqual(['a', 'b']));
+  test('lo que falta, en palabras', () => {
+    expect(faltaDe({ faltantes: ['atribucion_insuficiente', 'respaldo_pendiente', 'desconocido'] })).toEqual(['saber quién lo dice', 'comprobarla en su contexto']);
+  });
+});
+
+describe('quién habla', () => {
+  test('sin voz ni atribución', () => expect(quienHabla(ev('a')).texto).toBe('No se sabe quién lo dijo'));
+  test('voz local sin identificar', () => expect(quienHabla(ev('a', { voz_local: 'H2' })).texto).toBe('Voz H2 · sin identificar'));
+  test('atribuida por el análisis', () => expect(quienHabla(ev('a', { atribuida_al_autor: true })).tono).toBe('verde'));
+  test('la revisión humana manda', () => {
+    expect(quienHabla(ev('a', { voz_local: 'H1' }), { relacion: 'voz_de_cuenta', rol: 'anfitrion' })).toMatchObject({ texto: 'Lo dijo la cuenta', confirmado: true });
+    expect(quienHabla(ev('a', { voz_local: 'H1', atribuida_al_autor: true }), { relacion: 'tercero', rol: 'invitado' }).texto).toBe('Lo dijo un invitado');
+  });
+  test('la revisión se busca por publicación y voz', () => {
+    const identidad = { config: { voces: { p1: { H1: { relacion: 'tercero', rol: 'invitado' } } } } };
+    expect(revisionDeVoz(identidad, 'p1', 'H1')).toMatchObject({ rol: 'invitado' });
+    expect(revisionDeVoz(identidad, 'p1', 'H2')).toBeNull();
+    expect(revisionDeVoz(identidad, 'p1', null)).toBeNull();
+  });
+  test('el motivo pide al menos 8 caracteres', () => {
+    expect(validarMotivo('corto')).toMatch(/al menos 8/);
+    expect(validarMotivo('se presenta al inicio')).toBeNull();
+  });
+});
+
+describe('acciones y textos', () => {
+  test('enfriamiento de 30 s', () => {
+    expect(enfriamientoRestante(1000, 1000)).toBe(30);
+    expect(enfriamientoRestante(1000, 31000)).toBe(0);
+    expect(enfriamientoRestante(null)).toBe(0);
+  });
+  test('fecha desconocida no se inventa', () => {
+    expect(fechaPublicacion(null)).toBe('sin fecha');
+    expect(fechaPublicacion('no-fecha')).toBe('sin fecha');
+  });
+  test('errores por código antes que por estado', () => {
+    expect(motivoDeError({ status: 422, code: 'voz_sin_insumo' })).toMatch(/voz no está identificada/);
+    expect(motivoDeError({ status: 503, code: 'huella_desactivada' })).toMatch(/desactivados/);
+    expect(motivoDeError({ status: 422 })).toBe('Este tipo de ficha no tiene huella de autor.');
+    expect(motivoDeError({ status: 0 })).toBe('Sin conexión a internet.');
+  });
 });

@@ -1,20 +1,53 @@
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { BadgeCheck, Check, CircleQuestionMark, MessageSquareQuote, Sprout, Tags, ThumbsUp, UserCheck, X } from 'lucide-react-native';
+import {
+  BadgeCheck,
+  CalendarX,
+  CircleQuestionMark,
+  History,
+  Layers,
+  ListChecks,
+  MessageSquareQuote,
+  Mic,
+  Scale,
+  Sprout,
+  Tags,
+  TriangleAlert,
+  UserRoundCheck,
+  UserRoundSearch,
+  X,
+} from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { Boton, ROTULO, TONO } from '../colaboradores/piezas';
 import HuellaLlena from './HuellaLlena';
-import { pasosPatron } from './logica';
 import { TONOS } from './tonos';
+
+/** El ícono de cada cosa que falta comprobar (`lectura_breve.que_falta[].motivo`). */
+const ICONO_FALTA = {
+  atribucion_insuficiente: UserRoundSearch,
+  independencia_no_resuelta: Layers,
+  respaldo_pendiente: MessageSquareQuote,
+  fechas_incompletas: CalendarX,
+  contraevidencia_pendiente: TriangleAlert,
+  politica_no_calibrada: Scale,
+};
 
 /**
  * La guía de la huella: todo lo que explica vive acá y no en la pantalla, que
  * queda solo con la información. Se abre sola la primera vez y después con el
  * «?». Redactada en frases completas y en registro neutro, porque explica; el
  * resto de la pantalla solo rotula (ver docs/DESIGN.md › Ayudas).
+ *
+ * «Qué falta comprobar», las preguntas y las salvedades vienen del contrato
+ * (`lectura_breve`), así que cambian con cada cuenta.
  */
-export default function GuiaHuella({ perfil, nombre, llenado, tono, bottomInset = 0, onClose }) {
-  const pasos = perfil ? pasosPatron(perfil) : [];
+export default function GuiaHuella({ lecturaBreve, parcial = false, nombre, llenado, tono, bottomInset = 0, onClose }) {
+  const falta = lecturaBreve?.que_falta || [];
+  const pistas = lecturaBreve?.pistas || [];
+  const limites = [
+    ...(parcial ? ['La revisión de esta cuenta quedó incompleta: algunas declaraciones todavía no se contrastaron.'] : []),
+    ...(lecturaBreve?.limites || []),
+  ];
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: PAPEL }}>
@@ -31,7 +64,7 @@ export default function GuiaHuella({ perfil, nombre, llenado, tono, bottomInset 
               Cómo leer la huella
             </Text>
             <Text style={{ fontSize: 15.5, lineHeight: 22, color: INK.body }}>
-              La huella resume de qué habla una cuenta y qué ideas aparecen en lo que publica. Se arma con sus publicaciones que ya fueron analizadas.
+              La huella describe lo que aparece en las publicaciones analizadas de una cuenta: de qué temas habla, qué se dice y quién lo dice. Describe la muestra; no define la ideología ni las intenciones de nadie.
             </Text>
           </View>
 
@@ -39,71 +72,74 @@ export default function GuiaHuella({ perfil, nombre, llenado, tono, bottomInset 
             <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
               <HuellaLlena llenado={llenado} tono={tono} size={56} />
               <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, color: INK.body }}>
-                Se llena a medida que hay más publicaciones sobre un mismo tema, durante más tiempo y con fecha. Llena por completo indica un patrón respaldado.
+                Se llena a medida que cada parte gana respaldo: temas, voces, posiciones, argumentos y evolución en el tiempo. Llena por completo indica una huella respaldada.
               </Text>
             </View>
           </Seccion>
 
-          <Seccion titulo="Las tres pestañas">
+          <Seccion titulo="Las pestañas">
             <Concepto Icono={Tags} titulo="Temas">
-              Los asuntos sobre los que publica la cuenta. La barra muestra cuántas publicaciones hay sobre cada tema y cuántas hacen falta para hablar de un patrón.
+              Los asuntos que el análisis marcó en sus publicaciones y en cuántas aparece cada uno. Publicar sobre un tema no significa estar a favor de algo.
             </Concepto>
-            <Concepto Icono={MessageSquareQuote} titulo="Narrativas">
-              Ideas que aparecen en sus publicaciones, con la frase exacta. No son necesariamente la opinión de la cuenta: la frase puede ser de una persona entrevistada o citada.
+            <Concepto Icono={MessageSquareQuote} titulo="Declaraciones">
+              Frases exactas que aparecen en sus publicaciones, con quién las dice. Pueden ser de la cuenta, de un invitado o de alguien citado.
             </Concepto>
-            <Concepto Icono={UserCheck} titulo="Posturas">
-              Opiniones de la propia cuenta. Solo cuentan cuando el análisis confirma que quien habla es el autor y que la frase aparece en el texto.
+            <Concepto Icono={ListChecks} titulo="Argumentos">
+              Cómo sostiene lo que dice: si plantea un problema, señala una causa, usa datos o apela a una autoridad. Solo cuentan las declaraciones comprobadas en su contexto.
+            </Concepto>
+            <Concepto Icono={History} titulo="En el tiempo">
+              Las declaraciones comprobadas ordenadas por fecha de publicación, y si se repiten o cambian entre ocasiones distintas. La fecha es la de publicación, no necesariamente la del hecho narrado.
             </Concepto>
           </Seccion>
 
-          <Seccion titulo="Las etiquetas">
-            <Concepto Icono={Sprout} tono="ambar" titulo="Lectura inicial">
-              Todavía hay pocas publicaciones. Sirve como pista, no como conclusión.
+          <Seccion titulo="Los niveles">
+            <Concepto Icono={Sprout} tono="ambar" titulo="Impresión inicial">
+              Algo que aparece en las fuentes. Sirve como pista para revisar, no como conclusión sobre la cuenta.
             </Concepto>
-            <Concepto Icono={BadgeCheck} tono="verde" titulo="Patrón respaldado">
-              El tema se repite en suficientes publicaciones a lo largo de suficiente tiempo.
+            <Concepto Icono={Layers} tono="azul" titulo="En formación">
+              Varias fuentes independientes dicen lo mismo y el contexto lo sostiene. Todavía no es una característica de la cuenta.
+            </Concepto>
+            <Concepto Icono={BadgeCheck} tono="verde" titulo="Respaldada">
+              Cumple el criterio de suficiencia: se puede atribuir a la cuenta.
+            </Concepto>
+            <Concepto Icono={TriangleAlert} tono="rojo" titulo="En revisión">
+              Hay evidencia en contra o el contexto no la sostiene. Hay que revisarla aunque antes estuviera respaldada.
+            </Concepto>
+          </Seccion>
+
+          <Seccion titulo="Quién lo dice">
+            <Concepto Icono={UserRoundCheck} tono="verde" titulo="Lo dijo la cuenta">
+              La frase se atribuye a quien habla por la cuenta.
+            </Concepto>
+            <Concepto Icono={Mic} tono="ambar" titulo="Voz H1, H2…">
+              Cada voz distinta dentro de una publicación. H1 en un video y H1 en otro no son necesariamente la misma persona. Si sabes quién es, ábrela y dilo con «decir quién es la voz»; queda registrado y la huella se vuelve a calcular.
             </Concepto>
             <Concepto Icono={CircleQuestionMark} tono="ambar" titulo="No se sabe quién lo dijo">
-              La frase está en la publicación, pero no se identificó a la persona que la dice.
-            </Concepto>
-            <Concepto Icono={ThumbsUp} tono="verde" titulo="A favor, en contra, informa">
-              Cómo presenta la publicación esa idea.
+              La frase está en la publicación, pero no se pudo distinguir quién la dice.
             </Concepto>
           </Seccion>
 
-          {pasos.length ? (
-            <Seccion titulo={`Qué le falta a ${nombre} para un patrón`}>
-              {pasos.map((p, i) => (
-                <View key={p.clave} style={{ flexDirection: 'row', gap: 12 }}>
-                  <View
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      backgroundColor: p.ok ? TONOS.verde.fondo : 'rgba(28,43,34,0.07)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {p.ok ? <Check size={14} color={TONOS.verde.tinta} strokeWidth={3} /> : <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK.meta }}>{i + 1}</Text>}
-                  </View>
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{p.titulo}</Text>
-                    <Text style={{ fontSize: 14, color: p.ok ? TONOS.verde.tinta : INK.body }}>{p.detalle}</Text>
-                    {!p.ok && p.avance > 0 ? (
-                      <View style={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(28,43,34,0.08)', overflow: 'hidden', marginTop: 3 }}>
-                        <View style={{ width: `${Math.round(p.avance * 100)}%`, height: '100%', backgroundColor: TONOS.ambar.tinta }} />
-                      </View>
-                    ) : null}
-                  </View>
+          {falta.length ? (
+            <Seccion titulo={`Qué falta comprobar en ${nombre}`}>
+              {falta.map((f) => (
+                <Concepto key={f.id} Icono={ICONO_FALTA[f.motivo] || ListChecks} tono="ambar" titulo={f.texto} />
+              ))}
+            </Seccion>
+          ) : null}
+
+          {pistas.length ? (
+            <Seccion titulo="Preguntas para revisar">
+              {pistas.map((p) => (
+                <View key={p.id} style={{ borderLeftWidth: 3, borderLeftColor: TONO.raya, paddingLeft: 12 }}>
+                  <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.body }}>{p.pregunta}</Text>
                 </View>
               ))}
             </Seccion>
           ) : null}
 
-          {perfil?.advertencias?.length ? (
+          {limites.length ? (
             <Seccion titulo="A tener en cuenta">
-              {perfil.advertencias.map((a) => (
+              {limites.map((a) => (
                 <View key={a} style={{ borderLeftWidth: 3, borderLeftColor: TONO.raya, paddingLeft: 12 }}>
                   <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.body }}>{a}</Text>
                 </View>
@@ -135,9 +171,9 @@ function Concepto({ Icono, tono = 'neutro', titulo, children }) {
       <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: t.fondo, alignItems: 'center', justifyContent: 'center' }}>
         <Icono size={17} color={t.tinta} strokeWidth={1.9} />
       </View>
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, gap: 3, justifyContent: 'center' }}>
         <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{titulo}</Text>
-        <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.body }}>{children}</Text>
+        {children ? <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.body }}>{children}</Text> : null}
       </View>
     </View>
   );

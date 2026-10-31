@@ -2,11 +2,12 @@ import { EXTRACTORW_URL } from '../../utils/servicios';
 import { supabase } from '../../utils/supabase';
 
 /**
- * Cliente de la huella de autor (contrato `autor_huella/1`, ExtractorW PR #72).
+ * Cliente de la huella de autor (`huella_profunda/2`, impresiones, lectura
+ * breve, caracterización e identidad; ExtractorW PRs #77 y #83–#87).
  *
  * Usa la sesión de la persona: el servidor deriva el usuario de ahí, la app no
- * elige `user_id`. Los errores llevan el estado HTTP para que la pantalla sepa
- * qué decir (ver `motivoDeError` en logica.js).
+ * elige `user_id`. Los errores llevan el estado HTTP y el código para que la
+ * pantalla sepa qué decir (ver `motivoDeError` en logica.js).
  */
 export class ErrorHuella extends Error {
   constructor(status, code, message, extra = {}) {
@@ -49,19 +50,29 @@ const id = (v) => encodeURIComponent(v);
 /** Autores vinculados a una ficha Actor o Entidad. Lista vacía si no hay; no crea fichas. */
 export const autoresDeFicha = (itemId) => pedir(`/items/${id(itemId)}`);
 
-/** Estado del trabajo y, si está vigente, el perfil (lecturas con `evidencias_total`, sin evidencias). */
+/**
+ * El estado del trabajo y, si terminó, el resumen: `impresiones` (sin
+ * tarjetas), `lectura_breve`, `caracterizacion`, `cobertura`, `base_id`.
+ */
 export const leerHuella = (autorId) => pedir(`/${id(autorId)}`);
 
-/** Evidencias de una lectura, paginadas (máximo 100). Trae `huella_id` y `total`. */
-export const evidenciasDe = (autorId, clave, { offset = 0, limit = 25 } = {}) =>
-  pedir(`/${id(autorId)}/evidencias`, { query: { lectura: clave, offset, limit } });
+/** Tarjetas con sus citas, paginadas (hasta 100 por página, 500 en total). */
+export const tarjetasDe = (autorId, { offset = 0, limit = 100, nivel } = {}) =>
+  pedir(`/${id(autorId)}/impresiones`, { query: { offset, limit, nivel } });
 
 /** Pide recalcular. Responde 202 con `estado: 'en_cola'`; tiene 30 s de enfriamiento. */
 export const actualizarHuella = (autorId) => pedir(`/${id(autorId)}/actualizar`, { method: 'POST', body: {} });
 
-/** Acepta o descarta una lectura vigente (descartar lleva comentario). Responde 202 `en_cola`. */
-export const corregirLectura = (autorId, { huella_id, clave, decision, comentario }) =>
-  pedir(`/${id(autorId)}/correcciones`, {
+/** Las revisiones de identidad guardadas: `{ config: { aliases, voces } }`. */
+export const leerIdentidad = (autorId) => pedir(`/${id(autorId)}/identidad`);
+
+/**
+ * Dice quién habla en una voz local de una publicación. `operacion` es `voz`
+ * (con `rol` y `relacion`) o `quitar_voz`. Lleva motivo; responde 202 y la
+ * huella se vuelve a calcular.
+ */
+export const revisarVoz = (autorId, operacion, { post_id, voz, rol, relacion, motivo }) =>
+  pedir(`/${id(autorId)}/identidad/${operacion}`, {
     method: 'POST',
-    body: { huella_id, clave, decision, ...(comentario ? { comentario } : {}) },
+    body: operacion === 'voz' ? { post_id, voz, rol, relacion, motivo } : { post_id, voz, motivo },
   });

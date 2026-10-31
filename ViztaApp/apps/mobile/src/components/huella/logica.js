@@ -1,120 +1,207 @@
 /**
- * Lógica pura de la huella de autor (`autor_huella/1`). Sin red ni React: lo
- * que se prueba en __tests__/logica.test.js.
+ * Lógica pura de la huella de autor. Sin red ni React: lo que se prueba en
+ * __tests__/logica.test.js.
  *
- * Dos estados distintos que no se mezclan:
- *  · el del trabajo: sin_calcular | pendiente | procesando | error | listo
- *  · el del perfil (solo con huella vigente): evidencia_insuficiente |
- *    lectura_inicial | patron_respaldado
+ * Contrato (ExtractorW, PRs #77 y #83–#87): el GET devuelve `huella_profunda/2`
+ * con `impresiones` (resumen), `lectura_breve` y `caracterizacion`; las tarjetas
+ * con sus citas vienen de `/impresiones`.
+ *
+ * Tres cosas distintas que no se mezclan:
+ *  · el trabajo (`estado_trabajo`): sin_calcular | pendiente | procesando | error | listo
+ *  · la suficiencia (`elegibilidad`): evidencia_insuficiente | parcial
+ *  · la madurez de lo observado (`impresiones.madurez`)
+ * Terminar el trabajo no completa la huella: `terminal: true` con `huella: null`
+ * es un resultado y se muestra lo observado.
  */
 
-export const TRABAJO_EN_CURSO = ['pendiente', 'procesando'];
+export const TRABAJO_EN_CURSO = ['pendiente', 'procesando', 'en_cola'];
 export const ENFRIAMIENTO_MS = 30 * 1000;
 /** Cada cuánto se vuelve a mirar mientras se calcula, y hasta cuándo. */
 export const SONDEO_MS = 4000;
 export const SONDEO_MAX_MS = 3 * 60 * 1000;
-export const MAX_COMENTARIO = 2000;
+export const MOTIVO_MIN = 8;
+export const MOTIVO_MAX = 2000;
 
-/** ¿Se está calculando? (sin huella vigente y con trabajo en cola o en curso). */
-export const enCurso = (r) => !!r && !r.huella && TRABAJO_EN_CURSO.includes(r.estado);
+/** El estado del trabajo, venga en `estado_trabajo` o (antes de calcular) en `estado`. */
+export const trabajoDe = (r) => r?.estado_trabajo || r?.estado || null;
+
+/** ¿Se está calculando? */
+export const enCurso = (r) => !!r && !r.terminal && TRABAJO_EN_CURSO.includes(trabajoDe(r));
 
 /** Lo que hay que mostrar, a partir de la respuesta de GET /:autorId. */
 export function situacion(r) {
   if (!r) return 'cargando';
-  if (r.huella) return 'vigente';
+  if (r.terminal || (trabajoDe(r) === 'listo' && r.base_id)) return 'lista';
   if (enCurso(r)) return r.desactualizada ? 'recalculando' : 'calculando';
-  if (r.estado === 'error') return 'fallo';
-  if (r.estado === 'sin_calcular') return 'sin_calcular';
-  // `listo` sin huella: se invalidó entre lecturas; se vuelve a pedir.
+  if (trabajoDe(r) === 'error') return 'fallo';
+  if (trabajoDe(r) === 'sin_calcular') return 'sin_calcular';
+  // `listo` sin base: se invalidó entre lecturas; se vuelve a pedir.
   return 'calculando';
 }
 
-export const PERFIL = {
-  evidencia_insuficiente: 'Sin datos suficientes',
-  lectura_inicial: 'Lectura inicial',
-  patron_respaldado: 'Patrón respaldado',
+/** ¿Hay que volver a pedir el GET? Mientras calcula, o si quedó listo sin base. */
+export const hayQueSondear = (r) => enCurso(r) || (!!r && !r.terminal && trabajoDe(r) === 'listo');
+
+/** Los niveles de una tarjeta o dimensión, con su peso en el llenado del ícono. */
+export const NIVELES = {
+  sin_observaciones: { texto: 'Sin observaciones', tono: 'neutro', peso: 0 },
+  impresion_inicial: { texto: 'Impresión inicial', tono: 'ambar', peso: 0.25 },
+  en_formacion: { texto: 'En formación', tono: 'azul', peso: 0.6 },
+  en_revision: { texto: 'En revisión', tono: 'rojo', peso: 0.4 },
+  huella_respaldada: { texto: 'Respaldada', tono: 'verde', peso: 1 },
+};
+const ORDEN_NIVEL = { huella_respaldada: 0, en_formacion: 1, en_revision: 2, impresion_inicial: 3, sin_observaciones: 4 };
+
+/** La madurez de toda la huella. */
+export const MADUREZ = {
+  sin_observaciones: { texto: 'Sin observaciones', tono: 'neutro' },
+  impresiones_iniciales: { texto: 'Impresiones iniciales', tono: 'ambar' },
+  en_formacion: { texto: 'En formación', tono: 'azul' },
+  dimensiones_respaldadas: { texto: 'Huella respaldada', tono: 'verde' },
 };
 
 /**
- * Las tres clases de lectura. Cada una dice algo distinto y no se confunden:
- * un tema es de qué publica; una narrativa aparece en lo publicado pero no es
- * suya; una postura es lo que se le atribuye con cita y voz identificada.
+ * Cuánto se llenó la huella, de 0 a 1: el promedio del nivel de sus partes
+ * (temas, voces, posiciones, argumentos, evolución). Una parte respaldada pesa
+ * entero; una impresión inicial, un cuarto.
  */
-export const CLASES = {
-  tema_editorial: { titulo: 'Temas que publica', singular: 'tema' },
-  narrativa_publicada: { titulo: 'Narrativas en lo que publica', singular: 'narrativa' },
-  postura_atribuida: { titulo: 'Posturas atribuidas', singular: 'postura' },
+export function llenadoHuella(lecturaBreve) {
+  const dims = lecturaBreve?.dimensiones || [];
+  if (!dims.length) return 0;
+  const suma = dims.reduce((n, d) => n + (NIVELES[d.nivel]?.peso || 0), 0);
+  return Math.round(Math.min(1, suma / dims.length) * 100) / 100;
+}
+
+/** El nivel de una dimensión de la lectura breve, por su clave. */
+export const nivelDimension = (lecturaBreve, clave) =>
+  (lecturaBreve?.dimensiones || []).find((d) => d.clave === clave)?.nivel || 'sin_observaciones';
+
+/**
+ * Las pestañas: cada una corresponde a una dimensión del contrato. Voces no
+ * tiene pestaña propia: quién habla se ve en cada declaración y se filtra ahí.
+ */
+export const PESTANAS = [
+  { id: 'temas', titulo: 'Temas', dimension: 'seleccion_editorial' },
+  { id: 'declaraciones', titulo: 'Declaraciones', dimension: 'posiciones' },
+  { id: 'argumentos', titulo: 'Argumentos', dimension: 'argumentos' },
+  { id: 'tiempo', titulo: 'En el tiempo', dimension: 'evolucion' },
+];
+
+/** Las tarjetas repartidas por pestaña, ordenadas. */
+export function repartir(tarjetas) {
+  const temas = [];
+  const declaraciones = [];
+  for (const t of tarjetas || []) {
+    if (t.clase === 'referencia_tematica') temas.push(t);
+    else if (t.clase === 'declaracion_observada' || t.clase === 'lectura_por_dimension') declaraciones.push(t);
+  }
+  temas.sort((a, b) => publicacionesDe(b) - publicacionesDe(a) || String(a.titulo).localeCompare(String(b.titulo), 'es'));
+  declaraciones.sort(
+    (a, b) =>
+      (a.clase === 'lectura_por_dimension' ? 0 : 1) - (b.clase === 'lectura_por_dimension' ? 0 : 1) ||
+      (ORDEN_NIVEL[a.nivel] ?? 9) - (ORDEN_NIVEL[b.nivel] ?? 9) ||
+      String(fechaDe(b) || '').localeCompare(String(fechaDe(a) || ''))
+  );
+  return { temas, declaraciones };
+}
+
+/** Publicaciones distintas de las que sale una tarjeta. */
+export const publicacionesDe = (t) => new Set((t?.evidencia || []).map((e) => e.post_id).filter(Boolean)).size;
+const fechaDe = (t) => (t?.evidencia || []).map((e) => e.fecha).filter(Boolean).sort().at(-1) || null;
+
+/** ¿La dijo la cuenta? Solo cuando todas sus citas están atribuidas a ella. */
+export const delAutor = (t) => (t?.evidencia || []).length > 0 && t.evidencia.every((e) => e.atribuida_al_autor);
+
+/** Quién habla en una evidencia, en palabras y con su tono. */
+export function quienHabla(e, revision) {
+  if (revision?.relacion === 'voz_de_cuenta') return { texto: 'Lo dijo la cuenta', tono: 'verde', confirmado: true };
+  if (revision?.relacion === 'tercero') return { texto: ROL[revision.rol] || 'Lo dijo otra persona', tono: 'neutro', confirmado: true };
+  if (e?.atribuida_al_autor) return { texto: 'Lo dijo la cuenta', tono: 'verde', confirmado: false };
+  if (e?.voz_local) return { texto: `Voz ${e.voz_local} · sin identificar`, tono: 'ambar', confirmado: false };
+  return { texto: 'No se sabe quién lo dijo', tono: 'ambar', confirmado: false };
+}
+const ROL = { invitado: 'Lo dijo un invitado', personaje: 'Lo dijo un personaje', anfitrion: 'Lo dijo otra persona', narrador: 'Lo dijo otra persona' };
+
+/** Si el contexto sostiene la cita; solo se rotula cuando ya se comprobó. */
+export const RESPALDO = {
+  respaldada: { texto: 'El contexto la sostiene', tono: 'verde' },
+  no_respaldada: { texto: 'El contexto no la sostiene', tono: 'rojo' },
 };
-export const ORDEN_CLASES = ['postura_atribuida', 'tema_editorial', 'narrativa_publicada'];
 
-/** Las lecturas por clase, en orden; las más respaldadas primero dentro de cada una. */
-export function porClase(lecturas) {
-  const grupos = new Map(ORDEN_CLASES.map((c) => [c, []]));
-  for (const l of lecturas || []) {
-    if (!grupos.has(l.clase)) grupos.set(l.clase, []);
-    grupos.get(l.clase).push(l);
-  }
-  for (const lista of grupos.values()) {
-    lista.sort(
-      (a, b) =>
-        (b.estado === 'patron_respaldado') - (a.estado === 'patron_respaldado') ||
-        (b.respaldo?.posts || 0) - (a.respaldo?.posts || 0) ||
-        String(a.tema || '').localeCompare(String(b.tema || ''), 'es')
-    );
-  }
-  return [...grupos].filter(([, l]) => l.length).map(([clase, lecturas]) => ({ clase, lecturas }));
-}
-
-const SENTIDO = { a_favor: 'a favor', en_contra: 'en contra', informa: 'informa', mixto: 'mixto' };
-
-/** El nombre corto de una lectura: el tema, y hacia qué/quién y en qué sentido si los tiene. */
-export function nombreLectura(l) {
-  const tema = l?.tema || 'Sin tema';
-  if (l?.clase === 'tema_editorial') return tema;
-  // «libertad religiosa · a favor libertad religiosa»: el «hacia» igual al tema no se repite.
-  const igual = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-  const partes = [SENTIDO[l?.sentido], igual(l?.hacia, tema) ? null : l?.hacia].filter(Boolean);
-  return partes.length ? `${tema} · ${partes.join(' ')}` : tema;
-}
-
-/** «4 publicaciones · 12 días», o «1 publicación». */
-export function respaldoCorto(r) {
-  const n = r?.posts || 0;
-  const pubs = `${n} ${n === 1 ? 'publicación' : 'publicaciones'}`;
-  return r?.dias > 0 ? `${pubs} · ${r.dias} ${r.dias === 1 ? 'día' : 'días'}` : pubs;
-}
-
-/** Qué le falta a una lectura para ser un patrón, en palabras. Vacío si nada. */
-export function falta(l) {
-  const e = l?.evidencia_necesaria || {};
-  if (l?.estado === 'patron_respaldado') return [];
-  const out = [];
-  if (e.requiere_atribucion) out.push('confirmar quién lo dijo');
-  if (e.posts_adicionales_minimos > 0) {
-    out.push(`${e.posts_adicionales_minimos} ${e.posts_adicionales_minimos === 1 ? 'publicación más' : 'publicaciones más'}`);
-  }
-  if (e.requiere_fechas) out.push('fechas de publicación');
-  if (e.requiere_cobertura_temporal) out.push('más tiempo entre publicaciones');
-  if (e.requiere_identidad) out.push('confirmar la cuenta');
-  return out;
-}
-
-/** Quién dice la cita de una evidencia. */
-export const ATRIBUCION = {
-  publicacion_de_cuenta: 'Publicado por la cuenta',
-  autor_segun_analisis: 'Lo dijo el autor',
-  tercero: 'Lo dijo otra persona',
-  sin_atribucion: 'No se sabe quién lo dijo',
-  atribucion_probable: 'Probablemente el autor, sin confirmar',
-  cita_ambigua: 'Hablan varias personas',
-  cita_sin_turno: 'No se distingue quién habla',
+/** Lo que le falta a una tarjeta, en palabras (`faltantes` del contrato). */
+export const FALTANTE = {
+  atribucion_insuficiente: 'saber quién lo dice',
+  respaldo_pendiente: 'comprobarla en su contexto',
+  independencia_no_resuelta: 'saber si las fuentes son ocasiones distintas',
+  fechas_incompletas: 'las fechas de las fuentes',
+  politica_no_calibrada: 'un criterio de suficiencia calibrado',
+  ocasiones_insuficientes: 'más ocasiones independientes',
+  periodo_insuficiente: 'más tiempo cubierto',
+  contraevidencia_pendiente: 'revisar la evidencia en contra',
+  revision_de_etiqueta: 'revisar la etiqueta del análisis',
 };
+export const faltaDe = (t) => (t?.faltantes || []).map((f) => FALTANTE[f]).filter(Boolean);
+
+/** Las opciones para decir quién habla en una voz (`identidad/voz`). */
+export const OPCIONES_VOZ = [
+  { id: 'cuenta_conductor', texto: 'La cuenta, como conductor', relacion: 'voz_de_cuenta', rol: 'anfitrion' },
+  { id: 'cuenta_narrador', texto: 'La cuenta, como narrador', relacion: 'voz_de_cuenta', rol: 'narrador' },
+  { id: 'invitado', texto: 'Un invitado', relacion: 'tercero', rol: 'invitado' },
+  { id: 'personaje', texto: 'Un personaje o una actuación', relacion: 'tercero', rol: 'personaje' },
+];
+
+/** La revisión guardada de una voz, si hay (`identidad.config.voces[post][voz]`). */
+export const revisionDeVoz = (identidad, postId, voz) => (postId && voz ? identidad?.config?.voces?.[postId]?.[voz] || null : null);
+
+/** Una revisión de identidad válida antes de mandarla (el servidor valida igual). */
+export function validarMotivo(motivo) {
+  const m = String(motivo || '').trim();
+  if (m.length < MOTIVO_MIN) return `Escribe cómo lo sabes (al menos ${MOTIVO_MIN} caracteres).`;
+  if (m.length > MOTIVO_MAX) return `Hasta ${MOTIVO_MAX} caracteres.`;
+  return null;
+}
+
+/** Los argumentos explícitos (`caracterizacion.argumentos[].faceta`). */
+export const FACETAS = {
+  problema: 'Plantea un problema',
+  causa: 'Señala una causa',
+  responsabilidad: 'Atribuye responsabilidad',
+  solucion: 'Propone una solución',
+  derechos: 'Invoca derechos',
+  legalidad: 'Invoca la ley',
+  costos: 'Habla de costos',
+  dato: 'Usa datos',
+  testimonio: 'Usa testimonios',
+  autoridad: 'Apela a una autoridad',
+};
+
+/** Cómo se relacionan dos intervenciones en el tiempo (`evolucion.eventos[].tipo`). */
+export const TRAYECTORIA = {
+  recurrencia_en_fuentes: { texto: 'Se repite en varias fuentes', tono: 'neutro' },
+  recurrencia_observada: { texto: 'La cuenta lo repite', tono: 'verde' },
+  independencia_pendiente: { texto: 'Falta saber si son ocasiones distintas', tono: 'ambar' },
+  diferencia_sin_atribucion_personal: { texto: 'Difieren, sin atribuirlo a la cuenta', tono: 'neutro' },
+  tension_contextual_por_revisar: { texto: 'Tensión por revisar', tono: 'ambar' },
+  posible_cambio_de_posicion: { texto: 'Posible cambio de posición', tono: 'rojo' },
+  pendiente_de_fechas: { texto: 'Faltan fechas para ordenarlas', tono: 'ambar' },
+};
+
+/** Publicaciones con fecha, de las que aparecen en las tarjetas: { con, total }. */
+export function fechasCubiertas(tarjetas) {
+  const posts = new Map();
+  for (const t of tarjetas || [])
+    for (const e of t.evidencia || []) if (e.post_id) posts.set(e.post_id, posts.get(e.post_id) || !!e.fecha);
+  return { con: [...posts.values()].filter(Boolean).length, total: posts.size };
+}
+
+/** Los ids de publicación que citan las tarjetas, para traer sus títulos. */
+export const postsDe = (tarjetas) => [...new Set((tarjetas || []).flatMap((t) => (t.evidencia || []).map((e) => e.post_id)).filter(Boolean))].sort();
 
 /** Fecha de publicación; sin fecha no se inventa (la de análisis no la reemplaza). */
 export function fechaPublicacion(iso) {
-  if (!iso) return 'fecha desconocida';
+  if (!iso) return 'sin fecha';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 'fecha desconocida';
+  if (Number.isNaN(d.getTime())) return 'sin fecha';
   return d.toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -122,17 +209,10 @@ export function fechaPublicacion(iso) {
 export const enfriamientoRestante = (ultimoPedido, ahora = Date.now()) =>
   ultimoPedido ? Math.max(0, Math.ceil((ENFRIAMIENTO_MS - (ahora - ultimoPedido)) / 1000)) : 0;
 
-/** Una corrección válida antes de mandarla (el servidor valida igual). */
-export function validarCorreccion({ decision, comentario }) {
-  const c = String(comentario || '').trim();
-  if (!['aceptar', 'descartar'].includes(decision)) return 'Falta elegir si es correcta o no.';
-  if (decision === 'descartar' && !c) return 'Falta escribir por qué no es correcta.';
-  if (c.length > MAX_COMENTARIO) return `Hasta ${MAX_COMENTARIO} caracteres.`;
-  return null;
-}
-
-/** Qué decir ante un error, según el estado HTTP del contrato. */
+/** Qué decir ante un error, según el estado HTTP y el código del contrato. */
 export function motivoDeError(e) {
+  if (e?.code === 'voz_sin_insumo') return 'Esa voz no está identificada de forma única en la publicación.';
+  if (e?.code === 'huella_desactivada') return 'Los cambios en la huella están desactivados por ahora.';
   switch (e?.status) {
     case 0:
       return 'Sin conexión a internet.';
@@ -153,83 +233,4 @@ export function motivoDeError(e) {
     default:
       return 'No se pudo cargar la huella.';
   }
-}
-
-/**
- * Los pasos para que un tema llegue a patrón, con cómo va este autor. Salen
- * de `reglas.tema_editorial` y la cobertura del perfil (criterio provisional).
- */
-export function pasosPatron(perfil) {
-  const regla = perfil?.reglas?.tema_editorial || { posts_patron: 4, dias_patron: 7 };
-  const c = perfil?.cobertura || {};
-  const temas = (perfil?.lecturas || []).filter((l) => l.clase === 'tema_editorial');
-  const mejor = Math.max(0, ...temas.map((t) => t.respaldo?.posts || 0));
-  const posts = c.posts || 0;
-  const conFecha = c.con_fecha || 0;
-  return [
-    {
-      clave: 'publicaciones',
-      titulo: `${regla.posts_patron} publicaciones sobre un mismo tema`,
-      ok: mejor >= regla.posts_patron,
-      detalle: mejor >= regla.posts_patron ? 'Listo' : `El tema con más publicaciones tiene ${mejor}`,
-      avance: Math.min(1, mejor / regla.posts_patron),
-    },
-    {
-      clave: 'tiempo',
-      titulo: `${regla.dias_patron} días entre la primera y la última`,
-      ok: (c.dias || 0) >= regla.dias_patron,
-      detalle:
-        (c.dias || 0) >= regla.dias_patron
-          ? 'Listo'
-          : posts < 2
-            ? 'Con una sola publicación no hay tiempo que medir'
-            : conFecha < 2
-              ? 'Sin fechas de publicación no se puede medir'
-              : `Sus publicaciones abarcan ${c.dias} ${c.dias === 1 ? 'día' : 'días'}`,
-      avance: Math.min(1, (c.dias || 0) / regla.dias_patron),
-    },
-    {
-      clave: 'fechas',
-      titulo: 'Fecha de publicación en cada una',
-      ok: posts > 0 && conFecha === posts,
-      detalle: posts > 0 && conFecha === posts ? 'Todas tienen fecha' : `${posts - conFecha} de ${posts} no tienen fecha`,
-      avance: posts ? conFecha / posts : 0,
-    },
-    {
-      clave: 'cuenta',
-      titulo: 'Cuenta confirmada',
-      ok: perfil?.autor?.usuario_confirmado === true,
-      detalle: perfil?.autor?.usuario_confirmado === true ? 'Listo' : 'Falta confirmar que la cuenta es de quien dice ser',
-      avance: perfil?.autor?.usuario_confirmado === true ? 1 : 0,
-    },
-  ];
-}
-
-/** Cuánto le falta a un tema para el umbral de publicaciones: {tiene, meta, avance}. */
-export function avanceTema(l, perfil) {
-  const meta = perfil?.reglas?.tema_editorial?.posts_patron || 4;
-  const tiene = l?.respaldo?.posts || 0;
-  return { tiene, meta, avance: Math.min(1, tiene / meta) };
-}
-
-export const SENTIDOS = {
-  a_favor: { texto: 'A favor', tono: 'verde' },
-  en_contra: { texto: 'En contra', tono: 'rojo' },
-  informa: { texto: 'Informa', tono: 'azul' },
-  mixto: { texto: 'Mixto', tono: 'neutro' },
-};
-
-export const EJES = { politico: 'político', economico: 'económico', social: 'social', cultural: 'cultural', especifico: 'específico' };
-
-/**
- * Cuánto se llenó la huella, de 0 a 1: lo que dibuja el ícono grande. Pesa más
- * lo que más cuesta juntar (publicaciones sobre un tema y tiempo cubierto) que
- * lo que se resuelve de una vez (fechas, cuenta confirmada).
- */
-export function llenadoHuella(perfil) {
-  if (!perfil) return 0;
-  if (perfil.estado === 'patron_respaldado') return 1;
-  const PESO = { publicaciones: 0.45, tiempo: 0.35, fechas: 0.1, cuenta: 0.1 };
-  const total = pasosPatron(perfil).reduce((n, p) => n + (PESO[p.clave] || 0) * p.avance, 0);
-  return Math.round(Math.min(1, total) * 100) / 100;
 }

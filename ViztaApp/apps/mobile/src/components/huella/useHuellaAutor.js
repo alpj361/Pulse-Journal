@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { actualizarHuella, corregirLectura, evidenciasDe, leerHuella } from './api';
-import { ENFRIAMIENTO_MS, SONDEO_MAX_MS, SONDEO_MS, enCurso, validarCorreccion } from './logica';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '../../utils/supabase';
+import { actualizarHuella, leerHuella, leerIdentidad, revisarVoz, tarjetasDe } from './api';
+import { ENFRIAMIENTO_MS, SONDEO_MAX_MS, SONDEO_MS, hayQueSondear, postsDe, validarMotivo } from './logica';
 
 export const claveHuella = (autorId) => ['huella-autor', autorId];
-const claveEvidencias = (autorId) => ['huella-evidencias', autorId];
+const claveTarjetas = (autorId) => ['huella-tarjetas', autorId];
+const claveIdentidad = (autorId) => ['huella-identidad', autorId];
 
 /** Recordado por autor mientras la app sigue abierta: el enfriamiento no se reinicia al cerrar la hoja. */
 const ULTIMO_PEDIDO = new Map();
+const TOPE_TARJETAS = 500;
 
 /**
  * La huella de un autor: lee el estado, sondea mientras se calcula (cada 4 s,
- * hasta 3 min; se corta al desmontar) y expone actualizar y corregir.
+ * hasta 3 min; se corta al desmontar), trae la cuenta, las tarjetas y las
+ * revisiones de identidad, y expone actualizar y revisar una voz.
  *
- * Sin huella vigente (`huella: null`) se descartan las evidencias guardadas de
- * la versión anterior: nunca se muestra como vigente algo superado.
+ * Las tarjetas van atadas a `base_id`: una revisión nueva empieza de cero y
+ * nunca se muestra como vigente algo superado.
  */
 export default function useHuellaAutor(autorId) {
   const queryClient = useQueryClient();
@@ -29,9 +33,7 @@ export default function useHuellaAutor(autorId) {
     staleTime: 1000 * 30,
     retry: (n, e) => n < 1 && ![401, 403, 404, 422].includes(e?.status),
     refetchInterval: (q) => {
-      const r = q.state.data;
-      const recalcular = enCurso(r) || (r && !r.huella && r.estado === 'listo');
-      if (!recalcular) {
+      if (!hayQueSondear(q.state.data)) {
         desde.current = null;
         return false;
       }
@@ -39,11 +41,66 @@ export default function useHuellaAutor(autorId) {
       return Date.now() - desde.current < SONDEO_MAX_MS ? SONDEO_MS : false;
     },
   });
+  const baseId = consulta.data?.base_id || null;
 
-  const vigenteId = consulta.data?.huella?.id || null;
+  // La cuenta: el GET con huella solo trae `autor_id`; la tabla es de la persona (RLS).
+  const cuenta = useQuery({
+    queryKey: ['huella-cuenta', autorId],
+    enabled: !!autorId,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('autores').select('id, nombre, usuario, plataforma, usuario_confirmado').eq('id', autorId).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const tarjetas = useQuery({
+    queryKey: [...claveTarjetas(autorId), baseId],
+    enabled: !!autorId && !!baseId,
+    staleTime: 1000 * 60,
+    retry: false,
+    queryFn: async () => {
+      const todas = [];
+      for (let offset = 0; offset < TOPE_TARJETAS; offset += 100) {
+        const r = await tarjetasDe(autorId, { offset, limit: 100 });
+        if (r.base_id && r.base_id !== baseId) {
+          queryClient.invalidateQueries({ queryKey: claveHuella(autorId) });
+          break;
+        }
+        const pagina = r.impresiones?.tarjetas || [];
+        todas.push(...pagina);
+        if (pagina.length < 100 || todas.length >= (r.impresiones?.total_filtrado || 0)) break;
+      }
+      return todas;
+    },
+  });
+
+  // Los títulos de las publicaciones que citan las tarjetas, de una sola vez.
+  const ids = postsDe(tarjetas.data);
+  const posts = useQuery({
+    queryKey: ['huella-posts', autorId, ids.join(',')],
+    enabled: ids.length > 0,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('codex_universe_items').select('id, name').in('id', ids);
+      if (error) throw error;
+      return Object.fromEntries((data || []).map((p) => [p.id, p.name]));
+    },
+  });
+
+  const identidad = useQuery({
+    queryKey: claveIdentidad(autorId),
+    enabled: !!autorId && !!baseId,
+    staleTime: 1000 * 60,
+    retry: false,
+    queryFn: () => leerIdentidad(autorId),
+  });
+
+  // Sin base vigente se descartan las tarjetas guardadas de la revisión anterior.
   useEffect(() => {
-    if (consulta.data && !vigenteId) queryClient.removeQueries({ queryKey: claveEvidencias(autorId) });
-  }, [consulta.data, vigenteId, autorId, queryClient]);
+    if (consulta.data && !baseId) queryClient.removeQueries({ queryKey: claveTarjetas(autorId) });
+  }, [consulta.data, baseId, autorId, queryClient]);
 
   // El contador del enfriamiento, solo mientras corre.
   useEffect(() => {
@@ -54,7 +111,10 @@ export default function useHuellaAutor(autorId) {
 
   const recargar = useCallback(() => {
     desde.current = null;
-    return queryClient.invalidateQueries({ queryKey: claveHuella(autorId) });
+    return Promise.all([
+      queryClient.invalidateQueries({ queryKey: claveHuella(autorId) }),
+      queryClient.invalidateQueries({ queryKey: claveIdentidad(autorId) }),
+    ]);
   }, [queryClient, autorId]);
 
   const actualizar = useCallback(async () => {
@@ -69,46 +129,31 @@ export default function useHuellaAutor(autorId) {
     }
   }, [autorId, recargar]);
 
-  /** Aceptar o descartar una lectura. Un 409 (versión superada) recarga la huella. */
-  const corregir = useCallback(
-    async ({ clave, decision, comentario }) => {
-      const invalido = validarCorreccion({ decision, comentario });
+  /** Dice quién habla en una voz (o quita lo dicho). Encola una revisión nueva. */
+  const revisar = useCallback(
+    async (operacion, datos) => {
+      const invalido = validarMotivo(datos?.motivo);
       if (invalido) throw Object.assign(new Error(invalido), { status: 400, message: invalido });
       try {
-        return await corregirLectura(autorId, { huella_id: vigenteId, clave, decision, comentario: String(comentario || '').trim() });
+        return await revisarVoz(autorId, operacion, { ...datos, motivo: String(datos.motivo).trim() });
       } finally {
         await recargar();
       }
     },
-    [autorId, vigenteId, recargar]
+    [autorId, recargar]
   );
 
-  return { consulta, respuesta: consulta.data, ultimoPedido, ahora, actualizar, corregir, recargar };
-}
-
-/**
- * Las evidencias de una lectura, de a 25. La clave lleva el id de la huella:
- * una versión nueva empieza de cero. Un 409 recarga la huella.
- */
-export function useEvidencias(autorId, clave, huellaId) {
-  const queryClient = useQueryClient();
-  return useInfiniteQuery({
-    queryKey: [...claveEvidencias(autorId), clave, huellaId],
-    enabled: !!autorId && !!clave && !!huellaId,
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
-      try {
-        return await evidenciasDe(autorId, clave, { offset: pageParam, limit: 25 });
-      } catch (e) {
-        if (e?.status === 409) queryClient.invalidateQueries({ queryKey: claveHuella(autorId) });
-        throw e;
-      }
-    },
-    getNextPageParam: (ultima) => {
-      const siguiente = (ultima?.offset || 0) + (ultima?.evidencias?.length || 0);
-      return ultima?.evidencias?.length && siguiente < (ultima?.total || 0) ? siguiente : undefined;
-    },
-    retry: false,
-    staleTime: 1000 * 60,
-  });
+  return {
+    consulta,
+    respuesta: consulta.data,
+    cuenta: cuenta.data || null,
+    tarjetas,
+    titulos: posts.data || {},
+    identidad: identidad.data || null,
+    ultimoPedido,
+    ahora,
+    actualizar,
+    revisar,
+    recargar,
+  };
 }
