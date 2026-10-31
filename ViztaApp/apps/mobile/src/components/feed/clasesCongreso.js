@@ -21,8 +21,8 @@ const plano = (t) =>
     .trim();
 
 /**
- * Cada clase: el texto de su etiqueta, su sticker (con uno que ya existe de
- * respaldo mientras llega el propio) y su paleta, en la misma familia de
+ * Cada clase: el texto de su etiqueta, su sticker (el respaldo es uno de las
+ * secciones, por si alguno faltara) y su paleta, en la misma familia de
  * lavados pálidos que los temas del feed.
  */
 export const CLASES = {

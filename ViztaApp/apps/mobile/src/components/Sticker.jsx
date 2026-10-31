@@ -56,10 +56,19 @@ const STICKER = {
   iniciativas: require('../../assets/stickers/iniciativas.png'),
   comisiones: require('../../assets/stickers/comisiones.png'),
   pleno: require('../../assets/stickers/pleno.png'),
-  // Mientras no haya uno propio, la urna del tema política.
-  votaciones: require('../../assets/stickers/politica.png'),
+  votaciones: require('../../assets/stickers/congreso/votacion.png'),
   fiscalizacion: require('../../assets/stickers/fiscalizacion.png'),
   leyes: require('../../assets/stickers/leyes.png'),
+  // Cada clase del tablero del Congreso (ver feed/clasesCongreso.js).
+  'congreso-aprobacion': require('../../assets/stickers/congreso/aprobacion.png'),
+  'congreso-votacion': require('../../assets/stickers/congreso/votacion.png'),
+  'congreso-eleccion': require('../../assets/stickers/congreso/eleccion.png'),
+  'congreso-citacion': require('../../assets/stickers/congreso/citacion.png'),
+  'congreso-interpelacion': require('../../assets/stickers/congreso/interpelacion.png'),
+  'congreso-iniciativa': require('../../assets/stickers/congreso/iniciativa.png'),
+  'congreso-comision': require('../../assets/stickers/congreso/comision.png'),
+  'congreso-pleno': require('../../assets/stickers/congreso/pleno.png'),
+  'congreso-noticia': require('../../assets/stickers/congreso/noticia.png'),
 };
 
 export const STICKERS = Object.keys(STICKER);
