@@ -47,6 +47,7 @@ import SeccionPerfil from '../../components/ajustes/SeccionPerfil';
 import { puedeColaborar } from '../../components/colaboradores/piezas';
 import SeccionUso from '../../components/ajustes/SeccionUso';
 import SeccionAnalisisAutomatico from '../../components/ajustes/SeccionAnalisisAutomatico';
+import SeccionEtiquetasAutomaticas from '../../components/ajustes/SeccionEtiquetasAutomaticas';
 import SeccionChangelog from '../../components/ajustes/SeccionChangelog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -1067,6 +1068,8 @@ export default function SettingsScreen() {
         <SeccionUso />
         {/* Lo mismo que tocar el ojo en cada post, sin tocarlo. */}
         <SeccionAnalisisAutomatico />
+        {/* Qué etiqueta el servidor solo; sin detectores para la cuenta, no aparece. */}
+        <SeccionEtiquetasAutomaticas />
         {/* Qué cambió en cada versión. Vacío hasta que haya entradas. */}
         <SeccionChangelog />
 
