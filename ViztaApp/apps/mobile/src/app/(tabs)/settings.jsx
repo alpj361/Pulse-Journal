@@ -46,7 +46,6 @@ import SeccionPlan from '../../components/ajustes/SeccionPlan';
 import SeccionPerfil from '../../components/ajustes/SeccionPerfil';
 import { puedeColaborar } from '../../components/colaboradores/piezas';
 import SeccionUso from '../../components/ajustes/SeccionUso';
-import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimiento';
 import SeccionAnalisisAutomatico from '../../components/ajustes/SeccionAnalisisAutomatico';
 import SeccionChangelog from '../../components/ajustes/SeccionChangelog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1066,8 +1065,6 @@ export default function SettingsScreen() {
         {isConnected && puedeColaborar(connectedUser) ? <SeccionPerfil /> : null}
         {isConnected && /^beta$/i.test(connectedUser?.user_type || '') ? <SeccionPlan /> : null}
         <SeccionUso />
-        {/* Solo aparece si la cuenta tiene el flag; para el resto no existe. */}
-        <SeccionReconocimiento />
         {/* Lo mismo que tocar el ojo en cada post, sin tocarlo. */}
         <SeccionAnalisisAutomatico />
         {/* Qué cambió en cada versión. Vacío hasta que haya entradas. */}

@@ -28,7 +28,6 @@ import pedirAnalisis from './analizarPost';
 import { SoloLecturaPost, useSoloLecturaPost } from './lectura';
 import useAnalisisPost from './useAnalisisPost';
 import CarruselPost from './CarruselPost';
-import SugerenciaHablante from './SugerenciaHablante';
 import { anotarTexto } from './anotar';
 import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './capaPost';
 import pedirDetalle from './detalleMaterial';
@@ -136,8 +135,6 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
     analisis: analisisRemoto,
     estado,
     error: errorRemoto,
-    hablante: hablanteRemoto,
-    reconocimiento: reconocimientoRemoto,
   } = useAnalisisPost(muestra ? null : post?.id, post?.details);
 
   /**
@@ -150,11 +147,6 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
    */
   const [parche, setParche] = useState(null);
 
-  // Quién habla: lo recién confirmado o descartado desde acá manda mientras la
-  // fila en vivo no lo trae. Sin esto, tocar «Sí, es» dejaba la tarjeta puesta
-  // hasta que Realtime devolviera la fila.
-  const hablante = parche?.hablante ?? hablanteRemoto;
-  const reconocimiento = parche?.reconocimiento ?? reconocimientoRemoto;
   const analisis = useMemo(() => {
     const p = parche?.analysis;
     if (!p) return analisisRemoto;
@@ -576,17 +568,6 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
               <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.3)' }}>· {fecha}</Text>
             ) : null}
           </View>
-
-          {/* Quién está a cámara, cuando la cuenta es de un grupo. Debajo del
-              autor porque es la misma clase de dato: quién publicó y quién
-              habla. Solo se dibuja con el flag del reconocimiento prendido. */}
-          <SugerenciaHablante
-            post={post}
-            hablante={hablante}
-            reconocimiento={reconocimiento}
-            onAbrirActor={(id) => abrirEnCodex({ id })}
-            onActualizado={(details) => details && aplicar(details)}
-          />
 
           {/* Sin transcripción, el texto que se anota ES la descripción: mostrarla
               también acá sería decirla dos veces. */}
