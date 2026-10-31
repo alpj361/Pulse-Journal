@@ -1,5 +1,5 @@
 import { coincide, enlaceDe, etapaDe, paginasVisibles, paradaDe } from '../iniciativas';
-import { filtrarDias, opcionesCongreso, opcionesTemas } from '../filtros';
+import { filtrarDias, opcionesCongreso } from '../filtros';
 import { monto } from '../cifras';
 jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
 
@@ -44,10 +44,6 @@ test('los filtros separan noticias y votaciones sin modificar los datos', () => 
   expect(opcionesCongreso(dias).map((o) => o.cuenta)).toEqual([4, 1, 1, 1, 1]);
   expect(dias[0].items).toHaveLength(4);
   expect(filtrarDias([], 'pleno')).toEqual([]);
-});
-test('los temas agrupan alias y usan la categoría principal', () => {
-  expect(opcionesTemas([{ categoria: 'Económica' }, { categoria_principal: 'Economía', categoria: 'Social' }]))
-    .toEqual([{ clave: 'todo', nombre: 'todo', cuenta: 2 }, { clave: 'Economía', nombre: 'Economía', cuenta: 2 }]);
 });
 test('los montos conservan la escala y normalizan quetzales', () => {
   expect(monto(40000000, 'quetzales (Q)')).toBe('Q40 millones');

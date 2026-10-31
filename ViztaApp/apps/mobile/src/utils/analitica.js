@@ -93,6 +93,7 @@ export const EV = {
   POST_ANALIZADO: 'post_analizado',
 
   FEED_NOTICIA_ABIERTA: 'feed_noticia_abierta',
+  FEED_AJUSTADO: 'feed_ajustado',
 
   COLAB_ABIERTO: 'colab_abierto',
   COLAB_CLIENTE_ELEGIDO: 'colab_cliente_elegido',

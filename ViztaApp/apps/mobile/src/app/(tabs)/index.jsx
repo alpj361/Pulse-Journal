@@ -23,7 +23,10 @@ import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCo
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
 import FiltroChips from "../../components/feed/FiltroChips";
-import { filtrarDias, opcionesCongreso, opcionesTemas } from "../../components/feed/filtros";
+import { filtrarDias, opcionesCongreso } from "../../components/feed/filtros";
+import { chipsDelFeed, noticiasDelFeed } from "../../components/feed/preferencias";
+import AjustarFeed from "../../components/feed/AjustarFeed";
+import { useFeedStore } from "../../state/feedStore";
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
@@ -793,6 +796,14 @@ export default function Index() {
   const [vistaCongreso, setVistaCongreso] = useState("tablero");
   const [seccionCongreso, setSeccionCongreso] = useState('todo');
   const [temaFeed, setTemaFeed] = useState('todo');
+  // Cómo quiere la persona su feed: del teléfono al pintar, y de la cuenta
+  // apenas hay sesión (manda la cuenta, para que siga en otro teléfono).
+  const prefsFeed = useFeedStore((s) => s.prefs);
+  const [ajustandoFeed, setAjustandoFeed] = useState(false);
+  const idCuenta = usePulseConnectionStore((s) => s.connectedUser?.id);
+  useEffect(() => {
+    useFeedStore.getState().traerDeLaCuenta().catch(() => {});
+  }, [idCuenta]);
   const scrollFeed = useRef(null);
   const desplazamientoFeed = useRef(0);
   const irAIniciativas = useCallback((ancla) => {
@@ -846,9 +857,9 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
-  const temasFeed = opcionesTemas(hotTopics);
+  const temasFeed = chipsDelFeed(hotTopics, prefsFeed);
   const temaActivo = temasFeed.some((t) => t.clave === temaFeed) ? temaFeed : 'todo';
-  const noticiasVisibles = temaActivo === 'todo' ? hotTopics : hotTopics.filter((c) => temaDe(categoriaDe(c)) === temaActivo);
+  const noticiasVisibles = noticiasDelFeed(hotTopics, prefsFeed, temaActivo, (c) => diaGT(c._desde || Date.now()));
   const diasVisiblesCongreso = filtrarDias(diasCongreso, seccionCongreso);
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
@@ -868,6 +879,7 @@ export default function Index() {
       {/* Modal de detalle */}
       <NewsCardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
       <NotaCongreso item={notaCongreso} onClose={() => setNotaCongreso(null)} />
+      <AjustarFeed visible={ajustandoFeed} cards={hotTopics} bottomInset={insets.bottom} onClose={() => setAjustandoFeed(false)} />
       {entityModal && (
         <EntityWikiModal entityName={entityModal} onClose={() => setEntityModal(null)} />
       )}
@@ -981,7 +993,9 @@ export default function Index() {
               <SelectorFeed valor={feed} onCambiar={setFeed} />
             </View>
 
-            {feed === "pais" && hotTopics.length ? <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} /> : null}
+            {feed === "pais" && hotTopics.length ? (
+              <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} onAjustar={() => setAjustandoFeed(true)} />
+            ) : null}
             {feed === "congreso" && vistaCongreso === "tablero" ? (
               <FiltroChips opciones={opcionesCongreso(diasCongreso)} valor={seccionCongreso} onCambiar={setSeccionCongreso} />
             ) : null}
@@ -1051,6 +1065,8 @@ export default function Index() {
               <EstadoFeed sticker="cargando">Trayendo las noticias…</EstadoFeed>
             ) : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
+            ) : !noticiasVisibles.length ? (
+              <EstadoFeed sticker="vacio">Nada de tus temas en estos días.</EstadoFeed>
             ) : (
               porDiaGT(noticiasVisibles).map((grupo, g) => (
                 <View key={grupo.dia}>
