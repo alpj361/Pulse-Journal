@@ -85,7 +85,7 @@ export default function GuiaHuella({ lecturaBreve, parcial = false, nombre, llen
 
           <Seccion titulo="Las pestañas">
             <Concepto Icono={Tags} titulo="Temas">
-              Los asuntos que el análisis marcó en sus publicaciones y en cuántas aparece cada uno. Publicar sobre un tema no significa estar a favor de algo.
+              Los asuntos que el análisis marcó en sus publicaciones y en cuántas aparece cada uno. Los que comparten un mismo asunto se reúnen bajo un tema principal, con sus subtemas; esa agrupación es provisional y se puede revisar con las citas. Publicar sobre un tema no significa estar a favor de algo.
             </Concepto>
             <Concepto Icono={MessageSquareQuote} titulo="Declaraciones">
               Frases exactas que aparecen en sus publicaciones, con quién las dice. Pueden ser de la cuenta, de un invitado o de alguien citado.

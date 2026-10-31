@@ -1,4 +1,5 @@
 import {
+  arbolDeTemas,
   delAutor,
   enCurso,
   enfriamientoRestante,
@@ -11,6 +12,7 @@ import {
   nivelDimension,
   personasDe,
   postsDe,
+  postsDelArbol,
   quienHabla,
   repartir,
   revisionDeVoz,
@@ -159,4 +161,40 @@ describe('voces sin identificar', () => {
     const identidad = { config: { voces: { p1: { H1: { persona_item_id: 'b' }, H2: { persona_item_id: 'a' } }, p2: { H1: { persona_item_id: 'a' }, H2: {} } } } };
     expect(personasDe(identidad)).toEqual(['a', 'b']);
   });
+});
+
+describe('árbol de temas', () => {
+  // Forma real de Tan/Gente (31-oct): un grupo con subtemas y temas sueltos.
+  const ev = (posts, citas = []) => ({ posts, publicaciones: posts.length, citas });
+  const arbol = {
+    estado: 'organizada',
+    grupos: [
+      {
+        id: 'g1',
+        etiqueta: 'Situación electoral y jurídica del Movimiento Semilla',
+        evidencia: ev(['p3'], [{ cita: 'tenemos procesos todavía legales', post_id: 'p3' }]),
+        subtemas: [
+          { id: 's1', etiqueta: 'situación legal', evidencia: ev(['p3']) },
+          { id: 's2', etiqueta: 'Cancelación del partido', evidencia: ev(['p3', 'p4']) },
+        ],
+      },
+    ],
+    sin_agrupar: [
+      { id: 'a', etiqueta: 'Justicia', evidencia: ev(['p1']) },
+      { id: 'b', etiqueta: 'Abuso de autoridad', evidencia: ev(['p1']) },
+      { id: 'c', etiqueta: 'Gestión del agua', evidencia: ev(['p2', 'p1']) },
+    ],
+  };
+  test('grupos con subtemas y sueltos, los de más publicaciones primero', () => {
+    const t = arbolDeTemas(arbol);
+    expect(t.total).toBe(4);
+    expect(t.grupos[0].subtemas.map((x) => x.etiqueta)).toEqual(['Cancelación del partido', 'situación legal']);
+    expect(t.sueltos.map((x) => x.etiqueta)).toEqual(['Gestión del agua', 'Abuso de autoridad', 'Justicia']);
+    expect(t.grupos[0].citas).toHaveLength(1);
+  });
+  test('sin árbol o vacío, null (la pestaña usa la lista simple)', () => {
+    expect(arbolDeTemas(null)).toBeNull();
+    expect(arbolDeTemas({ estado: 'pendiente', grupos: [], sin_agrupar: [] })).toBeNull();
+  });
+  test('publicaciones del árbol, sin repetir', () => expect(postsDelArbol(arbol)).toEqual(['p1', 'p2', 'p3', 'p4']));
 });

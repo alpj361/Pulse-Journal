@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { actualizarHuella, leerHuella, leerIdentidad, revisarVoz, tarjetasDe } from './api';
-import { ENFRIAMIENTO_MS, SONDEO_MAX_MS, SONDEO_MS, hayQueSondear, personasDe, postsDe, validarMotivo } from './logica';
+import { ENFRIAMIENTO_MS, SONDEO_MAX_MS, SONDEO_MS, hayQueSondear, personasDe, postsDe, postsDelArbol, validarMotivo } from './logica';
 
 export const claveHuella = (autorId) => ['huella-autor', autorId];
 const claveTarjetas = (autorId) => ['huella-tarjetas', autorId];
@@ -77,7 +77,7 @@ export default function useHuellaAutor(autorId) {
   });
 
   // Los títulos de las publicaciones que citan las tarjetas, de una sola vez.
-  const ids = postsDe(tarjetas.data);
+  const ids = [...new Set([...postsDe(tarjetas.data), ...postsDelArbol(consulta.data?.arbol_tematico)])].sort();
   const posts = useQuery({
     queryKey: ['huella-posts', autorId, ids.join(',')],
     enabled: ids.length > 0,

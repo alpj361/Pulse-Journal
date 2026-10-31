@@ -39,6 +39,7 @@ import IdentificarVoces from './IdentificarVoces';
 import HuellaLlena from './HuellaLlena';
 import { TONOS } from './tonos';
 import {
+  arbolDeTemas,
   FACETAS,
   MADUREZ,
   NIVELES,
@@ -415,7 +416,8 @@ function Fuente({ postId, fecha, titulos, numero, onPress }) {
         <Text style={{ fontSize: 14, color: INK.title }} numberOfLines={1}>
           {titulo}
         </Text>
-        <Text style={{ fontSize: 12.5, color: INK.meta }}>{fechaPublicacion(fecha)}</Text>
+        {/* Sin dato de fecha (undefined) no se afirma nada; null es «sin fecha». */}
+        {fecha !== undefined ? <Text style={{ fontSize: 12.5, color: INK.meta }}>{fechaPublicacion(fecha)}</Text> : null}
       </View>
     </Pressable>
   );
@@ -427,10 +429,12 @@ function Observado({ respuesta: r, consulta, tarjetas, titulos, identidad, onAbr
   const breve = r?.lectura_breve || null;
   const carac = r?.caracterizacion || null;
   const { temas, declaraciones } = useMemo(() => repartir(tarjetas), [tarjetas]);
+  // Con árbol temático, la pestaña lo usa; sin él, la lista simple de las tarjetas.
+  const arbol = useMemo(() => arbolDeTemas(r?.arbol_tematico), [r?.arbol_tematico]);
   const argumentos = carac?.argumentos || [];
   const evolucion = carac?.evolucion || {};
   const nTiempo = (evolucion.eventos || []).length + (evolucion.linea_tiempo || []).length;
-  const cuantos = { temas: temas.length, declaraciones: declaraciones.length, argumentos: argumentos.length, tiempo: nTiempo };
+  const cuantos = { temas: arbol ? arbol.total : temas.length, declaraciones: declaraciones.length, argumentos: argumentos.length, tiempo: nTiempo };
   const [pestana, setPestana] = useState(null);
   const activa = pestana || PESTANAS.find((p) => cuantos[p.id] > 0)?.id || 'temas';
   const fechas = fechasCubiertas(tarjetas);
@@ -477,13 +481,15 @@ function Observado({ respuesta: r, consulta, tarjetas, titulos, identidad, onAbr
         </View>
       ) : null}
 
-      {(activa === 'temas' || activa === 'declaraciones') && consulta.isLoading ? (
+      {((activa === 'temas' && !arbol) || activa === 'declaraciones') && consulta.isLoading ? (
         <MorphingInfinity size={22} color={INK.meta} style={{ alignSelf: 'center', marginVertical: 12 }} />
-      ) : (activa === 'temas' || activa === 'declaraciones') && consulta.error ? (
+      ) : ((activa === 'temas' && !arbol) || activa === 'declaraciones') && consulta.error ? (
         <View style={{ gap: 8 }}>
           <Text style={{ fontSize: 13.5, color: INK.body }}>{motivoDeError(consulta.error)}</Text>
           <Boton texto="probar de nuevo" alto={40} onPress={() => consulta.refetch()} />
         </View>
+      ) : activa === 'temas' && arbol ? (
+        <ArbolTemas arbol={arbol} titulos={titulos} onAbrirPost={onAbrirPost} />
       ) : activa === 'temas' ? (
         temas.length ? (
           <View style={{ gap: 2 }}>
@@ -510,6 +516,83 @@ function Observado({ respuesta: r, consulta, tarjetas, titulos, identidad, onAbr
         <Tiempo evolucion={evolucion} titulos={titulos} onAbrirPost={onAbrirPost} />
       )}
     </Animated.View>
+  );
+}
+
+/**
+ * Los temas organizados: cada tema principal con sus subtemas, y después los
+ * que no tienen grupo. La agrupación es provisional (la explica la guía).
+ */
+function ArbolTemas({ arbol, titulos, onAbrirPost }) {
+  return (
+    <View style={{ gap: 12 }}>
+      {arbol.grupos.map((g) => (
+        <GrupoTema key={g.id} grupo={g} titulos={titulos} onAbrirPost={onAbrirPost} />
+      ))}
+      {arbol.sueltos.length ? (
+        <View style={{ gap: 2, marginTop: arbol.grupos.length ? 6 : 0 }}>
+          {arbol.grupos.length ? <Text style={{ fontSize: 16, fontWeight: '800', color: INK.title, marginBottom: 2 }}>Otros temas</Text> : null}
+          {arbol.sueltos.map((h, i) => (
+            <HojaTema key={h.id} hoja={h} titulos={titulos} borde={i > 0} onAbrirPost={onAbrirPost} />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const nPublicaciones = (n) => `${n} ${n === 1 ? 'publicación' : 'publicaciones'}`;
+
+/** Un tema principal: se abre en sus subtemas. */
+function GrupoTema({ grupo: g, titulos, onAbrirPost }) {
+  const [abierto, setAbierto] = useState(false);
+  const n = g.subtemas.length;
+  return (
+    <View style={{ backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 16, paddingHorizontal: 14 }}>
+      <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }} style={{ paddingVertical: 14, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <Text style={{ flex: 1, fontSize: 16.5, fontWeight: '800', color: INK.title }}>{capital(g.etiqueta)}</Text>
+          <ChevronDown size={18} color={INK.meta} style={{ marginTop: 2, transform: [{ rotate: abierto ? '180deg' : '0deg' }] }} />
+        </View>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: INK.meta }}>{`${n} ${n === 1 ? 'subtema' : 'subtemas'} · ${nPublicaciones(g.publicaciones)}`}</Text>
+      </Pressable>
+      {abierto ? (
+        <Animated.View entering={FadeIn.duration(160)} style={{ paddingBottom: 6, borderTopWidth: 1, borderTopColor: TONO.raya }}>
+          {g.subtemas.map((h, i) => (
+            <HojaTema key={h.id} hoja={h} titulos={titulos} borde={i > 0} chica onAbrirPost={onAbrirPost} />
+          ))}
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Un tema o subtema: en cuántas publicaciones aparece y, al abrirlo, qué se dice y dónde. */
+function HojaTema({ hoja: h, titulos, borde, chica = false, onAbrirPost }) {
+  const [abierto, setAbierto] = useState(false);
+  const fechaDe = (postId) => h.citas.find((c) => c.post_id === postId && c.fecha)?.fecha || (h.posts.length === 1 ? h.desde : undefined);
+  return (
+    <View style={{ borderTopWidth: borde ? 1 : 0, borderTopColor: TONO.raya }}>
+      <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }} style={{ paddingVertical: chica ? 11 : 13 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ flex: 1, fontSize: chica ? 15 : 16, fontWeight: chica ? '600' : '700', color: INK.title }} numberOfLines={2}>
+            {capital(h.etiqueta)}
+          </Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: INK.meta }}>{nPublicaciones(h.publicaciones)}</Text>
+          <ChevronDown size={18} color={INK.meta} style={{ transform: [{ rotate: abierto ? '180deg' : '0deg' }] }} />
+        </View>
+      </Pressable>
+      {abierto ? (
+        <Animated.View entering={FadeIn.duration(160)} style={{ gap: 10, paddingBottom: 14 }}>
+          {h.citas.slice(0, 2).map((c) => (
+            <Cita key={c.observacion_id || c.cita} texto={c.cita} lineas={3} />
+          ))}
+          {h.posts.map((postId, i) => (
+            <Fuente key={postId} postId={postId} fecha={fechaDe(postId)} titulos={titulos} numero={i + 1} onPress={() => onAbrirPost(postId)} />
+          ))}
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 

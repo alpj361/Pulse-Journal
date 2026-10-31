@@ -105,6 +105,35 @@ export function repartir(tarjetas) {
   return { temas, declaraciones };
 }
 
+/**
+ * El árbol temático (`arbol_tematico`, ExtractorW #89–#91): temas principales
+ * con sus subtemas, y los que no tienen un grupo validado. Null si todavía no
+ * hay árbol; entonces la pestaña usa la lista simple de las tarjetas.
+ */
+export function arbolDeTemas(arbol) {
+  if (!arbol || typeof arbol !== 'object') return null;
+  const hoja = (h) => ({
+    id: h.id,
+    etiqueta: h.etiqueta,
+    publicaciones: h.evidencia?.publicaciones ?? (h.evidencia?.posts || []).length,
+    posts: h.evidencia?.posts || [],
+    citas: (h.evidencia?.citas || []).filter((c) => c?.cita),
+    desde: h.evidencia?.desde || null,
+  });
+  const orden = (a, b) => b.publicaciones - a.publicaciones || String(a.etiqueta).localeCompare(String(b.etiqueta), 'es');
+  const grupos = (arbol.grupos || [])
+    .filter((g) => g?.etiqueta)
+    .map((g) => ({ ...hoja(g), subtemas: (g.subtemas || []).filter((h) => h?.etiqueta).map(hoja).sort(orden) }))
+    .sort(orden);
+  const sueltos = (arbol.sin_agrupar || []).filter((h) => h?.etiqueta).map(hoja).sort(orden);
+  if (!grupos.length && !sueltos.length) return null;
+  return { grupos, sueltos, total: grupos.length + sueltos.length };
+}
+
+/** Las publicaciones que cita el árbol, para traer sus títulos. */
+export const postsDelArbol = (arbol) =>
+  [...new Set([...(arbol?.grupos || []).flatMap((g) => [g, ...(g.subtemas || [])]), ...(arbol?.sin_agrupar || [])].flatMap((h) => h?.evidencia?.posts || []))].sort();
+
 /** Publicaciones distintas de las que sale una tarjeta. */
 export const publicacionesDe = (t) => new Set((t?.evidencia || []).map((e) => e.post_id).filter(Boolean)).size;
 const fechaDe = (t) => (t?.evidencia || []).map((e) => e.fecha).filter(Boolean).sort().at(-1) || null;
