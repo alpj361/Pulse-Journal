@@ -522,7 +522,7 @@ export function ItemCongreso({ item, ultimo = false, onPress, onEntidad }) {
         </View>
       ) : null}
 
-      {clase === 'aprobacion' || (clase === 'eleccion' && Number(item.votes?.favor) > 0) ? <Aprobacion favor={item.votes?.favor} /> : null}
+      {Number(item.votes?.favor) > 0 && (clase === 'aprobacion' || clase === 'eleccion') ? <Aprobacion favor={item.votes.favor} /> : null}
       {conCitados ? <Citados clase={clase} reparto={reparto} paleta={c.paleta} onEntidad={onEntidad} /> : null}
       {/* El camino es el de una ley. Aprobar una agenda o citar a un ministro
           también tiene «etapa», pero no recorre ese camino. */}
@@ -551,29 +551,22 @@ export function useDiputados() {
 const SIN_DIPUTADOS = [];
 
 /**
- * Lo aprobado, siempre con su hemiciclo.
+ * Lo aprobado, con su hemiciclo.
  *
  * La nota casi nunca trae más que los votos a favor: esos se pintan en verde y
  * el resto de las curules queda en gris claro, sin inventar en contra ni
- * ausentes que nadie contó. Si ni eso trae, el hemiciclo va entero en gris y
- * lo dice.
+ * ausentes que nadie contó. Sin votos no se llega acá: es una nota.
  */
 export function Aprobacion({ favor }) {
   const { width } = useWindowDimensions();
-  const n = Number(favor) > 0 ? Number(favor) : 0;
+  const n = Number(favor);
   const alcance = mayoriaDe(n);
   return (
     <View style={{ alignItems: 'center', marginTop: 14 }}>
       <Hemiciclo favor={n} ancho={Math.min(width - 48, 250)} />
       <Text style={{ fontSize: 12.5, color: INK.body, marginTop: 8, textAlign: 'center' }}>
-        {n ? (
-          <>
-            <Text style={{ fontWeight: '700', color: VOTO.favor }}>{n}</Text> a favor, de {TOTAL}
-            {alcance ? ` · ${alcance}` : ''}
-          </>
-        ) : (
-          'La nota no publica el conteo de votos.'
-        )}
+        <Text style={{ fontWeight: '700', color: VOTO.favor }}>{n}</Text> a favor, de {TOTAL}
+        {alcance ? ` · ${alcance}` : ''}
       </Text>
     </View>
   );

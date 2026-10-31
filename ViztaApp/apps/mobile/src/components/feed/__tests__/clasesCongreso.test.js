@@ -10,9 +10,10 @@ const diputados = [
 ];
 
 describe('claseDe', () => {
-  test('lo aprobado, por etapa, por hemiciclo o por votos', () => {
-    expect(claseDe({ stage: 'aprobado', card_type: 'timeline' })).toBe('aprobacion');
-    expect(claseDe({ card_type: 'hemiciclo', votes: { favor: 134 } })).toBe('aprobacion');
+  test('aprobado solo con votos; sin conteo es nota', () => {
+    expect(claseDe({ card_type: 'hemiciclo', stage: 'aprobado', votes: { favor: 134 } })).toBe('aprobacion');
+    expect(claseDe({ stage: 'aprobado', card_type: 'timeline', titulo: 'UNA SEMANA DE DECISIONES CLAVES' })).toBe('noticia');
+    expect(claseDe({ stage: 'aprobado', origin: 'jefes_bloque', votes: { favor: null } })).toBe('pleno');
   });
   test('citación por etapa o por título; la interpelación manda', () => {
     expect(claseDe({ stage: 'citacion', titulo: 'CUESTIONA ALZA EN LOS PRECIOS DEL GAS PROPANO' })).toBe('citacion');

@@ -86,7 +86,9 @@ export function claseDe(item) {
   const favor = Number(item?.votes?.favor);
   if (/\binterpel/.test(texto) || /\binterpel/.test(plano(item?.summary))) return 'interpelacion';
   if (item?.stage === 'eleccion' || item?.card_type === 'ficha') return 'eleccion';
-  if (item?.stage === 'aprobado' || item?.card_type === 'hemiciclo' || favor > 0) return 'aprobacion';
+  // Aprobado con hemiciclo solo si la nota trae los votos: sin conteo es una
+  // nota que cuenta una aprobación, y se dibuja como nota.
+  if (favor > 0) return 'aprobacion';
   if (item?.stage === 'citacion' || /\bcita(cion|n a|do a|da a)\b|\bcito a\b/.test(texto)) return 'citacion';
   if (item?.stage === 'iniciativa_presentada' || (numeroDe(item) && ETAPAS_DE_LEY.includes(item?.stage))) return 'iniciativa';
   if (item?.origin === 'comision' || item?.comision_name || ETAPAS_DE_LEY.includes(item?.stage)) return 'comision';
