@@ -32,14 +32,20 @@ import { normalizarTema, paletaDe, temaDe } from './temas';
 // A menos de 32 puntos los stickers pierden el detalle.
 const TAMANO_STICKER = 36;
 
-export default function Pegatina({ categoria, sticker, id, style }) {
-  const tema = temaDe(categoria);
-  const p = paletaDe(categoria);
+/**
+ * `texto` y `paleta` dejan usarla fuera de los temas del feed (el Congreso
+ * pega las suyas: «Citación», «Aprobado»); `respaldo` es el sticker mientras
+ * el propio no existe.
+ */
+export default function Pegatina({ categoria, sticker, respaldo, texto, paleta, id, style }) {
+  const tema = texto || temaDe(categoria);
+  const p = paleta || paletaDe(categoria);
 
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 }, style]}>
       <Sticker
         nombre={sticker || normalizarTema(tema)}
+        respaldo={respaldo}
         size={TAMANO_STICKER}
         style={{ marginVertical: -4, transform: [{ rotate: `${-inclinacion(`${id || tema}-stk`, 5)}deg` }] }}
       />

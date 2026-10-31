@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
-import { Camino, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso } from './TarjetasCongreso';
+import { Camino, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe, useDiputados } from './TarjetasCongreso';
+import { CLASES, repartirActores } from './clasesCongreso';
+import Pegatina from './Pegatina';
 import { nombreDelDia } from './congreso';
 import FiltroChips from './FiltroChips';
 import { anoDecreto, buscarRegistro, fechaRegistro, periodoDe, resultadoVotacion } from './organizacion';
@@ -235,7 +237,7 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
           <Text style={{ fontSize: 12, color: TINTA }}>{resumenAbierto ? 'resumir' : 'leer resumen completo'}</Text>
         </Pressable>
         </View>
-      ) : <Text style={{ fontSize: 13, color: INK.meta, marginTop: 7 }}>Resumen aún no disponible. Podés consultar la fuente.</Text>}
+      ) : <Text style={{ fontSize: 13, color: INK.meta, marginTop: 7 }}>Resumen aún no disponible. Puedes consultar la fuente.</Text>}
       {parada ? <Camino etapa={parada} /> : null}
       {ponentes.length ? <Text style={{ fontSize: 12, color: INK.faint, marginTop: 8 }}>{ponentes.join(' · ')}</Text> : null}
       {enlace ? (
@@ -247,7 +249,7 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
             <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>{enlace.tipo === 'PDF' ? 'PDF · Congreso de la República' : 'consultar la fuente'}</Text></View>
         </Pressable>
       ) : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 8 }}>Documento aún no disponible.</Text>}
-      {errorEnlace ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.body }}>No se pudo abrir. Probá de nuevo.</Text> : null}
+      {errorEnlace ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.body }}>No se pudo abrir. Prueba de nuevo.</Text> : null}
       <Pressable onPress={() => setAbierta((x) => !x)} accessibilityRole="button" accessibilityState={{ expanded: abierta }}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 }}>
         <Text style={{ fontSize: 12, color: INK.meta }}>{abierta ? 'menos' : 'su recorrido'}</Text>
@@ -276,6 +278,73 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
           ))}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Una iniciativa que salió en el tablero, igual que en «Organizado».
+ *
+ * Si la nota trae número, se busca su ficha en el registro y se dibuja la misma
+ * tarjeta de la lista de iniciativas. Si todavía no tiene número —una recién
+ * presentada—, se arma con lo que dice la nota: de qué trata, dónde va y
+ * quiénes la presentaron.
+ */
+export function IniciativaDeNota({ item, onAbrir, onEntidad }) {
+  const numero = item.iniciativa_numero || item.card_data?.iniciativa_numero || null;
+  const c = CLASES.iniciativa;
+  const diputados = useDiputados();
+  const { data: ini, isLoading } = useQuery({
+    queryKey: ['congreso-iniciativa', numero],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('iniciativas_app_view').select(COLUMNAS_INICIATIVA).eq('numero', numero).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!numero,
+    staleTime: 10 * 60 * 1000,
+  });
+  const pegatina = <Pegatina texto={c.nombre} paleta={c.paleta} sticker={c.sticker} respaldo={c.respaldo} id={item.id} style={{ marginBottom: 4 }} />;
+  const { titulo, resumen } = cabezaDe(item);
+  if (numero && (isLoading || ini)) {
+    return (
+      <View style={{ paddingTop: 18, paddingBottom: 8 }}>
+        {pegatina}
+        {/* Lo que pasó hoy con ella: la tarjeta del registro dice qué es, la
+            nota dice por qué está en el tablero. */}
+        <Pressable onPress={() => onAbrir?.(item)} accessibilityRole="button" accessibilityLabel={`abrir noticia, ${titulo}`}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, marginTop: 4, opacity: pressed ? 0.6 : 1 })}>
+          <Text style={{ flex: 1, fontSize: 14, lineHeight: 19, color: INK.body }}>{titulo}</Text>
+          <ChevronRight size={16} color={TINTA} />
+        </Pressable>
+        {ini ? <Iniciativa ini={ini} notas={[item]} /> : <Cargando>Trayendo la iniciativa {numero}…</Cargando>}
+      </View>
+    );
+  }
+  const ponentes = repartirActores(item.actors, diputados).diputados;
+  const rotulo = [numero ? `INICIATIVA ${numero}` : 'SIN NÚMERO TODAVÍA', ROTULOS_ETAPA[item.stage]].filter(Boolean).join(' · ');
+  return (
+    <View style={{ paddingTop: 18, paddingBottom: 8 }}>
+      {pegatina}
+      <Pressable onPress={() => onAbrir?.(item)} accessibilityRole="button"
+        style={({ pressed }) => ({ padding: 14, marginVertical: 7, borderWidth: 1, borderColor: RAYA, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.6)', opacity: pressed ? 0.7 : 1 })}>
+        <Rotulo>{rotulo}</Rotulo>
+        <Titulo>{titulo}</Titulo>
+        {resumen ? <Text numberOfLines={3} style={{ fontSize: 13.5, color: INK.body, lineHeight: 20, marginTop: 7 }}>{resumen}</Text> : null}
+        <Camino etapa={item.stage} />
+        {ponentes.length ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 6, marginTop: 12 }}>
+            {ponentes.slice(0, 5).map((p) => (
+              <Pressable key={p.nombre} onPress={(ev) => { ev.stopPropagation(); onEntidad?.(p.nombre); }} accessibilityRole="link" hitSlop={{ top: 6, bottom: 6 }}>
+                <Text style={{ fontSize: 12.5, color: TINTA, textDecorationLine: 'underline', textDecorationColor: `${TINTA}55` }}>
+                  {p.nombre}{p.bloque ? <Text style={{ color: INK.faint, textDecorationLine: 'none' }}>{` · ${p.bloque}`}</Text> : null}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600', marginTop: 12 }}>abrir noticia ›</Text>
+      </Pressable>
     </View>
   );
 }
@@ -410,7 +479,7 @@ export function Decreto({ decreto: d }) {
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
         <FileText size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento del decreto</Text>
       </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
-      {error ? <Text accessibilityLiveRegion="polite" style={{ color: INK.body, marginTop: 6 }}>No se pudo abrir. Probá de nuevo.</Text> : null}
+      {error ? <Text accessibilityLiveRegion="polite" style={{ color: INK.body, marginTop: 6 }}>No se pudo abrir. Prueba de nuevo.</Text> : null}
     </View>
   );
 }

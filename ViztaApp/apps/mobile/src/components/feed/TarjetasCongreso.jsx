@@ -4,10 +4,13 @@ import { useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Landmark, UserRound } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
-import { resultadoVotacion } from './organizacion';
+import { supabase } from '../../utils/supabase';
+import { normalizar, resultadoVotacion } from './organizacion';
 import { origenDe, titular, traerVotos } from './congreso';
+import { CLASES, claseDe, mayoriaDe, repartirActores } from './clasesCongreso';
+import Pegatina from './Pegatina';
 
 /**
  * Lo del Congreso, cada cosa con la forma que le toca.
@@ -308,7 +311,10 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
       accessibilityState={{ expanded: abierta }}
       style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: RAYA }}
     >
-      <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'VOTACIÓN · APROBADA' : resultado === 'no_aprobada' ? 'VOTACIÓN · NO APROBADA' : 'VOTACIÓN · RESULTADO SIN CONFIRMAR'}</Rotulo>
+      {compacta ? null : (
+        <Pegatina texto="Votación" paleta={(aprobada ? CLASES.aprobacion : resultado === 'no_aprobada' ? CLASES.interpelacion : CLASES.noticia).paleta} sticker="congreso-votacion" respaldo="votaciones" id={v.id} style={{ marginBottom: 8 }} />
+      )}
+      <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'APROBADA' : resultado === 'no_aprobada' ? 'NO APROBADA' : 'RESULTADO SIN CONFIRMAR'}</Rotulo>
       <Titulo>{v.asunto}</Titulo>
       {compacta && v.sesion ? <Text style={{ fontSize: 12, color: INK.meta, marginTop: 5 }}>{v.sesion}</Text> : null}
       {compacta ? null : (
@@ -339,26 +345,36 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
   );
 }
 
+// Aprobar el orden del día o el acta anterior es trámite: no decide nada.
+const esTramite = (v) => /orden del d[ií]a|acta de la sesi[oó]n/i.test(v.asunto || '');
+
 /**
  * Las votaciones de un día.
  *
  * Van dos con su hemiciclo: un día puede traer veinte, y veinte hemiciclos
- * seguidos tapan todo lo demás. El resto se abre de un toque, en renglones sin
- * dibujo.
+ * seguidos tapan todo lo demás. Las de trámite nunca van con dibujo: abrían
+ * cada día con dos medias lunas que no decían nada. El resto se abre de un
+ * toque, en renglones sin dibujo.
  */
 export function VotacionesDelDia({ votaciones = [] }) {
   const [todas, setTodas] = useState(false);
-  const resto = votaciones.slice(2);
+  const decisivas = votaciones.filter((v) => !esTramite(v));
+  const resto = [...decisivas.slice(2), ...votaciones.filter(esTramite)];
+  const soloTramite = !decisivas.length;
   return (
     <>
-      {votaciones.slice(0, 2).map((v) => (
+      {decisivas.slice(0, 2).map((v) => (
         <VotacionCongreso key={v.id} votacion={v} />
       ))}
       {todas ? resto.map((v) => <VotacionCongreso key={v.id} votacion={v} compacta />) : null}
       {resto.length ? (
         <Pressable onPress={() => setTodas((x) => !x)} accessibilityRole="button" style={{ paddingVertical: 12 }}>
           <Text style={{ fontSize: 12.5, fontWeight: '600', color: TINTA }}>
-            {todas ? 'Menos votaciones' : resto.length === 1 ? 'Una votación más ese día' : `${resto.length} votaciones más ese día`}
+            {todas
+              ? 'Menos votaciones'
+              : soloTramite
+                ? resto.length === 1 ? 'Una votación de trámite ese día' : `${resto.length} votaciones de trámite ese día`
+                : resto.length === 1 ? 'Una votación más ese día' : `${resto.length} votaciones más ese día`}
           </Text>
         </Pressable>
       ) : null}
@@ -454,61 +470,193 @@ export function rotuloDe(item) {
   return [ETAPA[item.stage] || null, numero ? `INICIATIVA ${numero}` : null].filter(Boolean).join(' · ');
 }
 
-export function ItemCongreso({ item, ultimo = false, onPress }) {
+export function ItemCongreso({ item, ultimo = false, onPress, onEntidad }) {
   const d = item.card_data || {};
   const numero = item.iniciativa_numero || d.iniciativa_numero || null;
-  const rotulo = rotuloDe(item);
+  const clase = claseDe(item);
+  const c = CLASES[clase];
   const tipo = item.card_type;
   const cabeza = cabezaDe(item);
+  const diputados = useDiputados();
+  const reparto = useMemo(() => repartirActores(item.actors, diputados), [item.actors, diputados]);
   // La persona y la cifra tienen su propio titular: ahí el resumen va entero.
   const propia = (tipo === 'ficha' && d.name) || (tipo === 'cifra' && monto(d.amount, d.unit));
   const resumen = propia ? /\btuit\b/i.test(item.summary || '') ? null : item.summary : cabeza.resumen;
+  // La etiqueta ya dice la clase: el rótulo queda para lo que agrega (la
+  // etapa si es otra, el número de iniciativa).
+  const extra = rotuloDe(item)
+    .split(' · ')
+    .filter((r) => r && !normalizar(r).includes(normalizar(c.nombre)))
+    .join(' · ');
+  const conCitados = clase === 'citacion' || clase === 'interpelacion';
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       style={({ pressed }) => ({
-        paddingVertical: 16,
+        paddingVertical: 18,
         borderBottomWidth: ultimo ? 0 : 1,
         borderBottomColor: RAYA,
         opacity: pressed ? 0.6 : 1,
       })}
     >
-      {rotulo ? <Rotulo>{rotulo}</Rotulo> : null}
+      <Pegatina texto={c.nombre} paleta={c.paleta} sticker={c.sticker} respaldo={c.respaldo} id={item.id} style={{ marginBottom: extra ? 8 : 11 }} />
+      {extra ? <Rotulo color={c.paleta.tinta}>{extra}</Rotulo> : null}
 
       {tipo === 'ficha' && d.name ? (
         /* Alguien fue elegido o nombrado: la persona es la noticia. */
         <>
           <Titulo>{d.name}</Titulo>
-          <Text style={{ fontSize: 13.5, color: INK.body, marginTop: 4 }}>
-            {[d.role, d.result].filter(Boolean).join(' · ')}
-          </Text>
-          <AFavor cuantos={item.votes?.favor} />
-          <Resumen>{resumen}</Resumen>
-        </>
-      ) : tipo === 'cifra' && monto(d.amount, d.unit) ? (
-        /* El titular dice de qué es; el monto va como etiqueta, no como
-           titular: un número de 30 puntos pesaba más que la noticia. */
-        <>
-          <Titulo>{d.subject || cabeza.titulo}</Titulo>
-          <View style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, marginTop: 6 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: TINTA }}>{monto(d.amount, d.unit)}</Text>
-          </View>
-          <Resumen>{resumen}</Resumen>
+          <Text style={{ fontSize: 13.5, color: INK.body, marginTop: 4 }}>{[d.role, d.result].filter(Boolean).join(' · ')}</Text>
         </>
       ) : (
-        <>
-          <Titulo>{cabeza.titulo}</Titulo>
-          {tipo === 'hemiciclo' ? <AFavor cuantos={item.votes?.favor} /> : null}
-          {/* El camino es el de una ley. Aprobar una agenda o citar a un
-              ministro también tiene «etapa», pero no recorre ese camino. */}
-          {tipo === 'timeline' && numero ? <Camino etapa={item.stage} /> : null}
-          <Resumen>{resumen}</Resumen>
-        </>
+        <Titulo>{tipo === 'cifra' && monto(d.amount, d.unit) ? d.subject || cabeza.titulo : cabeza.titulo}</Titulo>
       )}
+
+      {/* El monto va como etiqueta, no como titular: un número de 30 puntos
+          pesaba más que la noticia. */}
+      {tipo === 'cifra' && monto(d.amount, d.unit) ? (
+        <View style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, marginTop: 7 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: TINTA }}>{monto(d.amount, d.unit)}</Text>
+        </View>
+      ) : null}
+
+      {clase === 'aprobacion' || (clase === 'eleccion' && Number(item.votes?.favor) > 0) ? <Aprobacion favor={item.votes?.favor} /> : null}
+      {conCitados ? <Citados clase={clase} reparto={reparto} paleta={c.paleta} onEntidad={onEntidad} /> : null}
+      {/* El camino es el de una ley. Aprobar una agenda o citar a un ministro
+          también tiene «etapa», pero no recorre ese camino. */}
+      {tipo === 'timeline' && numero && clase !== 'aprobacion' ? <Camino etapa={item.stage} /> : null}
+
+      <Resumen>{resumen}</Resumen>
+      {conCitados ? null : <QuienFue reparto={reparto} tinta={c.paleta.tinta} onEntidad={onEntidad} />}
       <Origen item={item} />
     </Pressable>
+  );
+}
+
+/** Los 160 diputados con su bloque, para saber quién de los nombrados es uno. */
+export function useDiputados() {
+  const { data } = useQuery({
+    queryKey: ['congreso-diputados'],
+    queryFn: async () => {
+      const { data: filas, error } = await supabase.from('diputados').select('nombre, bloque').eq('activo', true);
+      if (error) throw error;
+      return filas || [];
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+  return data || SIN_DIPUTADOS;
+}
+const SIN_DIPUTADOS = [];
+
+/**
+ * Lo aprobado, siempre con su hemiciclo.
+ *
+ * La nota casi nunca trae más que los votos a favor: esos se pintan en verde y
+ * el resto de las curules queda en gris claro, sin inventar en contra ni
+ * ausentes que nadie contó. Si ni eso trae, el hemiciclo va entero en gris y
+ * lo dice.
+ */
+export function Aprobacion({ favor }) {
+  const { width } = useWindowDimensions();
+  const n = Number(favor) > 0 ? Number(favor) : 0;
+  const alcance = mayoriaDe(n);
+  return (
+    <View style={{ alignItems: 'center', marginTop: 14 }}>
+      <Hemiciclo favor={n} ancho={Math.min(width - 48, 250)} />
+      <Text style={{ fontSize: 12.5, color: INK.body, marginTop: 8, textAlign: 'center' }}>
+        {n ? (
+          <>
+            <Text style={{ fontWeight: '700', color: VOTO.favor }}>{n}</Text> a favor, de {TOTAL}
+            {alcance ? ` · ${alcance}` : ''}
+          </>
+        ) : (
+          'La nota no publica el conteo de votos.'
+        )}
+      </Text>
+    </View>
+  );
+}
+
+/** Un nombre que se puede tocar para ver su ficha, como en las noticias. */
+function Nombre({ nombre, extra, tinta, onEntidad, fuerte = false }) {
+  return (
+    <Pressable
+      onPress={(ev) => {
+        // Sin esto, tocar el nombre abre su ficha y también la nota de atrás.
+        ev.stopPropagation();
+        onEntidad?.(nombre);
+      }}
+      hitSlop={{ top: 6, bottom: 6 }}
+      accessibilityRole="link"
+      style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+    >
+      <Text style={{ fontSize: fuerte ? 14 : 12.5, fontWeight: fuerte ? '600' : '400', color: tinta, textDecorationLine: 'underline', textDecorationColor: `${tinta}55` }}>
+        {nombre}
+        {extra ? <Text style={{ textDecorationLine: 'none', color: INK.faint, fontWeight: '400' }}>{` · ${extra}`}</Text> : null}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Quién fue, al pie: los diputados con su bloque primero, después las
+ * instituciones y las personas. Como en las noticias del país, subrayados.
+ */
+function QuienFue({ reparto, tinta, onEntidad }) {
+  const todos = [
+    ...reparto.diputados.map((p) => ({ ...p, extra: p.bloque })),
+    ...reparto.instituciones,
+    ...reparto.personas,
+  ];
+  if (!todos.length) return null;
+  const visibles = todos.slice(0, 4);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 6, marginTop: 12 }}>
+      {visibles.map((p) => (
+        <Nombre key={p.nombre} nombre={p.nombre} extra={p.extra} tinta={tinta} onEntidad={onEntidad} />
+      ))}
+      {todos.length > visibles.length ? <Text style={{ fontSize: 12, color: INK.faint }}>+{todos.length - visibles.length}</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * A quién citan (o interpelan) y quién lo pidió. En una citación lo que
+ * importa es quién tuvo que ir a rendir cuentas: va primero y más grande; el
+ * diputado que citó, abajo.
+ */
+function Citados({ clase, reparto, paleta, onEntidad }) {
+  const citados = [...reparto.instituciones.map((p) => ({ ...p, Icono: Landmark })), ...reparto.personas.map((p) => ({ ...p, Icono: UserRound }))];
+  const quien = reparto.diputados;
+  if (!citados.length && !quien.length) return null;
+  const visibles = citados.slice(0, 4);
+  return (
+    <View style={{ marginTop: 12, borderRadius: 12, backgroundColor: paleta.lavado[0], paddingHorizontal: 12, paddingVertical: 11, gap: 8 }}>
+      {visibles.length ? (
+        <>
+          <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: paleta.tinta }}>{clase === 'interpelacion' ? 'INTERPELADOS' : 'CITADOS'}</Text>
+          {visibles.map(({ nombre, Icono }) => (
+            <View key={nombre} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icono size={15} color={paleta.tinta} strokeWidth={2} />
+              <View style={{ flex: 1 }}>
+                <Nombre nombre={nombre} tinta={INK.title} onEntidad={onEntidad} fuerte />
+              </View>
+            </View>
+          ))}
+          {citados.length > visibles.length ? <Text style={{ fontSize: 12, color: INK.meta }}>y {citados.length - visibles.length} más</Text> : null}
+        </>
+      ) : null}
+      {quien.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4, borderTopWidth: visibles.length ? 1 : 0, borderTopColor: RAYA, paddingTop: visibles.length ? 8 : 0 }}>
+          <Text style={{ fontSize: 12, color: INK.meta }}>{clase === 'interpelacion' ? 'Interpeló' : 'Citó'}</Text>
+          {quien.slice(0, 3).map((p) => (
+            <Nombre key={p.nombre} nombre={p.nombre} extra={p.bloque} tinta={paleta.tinta} onEntidad={onEntidad} />
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 

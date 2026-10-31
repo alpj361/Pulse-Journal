@@ -76,7 +76,7 @@ test('el PDF abre desde la card cerrada y muestra el error si falla', async () =
   expect(link).toBeDefined();
   await act(async () => { link.props.onPress(); });
   expect(Linking.openURL).toHaveBeenCalledWith(registro[0].url_pdf);
-  expect(texto()).toContain('No se pudo abrir. Probá de nuevo.');
+  expect(texto()).toContain('No se pudo abrir. Prueba de nuevo.');
 });
 
 test('un resumen útil de la nota reemplaza al objetivo que repite el título', () => {

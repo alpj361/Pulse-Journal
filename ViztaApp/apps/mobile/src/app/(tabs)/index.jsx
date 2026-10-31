@@ -20,6 +20,8 @@ import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
 import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
+import { IniciativaDeNota } from "../../components/feed/LegislativoCongreso";
+import { claseDe } from "../../components/feed/clasesCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
 import FiltroChips from "../../components/feed/FiltroChips";
@@ -1065,17 +1067,24 @@ export default function Index() {
                     <View style={{ marginBottom: 22 }}>
                       {dia.items
                         .filter((item) => item.tipo !== "noticiero")
-                        .map((item, i, lista) => (
-                          <ItemCongreso
-                            key={item.id}
-                            item={item}
-                            ultimo={i === lista.length - 1}
-                            onPress={() => {
-                              evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
-                              setNotaCongreso(item);
-                            }}
-                          />
-                        ))}
+                        .map((item, i, lista) => {
+                          const abrir = () => {
+                            evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                            setNotaCongreso(item);
+                          };
+                          // Las iniciativas van con la misma tarjeta que en «Organizado».
+                          return claseDe(item) === "iniciativa" ? (
+                            <IniciativaDeNota key={item.id} item={item} onAbrir={abrir} onEntidad={(e) => setEntityModal(e)} />
+                          ) : (
+                            <ItemCongreso
+                              key={item.id}
+                              item={item}
+                              ultimo={i === lista.length - 1}
+                              onPress={abrir}
+                              onEntidad={(e) => setEntityModal(e)}
+                            />
+                          );
+                        })}
                     </View>
                   </View>
                 ))

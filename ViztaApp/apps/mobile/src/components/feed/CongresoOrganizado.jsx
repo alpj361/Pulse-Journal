@@ -36,13 +36,13 @@ export default function CongresoOrganizado({ dias, onAbrir, onPagina }) {
         accessibilityLabel={abierto ? 'plegar secciones del Congreso' : 'cambiar sección del Congreso'}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginBottom: 8 }}>
         {elegida ? <Sticker nombre={elegida} size={30} /> : null}
-        <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{elegida ? NOMBRES[elegida] : 'Explorá el Congreso'}</Text>
+        <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{elegida ? NOMBRES[elegida] : 'Explora el Congreso'}</Text>
           {!abierto ? <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>cambiar sección</Text> : null}</View>
         {abierto ? <ChevronUp size={17} color={INK.meta} /> : <ChevronDown size={17} color={INK.meta} />}
       </Pressable>
       {abierto ? <View style={{ marginBottom: 16 }}>
         <GrupoSecciones titulo="REGISTROS DISPONIBLES" secciones={REGISTROS} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
-        {registro.isError ? <Text style={{ color: INK.meta, fontSize: 12 }}>Los conteos aún no están disponibles. Podés abrir cada registro.</Text> : null}
+        {registro.isError ? <Text style={{ color: INK.meta, fontSize: 12 }}>Los conteos aún no están disponibles. Puedes abrir cada registro.</Text> : null}
         <GrupoSecciones titulo="NOTICIAS Y ACTIVIDAD" secciones={ACTIVIDAD} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
       </View> : null}
       {elegida === 'iniciativas' ? <ListaIniciativas onPagina={onPagina} /> : null}
