@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
-import { Check, FileVideo, Play, Search, UserRound, X } from 'lucide-react-native';
+import { Check, ExternalLink, Eye, FileVideo, Search, UserRound, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { falla, listo, roce } from '../../utils/haptics';
@@ -40,7 +40,7 @@ export default function IdentificarVoces({ voces, identidad, personas = {}, revi
     enabled: ids.length > 0,
     staleTime: 1000 * 60 * 5,
     queryFn: async () => {
-      const { data, error } = await supabase.from('codex_universe_items').select('id, name, thumbnail_url, voces:details->voces').in('id', ids);
+      const { data, error } = await supabase.from('codex_universe_items').select('id, name, thumbnail_url, voces:details->voces, source_url:details->>source_url').in('id', ids);
       if (error) throw error;
       return Object.fromEntries((data || []).map((p) => [p.id, p]));
     },
@@ -147,8 +147,8 @@ function PasoVoz({ voz, post, revision, personas, revisar, bottomInset, onAbrirP
           ¿Quién habla?
         </Text>
 
-        {/* La publicación, con el botón para abrirla y ver o escuchar a quien habla. */}
-        <Pressable onPress={onAbrirPost} accessibilityRole="button" accessibilityHint="Abre la publicación" style={({ pressed }) => ({ flexDirection: 'row', gap: 12, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
+        {/* La publicación y dos caminos para verla o escucharla: en Vizta y en la red social. */}
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
           <View style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(28,43,34,0.06)', alignItems: 'center', justifyContent: 'center' }}>
             {post?.thumbnail_url && !sinPortada ? (
               <Image source={{ uri: post.thumbnail_url }} style={{ width: 64, height: 64 }} contentFit="cover" onError={() => setSinPortada(true)} />
@@ -162,14 +162,18 @@ function PasoVoz({ voz, post, revision, personas, revisar, bottomInset, onAbrirP
             </Text>
             <Text style={{ fontSize: 13, color: INK.meta }}>{fechaPublicacion(voz.fecha)}</Text>
           </View>
-          <View
-            accessible
-            accessibilityLabel="Ver la publicación"
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: INK.title, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Play size={17} color="#FFFFFF" fill="#FFFFFF" style={{ marginLeft: 2 }} />
-          </View>
-        </Pressable>
+          <BotonRedondo Icono={Eye} etiqueta="Ver la publicación en Vizta" onPress={onAbrirPost} />
+          {post?.source_url ? (
+            <BotonRedondo
+              Icono={ExternalLink}
+              etiqueta={`Abrir en ${redDe(post.source_url)}`}
+              onPress={() => {
+                roce();
+                Linking.openURL(post.source_url).catch(() => {});
+              }}
+            />
+          ) : null}
+        </View>
 
         {descripcion ? (
           <View style={{ gap: 4 }}>
@@ -248,6 +252,32 @@ function PasoVoz({ voz, post, revision, personas, revisar, bottomInset, onAbrirP
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+/** La red de la publicación original, para decir a dónde lleva el botón. */
+function redDe(url) {
+  const h = String(url || '').toLowerCase();
+  if (h.includes('instagram.com')) return 'Instagram';
+  if (h.includes('tiktok.com')) return 'TikTok';
+  if (h.includes('x.com') || h.includes('twitter.com')) return 'X';
+  if (h.includes('youtube.com') || h.includes('youtu.be')) return 'YouTube';
+  if (h.includes('facebook.com')) return 'Facebook';
+  return 'la red social';
+}
+
+/** Botón redondo de solo ícono; la frase completa queda para el lector de pantalla. */
+function BotonRedondo({ Icono, etiqueta, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={etiqueta}
+      style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(28,43,34,0.07)', alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+    >
+      <Icono size={18} color={INK.title} strokeWidth={2} />
+    </Pressable>
   );
 }
 
