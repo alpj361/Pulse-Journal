@@ -2,7 +2,6 @@ import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import {
   BadgeCheck,
   CalendarX,
-  CircleQuestionMark,
   History,
   Layers,
   ListChecks,
@@ -12,6 +11,7 @@ import {
   Sprout,
   Tags,
   TriangleAlert,
+  UserRound,
   UserRoundCheck,
   UserRoundSearch,
   X,
@@ -111,11 +111,11 @@ export default function GuiaHuella({ lecturaBreve, parcial = false, nombre, llen
             <Concepto Icono={UserRoundCheck} tono="verde" titulo="Lo dijo la cuenta">
               La frase se atribuye a quien habla por la cuenta.
             </Concepto>
-            <Concepto Icono={Mic} tono="ambar" titulo="Voz H1, H2…">
-              Cada voz distinta dentro de una publicación. H1 en un video y H1 en otro no son necesariamente la misma persona. Si sabes quién es, ábrela y dilo con «decir quién es la voz»; queda registrado y la huella se vuelve a calcular.
+            <Concepto Icono={UserRound} titulo="Lo dijo una persona">
+              Alguien identificó quién habla: una persona de tu Codex, un invitado o un personaje. Queda vinculado a esa persona.
             </Concepto>
-            <Concepto Icono={CircleQuestionMark} tono="ambar" titulo="No se sabe quién lo dijo">
-              La frase está en la publicación, pero no se pudo distinguir quién la dice.
+            <Concepto Icono={Mic} tono="ambar" titulo="Voces sin identificar">
+              Si no se sabe quién habla, la frase no lleva nombre. El aviso «voces sin identificar» muestra cada voz con sus frases para que digas quién es; queda registrado y la huella se vuelve a calcular.
             </Concepto>
           </Seccion>
 

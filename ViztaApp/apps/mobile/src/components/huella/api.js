@@ -71,8 +71,11 @@ export const leerIdentidad = (autorId) => pedir(`/${id(autorId)}/identidad`);
  * (con `rol` y `relacion`) o `quitar_voz`. Lleva motivo; responde 202 y la
  * huella se vuelve a calcular.
  */
-export const revisarVoz = (autorId, operacion, { post_id, voz, rol, relacion, motivo }) =>
+export const revisarVoz = (autorId, operacion, { post_id, voz, rol, relacion, persona_item_id, motivo }) =>
   pedir(`/${id(autorId)}/identidad/${operacion}`, {
     method: 'POST',
-    body: operacion === 'voz' ? { post_id, voz, rol, relacion, motivo } : { post_id, voz, motivo },
+    body:
+      operacion === 'voz'
+        ? { post_id, voz, rol, relacion, motivo, ...(persona_item_id ? { persona_item_id } : {}) }
+        : { post_id, voz, motivo },
   });

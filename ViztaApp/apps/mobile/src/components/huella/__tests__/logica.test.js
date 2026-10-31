@@ -9,12 +9,14 @@ import {
   llenadoHuella,
   motivoDeError,
   nivelDimension,
+  personasDe,
   postsDe,
   quienHabla,
   repartir,
   revisionDeVoz,
   situacion,
   validarMotivo,
+  vocesPendientes,
 } from '../logica';
 
 // Formas tomadas de la respuesta real de Tan/Gente (revisión 9, 29-oct).
@@ -100,8 +102,12 @@ describe('tarjetas', () => {
 });
 
 describe('quién habla', () => {
-  test('sin voz ni atribución', () => expect(quienHabla(ev('a')).texto).toBe('No se sabe quién lo dijo'));
-  test('voz local sin identificar', () => expect(quienHabla(ev('a', { voz_local: 'H2' })).texto).toBe('Voz H2 · sin identificar'));
+  test('sin nadie identificado no se rotula (nada de «H1»)', () => {
+    expect(quienHabla(ev('a'))).toBeNull();
+    expect(quienHabla(ev('a', { voz_local: 'H2' }))).toBeNull();
+  });
+  test('con una persona del Codex, su nombre', () =>
+    expect(quienHabla(ev('a', { voz_local: 'H1' }), { relacion: 'tercero', rol: 'invitado', persona_item_id: 'x' }, { x: 'Ana Pérez' }).texto).toBe('Lo dijo Ana Pérez'));
   test('atribuida por el análisis', () => expect(quienHabla(ev('a', { atribuida_al_autor: true })).tono).toBe('verde'));
   test('la revisión humana manda', () => {
     expect(quienHabla(ev('a', { voz_local: 'H1' }), { relacion: 'voz_de_cuenta', rol: 'anfitrion' })).toMatchObject({ texto: 'Lo dijo la cuenta', confirmado: true });
@@ -134,5 +140,23 @@ describe('acciones y textos', () => {
     expect(motivoDeError({ status: 503, code: 'huella_desactivada' })).toMatch(/desactivados/);
     expect(motivoDeError({ status: 422 })).toBe('Este tipo de ficha no tiene huella de autor.');
     expect(motivoDeError({ status: 0 })).toBe('Sin conexión a internet.');
+  });
+});
+
+describe('voces sin identificar', () => {
+  const decl = (post, voz, cita, extra = {}) => ({ clase: 'declaracion_observada', evidencia: [ev(post, { voz_local: voz, cita, ...extra })] });
+  test('una por publicación y voz, con sus frases; las de más frases primero', () => {
+    const v = vocesPendientes([decl('p1', 'H1', 'uno'), decl('p2', 'H1', 'a'), decl('p2', 'H1', 'b'), decl('p2', 'H2', 'c')], null);
+    expect(v.map((x) => x.clave)).toEqual(['p2|H1', 'p1|H1', 'p2|H2']);
+    expect(v[0].citas).toEqual(['a', 'b']);
+  });
+  test('no cuentan las de la cuenta, las ya revisadas ni las que no tienen voz', () => {
+    const identidad = { config: { voces: { p3: { H1: { relacion: 'tercero', rol: 'invitado' } } } } };
+    const v = vocesPendientes([decl('p1', 'H1', 'x', { atribuida_al_autor: true }), decl('p3', 'H1', 'y'), decl('p4', null, 'z'), { clase: 'referencia_tematica', evidencia: [ev('p5', { voz_local: 'H1' })] }], identidad);
+    expect(v).toEqual([]);
+  });
+  test('ids de fichas vinculadas, sin repetir', () => {
+    const identidad = { config: { voces: { p1: { H1: { persona_item_id: 'b' }, H2: { persona_item_id: 'a' } }, p2: { H1: { persona_item_id: 'a' }, H2: {} } } } };
+    expect(personasDe(identidad)).toEqual(['a', 'b']);
   });
 });

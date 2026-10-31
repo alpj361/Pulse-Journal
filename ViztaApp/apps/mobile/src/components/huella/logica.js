@@ -112,15 +112,44 @@ const fechaDe = (t) => (t?.evidencia || []).map((e) => e.fecha).filter(Boolean).
 /** ¿La dijo la cuenta? Solo cuando todas sus citas están atribuidas a ella. */
 export const delAutor = (t) => (t?.evidencia || []).length > 0 && t.evidencia.every((e) => e.atribuida_al_autor);
 
-/** Quién habla en una evidencia, en palabras y con su tono. */
-export function quienHabla(e, revision) {
+/**
+ * Quién habla en una evidencia, solo si se sabe: la revisión de una persona o
+ * la atribución del análisis. Una voz sin identificar no se rotula (null): «H1»
+ * es una marca interna de cada publicación y no le dice nada a quien lee.
+ */
+export function quienHabla(e, revision, nombres = {}) {
   if (revision?.relacion === 'voz_de_cuenta') return { texto: 'Lo dijo la cuenta', tono: 'verde', confirmado: true };
-  if (revision?.relacion === 'tercero') return { texto: ROL[revision.rol] || 'Lo dijo otra persona', tono: 'neutro', confirmado: true };
+  if (revision?.relacion === 'tercero') {
+    const nombre = revision.persona_item_id ? nombres[revision.persona_item_id] : null;
+    return { texto: nombre ? `Lo dijo ${nombre}` : ROL[revision.rol] || 'Lo dijo otra persona', tono: 'neutro', confirmado: true };
+  }
   if (e?.atribuida_al_autor) return { texto: 'Lo dijo la cuenta', tono: 'verde', confirmado: false };
-  if (e?.voz_local) return { texto: `Voz ${e.voz_local} · sin identificar`, tono: 'ambar', confirmado: false };
-  return { texto: 'No se sabe quién lo dijo', tono: 'ambar', confirmado: false };
+  return null;
 }
 const ROL = { invitado: 'Lo dijo un invitado', personaje: 'Lo dijo un personaje', anfitrion: 'Lo dijo otra persona', narrador: 'Lo dijo otra persona' };
+
+/**
+ * Las voces que falta identificar, una por publicación y voz: las de las
+ * declaraciones que no están atribuidas a la cuenta ni revisadas. Las que más
+ * frases tienen van primero (son las que más aportan a la huella).
+ */
+export function vocesPendientes(tarjetas, identidad) {
+  const grupos = new Map();
+  for (const t of tarjetas || []) {
+    if (t.clase !== 'declaracion_observada') continue;
+    for (const e of t.evidencia || []) {
+      if (!e.voz_local || !e.post_id || e.atribuida_al_autor || revisionDeVoz(identidad, e.post_id, e.voz_local)) continue;
+      const clave = `${e.post_id}|${e.voz_local}`;
+      if (!grupos.has(clave)) grupos.set(clave, { clave, post_id: e.post_id, voz: e.voz_local, fecha: e.fecha || null, citas: [] });
+      if (e.cita && !grupos.get(clave).citas.includes(e.cita)) grupos.get(clave).citas.push(e.cita);
+    }
+  }
+  return [...grupos.values()].sort((a, b) => b.citas.length - a.citas.length || a.clave.localeCompare(b.clave));
+}
+
+/** Los ids de fichas vinculadas a voces, para traer sus nombres. */
+export const personasDe = (identidad) =>
+  [...new Set(Object.values(identidad?.config?.voces || {}).flatMap((p) => Object.values(p || {}).map((v) => v?.persona_item_id)).filter(Boolean))].sort();
 
 /** Si el contexto sostiene la cita; solo se rotula cuando ya se comprobó. */
 export const RESPALDO = {
@@ -142,13 +171,19 @@ export const FALTANTE = {
 };
 export const faltaDe = (t) => (t?.faltantes || []).map((f) => FALTANTE[f]).filter(Boolean);
 
-/** Las opciones para decir quién habla en una voz (`identidad/voz`). */
+/**
+ * Las respuestas a «¿quién habla?» (`identidad/voz`). `ficha` pide elegir la
+ * persona en el Codex: así lo que dice suma a su propia huella.
+ */
 export const OPCIONES_VOZ = [
-  { id: 'cuenta_conductor', texto: 'La cuenta, como conductor', relacion: 'voz_de_cuenta', rol: 'anfitrion' },
-  { id: 'cuenta_narrador', texto: 'La cuenta, como narrador', relacion: 'voz_de_cuenta', rol: 'narrador' },
-  { id: 'invitado', texto: 'Un invitado', relacion: 'tercero', rol: 'invitado' },
+  { id: 'cuenta', texto: 'La cuenta', relacion: 'voz_de_cuenta', rol: 'anfitrion' },
+  { id: 'ficha', texto: 'Una persona de tu Codex', relacion: 'tercero', rol: 'invitado', ficha: true },
+  { id: 'otra', texto: 'Otra persona, sin ficha', relacion: 'tercero', rol: 'invitado' },
   { id: 'personaje', texto: 'Un personaje o una actuación', relacion: 'tercero', rol: 'personaje' },
 ];
+
+/** Cómo lo sabe quien identifica: queda como motivo de la revisión. */
+export const MOTIVOS_VOZ = ['Se presenta por su nombre', 'Aparece a cámara', 'Reconozco su voz', 'Lo dice la publicación'];
 
 /** La revisión guardada de una voz, si hay (`identidad.config.voces[post][voz]`). */
 export const revisionDeVoz = (identidad, postId, voz) => (postId && voz ? identidad?.config?.voces?.[postId]?.[voz] || null : null);

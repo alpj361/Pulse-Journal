@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { actualizarHuella, leerHuella, leerIdentidad, revisarVoz, tarjetasDe } from './api';
-import { ENFRIAMIENTO_MS, SONDEO_MAX_MS, SONDEO_MS, hayQueSondear, postsDe, validarMotivo } from './logica';
+import { ENFRIAMIENTO_MS, SONDEO_MAX_MS, SONDEO_MS, hayQueSondear, personasDe, postsDe, validarMotivo } from './logica';
 
 export const claveHuella = (autorId) => ['huella-autor', autorId];
 const claveTarjetas = (autorId) => ['huella-tarjetas', autorId];
@@ -97,6 +97,19 @@ export default function useHuellaAutor(autorId) {
     queryFn: () => leerIdentidad(autorId),
   });
 
+  // Los nombres de las personas del Codex vinculadas a voces.
+  const idsPersonas = personasDe(identidad.data);
+  const personas = useQuery({
+    queryKey: ['huella-personas', idsPersonas.join(',')],
+    enabled: idsPersonas.length > 0,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('codex_universe_items').select('id, name').in('id', idsPersonas);
+      if (error) throw error;
+      return Object.fromEntries((data || []).map((p) => [p.id, p.name]));
+    },
+  });
+
   // Sin base vigente se descartan las tarjetas guardadas de la revisión anterior.
   useEffect(() => {
     if (consulta.data && !baseId) queryClient.removeQueries({ queryKey: claveTarjetas(autorId) });
@@ -150,6 +163,7 @@ export default function useHuellaAutor(autorId) {
     tarjetas,
     titulos: posts.data || {},
     identidad: identidad.data || null,
+    personas: personas.data || {},
     ultimoPedido,
     ahora,
     actualizar,

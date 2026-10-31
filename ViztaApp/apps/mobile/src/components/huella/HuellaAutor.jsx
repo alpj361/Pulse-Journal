@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import {
   BadgeCheck,
@@ -9,6 +9,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   CircleQuestionMark,
   FileVideo,
   Fingerprint,
@@ -21,6 +22,7 @@ import {
   ShieldAlert,
   Sprout,
   TriangleAlert,
+  UserRound,
   UserRoundCheck,
   X,
 } from 'lucide-react-native';
@@ -33,14 +35,13 @@ import { Boton, EstadoCentro, ROTULO, TONO } from '../colaboradores/piezas';
 import PostDetailSheet from '../posts/PostDetailSheet';
 import useHuellaAutor from './useHuellaAutor';
 import GuiaHuella from './GuiaHuella';
+import IdentificarVoces from './IdentificarVoces';
 import HuellaLlena from './HuellaLlena';
 import { TONOS } from './tonos';
 import {
   FACETAS,
   MADUREZ,
-  MOTIVO_MAX,
   NIVELES,
-  OPCIONES_VOZ,
   PESTANAS,
   RESPALDO,
   TRAYECTORIA,
@@ -57,12 +58,16 @@ import {
   repartir,
   revisionDeVoz,
   situacion,
+  vocesPendientes,
 } from './logica';
 
 const capital = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
 const CAMPOS_POST ='id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id';
 const GUIA_VISTA = 'vizta-huella-guia-vista';
 const DE_A = 20;
+
+/** Los nombres de las personas del Codex vinculadas a voces, para rotular quién habla. */
+const Personas = createContext({});
 
 const ICONO_MADUREZ = { sin_observaciones: Hourglass, impresiones_iniciales: Sprout, en_formacion: Layers, dimensiones_respaldadas: BadgeCheck };
 const ICONO_NIVEL = { sin_observaciones: Hourglass, impresion_inicial: Sprout, en_formacion: Layers, en_revision: TriangleAlert, huella_respaldada: BadgeCheck };
@@ -87,6 +92,7 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
   const [errorAccion, setErrorAccion] = useState(null);
   const [postAbierto, setPostAbierto] = useState(null);
   const [guia, setGuia] = useState(false);
+  const [identificando, setIdentificando] = useState(null);
 
   const r = h.respuesta;
   const caso = h.consulta.error ? 'error' : situacion(r);
@@ -97,6 +103,7 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
   const llenado = llenadoHuella(breve);
   const tonoHuella = MADUREZ[madurez]?.tono === 'verde' ? 'verde' : 'ambar';
   const tarjetas = h.tarjetas.data || [];
+  const pendientes = useMemo(() => vocesPendientes(tarjetas, h.identidad), [tarjetas, h.identidad]);
 
   // La guía se abre sola la primera vez que se ve una huella; después, con el «?».
   useEffect(() => {
@@ -140,6 +147,7 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
 
   return (
     <Modal visible animationType="slide" onRequestClose={tarjeta ? () => setAbierta(null) : onClose}>
+      <Personas.Provider value={h.personas}>
       <View style={{ flex: 1, backgroundColor: PAPEL }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: topInset + 12, paddingHorizontal: 18, paddingBottom: 4 }}>
           <Pressable
@@ -171,9 +179,9 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
             posicion={posicionDe(r, tarjeta)}
             titulos={h.titulos}
             identidad={h.identidad}
-            revisar={h.revisar}
             bottomInset={bottomInset}
             onAbrirPost={abrirPost}
+            onIdentificar={(voz) => setIdentificando([voz])}
           />
         ) : (
           <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: bottomInset + 32, gap: 18 }} keyboardShouldPersistTaps="handled">
@@ -184,6 +192,11 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
               cuenta={cuenta}
               llenado={llenado}
               tono={tonoHuella}
+              voces={caso === 'lista' ? pendientes.length : 0}
+              onIdentificar={() => {
+                roce();
+                setIdentificando(pendientes);
+              }}
               onHuella={() => {
                 roce();
                 setGuia(true);
@@ -240,8 +253,12 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
             onClose={cerrarGuia}
           />
         ) : null}
+        {identificando ? (
+          <IdentificarVoces voces={identificando} identidad={h.identidad} personas={h.personas} revisar={h.revisar} bottomInset={bottomInset} onClose={() => setIdentificando(null)} />
+        ) : null}
         {postAbierto ? <PostDetailSheet post={postAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setPostAbierto(null)} /> : null}
       </View>
+      </Personas.Provider>
     </Modal>
   );
 }
@@ -277,9 +294,11 @@ function EtiquetaNivel({ nivel, chica }) {
   return <Etiqueta chica={chica} Icono={ICONO_NIVEL[nivel] || Sprout} texto={n.texto} tono={n.tono} />;
 }
 
+/** Quién habla, solo cuando se sabe; sin nadie identificado no se dibuja. */
 function EtiquetaVoz({ evidencia, revision, chica = true }) {
-  const q = quienHabla(evidencia, revision);
-  return <Etiqueta chica={chica} Icono={q.tono === 'verde' ? UserRoundCheck : evidencia?.voz_local ? Mic : CircleQuestionMark} texto={q.texto} tono={q.tono} />;
+  const q = quienHabla(evidencia, revision, useContext(Personas));
+  if (!q) return null;
+  return <Etiqueta chica={chica} Icono={q.tono === 'verde' ? UserRoundCheck : UserRound} texto={q.texto} tono={q.tono} />;
 }
 
 /** Caja con ícono, título y una línea: avisos y estados vacíos. */
@@ -296,8 +315,29 @@ function Aviso({ Icono, tono = 'azul', titulo, children }) {
   );
 }
 
+/**
+ * Microbanner bajo la madurez: hay voces sin identificar. Abre el flujo para
+ * decir quién habla; mientras tanto, las tarjetas no rotulan esas voces.
+ */
+function BannerVoces({ cuantas, onPress }) {
+  const t = TONOS.ambar;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${cuantas} ${cuantas === 1 ? 'voz sin identificar' : 'voces sin identificar'}. Identificar`}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: t.fondo, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, opacity: pressed ? 0.8 : 1 })}
+    >
+      <Mic size={15} color={t.tinta} strokeWidth={2} />
+      <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: t.tinta }}>{`${cuantas} ${cuantas === 1 ? 'voz sin identificar' : 'voces sin identificar'}`}</Text>
+      <Text style={{ fontSize: 13.5, fontWeight: '700', color: t.tinta }}>identificar</Text>
+      <ChevronRight size={15} color={t.tinta} strokeWidth={2.2} />
+    </Pressable>
+  );
+}
+
 /** Nombre de la cuenta con la huella grande al lado, que se llena con lo que hay. */
-function Cabecera({ titulo, subtitulo, madurez, cuenta, llenado, tono, onHuella }) {
+function Cabecera({ titulo, subtitulo, madurez, cuenta, llenado, tono, voces = 0, onIdentificar, onHuella }) {
   const m = madurez ? MADUREZ[madurez] || MADUREZ.sin_observaciones : null;
   const IconoMadurez = ICONO_MADUREZ[madurez] || Hourglass;
   return (
@@ -326,6 +366,7 @@ function Cabecera({ titulo, subtitulo, madurez, cuenta, llenado, tono, onHuella 
           ) : null}
         </View>
       ) : null}
+      {voces ? <BannerVoces cuantas={voces} onPress={onIdentificar} /> : null}
     </View>
   );
 }
@@ -649,7 +690,7 @@ function Tiempo({ evolucion, titulos, onAbrirPost }) {
 
 // ─── Una tarjeta abierta: sus citas y quién las dice ───────────────────────
 
-function DetalleTarjeta({ tarjeta: t, posicion, titulos, identidad, revisar, bottomInset, onAbrirPost }) {
+function DetalleTarjeta({ tarjeta: t, posicion, titulos, identidad, bottomInset, onAbrirPost, onIdentificar }) {
   const lectura = t.clase === 'lectura_por_dimension';
   const faltan = faltaDe(t);
   const r = RESPALDO[t.respaldo];
@@ -681,101 +722,18 @@ function DetalleTarjeta({ tarjeta: t, posicion, titulos, identidad, revisar, bot
             </View>
             <Fuente postId={e.post_id} fecha={e.fecha} titulos={titulos} onPress={() => onAbrirPost(e.post_id)} />
             {e.voz_local && (!e.atribuida_al_autor || revisionDeVoz(identidad, e.post_id, e.voz_local)) ? (
-              <RevisarVoz key={`${e.post_id}-${e.voz_local}`} evidencia={e} revision={revisionDeVoz(identidad, e.post_id, e.voz_local)} revisar={revisar} />
+              <Boton
+                texto={revisionDeVoz(identidad, e.post_id, e.voz_local) ? 'cambiar quién habla' : 'decir quién habla'}
+                alto={40}
+                onPress={() => {
+                  roce();
+                  onIdentificar({ clave: `${e.post_id}|${e.voz_local}`, post_id: e.post_id, voz: e.voz_local, fecha: e.fecha, citas: e.cita ? [e.cita] : [] });
+                }}
+              />
             ) : null}
           </View>
         ))}
       </View>
     </ScrollView>
-  );
-}
-
-/**
- * Decir quién habla en una voz (H1, H2…) de una publicación. Lleva cómo lo
- * sabes, queda registrado y la huella se vuelve a calcular.
- */
-function RevisarVoz({ evidencia: e, revision, revisar }) {
-  const [abierto, setAbierto] = useState(false);
-  const [opcion, setOpcion] = useState(null);
-  const [motivo, setMotivo] = useState('');
-  const [mandando, setMandando] = useState(false);
-  const [error, setError] = useState(null);
-  const [hecho, setHecho] = useState(null);
-
-  const mandar = async (operacion) => {
-    setMandando(true);
-    setError(null);
-    try {
-      const o = OPCIONES_VOZ.find((x) => x.id === opcion);
-      await revisar(operacion, { post_id: e.post_id, voz: e.voz_local, rol: o?.rol, relacion: o?.relacion, motivo });
-      listo();
-      setHecho(operacion);
-      setAbierto(false);
-    } catch (err) {
-      falla();
-      setError(motivoDeError(err));
-    } finally {
-      setMandando(false);
-    }
-  };
-
-  if (hecho) {
-    return (
-      <Aviso Icono={Check} tono="verde" titulo="Guardado">
-        La huella se vuelve a calcular con esta revisión.
-      </Aviso>
-    );
-  }
-  if (!abierto) {
-    return (
-      <Boton
-        texto={revision ? `cambiar quién es la voz ${e.voz_local}` : `decir quién es la voz ${e.voz_local}`}
-        alto={40}
-        onPress={() => {
-          roce();
-          setAbierto(true);
-        }}
-      />
-    );
-  }
-  return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ gap: 10, backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, borderRadius: 14, padding: 12 }}>
-      <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{`¿Quién es la voz ${e.voz_local}?`}</Text>
-      <View style={{ gap: 6 }}>
-        {OPCIONES_VOZ.map((o) => {
-          const on = opcion === o.id;
-          return (
-            <Pressable
-              key={o.id}
-              onPress={() => setOpcion(o.id)}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: on }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 }}
-            >
-              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: on ? INK.title : 'rgba(28,43,34,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                {on ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: INK.title }} /> : null}
-              </View>
-              <Text style={{ fontSize: 15, color: INK.title }}>{o.texto}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <TextInput
-        value={motivo}
-        onChangeText={setMotivo}
-        placeholder="cómo lo sabes (por ejemplo: se presenta por su nombre al inicio)"
-        placeholderTextColor={INK.faint}
-        multiline
-        maxLength={MOTIVO_MAX}
-        accessibilityLabel="Cómo lo sabes"
-        style={{ minHeight: 70, borderRadius: 12, borderWidth: 1, borderColor: TONO.borde, backgroundColor: '#FFFFFF', padding: 12, fontSize: 15, color: INK.title }}
-      />
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Boton texto="cancelar" alto={42} style={{ flex: 1 }} onPress={() => setAbierto(false)} />
-        <Boton texto="guardar" alto={42} primario style={{ flex: 1 }} cargando={mandando} disabled={!opcion || motivo.trim().length < 8} onPress={() => mandar('voz')} />
-      </View>
-      {revision ? <Boton texto="quitar la revisión" alto={40} cargando={mandando} disabled={motivo.trim().length < 8} onPress={() => mandar('quitar_voz')} /> : null}
-      {error ? <Text style={{ fontSize: 13, color: TONO.rojo }}>{error}</Text> : null}
-    </KeyboardAvoidingView>
   );
 }
