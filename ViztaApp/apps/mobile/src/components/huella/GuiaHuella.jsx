@@ -64,7 +64,13 @@ export default function GuiaHuella({ lecturaBreve, parcial = false, nombre, llen
               Cómo leer la huella
             </Text>
             <Text style={{ fontSize: 15.5, lineHeight: 22, color: INK.body }}>
-              La huella describe lo que aparece en las publicaciones analizadas de una cuenta: de qué temas habla, qué se dice y quién lo dice. Describe la muestra; no define la ideología ni las intenciones de nadie.
+              La huella de autor es una forma de entender, de manera cualitativa, las posturas de una persona o de un medio a partir de muchos datos: los temas que publica, lo que se dice en sus publicaciones y quién lo dice.
+            </Text>
+            <Text style={{ fontSize: 15.5, lineHeight: 22, color: INK.body }}>
+              Su propósito es que puedas interpretar esa información y llegar a más. Cada lectura muestra de dónde sale, con la frase exacta y la publicación, para que la revises y saques tus propias conclusiones.
+            </Text>
+            <Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.meta }}>
+              Describe lo que aparece en las publicaciones analizadas; no define la ideología ni las intenciones de nadie.
             </Text>
           </View>
 
