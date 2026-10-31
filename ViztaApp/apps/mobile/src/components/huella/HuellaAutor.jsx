@@ -254,7 +254,7 @@ export default function HuellaAutor({ autorId, nombre, topInset = 0, bottomInset
           />
         ) : null}
         {identificando ? (
-          <IdentificarVoces voces={identificando} identidad={h.identidad} personas={h.personas} revisar={h.revisar} bottomInset={bottomInset} onClose={() => setIdentificando(null)} />
+          <IdentificarVoces voces={identificando} identidad={h.identidad} personas={h.personas} revisar={h.revisar} topInset={topInset} bottomInset={bottomInset} onClose={() => setIdentificando(null)} />
         ) : null}
         {postAbierto ? <PostDetailSheet post={postAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setPostAbierto(null)} /> : null}
       </View>

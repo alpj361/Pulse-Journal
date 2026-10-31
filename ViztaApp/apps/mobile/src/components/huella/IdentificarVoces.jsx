@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, Tex
 import { Image } from 'expo-image';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
-import { Check, FileVideo, Search, UserRound, X } from 'lucide-react-native';
+import { Check, FileVideo, Play, Search, UserRound, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { falla, listo, roce } from '../../utils/haptics';
@@ -29,7 +29,7 @@ const capital = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
  * Las marcas internas de cada voz (H1, H2…) no se muestran: no le dicen nada a
  * quien identifica.
  */
-export default function IdentificarVoces({ voces, identidad, personas = {}, revisar, bottomInset = 0, onClose }) {
+export default function IdentificarVoces({ voces, identidad, personas = {}, revisar, topInset = 0, bottomInset = 0, onClose }) {
   const [paso, setPaso] = useState(0);
   const [guardadas, setGuardadas] = useState(0);
   const [postAbierto, setPostAbierto] = useState(null);
@@ -95,7 +95,7 @@ export default function IdentificarVoces({ voces, identidad, personas = {}, revi
           />
         )}
 
-        {postAbierto ? <PostDetailSheet post={postAbierto} bottomInset={bottomInset} onClose={() => setPostAbierto(null)} /> : null}
+        {postAbierto ? <PostDetailSheet post={postAbierto} topInset={topInset} bottomInset={bottomInset} onClose={() => setPostAbierto(null)} /> : null}
       </View>
     </Modal>
   );
@@ -147,7 +147,7 @@ function PasoVoz({ voz, post, revision, personas, revisar, bottomInset, onAbrirP
           ¿Quién habla?
         </Text>
 
-        {/* La publicación: abrirla para ver y escuchar. */}
+        {/* La publicación, con el botón para abrirla y ver o escuchar a quien habla. */}
         <Pressable onPress={onAbrirPost} accessibilityRole="button" accessibilityHint="Abre la publicación" style={({ pressed }) => ({ flexDirection: 'row', gap: 12, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
           <View style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden', backgroundColor: 'rgba(28,43,34,0.06)', alignItems: 'center', justifyContent: 'center' }}>
             {post?.thumbnail_url && !sinPortada ? (
@@ -160,7 +160,14 @@ function PasoVoz({ voz, post, revision, personas, revisar, bottomInset, onAbrirP
             <Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }} numberOfLines={2}>
               {titulo}
             </Text>
-            <Text style={{ fontSize: 13, color: INK.meta }}>{`${fechaPublicacion(voz.fecha)} · ver publicación`}</Text>
+            <Text style={{ fontSize: 13, color: INK.meta }}>{fechaPublicacion(voz.fecha)}</Text>
+          </View>
+          <View
+            accessible
+            accessibilityLabel="Ver la publicación"
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: INK.title, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Play size={17} color="#FFFFFF" fill="#FFFFFF" style={{ marginLeft: 2 }} />
           </View>
         </Pressable>
 
