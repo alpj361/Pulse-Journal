@@ -14,7 +14,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import GlassCard from "../../components/GlassCard";
-import { INK, GLASS, chipStyle } from "../../components/theme";
+import { INK, GLASS, RADIUS, chipStyle } from "../../components/theme";
 import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
@@ -41,7 +41,7 @@ function EstadoFeed({ sticker, children }) {
     </View>
   );
 }
-import SelectorFeed from "../../components/feed/SelectorFeed";
+import SelectorFeed, { Cristal } from "../../components/feed/SelectorFeed";
 import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
@@ -74,7 +74,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
-import { Settings as SettingsIcon, Users as UsersIcon } from 'lucide-react-native';
+import { Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
 import ColaboradoresSheet from '../../components/colaboradores/ColaboradoresSheet';
 import { alTocarAvisoDeColab } from '../../utils/notificaciones';
 import { puedeColaborar, TONO as TONO_COLAB } from '../../components/colaboradores/piezas';
@@ -990,11 +990,30 @@ export default function Index() {
                 {/* En el Congreso, el lugar del título lo ocupa el cambio de vista. */}
                 {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
               </View>
-              <SelectorFeed valor={feed} onCambiar={setFeed} />
+              {/* El ajuste del feed va al lado de «de dónde»: las dos cosas
+                  deciden qué se lee, y los chips de abajo solo filtran. */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {feed === "pais" && hotTopics.length ? (
+                  <Pressable
+                    onPress={() => setAjustandoFeed(true)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ajustar tu feed"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                  >
+                    <Cristal radio={RADIUS.pill}>
+                      <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+                        <SlidersHorizontal size={16} color={INK.meta} strokeWidth={2.2} />
+                      </View>
+                    </Cristal>
+                  </Pressable>
+                ) : null}
+                <SelectorFeed valor={feed} onCambiar={setFeed} />
+              </View>
             </View>
 
             {feed === "pais" && hotTopics.length ? (
-              <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} onAjustar={() => setAjustandoFeed(true)} />
+              <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} />
             ) : null}
             {feed === "congreso" && vistaCongreso === "tablero" ? (
               <FiltroChips opciones={opcionesCongreso(diasCongreso)} valor={seccionCongreso} onCambiar={setSeccionCongreso} />

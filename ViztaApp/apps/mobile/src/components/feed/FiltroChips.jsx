@@ -1,14 +1,13 @@
 import { Pressable, ScrollView, Text } from 'react-native';
-import { SlidersHorizontal } from 'lucide-react-native';
 import { INK } from '../theme';
 
 /**
  * Filtros cortos compartidos por las noticias y el Congreso.
  *
  * `tenue` es un tema que la persona ocultó de su feed: sigue a mano, más
- * apagado. `onAjustar` agrega al final el chip que abre el ajuste del feed.
+ * apagado.
  */
-export default function FiltroChips({ opciones, valor, onCambiar, onAjustar }) {
+export default function FiltroChips({ opciones, valor, onCambiar }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 8 }} style={{ flexGrow: 0, marginVertical: 6 }}>
       {opciones.map(({ clave, nombre, cuenta, tenue }) => (
@@ -24,14 +23,6 @@ export default function FiltroChips({ opciones, valor, onCambiar, onAjustar }) {
           </Text>
         </Pressable>
       ))}
-      {onAjustar ? (
-        <Pressable onPress={onAjustar} accessibilityRole="button" accessibilityLabel="Ajustar tu feed"
-          style={({ pressed }) => ({ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, borderRadius: 14,
-            backgroundColor: 'rgba(28,43,34,0.04)', opacity: pressed ? 0.6 : 1 })}>
-          <SlidersHorizontal size={13} color={INK.meta} strokeWidth={2.2} />
-          <Text style={{ fontSize: 12, color: INK.meta, fontWeight: '500' }}>ajustar</Text>
-        </Pressable>
-      ) : null}
     </ScrollView>
   );
 }
