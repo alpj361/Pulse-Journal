@@ -1,89 +1,77 @@
 import { useEffect, useState } from 'react';
 import { Switch, Text, View } from 'react-native';
-import { ScanFace } from 'lucide-react-native';
 import GlassCard from '../GlassCard';
 import { INK, ACCENT } from '../theme';
 import { roce, falla } from '../../utils/haptics';
 import { supabase } from '../../utils/supabase';
-import { useCapacidadesStore } from '../../state/capacidadesStore';
 
 /**
- * Los detectores que el servidor puede correr solo, uno por renglón. Cada uno
- * aparece si la cuenta tiene su función (`flag`); la opción se guarda en la
- * base (`etiquetas_automaticas`) y el servidor la consulta antes de detectar.
- * Para sumar uno (por ejemplo, voces): agregarlo acá y en la lista de tipos
- * válidos de `etiquetas_automaticas_cambiar`.
- */
-const DETECTORES = [{ tipo: 'rostros', titulo: 'Rostros', Icono: ScanFace, flag: 'posts.face_recognition' }];
-
-/**
- * «Etiquetas automáticas» — qué etiqueta el servidor por su cuenta en los posts.
+ * «Etiquetas automáticas» — el interruptor.
  *
- * Sin ningún detector disponible para la cuenta, no se dibuja. Cada uno arranca
- * apagado mientras la persona no lo encienda.
+ * La app solo enciende o apaga. Qué etiqueta el servidor con esto lo decide la
+ * base (`etiquetas_automaticas`), que también dice si la opción existe para la
+ * cuenta: sin ella, no se dibuja. Arranca apagado mientras la persona no lo
+ * encienda.
+ *
+ * Solo el título, como el resto de los interruptores de Ajustes.
  */
 export default function SeccionEtiquetasAutomaticas() {
-  const features = useCapacidadesStore((s) => s.capacidades?.features);
-  const disponibles = DETECTORES.filter((d) => features?.[d.flag]?.availability === 'enabled');
-  const [estado, setEstado] = useState({});
-  const [listo, setListo] = useState(false);
-  const [guardando, setGuardando] = useState(null);
+  const [disponible, setDisponible] = useState(false);
+  const [activo, setActivo] = useState(false);
+  const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
-  const hay = disponibles.length > 0;
 
   useEffect(() => {
-    if (!hay) return undefined;
     let vivo = true;
-    supabase
-      .rpc('etiquetas_automaticas')
-      .then(({ data }) => vivo && setEstado(data || {}))
-      .finally(() => vivo && setListo(true));
+    supabase.rpc('etiquetas_automaticas').then(({ data }) => {
+      if (!vivo || !data) return;
+      setDisponible(data.disponible === true);
+      setActivo(data.activo === true);
+    });
     return () => {
       vivo = false;
     };
-  }, [hay]);
+  }, []);
 
-  if (!hay) return null;
+  if (!disponible) return null;
 
-  const cambiar = async (tipo, v) => {
+  const cambiar = async (v) => {
     roce();
-    setEstado((e) => ({ ...e, [tipo]: v }));
-    setGuardando(tipo);
+    setActivo(v);
+    setGuardando(true);
     setError(null);
     try {
-      const { data, error: e } = await supabase.rpc('etiquetas_automaticas_cambiar', { p_tipo: tipo, p_activo: v });
+      const { data, error: e } = await supabase.rpc('etiquetas_automaticas_cambiar', { p_activo: v });
       if (e) throw e;
-      if (data) setEstado((previo) => ({ ...previo, ...data }));
+      if (data) setActivo(data.activo === true);
     } catch {
       // Lo que se ve tiene que ser lo que quedó guardado: si no se pudo, vuelve.
       falla();
-      setEstado((e) => ({ ...e, [tipo]: !v }));
+      setActivo(!v);
       setError('No se pudo guardar. Prueba de nuevo.');
     } finally {
-      setGuardando(null);
+      setGuardando(false);
     }
   };
 
   return (
     <View style={{ marginBottom: 24 }}>
       <GlassCard radius={16}>
-        <View style={{ padding: 18, gap: 12 }}>
-          <Text style={{ fontSize: 14, fontWeight: '700', color: INK.title, lineHeight: 20 }}>Etiquetas automáticas</Text>
-          {disponibles.map(({ tipo, titulo, Icono }) => (
-            <View key={tipo} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Icono size={17} color={INK.body} strokeWidth={1.9} />
-              <Text style={{ flex: 1, fontSize: 14, color: INK.title }}>{titulo}</Text>
-              <Switch
-                value={estado[tipo] === true}
-                onValueChange={(v) => cambiar(tipo, v)}
-                disabled={!listo || guardando === tipo}
-                trackColor={{ false: 'rgba(28,43,34,0.14)', true: ACCENT.indigo.ink }}
-                thumbColor="#FFFFFF"
-                accessibilityLabel={`Etiquetas automáticas: ${titulo}`}
-              />
-            </View>
-          ))}
-          {error ? <Text style={{ fontSize: 12.5, color: '#B91C1C' }}>{error}</Text> : null}
+        <View style={{ padding: 18 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: INK.title, lineHeight: 20 }}>
+              Etiquetas automáticas
+            </Text>
+            <Switch
+              value={activo}
+              onValueChange={cambiar}
+              disabled={guardando}
+              trackColor={{ false: 'rgba(28,43,34,0.14)', true: ACCENT.indigo.ink }}
+              thumbColor="#FFFFFF"
+              accessibilityLabel="Etiquetas automáticas"
+            />
+          </View>
+          {error ? <Text style={{ fontSize: 12.5, color: '#B91C1C', marginTop: 8 }}>{error}</Text> : null}
         </View>
       </GlassCard>
     </View>
