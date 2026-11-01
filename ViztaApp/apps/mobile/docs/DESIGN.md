@@ -15,10 +15,10 @@ timeouts, los nombres de las tablas— es asunto nuestro.
 | En vez de                              | Se dice                                          |
 | -------------------------------------- | ------------------------------------------------ |
 | «iOS no va a volver a preguntar»       | «El mapa se destapa solo desde Ajustes»           |
-| «Falta el permiso *siempre*»           | «Para ir descubriendo los lugares por donde andás»|
+| «Falta el permiso *siempre*»           | «El mapa se descubre por los lugares recorridos»  |
 | «La app se despierta a los 400 m»      | (no se dice: es mecánica interna)                 |
 | «Error 402: sin cupo»                  | «Se te acabaron los créditos de hoy»              |
-| «No se pudo hacer fetch del análisis»  | «No se pudo analizar. Probá de nuevo.»            |
+| «No se pudo hacer fetch del análisis»  | «No se pudo analizar. Puede intentarse de nuevo.» |
 
 ## Qué no va nunca
 
@@ -35,8 +35,14 @@ timeouts, los nombres de las tablas— es asunto nuestro.
 
 ## Qué sí
 
-- **Segunda persona, voseo.** «Tenés», «podés», «andás». Es como se habla acá y
-  es como habla el resto de la app.
+- **Instructivo, no conversado** (PJ, 31-oct-2026). La interfaz describe qué
+  hace cada cosa; no le habla a la persona ni habla en primera persona. Rótulos
+  como nombres de acción («Corregir el análisis», «Reportar algo que falta»,
+  «Calificar el análisis») y explicaciones impersonales («El post se analiza de
+  nuevo con la corrección»). Nada de «lo vuelvo a analizar con lo que me
+  digas», «¿te sirvió?» ni «algo que no sabe leer todavía». Si hace falta un
+  verbo dirigido, va sin voseo. Lo que ya existe se pasa a este tono cuando se
+  toca.
 - **Minúscula en los controles**, como el resto de la interfaz: `buscar un
   lugar`, `mostrar todo`, `ajustar`. Los títulos de un aviso sí van con
   mayúscula inicial.

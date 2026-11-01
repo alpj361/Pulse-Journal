@@ -16,18 +16,18 @@ const TIPOS = [
   {
     clave: 'modelo',
     Icono: RotateCcw,
-    nombre: 'Se equivocó',
-    explica: 'Lo vuelvo a analizar con lo que me digas, y lo tengo en cuenta en tus próximos posts.',
-    pista: 'Ej.: no es su opinión, es una escena de una película',
+    nombre: 'Corregir el análisis',
+    explica: 'Para errores de interpretación. El post se analiza de nuevo con la corrección, y la regla se aplica a los análisis siguientes.',
+    pista: 'Ej.: es una escena de película, no la opinión del autor',
     accion: 'corregir',
   },
   {
     clave: 'funcion',
     Icono: Lightbulb,
-    nombre: 'Le falta algo a Vizta',
-    explica: 'Algo que no sabe leer todavía. Le llega a quien hace Vizta.',
-    pista: 'Ej.: no entiende los memes con texto encima',
-    accion: 'enviar',
+    nombre: 'Reportar algo que falta',
+    explica: 'Para lo que el análisis todavía no reconoce. El reporte llega al equipo de Vizta.',
+    pista: 'Ej.: los memes con texto encima no se leen',
+    accion: 'enviar reporte',
   },
 ];
 
@@ -59,13 +59,13 @@ export default function OpinionAnalisis({ post, bottomInset = 0, onCorrigiendo }
 
   return (
     <View style={{ marginTop: 32, paddingTop: 18, borderTopWidth: 1, borderTopColor: 'rgba(28,43,34,0.07)', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-      <Text style={{ flex: 1, fontSize: 14, color: INK.body }}>¿Te sirvió este análisis?</Text>
-      <Pulgar Icono={ThumbsUp} activo={voto === 'arriba'} color={VERDE} etiqueta="Me sirvió" onPress={arriba} />
+      <Text style={{ flex: 1, fontSize: 14, color: INK.body }}>Calificar el análisis</Text>
+      <Pulgar Icono={ThumbsUp} activo={voto === 'arriba'} color={VERDE} etiqueta="Análisis útil" onPress={arriba} />
       <Pulgar
         Icono={ThumbsDown}
         activo={voto === 'abajo'}
         color={LADRILLO}
-        etiqueta="No me sirvió"
+        etiqueta="Análisis con errores"
         onPress={() => {
           roce();
           setAbierta(true);
@@ -128,7 +128,7 @@ function HojaQuePaso({ visible, post, bottomInset, onClose, onEnviado }) {
       onEnviado(tipo);
     } catch (e) {
       falla();
-      setError(e.message || 'No se pudo enviar');
+      setError(e.message || 'No se pudo enviar.');
     } finally {
       setEnviando(false);
     }
@@ -138,14 +138,14 @@ function HojaQuePaso({ visible, post, bottomInset, onClose, onEnviado }) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: PAPEL }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 16, paddingHorizontal: 18 }}>
-          <Text style={[ROTULO, { flex: 1 }]}>EL ANÁLISIS</Text>
+          <Text style={[ROTULO, { flex: 1 }]}>CALIFICAR</Text>
           <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar" style={{ padding: 6 }}>
             <X size={19} color={INK.faint} />
           </Pressable>
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 6, paddingBottom: bottomInset + 32, gap: 18 }}>
           <Text style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 34, color: INK.title }} accessibilityRole="header">
-            ¿Qué pasó?
+            Reportar el análisis
           </Text>
 
           <View style={{ gap: 10 }} accessibilityRole="radiogroup">
@@ -187,7 +187,7 @@ function HojaQuePaso({ visible, post, bottomInset, onClose, onEnviado }) {
             placeholderTextColor={INK.faint}
             multiline
             maxLength={2000}
-            accessibilityLabel="Qué pasó"
+            accessibilityLabel="Descripción del error"
             style={{
               minHeight: 110,
               padding: 14,
