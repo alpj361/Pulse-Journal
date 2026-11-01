@@ -381,7 +381,7 @@ export function QuienAparece({ quienes, colorDe, elegida, onElegir, onSostener, 
   );
 }
 
-const RELACION = { escena: 'es una escena', audio: 'suena de fondo' };
+const RELACION = { escena: 'es una escena', audio: 'suena de fondo', referencia: 'es la referencia' };
 
 /** La transcripción visual: qué se ve, qué dice la pantalla y la obra, si es una. */
 export function LoQueSeVe({ vistazo }) {
