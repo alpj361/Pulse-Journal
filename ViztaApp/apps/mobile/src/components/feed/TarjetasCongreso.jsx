@@ -125,7 +125,7 @@ export function Camino({ etapa }) {
  * favor, licencia, ausentes, en contra— para que el tamaño de cada grupo se vea
  * de un golpe. No dice dónde se sienta nadie.
  */
-function Hemiciclo({ favor = 0, contra = 0, ausentes = 0, licencia = 0, ancho = 300 }) {
+export function Hemiciclo({ favor = 0, contra = 0, ausentes = 0, licencia = 0, ancho = 300 }) {
   const curules = useMemo(() => {
     const FILAS = [16, 18, 20, 22, 26, 28, 30]; // de adentro hacia afuera; suma 160
     const puntos = [];
