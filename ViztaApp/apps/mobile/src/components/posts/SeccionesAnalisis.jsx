@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
-import { BookMarked, Bookmark, BookmarkCheck, ChefHat, Compass, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, UsersRound } from 'lucide-react-native';
+import { BookMarked, Bookmark, BookmarkCheck, ChefHat, ChevronDown, ChevronRight, Compass, CircleCheck, GraduationCap, Hash, ListOrdered, MessageSquareQuote, ScanEye, Tag, UsersRound } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
@@ -383,47 +383,88 @@ export function QuienAparece({ quienes, colorDe, elegida, onElegir, onSostener, 
 
 const RELACION = { escena: 'es una escena', audio: 'suena de fondo', referencia: 'es la referencia' };
 
-/** La transcripción visual: qué se ve, qué dice la pantalla y la obra, si es una. */
-export function LoQueSeVe({ vistazo }) {
-  if (!vistazo) return null;
-  const obra = vistazo.obra_identificada;
-  const enPantalla = typeof vistazo.texto_en_pantalla === 'string' ? vistazo.texto_en_pantalla.trim() : '';
-  if (!vistazo.que_se_ve && !obra && !enPantalla) return null;
+/**
+ * La obra que el post muestra o evoca, arriba de todo: en un tráiler o un
+ * disfraz es lo principal, y lo que se quiere es guardarla para verla después.
+ */
+export function ObraDelPost({ obra, guardada, ocupado, onGuardar }) {
+  const soloLectura = useSoloLecturaPost();
+  if (!obra?.titulo) return null;
+  const material = obra.clase === 'serie' ? 'series' : 'film';
+  const Marca = guardada ? BookmarkCheck : Bookmark;
   return (
-    <Bloque titulo="transcripción visual" icono="vista">
-      {vistazo.que_se_ve ? (
-        <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{vistazo.que_se_ve}</Text>
-      ) : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6, marginBottom: 6 }}>
+      {obra.imagen ? (
+        <Image source={{ uri: obra.imagen }} style={{ width: 44, height: 64, borderRadius: 6, backgroundColor: 'rgba(28,43,34,0.06)' }} />
+      ) : (
+        <IconoMaterial material={material} size={18} />
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: MONO, fontSize: 14, color: MATERIAL[material].color }}>
+          {obra.titulo}
+          {obra.anio ? <Text style={{ color: TENUE }}> · {obra.anio}</Text> : null}
+        </Text>
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginTop: 3 }}>{RELACION[obra.relacion] || RELACION.escena}</Text>
+      </View>
+      {soloLectura ? null : (
+        <Pressable
+          onPress={guardada ? undefined : onGuardar}
+          disabled={guardada || !!ocupado}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={guardada ? `${obra.titulo} guardada en el Codex` : `Guardar ${obra.titulo} en el Codex`}
+          style={{ padding: 6 }}
+        >
+          {ocupado ? <MorphingInfinity size={16} color={INK.meta} /> : <Marca size={18} color={guardada ? MATERIAL[material].color : 'rgba(28,43,34,0.4)'} strokeWidth={1.8} />}
+        </Pressable>
+      )}
+    </View>
+  );
+}
 
-      {obra?.titulo ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
-          {obra.imagen ? (
-            <Image
-              source={{ uri: obra.imagen }}
-              style={{ width: 38, height: 56, borderRadius: 6, backgroundColor: 'rgba(28,43,34,0.06)' }}
-            />
-          ) : (
-            <IconoMaterial material={obra.clase === 'serie' ? 'series' : 'film'} size={16} />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: MONO, fontSize: 13, color: MATERIAL[obra.clase === 'serie' ? 'series' : 'film'].color }}>
-              {obra.titulo}
-              {obra.anio ? <Text style={{ color: TENUE }}> · {obra.anio}</Text> : null}
-            </Text>
-            <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginTop: 3 }}>
-              {RELACION[obra.relacion] || RELACION.escena}
-            </Text>
-          </View>
+/**
+ * La transcripción visual: qué se ve y qué dice la pantalla. Plegada en una
+ * línea; se despliega al tocarla, para quien quiera desglosar el video.
+ */
+export function LoQueSeVe({ vistazo }) {
+  const [abierta, setAbierta] = useState(false);
+  if (!vistazo) return null;
+  const enPantalla = typeof vistazo.texto_en_pantalla === 'string' ? vistazo.texto_en_pantalla.trim() : '';
+  if (!vistazo.que_se_ve && !enPantalla) return null;
+  const Flecha = abierta ? ChevronDown : ChevronRight;
+  return (
+    <View style={{ marginTop: 28 }}>
+      <Pressable
+        onPress={() => setAbierta((x) => !x)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: abierta }}
+        accessibilityLabel="Transcripción visual"
+        hitSlop={8}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}
+      >
+        <ScanEye size={13} color="rgba(28,43,34,0.42)" strokeWidth={1.8} />
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.3)' }}>transcripción visual</Text>
+        <Flecha size={13} color="rgba(28,43,34,0.35)" strokeWidth={1.8} />
+      </Pressable>
+      {!abierta && vistazo.que_se_ve ? (
+        <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 12.5, color: INK.meta, marginTop: 8 }}>
+          {vistazo.que_se_ve}
+        </Text>
+      ) : null}
+      {abierta ? (
+        <View style={{ marginTop: 10 }}>
+          {vistazo.que_se_ve ? (
+            <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21 }}>{vistazo.que_se_ve}</Text>
+          ) : null}
+          {enPantalla ? (
+            <View style={{ marginTop: 14, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: RAYA }}>
+              <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginBottom: 4 }}>escrito en pantalla</Text>
+              <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>{enPantalla}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
-
-      {enPantalla ? (
-        <View style={{ marginTop: 14, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: RAYA }}>
-          <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginBottom: 4 }}>escrito en pantalla</Text>
-          <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.body, lineHeight: 20 }}>{enPantalla}</Text>
-        </View>
-      ) : null}
-    </Bloque>
+    </View>
   );
 }
 

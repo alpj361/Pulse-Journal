@@ -30,11 +30,12 @@ import useAnalisisPost from './useAnalisisPost';
 import OpinionAnalisis from './OpinionAnalisis';
 import CarruselPost from './CarruselPost';
 import { anotarTexto } from './anotar';
-import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './capaPost';
+import { agregarConexion, guardarFact, guardarMaterial, guardarObra, mencionesDe, obraEnElCodex } from './capaPost';
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
+import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, ObraDelPost, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
+import { esBreve, esInformativo, esLaObra, obraDelPost } from './profundidad';
 import { armarPiezas, norm } from './piezas';
 import { Pieza, Refs, Saltos } from './Saltos';
 import { supabase } from '../../utils/supabase';
@@ -243,6 +244,19 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const relaciones = analisis?.relaciones || [];
   const temas = (analisis?.temas || []).filter((t) => typeof t === 'string');
   const narrativa = analisis?.narrativa || analisis?.contexto || analisis?.resumen || '';
+  // Un disfraz o un tráiler: lo esencial y la obra arriba; el resto, plegado.
+  const breve = esBreve(analisis, d);
+  const [completo, setCompleto] = useState(false);
+  const loEsencial = typeof analisis?.lo_esencial === 'string' ? analisis.lo_esencial.trim() : '';
+  const obra = obraDelPost(analisis, d);
+  // La obra ya está arriba con su botón de guardar: en «materiales» no se repite.
+  const refsSinObra = useMemo(() => refs.filter((m) => !esLaObra(m, obra)), [refs, obra]);
+  const { data: obraGuardada = null, refetch: releerObra } = useQuery({
+    queryKey: ['post-obra-en-codex', obra?.titulo || null],
+    queryFn: () => obraEnElCodex(obra),
+    enabled: !!obra?.titulo && !muestra && !soloLectura,
+    staleTime: 1000 * 60,
+  });
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
   const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) ? 'anotado' : vista;
 
@@ -393,6 +407,22 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
       const { details } = await guardarMaterial({ post: { ...post, details: d }, mencion, comoTipo });
       toque();
       aplicar(details);
+    } catch (e) {
+      falla();
+      setErrorAccion(e.message || 'No se pudo guardar.');
+    } finally {
+      setOcupado(null);
+    }
+  };
+
+  const guardarLaObra = async () => {
+    if (ocupado || muestra || soloLectura || !obra) return;
+    setOcupado('obra');
+    setErrorAccion(null);
+    try {
+      await guardarObra({ obra });
+      toque();
+      await releerObra();
     } catch (e) {
       falla();
       setErrorAccion(e.message || 'No se pudo guardar.');
@@ -693,15 +723,22 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                 <Aprender aprender={analisis.aprender} piezas={piezas} />
               ) : (
                 <View style={{ marginTop: 14 }}>
-                  {narrativa ? (
-                    <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21, marginBottom: 22 }}>
+                  {/* Lo esencial primero: qué es el post en una línea y la obra
+                      que muestra o evoca, para guardarla. */}
+                  {loEsencial ? (
+                    <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22, marginBottom: obra ? 12 : 22 }}>{loEsencial}</Text>
+                  ) : null}
+                  <ObraDelPost obra={obra} guardada={!!obraGuardada} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+
+                  {narrativa && (!breve || completo) && narrativa !== loEsencial ? (
+                    <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21, marginTop: obra ? 16 : 0, marginBottom: 22 }}>
                       {narrativa}
                     </Text>
                   ) : null}
 
                   {/* Cada sección se dibuja solo si el post la trae. El orden va
                       de quién y desde dónde, a qué dice, a en qué se apoya. */}
-                  <View style={{ marginTop: narrativa ? -28 : 0 }}>
+                  <View style={{ marginTop: narrativa && (!breve || completo) ? -28 : 0 }}>
                     <LoQueSeVe vistazo={d.vistazo} />
                     <QuienAparece
                       quienes={piezas.quienes}
@@ -721,6 +758,20 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                         />
                       )}
                     />
+                    {breve && !completo ? (
+                      <Pressable
+                        onPress={() => {
+                          roce();
+                          setCompleto(true);
+                        }}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        style={{ marginTop: 28, alignSelf: 'flex-start' }}
+                      >
+                        <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE }}>+ análisis completo</Text>
+                      </Pressable>
+                    ) : null}
+                    {!breve || completo ? (<>
                     <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} quienDe={piezas.quienDe} quienDeVoz={piezas.quienDeVoz} resolver={piezas.resolver} />
                     <Cifras cifras={piezas.cifras} hablantes={analisis?.hablantes} quienDeVoz={piezas.quienDeVoz} ocupado={ocupado} onGuardar={guardarHecho} />
 
@@ -743,8 +794,13 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                     )}
 
                     {/* Solo en análisis que ya traen fuentes: en uno anterior, «sin
-                        citar» sería decir algo que no se midió. */}
-                    {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={piezas.fuentes} afirma={afirmaComprobable} /> : null}
+                        citar» sería decir algo que no se midió. Y «afirma sin
+                        citar» solo dice algo en un post que informa: en un
+                        tráiler o un chiste es relleno. */}
+                    {Array.isArray(analisis?.fuentes) && (piezas.fuentes.length || esInformativo(d)) ? (
+                      <Apoyo fuentes={piezas.fuentes} afirma={afirmaComprobable} />
+                    ) : null}
+                    </>) : null}
 
                     <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
                     <Recetas recetas={analisis?.recetas} />
@@ -773,11 +829,11 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                     </View>
                   ))}
 
-                  {refs.length ? (
+                  {refsSinObra.length ? (
                     <View style={{ marginTop: 28 }}>
                       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 9 }}>materiales</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                        {refs.map((m) => (
+                        {refsSinObra.map((m) => (
                           <ChipMencion
                             key={m.texto}
                             mencion={m}
