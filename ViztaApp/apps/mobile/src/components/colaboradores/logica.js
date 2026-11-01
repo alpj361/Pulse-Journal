@@ -831,3 +831,21 @@ export function adjuntoDe(item) {
 
 /** Un agente de otra persona que te compartió: solo se le escribe (PR #75). */
 export const esContacto = (c) => !!(c?.es_contacto || c?.rol === 'contacto');
+
+/**
+ * De qué Codex es algo que muestra el agente:
+ * - `para_ti`: lo creó en tu cuenta. Es tuyo, no se trae ni «se parece».
+ * - `unido`: es suyo y también está en el tuyo (lo trajiste).
+ * - `suyo`: está solo en su Codex.
+ * Un Espacio trae `cuenta`; un ítem, `cuenta_tipo` (un dashboard, `dueno_tipo`).
+ */
+export function origenDe(cosa) {
+  const cuenta = cosa?.cuenta || cosa?.cuenta_tipo || cosa?.dueno_tipo;
+  if (cuenta === 'humano') return 'para_ti';
+  if (cosa?.ya_en_mi_codex) return 'unido';
+  return 'suyo';
+}
+
+/** Un homónimo en tu Codex que no sea la misma ficha. */
+export const pareceUnoTuyo = (item) =>
+  origenDe(item) === 'suyo' && !!item?.coincidencia_humano_id && item.coincidencia_humano_id !== item.id;

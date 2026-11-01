@@ -3,10 +3,13 @@ import { Alert, Linking, Modal, Pressable, ScrollView, Text, View } from 'react-
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Archive,
   Check,
   ChevronRight,
   ExternalLink,
+  GitMerge,
   Newspaper,
+  UserRound,
   X,
   Forward,
 } from 'lucide-react-native';
@@ -15,7 +18,7 @@ import { TEMAS } from '../feed/temas';
 import { listo, roce } from '../../utils/haptics';
 import { espaciosDe, itemDeColaborador, itemsDeColaborador, quitarRecuerdo, traerAMiCodex } from './api';
 import PortadaEspacio from '../codex/PortadaEspacio';
-import { adjuntoDe, camposDeFuente, esArtifact, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, resumenPlano } from './logica';
+import { adjuntoDe, camposDeFuente, esArtifact, claveTipo, cuerpoDe, dominioDe, enlaceDeFuente, esDocumento, esFuente, sinTituloRepetido, espaciosParaCarrusel, itemsDelEspacio, memoriasComoItems, filtrosDeTipos, nombreTipo, origenDe, pareceUnoTuyo, resumenPlano } from './logica';
 import ItemDetailSheet from '../codex/ItemDetailSheet';
 import TextoMarkdown from '../codex/TextoMarkdown';
 import { parsear } from '../codex/markdown';
@@ -42,10 +45,11 @@ const haceCuanto = (fecha) => {
  * La ficha es de lectura: un documento sin archivo se lee con su contenido,
  * no se busca en Storage.
  *
- * Lo del agente vive en su Codex (PR #56). «ya lo tenés» marca lo que trajiste
- * al tuyo (`ya_en_mi_codex`); «se parece a uno tuyo», lo que tiene un homónimo
- * en el tuyo (`coincidencia_humano_id`). Lo parecido no se trae (sería un
- * duplicado); por ahora solo se avisa que ya lo tenés.
+ * Aparece lo de su Codex y lo que creó en el tuyo, y cada cosa dice de quién
+ * es con un ícono (`origenDe`): una persona si lo creó para ti, un archivo si
+ * es suyo, el signo de unir si está en los dos. «se parece a uno tuyo» queda
+ * solo para lo suyo que tiene un homónimo en el tuyo; lo parecido no se trae
+ * (sería un duplicado).
  */
 export default function SuCodex({ colaborador, bottomInset, abrirId, onAbierto, onPedir, onAbrirEspacio, onAbrirArtifact }) {
   const [abierto, setAbierto] = useState(null);
@@ -236,9 +240,12 @@ function Espacio({ espacio: e, activo, apagado, onPress }) {
         <PortadaEspacio space={e} radius={16} ancho={ANCHO_ESPACIO} alto={96} style={{ width: ANCHO_ESPACIO, height: 96 }} />
       </View>
       <View style={{ gap: 1 }}>
-        <Text style={{ fontSize: 13.5, fontWeight: '700', lineHeight: 17, color: INK.title }} numberOfLines={2}>
-          {e.name}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5 }}>
+          <IconoOrigen origen={origenDe(e)} style={{ marginTop: 2 }} />
+          <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', lineHeight: 17, color: INK.title }} numberOfLines={2}>
+            {e.name}
+          </Text>
+        </View>
         {n ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{n} {n === 1 ? 'elemento' : 'elementos'}</Text> : null}
       </View>
     </Pressable>
@@ -317,6 +324,24 @@ function Chip({ texto, activo, onPress }) {
   );
 }
 
+/**
+ * De quién es, en un ícono: creado para ti (una persona), suyo (un archivo) o
+ * en los dos Codex (unir). Lo dice el ícono; no se escribe al lado.
+ */
+const ORIGENES = {
+  para_ti: { Icono: UserRound, color: TONO.verde, nombre: 'creado en tu Codex' },
+  suyo: { Icono: Archive, color: TONO.arena, nombre: 'en su Codex' },
+  unido: { Icono: GitMerge, color: TONO.ladrillo, nombre: 'en los dos Codex' },
+};
+function IconoOrigen({ origen, style }) {
+  const o = ORIGENES[origen] || ORIGENES.suyo;
+  return (
+    <View accessible accessibilityLabel={o.nombre} style={style}>
+      <o.Icono size={14} color={o.color} strokeWidth={2.2} />
+    </View>
+  );
+}
+
 function Tarjeta({ item, onPress }) {
   const { tema } = estiloDe(item);
   const tipo = nombreTipo(claveTipo(item));
@@ -325,7 +350,7 @@ function Tarjeta({ item, onPress }) {
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.titulo || 'Sin título'}, ${tipo}`}
+      accessibilityLabel={`${item.titulo || 'Sin título'}, ${tipo}, ${(ORIGENES[origenDe(item)] || ORIGENES.suyo).nombre}`}
       style={({ pressed }) => ({
         backgroundColor: 'rgba(255,255,255,0.78)',
         borderWidth: 1,
@@ -350,12 +375,11 @@ function Tarjeta({ item, onPress }) {
           </Text>
         ) : null}
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <IconoOrigen origen={origenDe(item)} />
           <View style={{ backgroundColor: tema.lavado[0], borderWidth: 1, borderColor: tema.lavado[1], borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3 }}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: tema.tinta }}>{tipo}</Text>
           </View>
-          {item.ya_en_mi_codex ? (
-            <Text style={{ fontSize: 11, fontWeight: '600', color: TONO.verde }}>ya lo tenés</Text>
-          ) : item.coincidencia_humano_id ? (
+          {pareceUnoTuyo(item) ? (
             <Text style={{ fontSize: 11, fontWeight: '600', color: TONO.ladrillo }}>se parece a uno tuyo</Text>
           ) : (
             <Text style={{ fontSize: 11, color: INK.meta }}>{haceCuanto(item.created_at || item.fecha)}</Text>
@@ -484,8 +508,9 @@ function Acciones({ item, traer }) {
 }
 
 function AccionPrincipal({ item, traer: t }) {
-  const loTenes = !!(item.ya_en_mi_codex || t.traido);
-  const parecido = !loTenes && !!item.coincidencia_humano_id;
+  // Lo que creó para ti ya está en tu Codex: no hay nada que traer.
+  const loTenes = !!(origenDe(item) !== 'suyo' || t.traido);
+  const parecido = !loTenes && pareceUnoTuyo(item);
   if (loTenes) {
     return (
       <View style={{ height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>

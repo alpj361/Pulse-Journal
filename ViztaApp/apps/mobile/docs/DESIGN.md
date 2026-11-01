@@ -98,6 +98,11 @@ explica: «125 a favor» si se aprobó, «20 en contra» si no. Los rótulos no 
 alargan con palabras que el ícono ya dice («APROBADA · EN ÚNICO DEBATE ·
 INICIATIVA…» pierde la jerarquía): el rótulo queda para *qué* se votó.
 
+**De quién es algo también va en un ícono** (PJ, 1-nov-2026). Donde se mezcla
+lo de un agente con lo de la persona, cada cosa lleva su ícono: una persona si
+el agente lo creó en tu Codex, un archivo si es del agente, el signo de unir
+si está en los dos. Nunca «se parece a uno tuyo» para algo que ya es tuyo.
+
 **Plegar y desplegar llevan su flecha.** «7 votaciones más de esta ley» va con
 la flecha hacia abajo, y al abrir queda «ocultar» con la flecha hacia arriba.
 Un texto suelto que abre o cierra algo no se reconoce como control.
