@@ -24,7 +24,8 @@ export default async function opinarAnalisis(post, { voto, tipo = null, texto = 
   });
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.success) {
-    const e = new Error(json?.message || `El servicio respondió ${res.status}`);
+    // Sin mensaje del servidor no se muestra el código: no le dice nada a quien lee.
+    const e = new Error(json?.message || 'No se pudo enviar. Puede intentarse de nuevo.');
     e.code = json?.code;
     throw e;
   }
