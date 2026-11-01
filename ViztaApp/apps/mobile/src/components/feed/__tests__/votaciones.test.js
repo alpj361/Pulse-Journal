@@ -98,3 +98,10 @@ test('los pasos y las leyes se leen sin la fórmula del Congreso', () => {
   expect(nombreDeLey('Iniciativa que dispone aprobar Ley de Exención Tributaria Temporal de Emergencia al Consumidor de Combustibles.'))
     .toBe('Ley de Exención Tributaria Temporal de Emergencia al Consumidor de Combustibles');
 });
+
+test('la sesión va al lado de la fecha, como la nombra el Congreso', () => {
+  const { fechaYSesion, sesionLegible } = require('../votaciones');
+  expect(sesionLegible('ordinaria · sesión 54')).toBe('Sesión ordinaria 54');
+  expect(fechaYSesion('27 oct 2026', 'ordinaria · sesión 54')).toBe('27 oct 2026 · Sesión ordinaria 54');
+  expect(fechaYSesion('27 oct 2026', null)).toBe('27 oct 2026');
+});

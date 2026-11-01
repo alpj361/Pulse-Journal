@@ -20,6 +20,7 @@ import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
 import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
+import { fechaYSesion } from "../../components/feed/votaciones";
 import { IniciativaDeNota } from "../../components/feed/LegislativoCongreso";
 import { claseDe } from "../../components/feed/clasesCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
@@ -1034,9 +1035,10 @@ export default function Index() {
                   <View key={dia.fecha}>
                     {/* Cada día lleva su fecha, también el primero: lo más
                         reciente del Congreso puede ser de ayer, y sin fecha
-                        se leería como de hoy. */}
+                        se leería como de hoy. Si hubo pleno, al lado va el
+                        número de la sesión. */}
                     <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: n > 0 ? 6 : 16, marginBottom: 18 }}>
-                      {nombreDelDia(dia.fecha).toUpperCase()}
+                      {fechaYSesion(nombreDelDia(dia.fecha), dia.votaciones?.[0]?.sesion).toUpperCase()}
                     </Text>
                     {/* El noticiero es un salto a YouTube; lo demás, los
                         títulos de lo que se vio ese día, sin enlace. */}

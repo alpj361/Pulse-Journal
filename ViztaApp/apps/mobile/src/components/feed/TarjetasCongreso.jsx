@@ -324,7 +324,6 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
       </View>
       {/* De una ley se lee su nombre; el paso que se votó ya va en el rótulo. */}
       <Titulo>{ley ? ley.nombre || legible(v.asunto) : v.asunto}</Titulo>
-      {compacta && v.sesion ? <Text style={{ fontSize: 12, color: INK.meta, marginTop: 5 }}>{v.sesion}</Text> : null}
       {compacta ? null : (
         <View style={{ alignItems: 'center', marginTop: 14 }}>
           <Hemiciclo favor={v.a_favor} contra={v.en_contra} ausentes={v.ausentes} licencia={v.licencia} ancho={Math.min(ancho, 320)} />
@@ -348,7 +347,6 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
         <Flecha size={15} color={INK.faint} />
       </View>
       {abierta ? <Bloques votacionId={v.id} /> : null}
-      {v.sesion && !compacta ? <Text style={{ fontSize: 11.5, color: INK.faint, textAlign: 'center', marginTop: 9 }}>{v.sesion}</Text> : null}
     </Pressable>
   );
 }

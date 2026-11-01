@@ -94,6 +94,20 @@ export function legible(asunto) {
   return base.charAt(0).toUpperCase() + base.slice(1);
 }
 
+/**
+ * La sesión como la nombra el Congreso: «ordinaria · sesión 54» →
+ * «Sesión ordinaria 54». Va al lado de la fecha, no debajo del título.
+ */
+export function sesionLegible(sesion) {
+  const s = String(sesion || '').trim();
+  const m = s.match(/^(\S+)\s*·\s*sesi[oó]n\s*(\d+)$/i);
+  if (m) return `Sesión ${m[1].toLowerCase()} ${m[2]}`;
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : null;
+}
+
+/** La fecha y, al lado, la sesión: «27 oct 2026 · Sesión ordinaria 54». */
+export const fechaYSesion = (fecha, sesion) => [fecha, sesionLegible(sesion)].filter(Boolean).join(' · ');
+
 /** El registro guarda «Iniciativa que dispone aprobar Ley de…»: queda «Ley de…». */
 export function nombreDeLey(titulo) {
   const s = String(titulo || '').trim().replace(/\.$/, '');

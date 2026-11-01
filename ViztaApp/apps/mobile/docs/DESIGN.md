@@ -57,6 +57,9 @@ timeouts, los nombres de las tablas— es asunto nuestro.
 - **El término de la institución.** Cuando algo tiene nombre oficial se usa ese
   nombre, no la descripción del procedimiento: «urgencia nacional», no «en
   único debate».
+- **La fecha va con su referencia oficial.** Lo que ocurrió en una sesión lleva
+  al lado de la fecha el número de sesión, como lo nombra la institución:
+  «27 oct 2026 · Sesión ordinaria 54». No va suelto debajo del título.
 - **El beneficio antes que el mecanismo.** «El mapa se va descubriendo por donde
   andás» dice lo mismo que «monitoreo de regiones en segundo plano», y además
   se entiende.

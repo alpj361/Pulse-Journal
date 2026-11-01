@@ -10,7 +10,7 @@ import Pegatina from './Pegatina';
 import { nombreDelDia } from './congreso';
 import FiltroChips from './FiltroChips';
 import { anoDecreto, buscarRegistro, fechaRegistro, periodoDe, resultadoVotacion } from './organizacion';
-import { TIPOS_VOTACION, agruparVotaciones, enFiltro } from './votaciones';
+import { TIPOS_VOTACION, agruparVotaciones, enFiltro, fechaYSesion } from './votaciones';
 import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS_ETAPA } from './iniciativas';
 
 /**
@@ -534,7 +534,7 @@ export function ListaVotaciones({ onPagina }) {
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
       {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((g) => (
         <View key={g.clave} style={CARD_REGISTRO}>
-          <Text style={{ color: INK.meta, fontSize: 12 }}>{fechaRegistro(g.fecha)}</Text>
+          <Text style={{ color: INK.meta, fontSize: 12 }}>{fechaYSesion(fechaRegistro(g.fecha), (g.principal || g.pasos[0])?.sesion)}</Text>
           <GrupoVotacion grupo={g} nombres={nombres} compacta />
         </View>
       ))}
