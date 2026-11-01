@@ -25,7 +25,6 @@ import { claseDe } from "../../components/feed/clasesCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
 import FiltroChips from "../../components/feed/FiltroChips";
-import { filtrarDias, opcionesCongreso } from "../../components/feed/filtros";
 import { chipsDelFeed, noticiasDelFeed } from "../../components/feed/preferencias";
 import AjustarFeed from "../../components/feed/AjustarFeed";
 import { useFeedStore } from "../../state/feedStore";
@@ -794,9 +793,6 @@ export default function Index() {
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
-  // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
-  const [vistaCongreso, setVistaCongreso] = useState("tablero");
-  const [seccionCongreso, setSeccionCongreso] = useState('todo');
   const [temaFeed, setTemaFeed] = useState('todo');
   // Cómo quiere la persona su feed: del teléfono al pintar, y de la cuenta
   // apenas hay sesión (manda la cuenta, para que siga en otro teléfono).
@@ -862,7 +858,6 @@ export default function Index() {
   const temasFeed = chipsDelFeed(hotTopics, prefsFeed);
   const temaActivo = temasFeed.some((t) => t.clave === temaFeed) ? temaFeed : 'todo';
   const noticiasVisibles = noticiasDelFeed(hotTopics, prefsFeed, temaActivo, (c) => diaGT(c._desde || Date.now()));
-  const diasVisiblesCongreso = filtrarDias(diasCongreso, seccionCongreso);
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
   const marcadoDelFeed =
@@ -989,8 +984,6 @@ export default function Index() {
                   título no va. */}
               <View style={{ flex: 1 }}>
                 {feed === "pais" ? <SectionHeader title="Lo que hay que leer" marcado={marcadoDelFeed} /> : null}
-                {/* En el Congreso, el lugar del título lo ocupa el cambio de vista. */}
-                {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
               </View>
               {/* El ajuste del feed va al lado de «de dónde»: las dos cosas
                   deciden qué se lee, y los chips de abajo solo filtran. */}
@@ -1017,28 +1010,27 @@ export default function Index() {
             {feed === "pais" && hotTopics.length ? (
               <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} />
             ) : null}
-            {feed === "congreso" && vistaCongreso === "tablero" ? (
-              <FiltroChips opciones={opcionesCongreso(diasCongreso)} valor={seccionCongreso} onCambiar={setSeccionCongreso} />
-            ) : null}
             {feed === "observatorio" ? <ObservatorioCC /> : null}
 
 
             {feed === "congreso" ? (
-              vistaCongreso === "organizado" ? (
-                <CongresoOrganizado
-                  dias={diasCongreso || []}
-                  onPagina={irAIniciativas}
-                  onAbrir={(item) => {
-                    evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
-                    setNotaCongreso(item);
-                  }}
-                />
-              ) : cargandoCongreso ? (
+              /* Una sola vista: «Explora el Congreso» plegado arriba y, debajo,
+                 el tablero de los días. Elegir una sección la pone en lugar
+                 del tablero. */
+              <CongresoOrganizado
+                dias={diasCongreso || []}
+                onPagina={irAIniciativas}
+                onAbrir={(item) => {
+                  evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                  setNotaCongreso(item);
+                }}
+              >
+              {cargandoCongreso ? (
                 <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
               ) : !diasCongreso?.length ? (
                 <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
               ) : (
-                !diasVisiblesCongreso.length ? <EstadoFeed sticker="vacio">No hay publicaciones de esta sección en estos días.</EstadoFeed> : diasVisiblesCongreso.map((dia, n) => (
+                diasCongreso.map((dia, n) => (
                   <View key={dia.fecha}>
                     {/* Cada día lleva su fecha, también el primero: lo más
                         reciente del Congreso puede ser de ayer, y sin fecha
@@ -1072,7 +1064,7 @@ export default function Index() {
                             evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
                             setNotaCongreso(item);
                           };
-                          // Las iniciativas van con la misma tarjeta que en «Organizado».
+                          // Las iniciativas van con la misma tarjeta que en su registro.
                           return claseDe(item) === "iniciativa" ? (
                             <IniciativaDeNota key={item.id} item={item} onAbrir={abrir} onEntidad={(e) => setEntityModal(e)} />
                           ) : (
@@ -1088,7 +1080,8 @@ export default function Index() {
                     </View>
                   </View>
                 ))
-              )
+              )}
+              </CongresoOrganizado>
             ) : feed === "observatorio" ? null : hotTopics.length === 0 && cargandoNoticias ? (
               <EstadoFeed sticker="cargando">Trayendo las noticias…</EstadoFeed>
             ) : hotTopics.length === 0 ? (
@@ -1341,53 +1334,6 @@ function SectionHeader({ title, marcado }) {
   );
 }
 
-
-/**
- * Tablero u organizado: las dos formas de ver lo del Congreso.
- *
- * El tablero son los días tal como pasaron —el noticiero, las votaciones, las
- * notas—; organizado es lo mismo de la semana juntado por tema, para encontrar
- * una iniciativa o una comisión sin recorrer día por día.
- */
-function VistasCongreso({ valor, onCambiar }) {
-  const opciones = [
-    ["tablero", "Tablero"],
-    ["organizado", "Organizado"],
-  ];
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignSelf: "flex-start",
-        marginTop: 2,
-        marginBottom: 6,
-        padding: 3,
-        borderRadius: 12,
-        backgroundColor: "rgba(28,43,34,0.06)",
-      }}
-    >
-      {opciones.map(([clave, nombre]) => {
-        const activo = valor === clave;
-        return (
-          <Pressable
-            key={clave}
-            onPress={() => onCambiar(clave)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activo }}
-            style={{
-              paddingVertical: 6,
-              paddingHorizontal: 14,
-              borderRadius: 9,
-              backgroundColor: activo ? "#FFFFFF" : "transparent",
-            }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: activo ? "700" : "500", color: activo ? INK.title : INK.meta }}>{nombre}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 /** Una tarjeta del país que habla del Congreso: también se ve desde allá. */
 const DEL_CONGRESO = /\bcongreso\b|\bdiputad[oa]s?\b|\bbancadas?\b|\bpleno del\b|\blegislativo\b/i;

@@ -4,12 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
-import { Camino, RAYA, Rotulo, TINTA, Titulo, VotacionCongreso, cabezaDe, useDiputados } from './TarjetasCongreso';
+import { Camino, GrupoVotacion, RAYA, Rotulo, TINTA, Titulo, cabezaDe, useDiputados, useNombresDeLeyes } from './TarjetasCongreso';
 import { CLASES, repartirActores } from './clasesCongreso';
 import Pegatina from './Pegatina';
 import { nombreDelDia } from './congreso';
 import FiltroChips from './FiltroChips';
 import { anoDecreto, buscarRegistro, fechaRegistro, periodoDe, resultadoVotacion } from './organizacion';
+import { TIPOS_VOTACION, agruparVotaciones, enFiltro } from './votaciones';
 import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS_ETAPA } from './iniciativas';
 
 /**
@@ -484,39 +485,57 @@ export function Decreto({ decreto: d }) {
   );
 }
 
+/**
+ * El registro de votaciones, juntas por lo que decidieron.
+ *
+ * Se filtra por tipo —leyes, elecciones, acuerdos, trámite—, sin decir que uno
+ * importa más que otro. Cada ley aparece una vez por día, con sus artículos y
+ * enmiendas plegados, y el trámite de cada sesión va en un solo renglón
+ * plegado (ver `votaciones.js`).
+ */
 export function ListaVotaciones({ onPagina }) {
   const q = useQuery({
     queryKey: ['congreso-votaciones-registro'],
-    queryFn: async () => (await registroCompleto('votaciones', 'id, fecha, sesion, asunto, resultado, a_favor, en_contra, ausentes, licencia, iniciativa_numero', 'id'))
+    queryFn: async () => (await registroCompleto('votaciones', 'id, fecha, sesion, asunto, resultado, a_favor, en_contra, ausentes, licencia, iniciativa_numero, decreto', 'id'))
       .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.id).localeCompare(String(a.id))),
     staleTime: 10 * 60 * 1000,
   });
   const [texto, setTexto] = useState('');
+  const [tipo, setTipo] = useState('todas');
   const [resultado, setResultado] = useState('todas');
   const [pagina, setPagina] = useState(1);
   const ancla = useRef(null);
   const datos = q.data || [];
-  const buscadas = datos.filter((v) => buscarRegistro(`${v.asunto || ''} ${v.sesion || ''} ${v.iniciativa_numero || ''}`, texto));
-  const filas = buscadas.filter((v) => resultado === 'todas' || resultadoVotacion(v) === resultado);
+  const grupos = useMemo(() => agruparVotaciones(datos), [datos]);
+  const nombres = useNombresDeLeyes(grupos.map((g) => g.iniciativa)).data || {};
+  const buscados = grupos.filter((g) => buscarRegistro(
+    [g.principal, ...g.pasos].filter(Boolean).map((v) => `${v.asunto || ''} ${v.sesion || ''}`).join(' ') + ` ${g.iniciativa || ''} ${nombres[g.iniciativa] || ''}`, texto));
+  const delTipo = buscados.filter((g) => enFiltro(g, tipo));
+  // El trámite no tiene principal: entra si alguna de sus votaciones tuvo ese resultado.
+  const conResultado = (g, r) => (g.principal ? [g.principal] : g.pasos).some((v) => resultadoVotacion(v) === r);
+  const filas = delTipo.filter((g) => resultado === 'todas' || conResultado(g, resultado));
   const total = Math.max(1, Math.ceil(filas.length / PAGINA));
   const actual = Math.min(pagina, total);
   const cambiar = (n) => { setPagina(n); onPagina?.(ancla.current); };
-  const opciones = [['todas', 'todas'], ['aprobada', 'aprobadas'], ['no_aprobada', 'no aprobadas']];
-  if (buscadas.some((v) => resultadoVotacion(v) === 'sin_resultado')) opciones.push(['sin_resultado', 'sin resultado']);
+  const tipos = [['todas', 'todas'], ...Object.entries(TIPOS_VOTACION).map(([clave, t]) => [clave, t.nombre.toLowerCase()])];
+  const opciones = [['todas', 'cualquier resultado'], ['aprobada', 'aprobadas'], ['no_aprobada', 'no aprobadas']];
+  if (delTipo.some((g) => conResultado(g, 'sin_resultado'))) opciones.push(['sin_resultado', 'sin resultado']);
   return (
     <View>
       <EncabezadoRegistro titulo="Votaciones" datos={datos} />
       <View ref={ancla} collapsable={false}>
-        <BuscadorRegistro valor={texto} onCambiar={(v) => { setTexto(v); setPagina(1); }} etiqueta="buscar votación por asunto o iniciativa" />
+        <BuscadorRegistro valor={texto} onCambiar={(v) => { setTexto(v); setPagina(1); }} etiqueta="buscar votación por asunto, ley o iniciativa" />
+        <FiltroChips valor={tipo} onCambiar={(v) => { setTipo(v); setPagina(1); }} opciones={tipos.map(([clave, nombre]) => ({ clave, nombre,
+          cuenta: buscados.filter((g) => enFiltro(g, clave)).length }))} />
         <FiltroChips valor={resultado} onCambiar={(v) => { setResultado(v); setPagina(1); }} opciones={opciones.map(([clave, nombre]) => ({ clave, nombre,
-          cuenta: clave === 'todas' ? buscadas.length : buscadas.filter((v) => resultadoVotacion(v) === clave).length }))} />
+          cuenta: clave === 'todas' ? delTipo.length : delTipo.filter((g) => conResultado(g, clave)).length }))} />
       </View>
       <EstadoRegistro q={q} vacio={!filas.length} />
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
-      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((v) => (
-        <View key={v.id} style={CARD_REGISTRO}>
-          <Text style={{ color: INK.meta, fontSize: 12 }}>{fechaRegistro(v.fecha)}</Text>
-          <VotacionCongreso votacion={v} compacta />
+      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((g) => (
+        <View key={g.clave} style={CARD_REGISTRO}>
+          <Text style={{ color: INK.meta, fontSize: 12 }}>{fechaRegistro(g.fecha)}</Text>
+          <GrupoVotacion grupo={g} nombres={nombres} compacta />
         </View>
       ))}
       <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="votaciones" />

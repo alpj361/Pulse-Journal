@@ -1,5 +1,4 @@
 import { coincide, enlaceDe, etapaDe, paginasVisibles, paradaDe } from '../iniciativas';
-import { filtrarDias, opcionesCongreso } from '../filtros';
 import { monto } from '../cifras';
 jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
 
@@ -34,17 +33,6 @@ test.each([1, 2, 3, 13, 25, 26])('página %i de 26: extremos y vecinas', (actual
   expect(paginas.length).toBeLessThanOrEqual(7);
 });
 test('lista chica sin saltos', () => expect(paginasVisibles(1, 3)).toEqual([1, 2, 3]));
-const dias = [{ fecha: '2026-10-24', items: [
-  { id: 'n', tipo: 'noticiero' }, { id: 'c', stage: 'dictamen' }, { id: 'p', stage: 'primer_debate' }, { id: 'f', stage: 'otro' },
-], votaciones: [{ id: 'v' }] }];
-test('los filtros separan noticias y votaciones sin modificar los datos', () => {
-  expect(filtrarDias(dias, 'votaciones')[0].items).toEqual([]);
-  expect(filtrarDias(dias, 'pleno')[0].items.map((i) => i.id)).toEqual(['p']);
-  expect(filtrarDias(dias, 'comisiones')[0].votaciones).toEqual([]);
-  expect(opcionesCongreso(dias).map((o) => o.cuenta)).toEqual([4, 1, 1, 1, 1]);
-  expect(dias[0].items).toHaveLength(4);
-  expect(filtrarDias([], 'pleno')).toEqual([]);
-});
 test('los montos conservan la escala y normalizan quetzales', () => {
   expect(monto(40000000, 'quetzales (Q)')).toBe('Q40 millones');
   expect(monto(643000000, 'GTQ')).toBe('Q643 millones');

@@ -48,6 +48,15 @@ timeouts, los nombres de las tablas— es asunto nuestro.
   mayúscula inicial.
 - **Corto.** Un aviso son dos renglones: qué pasa y qué se puede hacer. Si
   hacen falta tres, casi siempre sobra el que explica la mecánica.
+- **Clasificar sin juzgar** (PJ, 1-nov-2026). Un filtro o un grupo dice
+  *qué tipo* de cosa es, no cuánto importa: «leyes», «elecciones», «acuerdos y
+  resoluciones», «trámite de la sesión». Nunca «importantes», «principales» ni
+  «relevantes»: decidir que una votación vale más que otra es una opinión, y
+  la app no la da. Lo que sobra se ordena y se pliega, no se descarta por
+  menor.
+- **El término de la institución.** Cuando algo tiene nombre oficial se usa ese
+  nombre, no la descripción del procedimiento: «urgencia nacional», no «en
+  único debate».
 - **El beneficio antes que el mecanismo.** «El mapa se va descubriendo por donde
   andás» dice lo mismo que «monitoreo de regiones en segundo plano», y además
   se entiende.
@@ -78,6 +87,17 @@ título de arriba:
 Si no hay nada que decir, el renglón no existe: no se pone un texto de reemplazo.
 Lo que sí puede ir es lo que está pasando ahora («Organizar fichas del Codex»),
 y solo mientras sea cierto.
+
+**El estado va en un ícono; el número lo completa** (PJ, 1-nov-2026). Lo que
+ya se sabe por el ícono no se escribe: aprobada es un círculo con visto verde,
+no aprobada un círculo con equis roja. Al lado va solo la cifra que lo
+explica: «125 a favor» si se aprobó, «20 en contra» si no. Los rótulos no se
+alargan con palabras que el ícono ya dice («APROBADA · EN ÚNICO DEBATE ·
+INICIATIVA…» pierde la jerarquía): el rótulo queda para *qué* se votó.
+
+**Plegar y desplegar llevan su flecha.** «7 votaciones más de esta ley» va con
+la flecha hacia abajo, y al abrir queda «ocultar» con la flecha hacia arriba.
+Un texto suelto que abre o cierra algo no se reconoce como control.
 
 **Lo que carga se ve igual en toda la app:** `MorphingInfinity`, nunca la
 ruedita del sistema (`ActivityIndicator`). Y lo nuevo sin leer se nota en la

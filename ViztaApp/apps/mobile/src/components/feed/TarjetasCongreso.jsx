@@ -4,13 +4,14 @@ import { useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, Landmark, UserRound } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, CircleCheck, CircleDashed, CircleX, Landmark, UserRound } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { supabase } from '../../utils/supabase';
 import { normalizar, resultadoVotacion } from './organizacion';
 import { origenDe, titular, traerVotos } from './congreso';
 import { CLASES, claseDe, mayoriaDe, repartirActores } from './clasesCongreso';
 import Pegatina from './Pegatina';
+import { TIPOS_VOTACION, agruparVotaciones, legible, nombreDeLey, nombrePasos, pasoCorto } from './votaciones';
 
 /**
  * Lo del Congreso, cada cosa con la forma que le toca.
@@ -296,7 +297,7 @@ function GrupoVoto({ clave, personas }) {
  * cada bloque. `compacta` es la misma sin el hemiciclo, para cuando van muchas
  * seguidas.
  */
-export function VotacionCongreso({ votacion: v, compacta = false }) {
+export function VotacionCongreso({ votacion: v, compacta = false, ley = null, tipo = null }) {
   // El feed lleva 24 de margen a cada lado.
   const { width } = useWindowDimensions();
   const ancho = width - 48;
@@ -314,8 +315,15 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
       {compacta ? null : (
         <Pegatina texto="Votación" paleta={(aprobada ? CLASES.aprobacion : resultado === 'no_aprobada' ? CLASES.interpelacion : CLASES.noticia).paleta} sticker="congreso-votacion" respaldo="votaciones" id={v.id} style={{ marginBottom: 8 }} />
       )}
-      <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'APROBADA' : resultado === 'no_aprobada' ? 'NO APROBADA' : 'RESULTADO SIN CONFIRMAR'}</Rotulo>
-      <Titulo>{v.asunto}</Titulo>
+      {/* El resultado lo dice el ícono; el rótulo queda para qué se votó. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+        <IconoResultado resultado={resultado} />
+        <Text style={{ flex: 1, fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>
+          {(ley ? [pasoCorto(v.asunto).toUpperCase(), `INICIATIVA ${ley.numero}`] : [TIPOS_VOTACION[tipo]?.rotulo]).filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      {/* De una ley se lee su nombre; el paso que se votó ya va en el rótulo. */}
+      <Titulo>{ley ? ley.nombre || legible(v.asunto) : v.asunto}</Titulo>
       {compacta && v.sesion ? <Text style={{ fontSize: 12, color: INK.meta, marginTop: 5 }}>{v.sesion}</Text> : null}
       {compacta ? null : (
         <View style={{ alignItems: 'center', marginTop: 14 }}>
@@ -345,39 +353,105 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
   );
 }
 
-// Aprobar el orden del día o el acta anterior es trámite: no decide nada.
-const esTramite = (v) => /orden del d[ií]a|acta de la sesi[oó]n/i.test(v.asunto || '');
+/** Los nombres de las leyes que se votaron, del registro de iniciativas. */
+export function useNombresDeLeyes(numeros = []) {
+  const lista = [...new Set(numeros.filter(Boolean))].sort();
+  return useQuery({
+    queryKey: ['congreso-nombres-de-leyes', lista.join(',')],
+    enabled: lista.length > 0,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('iniciativas_app_view').select('numero, titulo').in('numero', lista);
+      if (error) throw error;
+      return Object.fromEntries((data || []).map((i) => [Number(i.numero), nombreDeLey(i.titulo)]));
+    },
+  });
+}
+
+/** Aprobada, no aprobada o sin confirmar: un ícono, sin palabras. */
+export function IconoResultado({ resultado, size = 15 }) {
+  if (resultado === 'aprobada') return <CircleCheck size={size} color={VOTO.favor} accessibilityLabel="aprobada" />;
+  if (resultado === 'no_aprobada') return <CircleX size={size} color={VOTO.contra} accessibilityLabel="no aprobada" />;
+  return <CircleDashed size={size} color={INK.meta} accessibilityLabel="resultado sin confirmar" />;
+}
+
+/** El número que acompaña al ícono: a favor si se aprobó, en contra si no. */
+function cifraDe(v) {
+  const resultado = resultadoVotacion(v);
+  if (resultado === 'aprobada' && v.a_favor != null) return `${v.a_favor} a favor`;
+  if (resultado === 'no_aprobada' && v.en_contra != null) return `${v.en_contra} en contra`;
+  return null;
+}
+
+/** Desplegar y plegar: el texto con su flecha. */
+export function Plegable({ abierto, onPress, texto, color = TINTA }) {
+  const Flecha = abierto ? ChevronUp : ChevronDown;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded: abierto }} accessibilityLabel={abierto ? `ocultar, ${texto}` : texto}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
+      <Flecha size={15} color={color} />
+      <Text style={{ fontSize: 12.5, fontWeight: '600', color }}>{abierto ? 'ocultar' : texto}</Text>
+    </Pressable>
+  );
+}
 
 /**
- * Las votaciones de un día.
+ * Una votación con las que van con ella.
  *
- * Van dos con su hemiciclo: un día puede traer veinte, y veinte hemiciclos
- * seguidos tapan todo lo demás. Las de trámite nunca van con dibujo: abrían
- * cada día con dos medias lunas que no decían nada. El resto se abre de un
- * toque, en renglones sin dibujo.
+ * De una ley se ve la votación que la decide, con el nombre de la ley; los
+ * artículos, enmiendas y la redacción final quedan plegados debajo. De una
+ * elección, quien ganó, y los demás candidatos plegados. El trámite de un día
+ * es solo su rótulo y lo plegado.
+ */
+export function GrupoVotacion({ grupo, nombres = {}, compacta = false }) {
+  const [abierto, setAbierto] = useState(false);
+  const ley = grupo.tipo === 'ley' && grupo.iniciativa ? { numero: grupo.iniciativa, nombre: nombres[grupo.iniciativa] || null } : null;
+  const pasos = nombrePasos(grupo);
+  return (
+    <View style={grupo.principal ? null : { paddingTop: 12 }}>
+      {grupo.principal ? <VotacionCongreso votacion={grupo.principal} compacta={compacta} ley={ley} tipo={grupo.tipo} />
+        : <Rotulo color={INK.meta}>{TIPOS_VOTACION[grupo.tipo].rotulo}</Rotulo>}
+      {pasos ? <Plegable abierto={abierto} onPress={() => setAbierto((x) => !x)} texto={pasos} color={grupo.principal ? TINTA : INK.meta} /> : null}
+      {abierto ? grupo.pasos.map((v) => <Paso key={v.id} votacion={v} corto={grupo.tipo !== 'eleccion' && grupo.tipo !== 'acuerdo'} />) : null}
+    </View>
+  );
+}
+
+/** Un paso plegado: qué se votó, y el ícono del resultado con su número. */
+function Paso({ votacion: v, corto }) {
+  const resultado = resultadoVotacion(v);
+  const cifra = cifraDe(v);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: RAYA }}>
+      <Text style={{ flex: 1, fontSize: 13, lineHeight: 18, color: INK.title }}>{corto ? pasoCorto(v.asunto) : v.asunto}</Text>
+      <IconoResultado resultado={resultado} size={14} />
+      {cifra ? <Text style={{ fontSize: 11.5, color: INK.meta, minWidth: 70 }}>{cifra}</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * Las votaciones de un día, juntas por lo que decidieron.
+ *
+ * Una ley aprobada son quince votaciones: va una, la que la decide, y el resto
+ * plegado bajo ella. Van dos con su hemiciclo: veinte medias lunas seguidas
+ * tapan todo lo demás. El trámite del día (orden del día, actas, mociones)
+ * nunca va con dibujo: es un renglón plegado al final.
  */
 export function VotacionesDelDia({ votaciones = [] }) {
-  const [todas, setTodas] = useState(false);
-  const decisivas = votaciones.filter((v) => !esTramite(v));
-  const resto = [...decisivas.slice(2), ...votaciones.filter(esTramite)];
-  const soloTramite = !decisivas.length;
+  const [mas, setMas] = useState(false);
+  const grupos = useMemo(() => agruparVotaciones(votaciones), [votaciones]);
+  const nombres = useNombresDeLeyes(grupos.map((g) => g.iniciativa)).data || {};
+  const decisivos = grupos.filter((g) => g.tipo !== 'tramite');
+  const tramite = grupos.find((g) => g.tipo === 'tramite');
+  const resto = decisivos.slice(2);
   return (
     <>
-      {decisivas.slice(0, 2).map((v) => (
-        <VotacionCongreso key={v.id} votacion={v} />
-      ))}
-      {todas ? resto.map((v) => <VotacionCongreso key={v.id} votacion={v} compacta />) : null}
-      {resto.length ? (
-        <Pressable onPress={() => setTodas((x) => !x)} accessibilityRole="button" style={{ paddingVertical: 12 }}>
-          <Text style={{ fontSize: 12.5, fontWeight: '600', color: TINTA }}>
-            {todas
-              ? 'Menos votaciones'
-              : soloTramite
-                ? resto.length === 1 ? 'Una votación de trámite ese día' : `${resto.length} votaciones de trámite ese día`
-                : resto.length === 1 ? 'Una votación más ese día' : `${resto.length} votaciones más ese día`}
-          </Text>
-        </Pressable>
-      ) : null}
+      {decisivos.slice(0, 2).map((g) => <GrupoVotacion key={g.clave} grupo={g} nombres={nombres} />)}
+      {mas ? resto.map((g) => <GrupoVotacion key={g.clave} grupo={g} nombres={nombres} compacta />) : null}
+      {resto.length ? <Plegable abierto={mas} onPress={() => setMas((x) => !x)}
+        texto={resto.length === 1 ? 'una votación más ese día' : `${resto.length} votaciones más ese día`} /> : null}
+      {tramite ? <GrupoVotacion grupo={tramite} /> : null}
     </>
   );
 }
