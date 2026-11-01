@@ -62,11 +62,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Leyéndola de `Constants.expoConfig`, hay un solo lugar que declara la
  * versión y todos los demás la reflejan.
  */
-// `0.0.9` se muestra V.009; `0.0.9.1`, V.0091. El cuarto número es de los
-// archivos y no llega al build: iOS no acepta cuatro números en la versión, así
-// que el build nativo sale de `ios.version` y `android.version` en `app.json`.
-const [, , menor = '0', parche = ''] = appConfig.expo.version.split('.');
-const APP_VERSION = `V.${menor.padStart(3, '0')}${parche}`;
+// `0.0.9` se muestra V.009; `0.0.9.1`, V.0091; `0.0.9.9.1`, V.0099.1. Del cuarto
+// número en adelante es de los archivos y no llega al build: iOS no acepta más de
+// tres números en la versión, así que el build nativo sale de `ios.version` y
+// `android.version` en `app.json`.
+const [, , menor = '0', parche = '', ...resto] = appConfig.expo.version.split('.');
+const APP_VERSION = `V.${menor.padStart(3, '0')}${parche}${resto.map((n) => `.${n}`).join('')}`;
 
 function formatDate(isoString) {
   if (!isoString) return '';
