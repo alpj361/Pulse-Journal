@@ -27,6 +27,7 @@ import MorphingInfinity from '../MorphingInfinity';
 import pedirAnalisis from './analizarPost';
 import { SoloLecturaPost, useSoloLecturaPost } from './lectura';
 import useAnalisisPost from './useAnalisisPost';
+import OpinionAnalisis from './OpinionAnalisis';
 import CarruselPost from './CarruselPost';
 import { anotarTexto } from './anotar';
 import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './capaPost';
@@ -825,8 +826,21 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                       </View>
                     </Bloque>
                   ) : null}
+
                 </View>
               )}
+
+              {/* Al pie de las tres vistas: lo que se opina es del análisis entero. */}
+              {analisis && !soloLectura && !muestra ? (
+                <OpinionAnalisis
+                  post={post}
+                  bottomInset={bottomInset}
+                  onCorrigiendo={() => {
+                    registrarAvisos();
+                    onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando', analysis_desde: new Date().toISOString(), analysis_error: null } });
+                  }}
+                />
+              ) : null}
             </Animated.View>
           ) : null}
           </View>
