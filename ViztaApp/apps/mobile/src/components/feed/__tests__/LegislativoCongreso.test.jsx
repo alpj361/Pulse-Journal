@@ -33,9 +33,10 @@ async function esperar() { await act(async () => { await new Promise((r) => setT
 
 beforeEach(() => {
   supabase.from.mockImplementation((tabla) => {
-    const rows = tabla === 'iniciativas_app_view' ? registro : tabla === 'congreso_items_app_view' ? notas : tabla === 'pc_congreso_decretos_view' ? decretos : tabla === 'votaciones' ? votaciones : [{ id: 's', titulo: 'Una propuesta anunciada', estado: 'anunciada', fuentes: [] }];
+    const rows = tabla === 'normas' ? [{ decreto: 'Decreto 10-2026' }] : tabla === 'iniciativas_app_view' ? registro : tabla === 'congreso_items_app_view' ? notas : tabla === 'pc_congreso_decretos_view' ? decretos : tabla === 'votaciones' ? votaciones : [{ id: 's', titulo: 'Una propuesta anunciada', estado: 'anunciada', fuentes: [] }];
     const query = {
       select: () => query, order: () => query, not: () => query, is: () => query,
+      eq: () => Promise.resolve({ data: rows, error: null }),
       range: jest.fn((a, b) => Promise.resolve({ data: rows.slice(a, b + 1), error: null })),
       limit: () => Promise.resolve({ data: rows, error: null }),
     };
@@ -79,7 +80,7 @@ test('filtra por la etapa documentada en una nota y pliega las sin número', asy
 
 test('el PDF se lee en Vizta desde la card cerrada, sin salir al navegador', async () => {
   jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
-  act(() => { renderer = TestRenderer.create(<Iniciativa ini={registro[0]} />); });
+  act(() => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={registro[0]} /></QueryClientProvider>); });
   const link = boton('documento de la iniciativa, iniciativa 7000');
   expect(link).toBeDefined();
   await act(async () => { link.props.onPress(); });
@@ -132,7 +133,7 @@ test('omite el resumen semanal y elige la noticia del río Pinula', () => {
 
 test('abre el resumen completo sin abrir el recorrido', () => {
   const resumen = 'La propuesta cambia las obligaciones municipales y protege las fuentes de agua. '.repeat(8);
-  act(() => { renderer = TestRenderer.create(<Iniciativa ini={registro[0]} resumen={resumen} />); });
+  act(() => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={registro[0]} resumen={resumen} /></QueryClientProvider>); });
   const expansion = boton('leer resumen completo, iniciativa 7000');
   expect(expansion.props.accessibilityState.expanded).toBe(false);
   act(() => expansion.props.onPress());
@@ -177,4 +178,12 @@ test('votaciones: consulta el historial independiente de los días del tablero',
   act(() => renderer.root.findByType(TextInput).props.onChangeText('orden del día'));
   act(() => boton('cualquier resultado, 1').props.onPress());
   expect(texto()).toContain('Aprobación del Orden del Día');
+});
+
+test('una iniciativa cuyo decreto fue vetado dice «vetada», no «aprobada»', async () => {
+  const vetada = { ...registro[0], numero: 6355, decreto_resultante: '10-2026' };
+  await act(async () => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={vetada} /></QueryClientProvider>); });
+  await esperar();
+  expect(texto()).toContain('VETADA');
+  expect(texto()).not.toContain('APROBADA');
 });

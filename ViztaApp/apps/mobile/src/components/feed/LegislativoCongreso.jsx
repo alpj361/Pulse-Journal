@@ -210,11 +210,30 @@ function Reintentar({ children, onPress }) {
     </Pressable></View>;
 }
 
+/**
+ * Los decretos que el Ejecutivo vetó. El Congreso los aprobó, pero no son
+ * ley: su iniciativa dice «vetada», no «aprobada».
+ */
+function useVetados() {
+  const q = useQuery({
+    queryKey: ['normas-vetadas'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('normas').select('decreto').eq('estado', 'vetado');
+      if (error) throw error;
+      return (data || []).map((n) => String(n.decreto || '').replace(/^decreto\s+/i, '').replace(/\s+/g, ''));
+    },
+    staleTime: 60 * 60 * 1000,
+  });
+  return useMemo(() => new Set(q.data || []), [q.data]);
+}
+
 export function Iniciativa({ ini, resumen, notas = [] }) {
   const [abierta, setAbierta] = useState(false);
   const [resumenAbierto, setResumenAbierto] = useState(false);
+  const vetados = useVetados();
   const parada = ini.etapa ?? etapaDe(ini, notas);
-  const rotulo = ROTULOS_ETAPA[parada];
+  const vetada = !!ini.decreto_resultante && vetados.has(String(ini.decreto_resultante).replace(/\s+/g, ''));
+  const rotulo = vetada ? 'VETADA' : ROTULOS_ETAPA[parada];
   const enlace = enlaceDe(ini, notas);
   const [errorEnlace, setErrorEnlace] = useState(false);
   const [leyendo, setLeyendo] = useState(null);

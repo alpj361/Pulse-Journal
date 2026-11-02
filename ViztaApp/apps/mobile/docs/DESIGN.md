@@ -168,6 +168,14 @@ decreto se volvió si ya se aprobó. Al abrir una ley, «En el Congreso» dice d
 qué iniciativa nació y cuáles la quieren cambiar, primero las que siguen en
 trámite.
 
+**Una vetada no es aprobada** (PJ, 2-nov-2026). Si el Ejecutivo vetó el
+decreto, la iniciativa no dice «aprobada»: dice «vetada» (ícono de prohibido,
+rojo apagado), su tarjeta es firme en ese mismo tono, «no entró en vigor» va
+junto al decreto e «iba a cambiar» junto a la ley, nunca «cambió». En la lista
+del Congreso el rótulo dice «VETADA». Aprobada y todavía sin valer del todo
+lleva su estado al lado: «aprobada · pendiente de sanción», «aprobada ·
+vigencia diferida».
+
 **Una ley no repite su nombre** (PJ, 2-nov-2026). El rótulo de arriba no dice
 lo que el título ya dice: sobre «Código de Trabajo» va «DECRETO 1441», no
 «CÓDIGO · DECRETO 1441»; sobre la Constitución, «CONSTITUCIÓN 1985». La

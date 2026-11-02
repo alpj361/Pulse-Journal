@@ -174,9 +174,22 @@ describe('iniciativas al lado de las leyes', () => {
       { numero: 6700, titulo: 'Reformas al Decreto Número 32-2024, Ley de Competencia' },
       { numero: 6400, titulo: 'Ley de Competencia', decreto_resultante: '32-2024' },
     ];
-    const { origen, cambios } = iniciativasDeLey(normas[2], inis);
-    expect(origen.numero).toBe(6400);
+    const { origen, cambios } = iniciativasDeLey(normas[2], inis, normas);
+    expect(origen.ini.numero).toBe(6400);
     expect(cambios.map((c) => c.ini.numero)).toEqual([6700, 6605]);
+    expect(cambios.map((c) => c.rel.aprobada)).toEqual([false, true]);
+  });
+
+  test('vetada: el Congreso la aprobó, pero no es ley ni cambió nada', () => {
+    const conVeto = [...normas, { id: 'veto', titulo: 'Reformas al Código Penal', decreto: 'Decreto 10-2026', tipo: 'ley', estado: 'vetado' }];
+    const ini = { numero: 6355, titulo: 'Iniciativa que dispone aprobar reforma al Decreto Número 17-73, Código Penal.', decreto_resultante: '10-2026' };
+    expect(relacionDe(ini, conVeto)).toMatchObject({ aprobada: false, vetada: true, estadoLey: null });
+    // Desde el Código Penal, la vetada va con las terminadas, después de las que siguen en trámite.
+    const { cambios } = iniciativasDeLey(normas[0], [ini, { numero: 6700, titulo: 'reformas al Código Penal' }], conVeto);
+    expect(cambios.map((c) => [c.ini.numero, c.rel.vetada])).toEqual([[6700, false], [6355, true]]);
+    // Aprobada pero sin sancionar: aprobada, con su estado al lado.
+    const pendiente = [...normas, { id: 'p', titulo: 'Ley X', decreto: 'Decreto 24-2026', tipo: 'ley', estado: 'pendiente_sancion' }];
+    expect(relacionDe({ titulo: 'Ley X', decreto_resultante: '24-2026' }, pendiente)).toMatchObject({ aprobada: true, vetada: false, estadoLey: 'pendiente de sanción' });
   });
 
   test('el rótulo de una ley no repite el título', () => {

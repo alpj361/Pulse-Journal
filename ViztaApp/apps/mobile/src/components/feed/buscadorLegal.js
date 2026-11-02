@@ -270,26 +270,34 @@ export function relacionDe(ini, normas) {
   // Los decretos que nombra y no están en la base: se dicen, sin enlace.
   const conocidos = new Set(cambia.map((n) => numeroDeDecreto(n.decreto)));
   const sinFicha = proposito === 'reforma' ? decretosNombrados(ini.titulo).filter((d) => !conocidos.has(d)).slice(0, 2) : [];
-  return { etapa, aprobada: etapa === 'aprobado' || !!resultante, resultante, proposito, cambia, sinFicha };
+  // El Congreso la aprobó, pero si el Ejecutivo la vetó no es ley: no cambió nada.
+  const vetada = resultante?.estado === 'vetado';
+  const aprobada = !vetada && (etapa === 'aprobado' || !!resultante);
+  // Aprobada y todavía sin valer del todo: pendiente de sanción, vigencia diferida, derogada.
+  const estadoLey = aprobada ? nombreEstado(resultante?.estado) : null;
+  return { etapa, aprobada, vetada, estadoLey, resultante, proposito, cambia, sinFicha };
 }
 
 /**
  * Lo que pasa en el Congreso con una ley: la iniciativa de la que nació y las
  * que la quieren cambiar, primero las que siguen en trámite y las más nuevas.
  */
-export function iniciativasDeLey(norma, iniciativas) {
+export function iniciativasDeLey(norma, iniciativas, normas = []) {
   const numero = numeroDeDecreto(norma?.decreto);
   const origen = numero ? iniciativas.find((i) => String(i.decreto_resultante || '').replace(/\s+/g, '') === numero) || null : null;
+  const indice = normas.some((n) => n.id === norma?.id) ? normas : [...normas, norma];
   const cambios = iniciativas
     .filter((i) => i !== origen && propositoDe(i.titulo) === 'reforma' && leyesNombradas(i.titulo, [norma]).length)
-    .map((i) => ({ ini: i, aprobada: !!i.decreto_resultante || etapaDe(i) === 'aprobado' }))
-    .sort((a, b) => a.aprobada - b.aprobada || b.ini.numero - a.ini.numero);
-  return { origen, cambios };
+    .map((i) => ({ ini: i, rel: relacionDe(i, indice) }))
+    .sort((a, b) => terminada(a.rel) - terminada(b.rel) || b.ini.numero - a.ini.numero);
+  return { origen: origen ? { ini: origen, rel: relacionDe(origen, indice) } : null, cambios };
 }
+
+const terminada = (rel) => Number(rel.aprobada || rel.vetada);
 
 /** Todas las leyes de la base, para reconocerlas en los títulos de las iniciativas. */
 export async function traerIndiceNormas() {
-  const { data, error } = await supabase.from('normas').select('id, titulo, decreto, tipo').eq('indexado', true);
+  const { data, error } = await supabase.from('normas').select('id, titulo, decreto, tipo, estado').eq('indexado', true);
   if (error) throw error;
   return data || [];
 }

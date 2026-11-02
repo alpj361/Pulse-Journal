@@ -3,7 +3,7 @@ import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { BookOpen, ChevronDown, ChevronLeft, ChevronUp, CircleCheck, Clock, FilePlus, FileText, PencilLine, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
+import { Ban, BookOpen, ChevronDown, ChevronLeft, ChevronUp, CircleCheck, Clock, FilePlus, FileText, PencilLine, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
 import { INK, RADIUS, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { ROTULO } from '../colaboradores/piezas';
@@ -327,8 +327,8 @@ function ResultadoIniciativa({ r, ini, normas, onPress, onLey }) {
   const rel = relacionDe(datos, normas);
   return (
     <Animated.View entering={FadeIn.duration(160)}>
-      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${r.numero}, ${rel.aprobada ? 'aprobada' : 'en trámite'}, ${limpiarTitulo(r.titulo)}`}
-        style={({ pressed }) => ({ ...tarjetaIniciativa(rel.aprobada), opacity: pressed ? 0.6 : 1 })}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${r.numero}, ${palabraEtapa(rel)}, ${limpiarTitulo(r.titulo)}`}
+        style={({ pressed }) => ({ ...tarjetaIniciativa(rel), opacity: pressed ? 0.6 : 1 })}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <ScrollText size={12} color={TINTA} strokeWidth={2.4} />
           <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{`INICIATIVA ${r.numero}`}</Text>
@@ -342,20 +342,33 @@ function ResultadoIniciativa({ r, ini, normas, onPress, onLey }) {
   );
 }
 
-const tarjetaIniciativa = (aprobada) => ({
+const VETO = '#A0463C';
+
+/** Punteada en trámite, firme si se aprobó; la vetada, firme y en rojo apagado: terminó sin ser ley. */
+const tarjetaIniciativa = (rel) => ({
   padding: 12, marginTop: 10, borderRadius: 14, borderWidth: 1,
-  borderStyle: aprobada ? 'solid' : 'dashed',
-  borderColor: aprobada ? 'rgba(28,43,34,0.12)' : 'rgba(47,74,122,0.35)',
-  backgroundColor: aprobada ? 'rgba(255,255,255,0.55)' : 'rgba(47,74,122,0.03)',
+  borderStyle: rel.aprobada || rel.vetada ? 'solid' : 'dashed',
+  borderColor: rel.vetada ? 'rgba(160,70,60,0.28)' : rel.aprobada ? 'rgba(28,43,34,0.12)' : 'rgba(47,74,122,0.35)',
+  backgroundColor: rel.vetada ? 'rgba(160,70,60,0.035)' : rel.aprobada ? 'rgba(255,255,255,0.55)' : 'rgba(47,74,122,0.03)',
 });
 
-/** La etapa en un ícono y una palabra: aprobada (visto verde) o dónde va. */
+const palabraEtapa = (rel) => (rel.vetada ? 'vetada' : rel.aprobada ? 'aprobada' : 'en trámite');
+
+/** La etapa en un ícono y una palabra: aprobada (visto verde), vetada o dónde va. */
 function Etapa({ rel }) {
+  if (rel.vetada) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Ban size={11.5} color={VETO} strokeWidth={2.4} />
+        <Text style={{ fontSize: 11.5, color: VETO, fontWeight: '600' }}>vetada</Text>
+      </View>
+    );
+  }
   if (rel.aprobada) {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         <CircleCheck size={12} color="#2E7D4F" strokeWidth={2.4} />
-        <Text style={{ fontSize: 11.5, color: '#2E7D4F', fontWeight: '600' }}>aprobada</Text>
+        <Text style={{ fontSize: 11.5, color: '#2E7D4F', fontWeight: '600' }}>{rel.estadoLey ? `aprobada · ${rel.estadoLey}` : 'aprobada'}</Text>
       </View>
     );
   }
@@ -376,14 +389,14 @@ function Relacion({ rel, onLey }) {
   const filas = [];
   if (rel.resultante) {
     filas.push(
-      <Linea key="es" Icono={CircleCheck} texto="se volvió">
+      <Linea key="es" Icono={rel.vetada ? Ban : CircleCheck} texto={rel.vetada ? 'no entró en vigor' : 'se volvió'}>
         <Chip onPress={rel.resultante.id ? () => onLey(rel.resultante) : null}>{rel.resultante.titulo ? `${rel.resultante.decreto} · ${rel.resultante.titulo}` : rel.resultante.decreto}</Chip>
       </Linea>,
     );
   }
   if (rel.cambia.length || rel.sinFicha.length) {
     filas.push(
-      <Linea key="cambia" Icono={PencilLine} texto={rel.aprobada ? 'cambió' : 'cambiaría'}>
+      <Linea key="cambia" Icono={PencilLine} texto={rel.aprobada ? 'cambió' : rel.vetada ? 'iba a cambiar' : 'cambiaría'}>
         {rel.cambia.map((n) => <Chip key={n.id} onPress={() => onLey(n)}>{n.titulo}</Chip>)}
         {rel.sinFicha.map((d) => <Chip key={d}>{`Decreto ${d}`}</Chip>)}
       </Linea>,
@@ -547,7 +560,7 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onInic
           <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>leer el documento oficial</Text>
         </Pressable>
       ) : null}
-      <EnElCongreso norma={norma} iniciativas={registro.iniciativas} onIniciativa={onIniciativa} />
+      <EnElCongreso norma={norma} iniciativas={registro.iniciativas} normas={registro.normas} onIniciativa={onIniciativa} />
       <View style={{ marginTop: 16, marginBottom: 4 }}>
         <Barra valor={dentro} onCambiar={onDentro} etiqueta="buscar en esta ley" />
       </View>
@@ -563,19 +576,19 @@ const VISIBLES_CONGRESO = 3;
  * Lo que pasa con esta ley en el Congreso: la iniciativa de la que nació y
  * las que la quieren cambiar, primero las que siguen en trámite.
  */
-function EnElCongreso({ norma, iniciativas, onIniciativa }) {
+function EnElCongreso({ norma, iniciativas, normas, onIniciativa }) {
   const [todas, setTodas] = useState(false);
-  const { origen, cambios } = useMemo(() => iniciativasDeLey(norma, iniciativas), [norma, iniciativas]);
+  const { origen, cambios } = useMemo(() => iniciativasDeLey(norma, iniciativas, normas), [norma, iniciativas, normas]);
   if (!origen && !cambios.length) return null;
   const vistas = todas ? cambios : cambios.slice(0, VISIBLES_CONGRESO);
   return (
     <View style={{ marginTop: 18 }}>
       <Parte Icono={ScrollText}>EN EL CONGRESO</Parte>
       {origen ? (
-        <FilaIniciativa ini={origen} detalle="nació de esta iniciativa" aprobada onPress={() => onIniciativa(origen.numero)} />
+        <FilaIniciativa ini={origen.ini} rel={origen.rel} detalle="nació de esta iniciativa" onPress={() => onIniciativa(origen.ini.numero)} />
       ) : null}
-      {vistas.map(({ ini, aprobada }) => (
-        <FilaIniciativa key={ini.numero} ini={ini} aprobada={aprobada} detalle={aprobada ? 'la cambió' : 'la cambiaría'} onPress={() => onIniciativa(ini.numero)} />
+      {vistas.map(({ ini, rel }) => (
+        <FilaIniciativa key={ini.numero} ini={ini} rel={rel} detalle={rel.aprobada ? 'la cambió' : rel.vetada ? 'la iba a cambiar' : 'la cambiaría'} onPress={() => onIniciativa(ini.numero)} />
       ))}
       {cambios.length > VISIBLES_CONGRESO ? (
         <Pressable onPress={() => setTodas((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: todas }}
@@ -588,13 +601,13 @@ function EnElCongreso({ norma, iniciativas, onIniciativa }) {
   );
 }
 
-function FilaIniciativa({ ini, aprobada, detalle, onPress }) {
+function FilaIniciativa({ ini, rel, detalle, onPress }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${ini.numero}, ${detalle}, ${limpiarTitulo(ini.titulo)}`}
-      style={({ pressed }) => ({ ...tarjetaIniciativa(aprobada), padding: 10, marginTop: 8, opacity: pressed ? 0.6 : 1 })}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${ini.numero}, ${palabraEtapa(rel)}, ${detalle}, ${limpiarTitulo(ini.titulo)}`}
+      style={({ pressed }) => ({ ...tarjetaIniciativa(rel), padding: 10, marginTop: 8, opacity: pressed ? 0.6 : 1 })}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{`INICIATIVA ${ini.numero}`}</Text>
-        <Etapa rel={relacionDe(ini, [])} />
+        <Etapa rel={rel} />
       </View>
       <Text numberOfLines={2} style={{ fontSize: 13.5, lineHeight: 19, color: INK.title, marginTop: 4 }}>{limpiarTitulo(ini.titulo)}</Text>
       <Text style={{ fontSize: 12, color: INK.meta, marginTop: 3 }}>{detalle}</Text>
@@ -685,7 +698,7 @@ function IniciativaAbierta({ numero, abajo, registro, onLey }) {
           {/* Antes de la ficha, qué tiene que ver con las leyes: así se sabe
               si es una propuesta suelta o el cambio de una ley que existe. */}
           {rel && (rel.resultante || rel.cambia.length || rel.sinFicha.length || rel.proposito === 'nueva') ? (
-            <View style={{ ...tarjetaIniciativa(rel.aprobada), marginTop: 0, marginBottom: 4 }}>
+            <View style={{ ...tarjetaIniciativa(rel), marginTop: 0, marginBottom: 4 }}>
               <Etapa rel={rel} />
               <Relacion rel={rel} onLey={onLey} />
             </View>
