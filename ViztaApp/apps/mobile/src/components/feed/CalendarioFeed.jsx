@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BadgeCheck, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Hourglass, Landmark, MessagesSquare, Sun, UserCheck, Vote, X,
+  BadgeCheck, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Hourglass, Landmark, ListFilter, MessagesSquare, Sun, UserCheck, Vote, X,
 } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { Cristal } from './SelectorFeed';
@@ -21,11 +21,13 @@ const ICONO = {
 const SEMANA = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
 /**
- * Lo que marca un día en el mes. Lo que dura varios días (una campaña de tres
- * meses) marca su inicio y su fin, no cada día del medio: si no, el mes entero
- * queda pintado y no se distingue nada. Al tocar un día del medio igual aparece.
+ * Lo que marca un día en el mes. Lo de un solo día va en un círculo; lo que
+ * dura varios días (una campaña, un concurso) va como una franja del color de
+ * su tipo que corre de su inicio a su fin, para que se lea como un tramo y no
+ * como muchas fechas sueltas.
  */
-const marcasDelDia = (fechas, d) => fechas.filter((f) => f.fecha === d || f.fin === d);
+export const marcasDelDia = (fechas, d) => fechas.filter((f) => !f.fin && f.fecha === d);
+export const tramoDelDia = (fechas, d) => fechas.find((f) => f.fin && d >= f.fecha && d <= f.fin) || null;
 const hoyGT = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' });
 
 export function useFechasClaves(feed) {
@@ -43,15 +45,18 @@ function nombreLargo(dia) {
 /**
  * El calendario del feed, al lado de «de dónde» se lee.
  *
- * Cerrado es una pastilla con el ícono; con un día elegido, dice cuál y lleva
- * su equis para volver a todos los días. Donde el título ya nombra el día
- * (`conFecha` en falso), la pastilla no lo repite. Abierto, el mes: los días con fechas
- * claves van con el círculo del color de su tipo, y los días con algo
- * publicado en tinta firme. Tocar un día filtra el feed y muestra sus fechas.
+ * Cerrado es una pastilla con el ícono; con el feed filtrado, dice el día y
+ * lleva su equis para volver a todos los días. Donde el título ya nombra el
+ * día (`conFecha` en falso), la pastilla no lo repite.
+ *
+ * Abierto, el mes. Tocar un día solo lo muestra —sus fechas claves, abajo—;
+ * el feed cambia recién con «filtrar el feed por este día». Mirar el
+ * calendario no tiene que mover lo que se estaba leyendo.
  */
 export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true }) {
   const insets = useSafeAreaInsets();
   const [panel, setPanel] = useState(false);
+  const [visto, setVisto] = useState(null); // el día tocado en el mes, filtre o no
   const hoy = hoyGT();
   const base = (dia || hoy).split('-').map(Number);
   const [mes, setMes] = useState({ anio: base[0], mes: base[1] - 1 });
@@ -68,11 +73,17 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
     roce();
     const [a, m] = (dia || hoy).split('-').map(Number);
     setMes({ anio: a, mes: m - 1 });
+    setVisto(dia);
     setPanel(true);
   };
-  const elegir = (d) => {
+  const ver = (d) => {
     roce();
-    onElegir?.(d === dia ? null : d);
+    setVisto((v) => (v === d ? null : d));
+  };
+  const filtrar = (d) => {
+    roce();
+    onElegir?.(d);
+    setPanel(false);
   };
   const mover = (paso) => {
     roce();
@@ -83,7 +94,7 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
   };
 
   const alto = Dimensions.get('window').height;
-  const lista = dia ? delDia(fechas, dia) : proximas(fechas, hoy);
+  const lista = visto ? delDia(fechas, visto) : proximas(fechas, hoy);
 
   return (
     <>
@@ -94,7 +105,7 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
               onPress={abrir}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={dia ? `Mostrando ${nombreLargo(dia)}. Cambiar el día` : 'Calendario de fechas claves'}
+              accessibilityLabel={dia ? `Mostrando ${nombreLargo(dia)}. Abrir el calendario` : 'Calendario de fechas claves'}
               style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingLeft: dia ? 11 : 10, paddingRight: dia ? 4 : 10, opacity: pressed ? 0.6 : 1 })}
             >
               <CalendarDays size={16} color={dia ? TINTA : INK.meta} strokeWidth={2.2} />
@@ -102,7 +113,7 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
             </Pressable>
             {dia ? (
               <Pressable
-                onPress={() => elegir(dia)}
+                onPress={() => { roce(); onElegir?.(null); }}
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Mostrar todos los días"
@@ -129,26 +140,29 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
                 <Cristal radio={RADIUS.xl}>
                   <Animated.View entering={FadeIn.duration(140)}>
                     <ScrollView style={{ maxHeight: alto * 0.78 }} contentContainerStyle={{ padding: 14 }} showsVerticalScrollIndicator={false}>
-                      <Mes anio={mes.anio} mes={mes.mes} hoy={hoy} dia={dia} fechas={fechas} publicados={publicados} onElegir={elegir} onMover={mover} />
+                      <Mes anio={mes.anio} mes={mes.mes} hoy={hoy} visto={visto} filtrado={dia} fechas={fechas} publicados={publicados} onVer={ver} onMover={mover} />
                       <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.08)', marginVertical: 12 }} />
                       <Text style={{ fontSize: 10, fontWeight: '800', color: INK.faint, letterSpacing: 1.2, marginBottom: 8 }}>
-                        {(dia ? nombreLargo(dia) : 'próximas fechas claves').toUpperCase()}
+                        {(visto ? nombreLargo(visto) : 'próximas fechas claves').toUpperCase()}
                       </Text>
                       {lista.length ? (
                         lista.map((f) => (
-                          <FilaFecha key={f.id} fecha={f} conDia={!dia} onPress={dia ? undefined : () => {
+                          <FilaFecha key={f.id} fecha={f} conDia={!visto} onPress={visto ? undefined : () => {
                             const [a, m] = f.fecha.split('-').map(Number);
                             setMes({ anio: a, mes: m - 1 });
-                            elegir(f.fecha);
+                            ver(f.fecha);
                           }} />
                         ))
                       ) : (
                         <Text style={{ fontSize: 13, color: INK.meta, paddingVertical: 6 }}>
-                          {dia ? 'Sin fechas claves este día.' : 'Sin fechas claves por delante.'}
+                          {visto ? 'Sin fechas claves este día.' : 'Sin fechas claves por delante.'}
                         </Text>
                       )}
+                      {visto && visto !== dia ? (
+                        <BotonFiltro onPress={() => filtrar(visto)} etiqueta="filtrar el feed por este día" />
+                      ) : null}
                       {dia ? (
-                        <Pressable onPress={() => elegir(dia)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}>
+                        <Pressable onPress={() => filtrar(null)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}>
                           <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>mostrar todos los días</Text>
                         </Pressable>
                       ) : null}
@@ -164,7 +178,25 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
   );
 }
 
-function Mes({ anio, mes, hoy, dia, fechas, publicados, onElegir, onMover }) {
+/** El único control que cambia el feed desde el calendario. */
+function BotonFiltro({ onPress, etiqueta }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={etiqueta}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+        minHeight: 46, marginTop: 10, borderRadius: RADIUS.pill, backgroundColor: TINTA, opacity: pressed ? 0.8 : 1,
+      })}
+    >
+      <ListFilter size={16} color="#FFFFFF" strokeWidth={2.4} />
+      <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{etiqueta}</Text>
+    </Pressable>
+  );
+}
+
+function Mes({ anio, mes, hoy, visto, filtrado, fechas, publicados, onVer, onMover }) {
   const semanas = semanasDelMes(anio, mes);
   return (
     <View>
@@ -184,33 +216,51 @@ function Mes({ anio, mes, hoy, dia, fechas, publicados, onElegir, onMover }) {
       </View>
       {semanas.map((semana, s) => (
         <View key={s} style={{ flexDirection: 'row' }}>
-          {semana.map((d, i) => (d ? <Dia key={d} dia={d} hoy={hoy} elegido={d === dia} fechas={marcasDelDia(fechas, d)} publicado={publicados.has(d)} onPress={() => onElegir(d)} /> : <View key={i} style={{ flex: 1, height: 42 }} />))}
+          {semana.map((d, i) => (d ? (
+            <Dia key={d} dia={d} columna={i} ultimoDelMes={!semana[i + 1]} hoy={hoy} visto={d === visto} filtrado={d === filtrado}
+              fechas={marcasDelDia(fechas, d)} tramo={tramoDelDia(fechas, d)} conTotal={delDia(fechas, d).length}
+              publicado={publicados.has(d)} onPress={() => onVer(d)} />
+          ) : <View key={i} style={{ flex: 1, height: 42 }} />))}
         </View>
       ))}
     </View>
   );
 }
 
-function Dia({ dia, hoy, elegido, fechas, publicado, onPress }) {
+function Dia({ dia, columna, ultimoDelMes, hoy, visto, filtrado, fechas, tramo, conTotal, publicado, onPress }) {
   const numero = Number(dia.slice(8));
   const color = fechas.length ? TIPOS_FECHA[fechas[0].tipo].color : null;
+  const colorTramo = tramo ? TIPOS_FECHA[tramo.tipo].color : null;
+  // La franja se redondea donde empieza o termina el tramo, y también donde
+  // la corta la semana o el mes.
+  const abre = tramo && (dia === tramo.fecha || columna === 0 || numero === 1);
+  const cierra = tramo && (dia === tramo.fin || columna === 6 || ultimoDelMes);
   const etiqueta = [
     nombreLargo(dia),
-    fechas.length ? `${fechas.length} ${fechas.length === 1 ? 'fecha clave' : 'fechas claves'}` : null,
+    conTotal ? `${conTotal} ${conTotal === 1 ? 'fecha clave' : 'fechas claves'}` : null,
     publicado ? 'con publicaciones' : null,
+    filtrado ? 'el feed muestra este día' : null,
   ].filter(Boolean).join(', ');
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={etiqueta} accessibilityState={{ selected: elegido }}
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={etiqueta} accessibilityState={{ selected: visto }}
       style={{ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center' }}>
+      {tramo ? (
+        <View style={{
+          position: 'absolute', top: 5, bottom: 5, left: abre ? 3 : 0, right: cierra ? 3 : 0,
+          backgroundColor: `${colorTramo}26`,
+          borderTopLeftRadius: abre ? 16 : 0, borderBottomLeftRadius: abre ? 16 : 0,
+          borderTopRightRadius: cierra ? 16 : 0, borderBottomRightRadius: cierra ? 16 : 0,
+        }} />
+      ) : null}
       <View style={{
-        width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: elegido ? TINTA : color ? `${color}2E` : 'transparent',
-        borderWidth: dia === hoy && !elegido ? 1.5 : 0, borderColor: INK.title,
+        width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: visto ? TINTA : color ? `${color}2E` : 'transparent',
+        borderWidth: filtrado && !visto ? 2 : dia === hoy && !visto ? 1.5 : 0, borderColor: filtrado ? TINTA : INK.title,
       }}>
         <Text style={{
           fontSize: 14,
-          fontWeight: elegido || dia === hoy ? '800' : publicado || color ? '600' : '400',
-          color: elegido ? '#FFFFFF' : color ? color : publicado ? INK.title : INK.faint,
+          fontWeight: visto || dia === hoy ? '800' : publicado || color || tramo ? '600' : '400',
+          color: visto ? '#FFFFFF' : color ? color : colorTramo ? colorTramo : publicado ? INK.title : INK.faint,
         }}>{numero}</Text>
       </View>
     </Pressable>

@@ -124,11 +124,14 @@ se arma con la herramienta es lo que se muestra.
 **El calendario filtra el feed y marca cada fecha con su tipo** (PJ,
 1-nov-2026). Va a la par del selector de «de dónde». En el mes, un día con
 fecha clave lleva el círculo del color de su tipo (sesión, plazo, proceso
-electoral, asueto…), nunca un punto; lo que dura varios días marca solo su
-inicio y su fin, para no pintar el mes entero. Los días con publicaciones van
-en tinta firme y los vacíos en gris. Una fecha que todavía no es oficial dice
-«prevista». Elegir un día deja el feed en ese día: arriba sus fechas claves y
-abajo lo publicado; lo que es «de ahora» (tendencias, últimas publicaciones) no
+electoral, asueto…), nunca un punto; lo que dura varios días va como una
+franja de ese color de su inicio a su fin, para que se lea como un tramo. Los
+días con publicaciones van en tinta firme y los vacíos en gris. Una fecha que
+todavía no es oficial dice «prevista». Tocar un día solo muestra sus fechas
+claves: el feed cambia únicamente con el botón «filtrar el feed por este día»,
+que está dentro del calendario. Mirar fechas no mueve lo que se estaba
+leyendo. Filtrado, el feed queda en ese día: arriba sus fechas claves y abajo
+lo publicado; lo que es «de ahora» (tendencias, últimas publicaciones) no
 se muestra mientras se mira otro día. El día se nombra una sola vez: si el
 título ya lo dice, la pastilla queda con el ícono y su equis.
 
