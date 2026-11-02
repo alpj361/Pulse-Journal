@@ -227,6 +227,14 @@ Un texto suelto que abre o cierra algo no se reconoce como control.
 ruedita del sistema (`ActivityIndicator`). Y lo nuevo sin leer se nota en la
 tinta del texto, no en un punto rojo.
 
+**Ajustes es de papel y tinta, como el resto** (PJ, 2-nov-2026). Nada en
+azul ni índigo: ni la versión, ni la cita, ni el rol, ni los interruptores.
+Las hojas que se abren desde Ajustes (iniciar sesión, términos, privacidad,
+apoyo) van en papel con tinta oscura, no en azul noche; el botón principal es
+tinta, y lo que antes era índigo es el verde del orbe. La página corre por
+debajo del orbe, como el feed, y su margen de abajo deja subir lo último por
+encima de él: no termina en seco a la altura del orbe.
+
 ## Permisos: la excepción formal
 
 Los diálogos de permiso del sistema (`Info.plist`) son **la única superficie
