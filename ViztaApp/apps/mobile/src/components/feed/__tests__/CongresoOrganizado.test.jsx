@@ -5,6 +5,7 @@ import { ActividadLista, Entrada } from '../CongresoOrganizado';
 
 jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
 jest.mock('../../Sticker', () => () => null);
+jest.mock('../PlenoDiputados', () => ({ __esModule: true, default: () => null, useDiputados: () => ({ data: undefined }) }));
 jest.mock('react-native-reanimated', () => ({
   __esModule: true, default: { View: require('react-native').View },
   Easing: { out: (v) => v, cubic: (v) => v }, useAnimatedStyle: (fn) => fn(), useSharedValue: (v) => ({ value: v }), withTiming: (v) => v,

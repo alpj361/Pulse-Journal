@@ -103,6 +103,23 @@ lo de un agente con lo de la persona, cada cosa lleva su ícono: una persona si
 el agente lo creó en tu Codex, un archivo si es del agente, el signo de unir
 si está en los dos. Nunca «se parece a uno tuyo» para algo que ya es tuyo.
 
+**Una persona se toca y aparece su ficha** (PJ, 1-nov-2026). En un hemiciclo,
+un mapa o una lista de votos, tocar a alguien abre una ficha emergente sobre
+la pantalla: su foto, su nombre, su bancada y su distrito, y en una votación
+cómo votó, con su ícono. No se navega a otra pantalla ni se escribe el nombre
+debajo del dibujo.
+
+**Un grupo se mira como un distrito** (PJ, 1-nov-2026). En una votación, tocar
+una curul muestra a esa persona en una línea (foto, nombre, bancada y voto),
+sin abrir nada encima; tocar un voto («122 a favor») o una bancada muestra las
+fotos de todos los de ese grupo, como al tocar un distrito en el mapa, y el
+resto de las curules se apaga. La ficha completa se abre desde una foto, para
+quien quiera ver más.
+
+**Las listas de referencia salen de los datasets de Vizta** (PJ, 1-nov-2026).
+Los diputados son el dataset «Congreso de Guatemala»; no una tabla aparte del
+servidor. Lo que se arma con la herramienta es lo que se muestra.
+
 **Plegar y desplegar llevan su flecha.** «7 votaciones más de esta ley» va con
 la flecha hacia abajo, y al abrir queda «ocultar» con la flecha hacia arriba.
 Un texto suelto que abre o cierra algo no se reconoce como control.

@@ -8,7 +8,9 @@ import { ChevronDown, ChevronUp, CircleCheck, CircleDashed, CircleX, Landmark, U
 import { INK, SERIF } from '../theme';
 import { supabase } from '../../utils/supabase';
 import { normalizar, resultadoVotacion } from './organizacion';
-import { origenDe, titular, traerVotos } from './congreso';
+import { origenDe, titular } from './congreso';
+import { COLOR_VOTO, curulesDelHemiciclo, traerDiputados } from './diputados';
+import { VotosDelPleno } from './PlenoDiputados';
 import { CLASES, claseDe, mayoriaDe, repartirActores } from './clasesCongreso';
 import Pegatina from './Pegatina';
 import { TIPOS_VOTACION, agruparVotaciones, legible, nombreDeLey, nombrePasos, pasoCorto } from './votaciones';
@@ -28,7 +30,7 @@ import { TIPOS_VOTACION, agruparVotaciones, legible, nombreDeLey, nombrePasos, p
 // El color del Congreso en el feed, y los de un voto.
 export const TINTA = '#2F4A7A';
 export const RAYA = 'rgba(28,43,34,0.09)';
-const VOTO = { favor: '#15803D', contra: '#B91C1C', ausente: 'rgba(28,43,34,0.28)', licencia: 'rgba(28,43,34,0.12)' };
+const VOTO = COLOR_VOTO;
 
 const TOTAL = 160;
 const MAYORIA = 81; // mayoría absoluta
@@ -127,21 +129,7 @@ export function Camino({ etapa }) {
  * de un golpe. No dice dónde se sienta nadie.
  */
 function Hemiciclo({ favor = 0, contra = 0, ausentes = 0, licencia = 0, ancho = 300 }) {
-  const curules = useMemo(() => {
-    const FILAS = [16, 18, 20, 22, 26, 28, 30]; // de adentro hacia afuera; suma 160
-    const puntos = [];
-    const R0 = 0.42;
-    const paso = (1 - R0) / (FILAS.length - 1);
-    FILAS.forEach((cuantas, f) => {
-      const r = R0 + paso * f;
-      for (let i = 0; i < cuantas; i += 1) {
-        const a = Math.PI - (Math.PI * (i + 0.5)) / cuantas;
-        puntos.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, a });
-      }
-    });
-    // De izquierda a derecha, y dentro de cada ángulo de adentro hacia afuera.
-    return puntos.sort((p, q) => q.a - p.a);
-  }, []);
+  const curules = useMemo(() => curulesDelHemiciclo(), []);
 
   const alto = ancho / 2 + 6;
   const R = ancho / 2 - 5;
@@ -165,126 +153,6 @@ function Conteo({ color, cuantos, nombre }) {
       <Text style={{ fontSize: 12, color: INK.body }}>
         <Text style={{ fontWeight: '700', color: INK.title }}>{cuantos}</Text> {nombre}
       </Text>
-    </View>
-  );
-}
-
-// ─── Cómo votó cada bloque ───────────────────────────────────────────────────
-
-const CLAVE_VOTO = { 'A FAVOR': 'favor', 'EN CONTRA': 'contra', AUSENTE: 'ausente', LICENCIA: 'licencia' };
-const ORDEN_VOTO = ['favor', 'contra', 'ausente', 'licencia'];
-
-/** Los 160 votos, juntados por bloque, del bloque más grande al más chico. */
-function porBloque(votos) {
-  const bloques = new Map();
-  for (const v of votos) {
-    const nombre = v.bloque || 'Sin bloque';
-    const b = bloques.get(nombre) || { nombre, total: 0, favor: 0, contra: 0, ausente: 0, licencia: 0 };
-    const clave = CLAVE_VOTO[String(v.voto || '').toUpperCase()];
-    if (clave) b[clave] += 1;
-    b.total += 1;
-    bloques.set(nombre, b);
-  }
-  return [...bloques.values()].sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre));
-}
-
-/** «VAMOS» → «Vamos»; las siglas cortas (UNE, PU, VOS) se quedan como están. */
-const nombreDeBloque = (n) => (n.length <= 3 ? n : n.charAt(0) + n.slice(1).toLowerCase());
-
-/**
- * Cada bloque, con cómo votaron los suyos.
- *
- * El largo de la barra es el tamaño del bloque y sus colores, el voto de cada
- * diputado: así se ve de un golpe quién votó junto y quién se partió. Sale de
- * los votos nominales, no de un resumen.
- */
-function Bloques({ votacionId }) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['congreso-votos', votacionId],
-    queryFn: () => traerVotos(votacionId),
-    staleTime: 60 * 60 * 1000,
-  });
-  const bloques = useMemo(() => porBloque(data || []), [data]);
-
-  if (isLoading) return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Trayendo los votos…</Text>;
-  if (isError || !bloques.length) {
-    return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Los votos de cada diputado no están por ahora.</Text>;
-  }
-  const mayor = bloques[0].total;
-
-  return (
-    <View style={{ marginTop: 12, gap: 7 }}>
-      {bloques.map((b) => (
-        <View key={b.nombre} style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text numberOfLines={1} style={{ width: 104, fontSize: 12, color: INK.title }}>
-            {nombreDeBloque(b.nombre)}
-          </Text>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', width: `${Math.max(4, (b.total / mayor) * 100)}%` }}>
-              {ORDEN_VOTO.map((clave) => (b[clave] ? <View key={clave} style={{ flex: b[clave], backgroundColor: VOTO[clave] }} /> : null))}
-            </View>
-          </View>
-          <Text style={{ width: 26, textAlign: 'right', fontSize: 11.5, color: INK.faint }}>{b.total}</Text>
-        </View>
-      ))}
-      <PorPersona votos={data} />
-    </View>
-  );
-}
-
-const NOMBRE_VOTO = { favor: 'A favor', contra: 'En contra', ausente: 'Ausentes', licencia: 'Con licencia' };
-
-/**
- * Quién votó qué, por nombre: un renglón por voto, plegado, con cuántos son.
- * Abierto, los diputados de ese voto ordenados por bloque, para que se vea
- * quién de cada bancada se fue por su lado.
- */
-function PorPersona({ votos }) {
-  const grupos = useMemo(() => {
-    const g = { favor: [], contra: [], ausente: [], licencia: [] };
-    for (const v of votos || []) {
-      const clave = CLAVE_VOTO[String(v.voto || '').toUpperCase()];
-      if (clave) g[clave].push(v);
-    }
-    for (const k of Object.keys(g)) {
-      g[k].sort((a, b) => String(a.bloque).localeCompare(String(b.bloque)) || String(a.diputado).localeCompare(String(b.diputado)));
-    }
-    return g;
-  }, [votos]);
-
-  return (
-    <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: RAYA }}>
-      {ORDEN_VOTO.map((clave) => (grupos[clave].length ? <GrupoVoto key={clave} clave={clave} personas={grupos[clave]} /> : null))}
-    </View>
-  );
-}
-
-function GrupoVoto({ clave, personas }) {
-  const [abierto, setAbierto] = useState(false);
-  const Flecha = abierto ? ChevronUp : ChevronDown;
-  return (
-    <View style={{ borderBottomWidth: 1, borderBottomColor: RAYA }}>
-      <Pressable
-        onPress={() => setAbierto((x) => !x)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: abierto }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
-      >
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: VOTO[clave] }} />
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: INK.title }}>{NOMBRE_VOTO[clave]}</Text>
-        <Text style={{ fontSize: 12.5, color: INK.faint }}>{personas.length}</Text>
-        <Flecha size={15} color={INK.faint} />
-      </Pressable>
-      {abierto ? (
-        <View style={{ paddingBottom: 10, paddingLeft: 16 }}>
-          {personas.map((p, i) => (
-            <View key={`${p.diputado}-${i}`} style={{ flexDirection: 'row', gap: 8, paddingVertical: 3 }}>
-              <Text style={{ flex: 1, fontSize: 13, color: INK.title }}>{p.diputado}</Text>
-              <Text style={{ fontSize: 11.5, color: INK.faint }}>{p.bloque ? nombreDeBloque(p.bloque) : ''}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -346,7 +214,7 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
         <Conteo color={VOTO.licencia} cuantos={v.licencia} nombre="con licencia" />
         <Flecha size={15} color={INK.faint} />
       </View>
-      {abierta ? <Bloques votacionId={v.id} /> : null}
+      {abierta ? <VotosDelPleno votacionId={v.id} /> : null}
     </Pressable>
   );
 }
@@ -607,18 +475,13 @@ export function ItemCongreso({ item, ultimo = false, onPress, onEntidad }) {
   );
 }
 
-/** Los 160 diputados con su bloque, para saber quién de los nombrados es uno. */
+/**
+ * Los 160 diputados con su bloque, para saber quién de los nombrados es uno.
+ * Salen del dataset «Congreso de Guatemala», la misma lista del hemiciclo.
+ */
 export function useDiputados() {
-  const { data } = useQuery({
-    queryKey: ['congreso-diputados'],
-    queryFn: async () => {
-      const { data: filas, error } = await supabase.from('diputados').select('nombre, bloque').eq('activo', true);
-      if (error) throw error;
-      return filas || [];
-    },
-    staleTime: 24 * 60 * 60 * 1000,
-  });
-  return data || SIN_DIPUTADOS;
+  const { data } = useQuery({ queryKey: ['congreso-diputados'], queryFn: traerDiputados, staleTime: 6 * 60 * 60 * 1000 });
+  return useMemo(() => (data ? data.map((d) => ({ nombre: d.nombre, bloque: d.sigla === 'IND' ? 'INDEPENDIENTE' : d.sigla })) : SIN_DIPUTADOS), [data]);
 }
 const SIN_DIPUTADOS = [];
 

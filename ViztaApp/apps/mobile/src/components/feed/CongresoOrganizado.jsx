@@ -9,9 +9,10 @@ import { organizar, traerArchivoCongreso } from './congreso';
 import { BuscadorRegistro, CARD_REGISTRO, CuentaRegistro, ListaIniciativas, ListaLeyes, ListaVotaciones, Paginado, useConteosLegislativos } from './LegislativoCongreso';
 import { Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from './TarjetasCongreso';
 import FiltroChips from './FiltroChips';
+import PlenoDiputados, { useDiputados } from './PlenoDiputados';
 import { buscarRegistro, fechaRegistro, periodoDe } from './organizacion';
 
-const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones']];
+const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones'], ['diputados', 'Diputados']];
 const ACTIVIDAD = [['comisiones', 'Comisiones y citaciones'], ['pleno', 'Pleno y sesiones'], ['fiscalizacion', 'Fiscalización y actividad']];
 const NOMBRES = Object.fromEntries([...REGISTROS, ...ACTIVIDAD]);
 
@@ -27,11 +28,13 @@ export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }
   const [alcance, setAlcance] = useState('reciente');
   const anclaSeccion = useRef(null);
   const registro = useConteosLegislativos();
+  const diputados = useDiputados({ enabled: abierto || elegida === 'diputados' });
   const archivo = useQuery({ queryKey: ['congreso-archivo-noticias'], queryFn: traerArchivoCongreso,
     enabled: alcance === 'historial', staleTime: 10 * 60 * 1000 });
   const fuente = alcance === 'historial' ? archivo.data || [] : dias || [];
   const secciones = useMemo(() => organizar(fuente), [fuente]);
-  const cuantas = (clave) => REGISTROS.some(([c]) => c === clave) ? registro.data?.[clave] : (secciones[clave] || []).length;
+  const cuantas = (clave) => clave === 'diputados' ? diputados.data?.length
+    : REGISTROS.some(([c]) => c === clave) ? registro.data?.[clave] : (secciones[clave] || []).length;
   const elegir = (clave) => { setElegida(clave); setAbierto(false); onPagina?.(anclaSeccion.current); };
   const esRegistro = REGISTROS.some(([c]) => c === elegida);
   const periodo = periodoDe(fuente, 'fecha');
@@ -42,7 +45,7 @@ export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }
         style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginBottom: 8 }}>
         {elegida ? <Sticker nombre={elegida} size={30} /> : null}
         <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{elegida ? NOMBRES[elegida] : 'Explora el Congreso'}</Text>
-          {!abierto ? <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>{elegida ? 'cambiar sección' : 'iniciativas, leyes, votaciones y actividad'}</Text> : null}</View>
+          {!abierto ? <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>{elegida ? 'cambiar sección' : 'iniciativas, leyes, votaciones, diputados y actividad'}</Text> : null}</View>
         {abierto ? <ChevronUp size={17} color={INK.meta} /> : <ChevronDown size={17} color={INK.meta} />}
       </Pressable>
       {elegida ? <Pressable onPress={() => { setElegida(null); setAbierto(false); }} accessibilityRole="button" accessibilityLabel="ver el tablero de los días"
@@ -57,6 +60,7 @@ export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }
       {elegida === 'iniciativas' ? <ListaIniciativas onPagina={onPagina} /> : null}
       {elegida === 'leyes' ? <ListaLeyes onPagina={onPagina} /> : null}
       {elegida === 'votaciones' ? <ListaVotaciones onPagina={onPagina} /> : null}
+      {elegida === 'diputados' ? <PlenoDiputados /> : null}
       {!elegida ? children : null}
       {elegida && !esRegistro ? <>
         <FiltroChips valor={alcance} onCambiar={setAlcance} opciones={[

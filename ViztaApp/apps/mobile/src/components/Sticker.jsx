@@ -59,6 +59,7 @@ const STICKER = {
   votaciones: require('../../assets/stickers/congreso/votacion.png'),
   fiscalizacion: require('../../assets/stickers/fiscalizacion.png'),
   leyes: require('../../assets/stickers/leyes.png'),
+  diputados: require('../../assets/stickers/congreso/eleccion.png'),
   // Cada clase del tablero del Congreso (ver feed/clasesCongreso.js).
   'congreso-aprobacion': require('../../assets/stickers/congreso/aprobacion.png'),
   'congreso-votacion': require('../../assets/stickers/congreso/votacion.png'),
