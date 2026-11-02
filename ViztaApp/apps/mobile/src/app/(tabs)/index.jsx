@@ -46,6 +46,7 @@ function EstadoFeed({ sticker, children }) {
 import SelectorFeed, { Cristal } from "../../components/feed/SelectorFeed";
 import { enYouTube, nombreDelDia, traerCongreso, traerDiaCongreso } from "../../components/feed/congreso";
 import CalendarioFeed, { FechasDelDia } from "../../components/feed/CalendarioFeed";
+import BuscadorLegal from "../../components/feed/BuscadorLegal";
 import { TEMAS_DEL_FEED, fechaMedia } from "../../components/feed/fechasClaves";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
@@ -1056,6 +1057,9 @@ export default function Index() {
                     </Cristal>
                   </Pressable>
                 ) : null}
+                {/* El buscador legal (leyes, artículos, iniciativas) va antes
+                    del calendario. Por ahora, solo en el Congreso. */}
+                {feed === "congreso" ? <BuscadorLegal /> : null}
                 {/* El calendario va a la par: elige un día y el feed se queda
                     con ese día. Por ahora, solo en el Congreso. */}
                 {TEMAS_DEL_FEED[feed] ? <CalendarioFeed feed={feed} dia={diaFeed} onElegir={setDiaFeed} conFecha={feed !== "pais"} /> : null}

@@ -141,6 +141,21 @@ lo publicado; lo que es «de ahora» (tendencias, últimas publicaciones) no
 se muestra mientras se mira otro día. El día se nombra una sola vez: si el
 título ya lo dice, la pastilla queda con el ícono y su equis.
 
+**El buscador legal busca en todo lo indexado** (PJ, 2-nov-2026). Por ahora
+va en el Congreso, a la par del calendario: una pastilla con un libro y su
+lupa. Abre una hoja con la barra de búsqueda; sin escribir nada muestra la
+Constitución y los códigos. Busca a la vez en leyes, artículos e
+iniciativas, por palabras (encuentra sus variantes) o por frase entre
+comillas, y entiende «art 102 constitución». Lo que coincide va en negrita,
+y lo que más coincide va primero, sea del tipo que sea. Si ningún texto
+tiene todas las palabras, se busca con alguna y se dice en una línea. Los
+filtros por tipo aparecen solo cuando hay más de un tipo. El fragmento no
+repite lo que ya está arriba (el título, «Artículo 102.») ni dice de dónde
+salió el texto. Una ley se abre con todos sus artículos y su propia barra
+para buscar adentro, que muestra el pedazo donde aparece lo buscado; un
+artículo abre su ley parada en él. Del PDF no pasan los encabezados de
+página, y el título de una sección va arriba del artículo que la abre.
+
 **Un agente trabajando lleva el diamante al lado del nombre** (PJ,
 1-nov-2026). Mientras un agente hace algo (usó una herramienta hace un par de
 minutos o tiene una tarea en curso), al lado de su nombre, en la lista y en la

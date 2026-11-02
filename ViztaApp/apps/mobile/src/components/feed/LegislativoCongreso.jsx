@@ -30,7 +30,7 @@ const fechaCorta = (f) => (f ? nombreDelDia(String(f).slice(0, 10)) : null);
 
 // ─── Iniciativas ─────────────────────────────────────────────────────────────
 
-const COLUMNAS_INICIATIVA =
+export const COLUMNAS_INICIATIVA =
   'numero, titulo, ponentes, comisiones, estado_actual, fecha_presentacion, fecha_conocio_pleno, url_ficha, url_pdf, fuente_presentacion_url, eventos_timeline, decreto_resultante';
 
 /** Lee lotes acotados, sin depender del límite de filas configurado en la base. */
@@ -351,7 +351,7 @@ export function IniciativaDeNota({ item, onAbrir, onEntidad }) {
 }
 
 /** El registro guarda «Iniciativa que dispone aprobar…»: se quita lo que no dice nada. */
-function limpiarTitulo(t) {
+export function limpiarTitulo(t) {
   const s = String(t || '').trim().replace(/\.$/, '');
   const sin = s.replace(/^iniciativa que (dispone aprobar|propone|dispone)\s+/i, '');
   return sin.charAt(0).toUpperCase() + sin.slice(1);
