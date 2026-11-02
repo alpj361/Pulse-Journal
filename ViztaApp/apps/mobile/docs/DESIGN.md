@@ -127,8 +127,11 @@ Congreso; en Guatemala no aparece. En el mes, un día con
 fecha clave lleva el círculo del color de su tipo (sesión, plazo, proceso
 electoral, asueto…), nunca un punto; lo que dura varios días va como una
 franja de ese color de su inicio a su fin, para que se lea como un tramo. Los
-días con publicaciones van en tinta firme y los vacíos en gris. Una fecha que
-todavía no es oficial dice «prevista». Tocar un día solo muestra sus fechas
+días con publicaciones van en tinta firme y los vacíos en gris. En la lista
+de próximas fechas, el día va en un mini calendario a la izquierda (el número
+y el mes abreviado, en el color del tipo), no escrito en el subtítulo; debajo
+del título, el tipo en una pastilla («reunión»), la hora con un relojito y
+«aprox.» cuando la fecha todavía no es oficial. Tocar un día solo muestra sus fechas
 claves. El filtro es un ícono al lado del mes: mientras está encendido (queda
 marcado), el día que se toque es el que muestra el feed, salvo los días que
 aún no llegan, que solo muestran sus fechas; apagarlo vuelve a todos los días.

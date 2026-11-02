@@ -4,13 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BadgeCheck, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Hourglass, Landmark, ListFilter, MessagesSquare, Sun, UserCheck, Vote, X,
+  BadgeCheck, CalendarDays, CalendarRange, ChevronLeft, Clock, ChevronRight, Hourglass, Landmark, ListFilter, MessagesSquare, Sun, UserCheck, Vote, X,
 } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { Cristal } from './SelectorFeed';
 import { roce } from '../../utils/haptics';
 import {
-  MESES, TIPOS_FECHA, delDia, delFeed, fechaCorta, proximas, rangoDe, semanasDelMes, traerDiasConPublicaciones, traerFechasClaves,
+  MESES, TIPOS_FECHA, delDia, delFeed, fechaCorta, fechaMedia, proximas, rangoDe, semanasDelMes, traerDiasConPublicaciones, traerFechasClaves,
 } from './fechasClaves';
 
 const TINTA = '#2F4A7A';
@@ -265,28 +265,67 @@ function Dia({ dia, columna, ultimoDelMes, hoy, visto, filtrado, fechas, tramo, 
   );
 }
 
-/** Una fecha clave: el ícono de su tipo, el título y lo que hace falta saber de ella. */
+/**
+ * Una fecha clave. En «próximas» (`conDia`) el día va en un mini calendario a
+ * la izquierda —el número grande y el mes abreviado—, no escrito en el
+ * subtítulo; en la vista de un día, el ícono de su tipo. Debajo del título, el
+ * tipo en una pastilla, la hora con su reloj y «aprox.» si todavía no es
+ * oficial.
+ */
 export function FilaFecha({ fecha: f, conDia, onPress }) {
   const tipo = TIPOS_FECHA[f.tipo];
   const Icono = ICONO[f.tipo] || CalendarDays;
-  const meta = [conDia && !f.fin ? fechaCorta(f.fecha) : null, rangoDe(f), tipo.nombre, f.hora, f.prevista ? 'prevista' : null].filter(Boolean).join(' · ');
+  const rango = f.fin ? (conDia ? `hasta el ${fechaMedia(f.fin)}` : rangoDe(f)) : null;
+  const etiqueta = [f.titulo, conDia ? fechaMedia(f.fecha) : null, rango, tipo.nombre, f.hora, f.prevista ? 'fecha aproximada' : null]
+    .filter(Boolean).join(', ');
   const contenido = (
-    <View style={{ flexDirection: 'row', gap: 10, paddingVertical: 8 }}>
-      <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: `${tipo.color}1F` }}>
-        <Icono size={15} color={tipo.color} strokeWidth={2.2} />
-      </View>
+    <View style={{ flexDirection: 'row', gap: 12, paddingVertical: 8 }}>
+      {conDia ? (
+        <MiniCalendario dia={f.fecha} color={tipo.color} />
+      ) : (
+        <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: `${tipo.color}1F` }}>
+          <Icono size={15} color={tipo.color} strokeWidth={2.2} />
+        </View>
+      )}
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 14, lineHeight: 19, fontWeight: '600', color: INK.title }}>{f.titulo}</Text>
-        <Text style={{ fontSize: 11.5, color: INK.meta, marginTop: 2 }}>{meta}</Text>
-        {f.detalle && !conDia ? <Text style={{ fontSize: 13, lineHeight: 19, color: INK.body, marginTop: 4 }}>{f.detalle}</Text> : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 5 }}>
+          <View style={{ paddingHorizontal: 8, height: 20, borderRadius: 10, justifyContent: 'center', backgroundColor: `${tipo.color}1F` }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: tipo.color }}>{tipo.nombre}</Text>
+          </View>
+          {f.hora ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Clock size={12} color={INK.meta} strokeWidth={2.2} />
+              <Text style={{ fontSize: 11.5, color: INK.meta }}>{f.hora}</Text>
+            </View>
+          ) : null}
+          {rango ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{rango}</Text> : null}
+          {f.prevista ? <Text style={{ fontSize: 11.5, color: INK.meta, fontStyle: 'italic' }}>aprox.</Text> : null}
+        </View>
+        {f.detalle && !conDia ? <Text style={{ fontSize: 13, lineHeight: 19, color: INK.body, marginTop: 6 }}>{f.detalle}</Text> : null}
       </View>
     </View>
   );
   return onPress ? (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${f.titulo}, ${meta}`} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={etiqueta} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
       {contenido}
     </Pressable>
-  ) : contenido;
+  ) : <View accessible accessibilityLabel={etiqueta}>{contenido}</View>;
+}
+
+/** La hojita de calendario: el mes abreviado arriba, en el color del tipo, y el día. */
+function MiniCalendario({ dia, color }) {
+  const [, m, d] = dia.split('-').map(Number);
+  return (
+    <View style={{ width: 40, height: 44, borderRadius: 9, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(28,43,34,0.10)', backgroundColor: 'rgba(255,255,255,0.85)' }}>
+      <View style={{ height: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: color }}>
+        <Text style={{ fontSize: 9, fontWeight: '800', letterSpacing: 0.6, color: '#FFFFFF' }}>{MESES[m - 1].slice(0, 3).toUpperCase()}</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 17, fontWeight: '700', color: INK.title }}>{d}</Text>
+      </View>
+    </View>
+  );
 }
 
 /**
