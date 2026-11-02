@@ -117,8 +117,20 @@ resto de las curules se apaga. La ficha completa se abre desde una foto, para
 quien quiera ver más.
 
 **Las listas de referencia salen de los datasets de Vizta** (PJ, 1-nov-2026).
-Los diputados son el dataset «Congreso de Guatemala»; no una tabla aparte del
-servidor. Lo que se arma con la herramienta es lo que se muestra.
+Los diputados son el dataset «Congreso de Guatemala» y las fechas del
+calendario, el dataset «Fechas claves»; no tablas aparte del servidor. Lo que
+se arma con la herramienta es lo que se muestra.
+
+**El calendario filtra el feed y marca cada fecha con su tipo** (PJ,
+1-nov-2026). Va a la par del selector de «de dónde». En el mes, un día con
+fecha clave lleva el círculo del color de su tipo (sesión, plazo, proceso
+electoral, asueto…), nunca un punto; lo que dura varios días marca solo su
+inicio y su fin, para no pintar el mes entero. Los días con publicaciones van
+en tinta firme y los vacíos en gris. Una fecha que todavía no es oficial dice
+«prevista». Elegir un día deja el feed en ese día: arriba sus fechas claves y
+abajo lo publicado; lo que es «de ahora» (tendencias, últimas publicaciones) no
+se muestra mientras se mira otro día. El día se nombra una sola vez: si el
+título ya lo dice, la pastilla queda con el ícono y su equis.
 
 **Plegar y desplegar llevan su flecha.** «7 votaciones más de esta ley» va con
 la flecha hacia abajo, y al abrir queda «ocultar» con la flecha hacia arriba.

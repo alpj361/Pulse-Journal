@@ -44,7 +44,9 @@ function EstadoFeed({ sticker, children }) {
   );
 }
 import SelectorFeed, { Cristal } from "../../components/feed/SelectorFeed";
-import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
+import { enYouTube, nombreDelDia, traerCongreso, traerDiaCongreso } from "../../components/feed/congreso";
+import CalendarioFeed, { FechasDelDia } from "../../components/feed/CalendarioFeed";
+import { TEMAS_DEL_FEED, fechaMedia } from "../../components/feed/fechasClaves";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
 import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
@@ -795,6 +797,10 @@ export default function Index() {
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
   const [temaFeed, setTemaFeed] = useState('todo');
+  // El día elegido en el calendario: filtra lo que se lee, en el feed que sea.
+  const [diaFeed, setDiaFeed] = useState(null);
+  const hoyGT = diaGT(Date.now());
+  const diaPasado = !!diaFeed && diaFeed <= hoyGT;
   // Cómo quiere la persona su feed: del teléfono al pintar, y de la cuenta
   // apenas hay sesión (manda la cuenta, para que siga en otro teléfono).
   const prefsFeed = useFeedStore((s) => s.prefs);
@@ -818,6 +824,47 @@ export default function Index() {
     queryFn: traerCongreso,
     enabled: feed === "congreso",
     staleTime: 10 * 60 * 1000,
+  });
+  // Con un día elegido, el tablero es solo ese día; un día que no llegó no se pide.
+  const { data: diaCongreso, isLoading: cargandoDiaCongreso } = useQuery({
+    queryKey: ['congreso-dia', diaFeed],
+    queryFn: () => traerDiaCongreso(diaFeed),
+    enabled: feed === "congreso" && diaPasado,
+    staleTime: 10 * 60 * 1000,
+  });
+  const diasDelTablero = diaFeed ? (diaPasado ? diaCongreso || [] : []) : diasCongreso || [];
+  const cargandoTablero = diaFeed ? diaPasado && cargandoDiaCongreso : cargandoCongreso;
+  // Las noticias de un día: la última corrida de ese día, solo con lo que se
+  // movió ese día.
+  const { data: noticiasDelDia, isLoading: cargandoNoticiasDelDia } = useQuery({
+    queryKey: ['noticias-dia', diaFeed],
+    enabled: feed === "pais" && diaPasado,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const filas = await leerPublico(
+        supabase
+          .from('news_cards')
+          .select('cards,generated_at')
+          .eq('pais', FEED_COUNTRY)
+          .gte('generated_at', new Date(`${diaFeed}T00:00:00-06:00`).toISOString())
+          .lte('generated_at', new Date(`${diaFeed}T23:59:59.999-06:00`).toISOString())
+          .order('generated_at', { ascending: false })
+          .limit(1)
+      );
+      const fila = filas?.[0];
+      if (!fila) return [];
+      return (fila.cards || [])
+        .map((card) => {
+          const momentos = [card.primera_vez, card.ultima_actualizacion].filter(Boolean).map((t) => new Date(t).toISOString());
+          return { ...card, _desde: momentos.sort().pop() || fila.generated_at };
+        })
+        .filter((card) => diaGT(card._desde) === diaFeed)
+        .sort(
+          (a, b) =>
+            numero(b.impacto_score) - numero(a.impacto_score) ||
+            numero(b.fuentes?.independientes) - numero(a.fuentes?.independientes)
+        );
+    },
   });
 
   const { data: narrativaData } = useQuery({
@@ -856,13 +903,15 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
-  const temasFeed = chipsDelFeed(hotTopics, prefsFeed);
+  const tarjetasDelFeed = diaFeed ? (diaPasado ? noticiasDelDia || [] : []) : hotTopics;
+  const temasFeed = chipsDelFeed(tarjetasDelFeed, prefsFeed);
   const temaActivo = temasFeed.some((t) => t.clave === temaFeed) ? temaFeed : 'todo';
-  const noticiasVisibles = noticiasDelFeed(hotTopics, prefsFeed, temaActivo, (c) => diaGT(c._desde || Date.now()));
+  const noticiasVisibles = noticiasDelFeed(tarjetasDelFeed, prefsFeed, temaActivo, (c) => diaGT(c._desde || Date.now()));
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
-  const marcadoDelFeed =
-    feed !== "pais" || !hotTopics.length || diaGT(hotTopics[0]._desde) === diaGT(Date.now())
+  const marcadoDelFeed = diaFeed
+    ? ["hoy", "ayer"].includes(nombreDelDia(diaFeed)) ? nombreDelDia(diaFeed) : `el ${fechaMedia(diaFeed)}`
+    : feed !== "pais" || !hotTopics.length || diaGT(hotTopics[0]._desde) === diaGT(Date.now())
       ? "hoy"
       : diaGT(hotTopics[0]._desde) === diaGT(Date.now() - 86400000)
         ? "de ayer"
@@ -1004,13 +1053,17 @@ export default function Index() {
                     </Cristal>
                   </Pressable>
                 ) : null}
+                {/* El calendario va a la par: elige un día y el feed se queda
+                    con ese día. Por ahora, solo en los feeds con fechas claves. */}
+                {TEMAS_DEL_FEED[feed] ? <CalendarioFeed feed={feed} dia={diaFeed} onElegir={setDiaFeed} conFecha={feed !== "pais"} /> : null}
                 <SelectorFeed valor={feed} onCambiar={setFeed} />
               </View>
             </View>
 
-            {feed === "pais" && hotTopics.length ? (
+            {feed === "pais" && tarjetasDelFeed.length ? (
               <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} />
             ) : null}
+            {feed === "pais" && diaFeed ? <FechasDelDia feed="pais" dia={diaFeed} style={{ marginTop: 8 }} /> : null}
             {feed === "observatorio" ? <ObservatorioCC /> : null}
 
 
@@ -1019,19 +1072,29 @@ export default function Index() {
                  el tablero de los días. Elegir una sección la pone en lugar
                  del tablero. */
               <CongresoOrganizado
-                dias={diasCongreso || []}
+                dias={diasDelTablero}
                 onPagina={irAIniciativas}
                 onAbrir={(item) => {
                   evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
                   setNotaCongreso(item);
                 }}
               >
-              {cargandoCongreso ? (
+              {diaFeed ? (
+                <FechasDelDia
+                  feed="congreso"
+                  dia={diaFeed}
+                  omitir={diasDelTablero[0]?.votaciones?.[0]?.sesion ? ["sesion"] : []}
+                  style={{ marginTop: 8 }}
+                />
+              ) : null}
+              {cargandoTablero ? (
                 <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
-              ) : !diasCongreso?.length ? (
-                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
+              ) : !diasDelTablero.length ? (
+                <EstadoFeed sticker="vacio">
+                  {!diaFeed ? "El Congreso no publicó nada en estos días." : diaPasado ? "El Congreso no publicó nada este día." : "Este día aún no llega."}
+                </EstadoFeed>
               ) : (
-                diasCongreso.map((dia, n) => (
+                diasDelTablero.map((dia, n) => (
                   <View key={dia.fecha}>
                     {/* Cada día lleva su fecha, también el primero: lo más
                         reciente del Congreso puede ser de ayer, y sin fecha
@@ -1084,7 +1147,11 @@ export default function Index() {
                 ))
               )}
               </CongresoOrganizado>
-            ) : feed === "observatorio" ? null : hotTopics.length === 0 && cargandoNoticias ? (
+            ) : feed === "observatorio" ? null : diaFeed && diaPasado && cargandoNoticiasDelDia ? (
+              <EstadoFeed sticker="cargando">Trayendo las noticias de ese día…</EstadoFeed>
+            ) : diaFeed && !tarjetasDelFeed.length ? (
+              <EstadoFeed sticker="vacio">{diaPasado ? "No hay noticias guardadas de este día." : "Este día aún no llega."}</EstadoFeed>
+            ) : hotTopics.length === 0 && cargandoNoticias ? (
               <EstadoFeed sticker="cargando">Trayendo las noticias…</EstadoFeed>
             ) : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
@@ -1095,8 +1162,8 @@ export default function Index() {
                 <View key={grupo.dia}>
                   {/* El día se nombra siempre que no sea hoy, y también hoy si
                       abajo viene otro: así nunca se confunde lo de ayer con lo
-                      de hoy. */}
-                  {grupo.dia !== diaGT(Date.now()) || g > 0 ? (
+                      de hoy. Con un día elegido ya lo dice el título. */}
+                  {!diaFeed && (grupo.dia !== diaGT(Date.now()) || g > 0) ? (
                     <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: g ? 8 : 4, marginBottom: 16 }}>
                       {nombreDelDia(grupo.dia).toUpperCase()}
                     </Text>
@@ -1128,8 +1195,8 @@ export default function Index() {
             )}
           </View>
 
-          {/* Trending Ahora */}
-          {(trendingTopics.length > 0 || topKeywords.length > 0) && (
+          {/* Trending Ahora. Lo de ahora no va cuando se mira otro día. */}
+          {!diaFeed && (trendingTopics.length > 0 || topKeywords.length > 0) && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
               <SectionHeader title="Trending ahora" />
 
@@ -1204,7 +1271,7 @@ export default function Index() {
           )}
 
           {/* Últimas Noticias */}
-          {tweets.length > 0 && (
+          {!diaFeed && tweets.length > 0 && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
               <SectionHeader title="Últimas noticias" />
 
