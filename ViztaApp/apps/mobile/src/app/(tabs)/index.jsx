@@ -797,8 +797,11 @@ export default function Index() {
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
   const [temaFeed, setTemaFeed] = useState('todo');
-  // El día elegido en el calendario: filtra lo que se lee, en el feed que sea.
-  const [diaFeed, setDiaFeed] = useState(null);
+  // El día elegido en el calendario. Por ahora el calendario está solo en el
+  // Congreso (PJ, 1-nov-2026): en los demás feeds no hay cómo quitar el
+  // filtro, así que ahí no aplica.
+  const [diaElegido, setDiaFeed] = useState(null);
+  const diaFeed = TEMAS_DEL_FEED[feed] ? diaElegido : null;
   const hoyGT = diaGT(Date.now());
   const diaPasado = !!diaFeed && diaFeed <= hoyGT;
   // Cómo quiere la persona su feed: del teléfono al pintar, y de la cuenta
@@ -1054,7 +1057,7 @@ export default function Index() {
                   </Pressable>
                 ) : null}
                 {/* El calendario va a la par: elige un día y el feed se queda
-                    con ese día. Por ahora, solo en los feeds con fechas claves. */}
+                    con ese día. Por ahora, solo en el Congreso. */}
                 {TEMAS_DEL_FEED[feed] ? <CalendarioFeed feed={feed} dia={diaFeed} onElegir={setDiaFeed} conFecha={feed !== "pais"} /> : null}
                 <SelectorFeed valor={feed} onCambiar={setFeed} />
               </View>

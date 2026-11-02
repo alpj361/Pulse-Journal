@@ -19,10 +19,12 @@ export const TIPOS_FECHA = {
   asueto: { nombre: 'asueto', color: '#D4537E' },
 };
 
-/** Qué temas del dataset entran al calendario de cada feed. */
+/**
+ * Qué temas del dataset entran al calendario de cada feed. Un feed que no está
+ * acá no lleva calendario: por ahora solo el Congreso (PJ, 1-nov-2026).
+ */
 export const TEMAS_DEL_FEED = {
   congreso: ['congreso'],
-  pais: ['congreso', 'elecciones', 'pais'],
 };
 
 const DIA = /^\d{4}-\d{2}-\d{2}$/;

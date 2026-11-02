@@ -18,9 +18,9 @@ test('las filas del dataset quedan en orden de día y hora, y las que no tienen 
   expect(fechas[3].fin).toBe('2027-06-25');
 });
 
-test('cada feed ve sus temas: el Congreso, lo suyo; Guatemala, todo', () => {
+test('el calendario está solo en el Congreso, con lo suyo', () => {
   expect(delFeed(fechas, 'congreso').map((f) => f.id)).toEqual(['a', 'b']);
-  expect(delFeed(fechas, 'pais')).toHaveLength(4);
+  expect(delFeed(fechas, 'pais')).toHaveLength(0);
   expect(delFeed(fechas, 'observatorio')).toHaveLength(0);
 });
 

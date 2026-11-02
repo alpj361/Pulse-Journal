@@ -122,7 +122,8 @@ calendario, el dataset «Fechas claves»; no tablas aparte del servidor. Lo que
 se arma con la herramienta es lo que se muestra.
 
 **El calendario filtra el feed y marca cada fecha con su tipo** (PJ,
-1-nov-2026). Va a la par del selector de «de dónde». En el mes, un día con
+1-nov-2026). Va a la par del selector de «de dónde», y por ahora solo en el
+Congreso; en Guatemala no aparece. En el mes, un día con
 fecha clave lleva el círculo del color de su tipo (sesión, plazo, proceso
 electoral, asueto…), nunca un punto; lo que dura varios días va como una
 franja de ese color de su inicio a su fin, para que se lea como un tramo. Los
