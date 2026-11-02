@@ -156,6 +156,31 @@ para buscar adentro, que muestra el pedazo donde aparece lo buscado; un
 artículo abre su ley parada en él. Del PDF no pasan los encabezados de
 página, y el título de una sección va arriba del artículo que la abre.
 
+**En el buscador, una iniciativa no es una ley** (PJ, 2-nov-2026). Las
+iniciativas van en su propia parte («Iniciativas en el Congreso»), después de
+«Leyes y artículos», y cada parte muestra lo primero y pliega el resto con su
+flecha. Una iniciativa va en su tarjeta: punteada mientras sigue en trámite y
+firme cuando se aprueba. Lleva su etapa en un ícono y una palabra (un reloj y
+«en trámite · dictamen», o un visto verde y «aprobada»), qué ley cambiaría o
+cambió (cada una se toca y se abre; un decreto que no está en la biblioteca
+va sin enlace), «propone una ley nueva» si no reforma ninguna, y en qué
+decreto se volvió si ya se aprobó. Al abrir una ley, «En el Congreso» dice de
+qué iniciativa nació y cuáles la quieren cambiar, primero las que siguen en
+trámite.
+
+**Una ley no repite su nombre** (PJ, 2-nov-2026). El rótulo de arriba no dice
+lo que el título ya dice: sobre «Código de Trabajo» va «DECRETO 1441», no
+«CÓDIGO · DECRETO 1441»; sobre la Constitución, «CONSTITUCIÓN 1985». La
+descripción no empieza nombrando la ley otra vez («Código de Trabajo de
+Guatemala.»), y ningún fragmento repite el título, ni entero ni cortado.
+
+**Los documentos se leen en Vizta** (PJ, 2-nov-2026). Un PDF, un Word, una
+hoja de cálculo o un texto se abren en el lector (`LectorDocumento`), no en el
+navegador: arriba su nombre y de dónde es, compartir, abrir afuera y cerrar;
+mientras baja, una línea de avance y el porcentaje, porque los PDF del
+Congreso son escaneos pesados. Las fichas y las notas de una página web siguen
+abriéndose afuera.
+
 **Un agente trabajando lleva el diamante al lado del nombre** (PJ,
 1-nov-2026). Mientras un agente hace algo (usó una herramienta hace un par de
 minutos o tiene una tarea en curso), al lado de su nombre, en la lista y en la

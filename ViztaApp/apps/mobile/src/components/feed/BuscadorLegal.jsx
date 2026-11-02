@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Linking, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { BookOpen, ChevronDown, ChevronLeft, ChevronUp, FileText, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
+import { BookOpen, ChevronDown, ChevronLeft, ChevronUp, CircleCheck, Clock, FilePlus, FileText, PencilLine, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
 import { INK, RADIUS, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { ROTULO } from '../colaboradores/piezas';
 import MorphingInfinity from '../MorphingInfinity';
+import LectorDocumento from '../LectorDocumento';
 import { Cristal } from './SelectorFeed';
 import FiltroChips from './FiltroChips';
 import { RAYA, TINTA } from './TarjetasCongreso';
-import { COLUMNAS_INICIATIVA, Iniciativa, limpiarTitulo } from './LegislativoCongreso';
+import { COLUMNAS_INICIATIVA, Iniciativa, limpiarTitulo, registroCompleto } from './LegislativoCongreso';
+import { ROTULOS_ETAPA } from './iniciativas';
 import { normalizar } from './organizacion';
 import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
 import {
-  buscarLegal, descripcionDe, enlaceDeNorma, nombreEstado, nombreTipo, recorteAlrededor, separarEncabezado, textoLegible, traerLeyesDeBase, traerNorma,
+  buscarLegal, descripcionDe, iniciativasDeLey, nombreEstado, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
+  traerIndiceNormas, traerLeyesDeBase, traerNorma, urlDeDocumento,
 } from './buscadorLegal';
 
 const ICONO = { ley: Scale, articulo: Pilcrow, iniciativa: ScrollText };
@@ -34,6 +37,12 @@ const FILTROS = [
  * barra de búsqueda: leyes, artículos e iniciativas a la vez, con lo que
  * coincide en negrita. Una ley se abre con todos sus artículos; un artículo
  * abre su ley parada en él.
+ *
+ * Las iniciativas van aparte de las leyes: una iniciativa es una propuesta
+ * hasta que se aprueba, y no es parte de ninguna ley. Cada una dice en qué
+ * etapa va, qué ley cambia (con enlace) o si propone una nueva, y en qué
+ * decreto se convirtió si ya se aprobó. Las que siguen en trámite van con
+ * borde punteado; las aprobadas, con borde firme.
  */
 export default function BuscadorLegal() {
   const [abierto, setAbierto] = useState(false);
@@ -69,15 +78,39 @@ function IconoBuscador({ color = INK.meta }) {
   );
 }
 
+/** Lo que el buscador necesita de todo el registro: las leyes y las iniciativas. */
+function useRegistro() {
+  const normas = useQuery({ queryKey: ['normas-indice'], queryFn: traerIndiceNormas, staleTime: 60 * 60 * 1000 });
+  // La misma consulta que la lista de iniciativas del Congreso: se comparte.
+  const iniciativas = useQuery({
+    queryKey: ['congreso-iniciativas-registro-v2'],
+    queryFn: () => registroCompleto('iniciativas_app_view', COLUMNAS_INICIATIVA, 'numero'),
+    staleTime: 10 * 60 * 1000,
+  });
+  return useMemo(() => ({
+    normas: normas.data || [],
+    iniciativas: iniciativas.data || [],
+    porNumero: new Map((iniciativas.data || []).map((i) => [i.numero, i])),
+    tipoDe: new Map((normas.data || []).map((n) => [n.id, n.tipo])),
+  }), [normas.data, iniciativas.data]);
+}
+
 function Panel({ onClose }) {
   const insets = useSafeAreaInsets();
   const [texto, setTexto] = useState('');
   const [buscado, setBuscado] = useState('');
   const [filtro, setFiltro] = useState('todo');
-  const [abierta, setAbierta] = useState(null); // { tipo: 'norma', id, foco } | { tipo: 'iniciativa', numero }
+  const [abiertas, setAbiertas] = useState({}); // las partes desplegadas en «todo»
+  // Lo abierto, en pila: de una ley a una iniciativa que la cambia, y de
+  // vuelta. Cada paso: { tipo: 'norma', id, foco } | { tipo: 'iniciativa', numero }.
+  const [pila, setPila] = useState([]);
+  const abierta = pila[pila.length - 1] || null;
+  const registro = useRegistro();
 
   // Se busca cuando se deja de escribir, no con cada letra.
   useEffect(() => {
+    setAbiertas({});
+    if (!texto.trim()) { setBuscado(''); return undefined; } // borrar vuelve al inicio al momento
     const t = setTimeout(() => setBuscado(texto.trim()), 320);
     return () => clearTimeout(t);
   }, [texto]);
@@ -98,22 +131,44 @@ function Panel({ onClose }) {
   // quedó sin nada en la búsqueda nueva vuelve a «todo».
   const activo = tiposConResultados > 1 && filtro !== 'todo' && cuenta(filtro) ? filtro : 'todo';
   const visibles = activo === 'todo' ? resultados : resultados.filter((r) => r.tipo === activo);
+  // Lo que es ley y lo que se propone en el Congreso, en dos partes. Cada
+  // parte muestra lo primero y pliega el resto, para que las dos se vean.
+  const filas = useMemo(() => {
+    const deLey = visibles.filter((r) => r.tipo !== 'iniciativa');
+    const propuestas = visibles.filter((r) => r.tipo === 'iniciativa');
+    if (!deLey.length || !propuestas.length) return visibles;
+    const parte = (clave, titulo, Icono, lista, primeras) => {
+      const abierta = abiertas[clave];
+      const vistas = abierta ? lista : lista.slice(0, primeras);
+      return [
+        { clave: `parte-${clave}`, parte: titulo, Icono },
+        ...vistas,
+        ...(lista.length > primeras ? [{ clave: `mas-${clave}`, mas: clave, abierta, quedan: lista.length - primeras }] : []),
+      ];
+    };
+    return [
+      ...parte('ley', 'LEYES Y ARTÍCULOS', Scale, deLey, 5),
+      ...parte('congreso', 'INICIATIVAS EN EL CONGRESO', ScrollText, propuestas, 3),
+    ];
+  }, [visibles, abiertas]);
 
-  const abrir = (r) => {
-    roce();
-    if (r.tipo === 'iniciativa') setAbierta({ tipo: 'iniciativa', numero: r.numero });
-    else setAbierta({ tipo: 'norma', id: r.normaId, foco: r.tipo === 'articulo' ? r.id : null });
-  };
+  const ir = (paso) => { roce(); setPila((p) => [...p, paso]); };
+  const volver = () => { roce(); setPila((p) => p.slice(0, -1)); };
+  const abrir = (r) => (r.tipo === 'iniciativa'
+    ? ir({ tipo: 'iniciativa', numero: r.numero })
+    : ir({ tipo: 'norma', id: r.normaId, foco: r.tipo === 'articulo' ? r.id : null }));
+  const abrirLey = (n) => n?.id && ir({ tipo: 'norma', id: n.id, foco: null });
+  const abrirIniciativa = (numero) => ir({ tipo: 'iniciativa', numero });
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={abierta ? () => setAbierta(null) : onClose}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={abierta ? volver : onClose}>
       <View style={{ flex: 1, backgroundColor: PAPEL }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 16, paddingHorizontal: 18, minHeight: 44 }}>
           {abierta ? (
-            <Pressable onPress={() => { roce(); setAbierta(null); }} hitSlop={12} accessibilityRole="button" accessibilityLabel="Volver a los resultados"
+            <Pressable onPress={volver} hitSlop={12} accessibilityRole="button" accessibilityLabel="Volver"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -6, flex: 1 }}>
               <ChevronLeft size={20} color={INK.meta} />
-              <Text style={{ fontSize: 13, color: INK.meta }}>{buscado ? 'resultados' : 'buscador legal'}</Text>
+              <Text style={{ fontSize: 13, color: INK.meta }}>{pila.length > 1 ? 'volver' : buscado ? 'resultados' : 'buscador legal'}</Text>
             </Pressable>
           ) : (
             <Text style={[ROTULO, { flex: 1 }]}>BUSCADOR LEGAL</Text>
@@ -124,9 +179,9 @@ function Panel({ onClose }) {
         </View>
 
         {abierta?.tipo === 'norma' ? (
-          <Norma key={abierta.id} id={abierta.id} foco={abierta.foco} abajo={insets.bottom} />
+          <Norma key={`${pila.length}-${abierta.id}`} id={abierta.id} foco={abierta.foco} abajo={insets.bottom} registro={registro} onIniciativa={abrirIniciativa} />
         ) : abierta?.tipo === 'iniciativa' ? (
-          <IniciativaAbierta numero={abierta.numero} abajo={insets.bottom} />
+          <IniciativaAbierta key={`${pila.length}-${abierta.numero}`} numero={abierta.numero} abajo={insets.bottom} registro={registro} onLey={abrirLey} />
         ) : (
           <View style={{ flex: 1 }}>
             <View style={{ paddingHorizontal: 18, paddingTop: 8 }}>
@@ -138,7 +193,7 @@ function Panel({ onClose }) {
               ) : null}
             </View>
             <FlatList
-              data={buscado.length >= 2 ? visibles : []}
+              data={buscado.length >= 2 ? filas : []}
               keyExtractor={(r) => r.clave}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
@@ -150,7 +205,7 @@ function Panel({ onClose }) {
               ) : null}
               ListEmptyComponent={
                 buscado.length < 2 ? (
-                  <LeyesDeBase leyes={base.data || []} onAbrir={(n) => { roce(); setAbierta({ tipo: 'norma', id: n.id, foco: null }); }} />
+                  <LeyesDeBase leyes={base.data || []} onAbrir={abrirLey} />
                 ) : busqueda.isLoading ? (
                   <View style={{ alignItems: 'center', paddingVertical: 40 }}><MorphingInfinity size={30} color={INK.meta} /></View>
                 ) : busqueda.isError ? (
@@ -159,7 +214,13 @@ function Panel({ onClose }) {
                   <Aviso>Ninguna ley, artículo ni iniciativa dice «{buscado}».</Aviso>
                 )
               }
-              renderItem={({ item }) => <Resultado r={item} onPress={() => abrir(item)} />}
+              renderItem={({ item }) => (item.parte
+                ? <Parte Icono={item.Icono}>{item.parte}</Parte>
+                : item.mas
+                  ? <Mas abierta={item.abierta} quedan={item.quedan} onPress={() => { roce(); setAbiertas((a) => ({ ...a, [item.mas]: !a[item.mas] })); }} />
+                : item.tipo === 'iniciativa'
+                  ? <ResultadoIniciativa r={item} ini={registro.porNumero.get(item.numero)} normas={registro.normas} onPress={() => abrir(item)} onLey={abrirLey} />
+                  : <Resultado r={item} tipo={registro.tipoDe.get(item.normaId)} onPress={() => abrir(item)} />)}
             />
           </View>
         )}
@@ -168,12 +229,40 @@ function Panel({ onClose }) {
   );
 }
 
+function Mas({ abierta, quedan, onPress }) {
+  const Flecha = abierta ? ChevronUp : ChevronDown;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded: abierta }}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, alignSelf: 'flex-start' }}>
+      <Text style={{ fontSize: 12.5, color: INK.meta }}>{abierta ? 'ocultar' : `${quedan} más`}</Text>
+      <Flecha size={13} color={INK.meta} />
+    </Pressable>
+  );
+}
+
+function Parte({ Icono, children }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 18, marginBottom: 2 }}>
+      <Icono size={12} color={INK.faint} strokeWidth={2.4} />
+      <Text style={ROTULO}>{children}</Text>
+    </View>
+  );
+}
+
+/**
+ * La barra de búsqueda. El campo no es controlado: lo que se escribe queda en
+ * el campo sin pasar por cada render, así no se pierden teclas mientras la
+ * lista de abajo se recalcula.
+ */
 function Barra({ valor, onCambiar, cargando, autoFocus, etiqueta = 'buscar leyes, artículos o iniciativas' }) {
+  const campo = useRef(null);
+  const [inicial] = useState(valor); // solo al montar: cambiarlo después reescribe lo que se está tecleando
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 46, borderWidth: 1, borderColor: RAYA, borderRadius: 14, paddingHorizontal: 12, backgroundColor: 'rgba(255,255,255,0.7)' }}>
       {cargando ? <MorphingInfinity size={16} color={INK.meta} /> : <Search size={16} color={INK.meta} strokeWidth={2.2} />}
       <TextInput
-        value={valor}
+        ref={campo}
+        defaultValue={inicial}
         onChangeText={onCambiar}
         placeholder={etiqueta}
         accessibilityLabel={etiqueta}
@@ -185,7 +274,7 @@ function Barra({ valor, onCambiar, cargando, autoFocus, etiqueta = 'buscar leyes
         style={{ flex: 1, color: INK.title, fontSize: 15, paddingVertical: 10 }}
       />
       {valor ? (
-        <Pressable onPress={() => onCambiar('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Borrar la búsqueda">
+        <Pressable onPress={() => { campo.current?.clear(); onCambiar(''); }} hitSlop={10} accessibilityRole="button" accessibilityLabel="Borrar la búsqueda">
           <X size={15} color={INK.faint} strokeWidth={2.4} />
         </Pressable>
       ) : null}
@@ -203,14 +292,10 @@ function Fragmento({ partes, lineas = 3 }) {
   );
 }
 
-function Resultado({ r, onPress }) {
+function Resultado({ r, tipo, onPress }) {
   const Icono = ICONO[r.tipo];
-  const rotulo = r.tipo === 'articulo'
-    ? `ARTÍCULO ${r.numero}`
-    : r.tipo === 'iniciativa'
-      ? `INICIATIVA ${r.numero}`
-      : [r.decreto].filter(Boolean).join('').toUpperCase() || 'LEY';
-  const titulo = r.tipo === 'iniciativa' ? limpiarTitulo(r.titulo) : r.titulo;
+  const rotulo = r.tipo === 'articulo' ? `ARTÍCULO ${r.numero}` : rotuloDeNorma({ titulo: r.titulo, decreto: r.decreto, tipo });
+  const titulo = r.titulo;
   const estado = r.tipo === 'ley' ? nombreEstado(r.estado) : null;
   return (
     <Animated.View entering={FadeIn.duration(160)}>
@@ -229,6 +314,109 @@ function Resultado({ r, onPress }) {
         <Fragmento partes={r.partes} />
       </Pressable>
     </Animated.View>
+  );
+}
+
+/**
+ * Una iniciativa en los resultados. No es ley: va en su tarjeta, punteada
+ * mientras sigue en trámite y firme si ya se aprobó. Dice en qué etapa va,
+ * qué ley cambia o si propone una nueva, y en qué decreto se convirtió.
+ */
+function ResultadoIniciativa({ r, ini, normas, onPress, onLey }) {
+  const datos = ini || { numero: r.numero, titulo: r.titulo, decreto_resultante: r.decreto };
+  const rel = relacionDe(datos, normas);
+  return (
+    <Animated.View entering={FadeIn.duration(160)}>
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${r.numero}, ${rel.aprobada ? 'aprobada' : 'en trámite'}, ${limpiarTitulo(r.titulo)}`}
+        style={({ pressed }) => ({ ...tarjetaIniciativa(rel.aprobada), opacity: pressed ? 0.6 : 1 })}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <ScrollText size={12} color={TINTA} strokeWidth={2.4} />
+          <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{`INICIATIVA ${r.numero}`}</Text>
+          <Etapa rel={rel} />
+        </View>
+        <Text numberOfLines={3} style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 21, color: INK.title, marginTop: 4 }}>{limpiarTitulo(r.titulo)}</Text>
+        <Relacion rel={rel} onLey={onLey} />
+        <Fragmento partes={r.partes} lineas={2} />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const tarjetaIniciativa = (aprobada) => ({
+  padding: 12, marginTop: 10, borderRadius: 14, borderWidth: 1,
+  borderStyle: aprobada ? 'solid' : 'dashed',
+  borderColor: aprobada ? 'rgba(28,43,34,0.12)' : 'rgba(47,74,122,0.35)',
+  backgroundColor: aprobada ? 'rgba(255,255,255,0.55)' : 'rgba(47,74,122,0.03)',
+});
+
+/** La etapa en un ícono y una palabra: aprobada (visto verde) o dónde va. */
+function Etapa({ rel }) {
+  if (rel.aprobada) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <CircleCheck size={12} color="#2E7D4F" strokeWidth={2.4} />
+        <Text style={{ fontSize: 11.5, color: '#2E7D4F', fontWeight: '600' }}>aprobada</Text>
+      </View>
+    );
+  }
+  const etapa = ROTULOS_ETAPA[rel.etapa]?.toLowerCase();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <Clock size={11.5} color={INK.meta} strokeWidth={2.4} />
+      <Text style={{ fontSize: 11.5, color: INK.meta }}>{etapa && etapa !== 'presentada' ? `en trámite · ${etapa}` : 'en trámite'}</Text>
+    </View>
+  );
+}
+
+/**
+ * Qué tiene que ver con las leyes: en qué decreto se convirtió, qué ley
+ * cambia (cada una se abre) o si propone una nueva.
+ */
+function Relacion({ rel, onLey }) {
+  const filas = [];
+  if (rel.resultante) {
+    filas.push(
+      <Linea key="es" Icono={CircleCheck} texto="se volvió">
+        <Chip onPress={rel.resultante.id ? () => onLey(rel.resultante) : null}>{rel.resultante.titulo ? `${rel.resultante.decreto} · ${rel.resultante.titulo}` : rel.resultante.decreto}</Chip>
+      </Linea>,
+    );
+  }
+  if (rel.cambia.length || rel.sinFicha.length) {
+    filas.push(
+      <Linea key="cambia" Icono={PencilLine} texto={rel.aprobada ? 'cambió' : 'cambiaría'}>
+        {rel.cambia.map((n) => <Chip key={n.id} onPress={() => onLey(n)}>{n.titulo}</Chip>)}
+        {rel.sinFicha.map((d) => <Chip key={d}>{`Decreto ${d}`}</Chip>)}
+      </Linea>,
+    );
+  } else if (rel.proposito === 'nueva' && !rel.resultante) {
+    filas.push(<Linea key="nueva" Icono={FilePlus} texto="propone una ley nueva" />);
+  }
+  return filas.length ? <View style={{ gap: 6, marginTop: 8 }}>{filas}</View> : null;
+}
+
+function Linea({ Icono, texto, children }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+      <Icono size={12} color={INK.meta} strokeWidth={2.2} />
+      <Text style={{ fontSize: 12.5, color: INK.meta }}>{texto}</Text>
+      {children}
+    </View>
+  );
+}
+
+/** Una ley nombrada: si está en la base, se toca y se abre. */
+function Chip({ onPress, children }) {
+  const contenido = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 260, backgroundColor: onPress ? 'rgba(47,74,122,0.08)' : 'rgba(28,43,34,0.05)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
+      <Scale size={11} color={onPress ? TINTA : INK.meta} strokeWidth={2.2} />
+      <Text numberOfLines={1} style={{ fontSize: 12.5, color: onPress ? TINTA : INK.body, fontWeight: onPress ? '600' : '400', flexShrink: 1 }}>{children}</Text>
+    </View>
+  );
+  if (!onPress) return contenido;
+  return (
+    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="link" accessibilityLabel={`abrir ${children}`} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+      {contenido}
+    </Pressable>
   );
 }
 
@@ -269,7 +457,7 @@ function LeyesDeBase({ leyes, onAbrir }) {
 /** La ruta de un artículo dentro de su ley: libro › título › capítulo. */
 const seccionDe = (a) => [a.libro, a.titulo_seccion, a.capitulo].filter(Boolean).join(' › ');
 
-function Norma({ id, foco, abajo }) {
+function Norma({ id, foco, abajo, registro, onIniciativa }) {
   const q = useQuery({ queryKey: ['norma-legal', id], queryFn: () => traerNorma(id), staleTime: 30 * 60 * 1000 });
   const [dentro, setDentro] = useState('');
   const lista = useRef(null);
@@ -319,7 +507,7 @@ function Norma({ id, foco, abajo }) {
         setTimeout(() => lista.current?.scrollToIndex({ index, viewPosition: 0, animated: false }), 120);
       }}
       contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: abajo + 32 }}
-      ListHeaderComponent={<CabezaNorma norma={norma} dentro={dentro} onDentro={setDentro} cuantos={articulos.length} total={q.data.articulos.length} />}
+      ListHeaderComponent={<CabezaNorma norma={norma} dentro={dentro} onDentro={setDentro} cuantos={articulos.length} total={q.data.articulos.length} registro={registro} onIniciativa={onIniciativa} />}
       ListEmptyComponent={<Aviso>Ningún artículo de esta ley dice «{dentro}».</Aviso>}
       renderItem={({ item, index }) => {
         const seccion = seccionDe(item);
@@ -330,9 +518,9 @@ function Norma({ id, foco, abajo }) {
   );
 }
 
-function CabezaNorma({ norma, dentro, onDentro, cuantos, total }) {
-  const [error, setError] = useState(false);
-  const enlace = enlaceDeNorma(norma);
+function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onIniciativa }) {
+  const [leyendo, setLeyendo] = useState(null);
+  const documento = useQuery({ queryKey: ['documento-norma', norma.id], queryFn: () => urlDeDocumento(norma), staleTime: 50 * 60 * 1000 });
   const descripcion = descripcionDe(norma);
   const estado = nombreEstado(norma.estado);
   const fecha = norma.fecha_publicacion
@@ -342,9 +530,7 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total }) {
     <View style={{ paddingTop: 6, paddingBottom: 6 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Scale size={12} color={TINTA} strokeWidth={2.4} />
-        <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>
-          {[nombreTipo(norma.tipo), norma.decreto].filter(Boolean).join(' · ').toUpperCase()}
-        </Text>
+        <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{rotuloDeNorma(norma)}</Text>
         {estado ? <Pastilla>{estado}</Pastilla> : null}
       </View>
       <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title, marginTop: 6 }}>{norma.titulo}</Text>
@@ -353,19 +539,66 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total }) {
       {norma.necesita_revision ? (
         <Text style={{ fontSize: 12.5, lineHeight: 18, color: INK.meta, marginTop: 8 }}>Texto en revisión: puede faltar alguna reforma o artículo.</Text>
       ) : null}
-      {enlace ? (
-        <Pressable onPress={() => { setError(false); Linking.openURL(enlace).catch(() => setError(true)); }} accessibilityRole="link" accessibilityLabel={`documento oficial, ${norma.titulo}`}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
+      {documento.data ? (
+        <Pressable onPress={() => { roce(); setLeyendo({ uri: documento.data, titulo: norma.titulo, origen: rotuloDeNorma(norma).toLowerCase() }); }}
+          accessibilityRole="button" accessibilityLabel={`leer el documento oficial, ${norma.titulo}`}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10, opacity: pressed ? 0.6 : 1 })}>
           <FileText size={18} color={TINTA} />
-          <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento oficial</Text>
+          <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>leer el documento oficial</Text>
         </Pressable>
       ) : null}
-      {error ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.body, marginTop: 6 }}>No se pudo abrir. Prueba de nuevo.</Text> : null}
+      <EnElCongreso norma={norma} iniciativas={registro.iniciativas} onIniciativa={onIniciativa} />
       <View style={{ marginTop: 16, marginBottom: 4 }}>
         <Barra valor={dentro} onCambiar={onDentro} etiqueta="buscar en esta ley" />
       </View>
       {dentro && cuantos ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.meta, marginTop: 6 }}>{cuantos} de {total} artículos</Text> : null}
+      <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
     </View>
+  );
+}
+
+const VISIBLES_CONGRESO = 3;
+
+/**
+ * Lo que pasa con esta ley en el Congreso: la iniciativa de la que nació y
+ * las que la quieren cambiar, primero las que siguen en trámite.
+ */
+function EnElCongreso({ norma, iniciativas, onIniciativa }) {
+  const [todas, setTodas] = useState(false);
+  const { origen, cambios } = useMemo(() => iniciativasDeLey(norma, iniciativas), [norma, iniciativas]);
+  if (!origen && !cambios.length) return null;
+  const vistas = todas ? cambios : cambios.slice(0, VISIBLES_CONGRESO);
+  return (
+    <View style={{ marginTop: 18 }}>
+      <Parte Icono={ScrollText}>EN EL CONGRESO</Parte>
+      {origen ? (
+        <FilaIniciativa ini={origen} detalle="nació de esta iniciativa" aprobada onPress={() => onIniciativa(origen.numero)} />
+      ) : null}
+      {vistas.map(({ ini, aprobada }) => (
+        <FilaIniciativa key={ini.numero} ini={ini} aprobada={aprobada} detalle={aprobada ? 'la cambió' : 'la cambiaría'} onPress={() => onIniciativa(ini.numero)} />
+      ))}
+      {cambios.length > VISIBLES_CONGRESO ? (
+        <Pressable onPress={() => setTodas((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: todas }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
+          <Text style={{ fontSize: 12, color: INK.meta }}>{todas ? 'ocultar' : `${cambios.length - VISIBLES_CONGRESO} más`}</Text>
+          {todas ? <ChevronUp size={13} color={INK.meta} /> : <ChevronDown size={13} color={INK.meta} />}
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function FilaIniciativa({ ini, aprobada, detalle, onPress }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${ini.numero}, ${detalle}, ${limpiarTitulo(ini.titulo)}`}
+      style={({ pressed }) => ({ ...tarjetaIniciativa(aprobada), padding: 10, marginTop: 8, opacity: pressed ? 0.6 : 1 })}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{`INICIATIVA ${ini.numero}`}</Text>
+        <Etapa rel={relacionDe(ini, [])} />
+      </View>
+      <Text numberOfLines={2} style={{ fontSize: 13.5, lineHeight: 19, color: INK.title, marginTop: 4 }}>{limpiarTitulo(ini.titulo)}</Text>
+      <Text style={{ fontSize: 12, color: INK.meta, marginTop: 3 }}>{detalle}</Text>
+    </Pressable>
   );
 }
 
@@ -425,7 +658,8 @@ function Articulo({ articulo: a, seccion, enFoco, resaltar }) {
 
 // ─── Una iniciativa abierta ──────────────────────────────────────────────────
 
-function IniciativaAbierta({ numero, abajo }) {
+function IniciativaAbierta({ numero, abajo, registro, onLey }) {
+  const enRegistro = registro.porNumero.get(numero);
   const q = useQuery({
     queryKey: ['congreso-iniciativa-registro', numero],
     queryFn: async () => {
@@ -433,17 +667,32 @@ function IniciativaAbierta({ numero, abajo }) {
       if (error) throw error;
       return data;
     },
+    enabled: !enRegistro,
     staleTime: 10 * 60 * 1000,
   });
+  const ini = enRegistro || q.data;
+  const rel = ini ? relacionDe(ini, registro.normas) : null;
   return (
     <FlatList
-      data={q.data ? [q.data] : []}
+      data={ini ? [ini] : []}
       keyExtractor={(i) => String(i.numero)}
       contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 6, paddingBottom: abajo + 32 }}
       ListEmptyComponent={q.isLoading
         ? <View style={{ alignItems: 'center', paddingVertical: 60 }}><MorphingInfinity size={30} color={INK.meta} /></View>
         : <Aviso>No se pudo abrir esta iniciativa. Puede intentarse de nuevo.</Aviso>}
-      renderItem={({ item }) => <Iniciativa ini={item} />}
+      renderItem={({ item }) => (
+        <View>
+          {/* Antes de la ficha, qué tiene que ver con las leyes: así se sabe
+              si es una propuesta suelta o el cambio de una ley que existe. */}
+          {rel && (rel.resultante || rel.cambia.length || rel.sinFicha.length || rel.proposito === 'nueva') ? (
+            <View style={{ ...tarjetaIniciativa(rel.aprobada), marginTop: 0, marginBottom: 4 }}>
+              <Etapa rel={rel} />
+              <Relacion rel={rel} onLey={onLey} />
+            </View>
+          ) : null}
+          <Iniciativa ini={item} />
+        </View>
+      )}
     />
   );
 }

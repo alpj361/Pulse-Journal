@@ -1,5 +1,5 @@
 import {
-  buscarLegal, compararArticulos, consultaAmplia, descripcionDe, sinTitulo, leerConsulta, nombreEstado, partesDelFragmento, porCoincidencia, recorteAlrededor, separarEncabezado, textoLegible,
+  buscarLegal, compararArticulos, consultaAmplia, decretosNombrados, descripcionDe, iniciativasDeLey, numeroDeDecreto, propositoDe, relacionDe, rotuloDeNorma, sinTitulo, leerConsulta, nombreEstado, partesDelFragmento, porCoincidencia, recorteAlrededor, separarEncabezado, textoLegible,
 } from '../buscadorLegal';
 
 const mockRpc = jest.fn();
@@ -117,7 +117,7 @@ test('lo que más coincide va primero, y una ley sin marcas no repite su título
 
 test('el fragmento de una ley no repite su título ni dice de dónde salió', () => {
   expect(sinTitulo('<b>Competencia</b> Fuente: Poder Ciudadano (congreso). Ley de <b>Competencia</b> Congreso de la República', 'Ley de Competencia'))
-    .toBe('<b>Competencia</b> Congreso de la República');
+    .toBe('Congreso de la República');
 });
 
 test('de un artículo largo, el pedazo donde aparece lo buscado', () => {
@@ -133,4 +133,68 @@ test('un título más largo que el fragmento tampoco se repite', () => {
   expect(sinTitulo('Declarar electos como director titular y suplente del Directorio de la <b>Superintendencia</b> de <b>Competencia</b>, respectivamente, a los profesionales',
     'Declarar electos como director titular y suplente del Directorio de la Superintendencia de Competencia, respectivamente, a los profesionales Jorge Mario'))
     .toBe('');
+});
+
+describe('iniciativas al lado de las leyes', () => {
+  const normas = [
+    { id: 'penal', titulo: 'Código Penal', decreto: 'Decreto 17-73', tipo: 'codigo' },
+    { id: 'trabajo', titulo: 'Código de Trabajo', decreto: 'Decreto 1441', tipo: 'codigo' },
+    { id: 'comp', titulo: 'Ley de Competencia', decreto: 'Decreto 32-2024', tipo: 'ley' },
+    { id: 'reforma-comp', titulo: 'Reformas a la Ley de Competencia', decreto: 'Decreto 8-2025', tipo: 'ley' },
+    { id: 'conv', titulo: 'Convenio 169 OIT — Pueblos Indígenas', decreto: 'Convenio 169 OIT', tipo: 'convenio' },
+  ];
+
+  test('los decretos que nombra un título, y el número de una ley', () => {
+    expect(decretosNombrados('reformas al Decreto Número 17-73 y al Decreto 57 - 2008, y al Decreto Ley 107')).toEqual(['17-73', '57-2008', '107']);
+    expect(numeroDeDecreto('Decreto 1441')).toBe('1441');
+    expect(numeroDeDecreto('Decreto Ley 107')).toBe('107');
+    expect(numeroDeDecreto('Convenio 169 OIT')).toBeNull();
+  });
+
+  test('una reforma dice qué ley cambia, con o sin ficha en la base', () => {
+    const rel = relacionDe({ numero: 6767, titulo: 'Iniciativa que dispone aprobar reforma al Decreto Número 1441 y al Decreto 57-2008' }, normas);
+    expect(rel).toMatchObject({ proposito: 'reforma', aprobada: false, sinFicha: ['57-2008'] });
+    expect(rel.cambia.map((n) => n.id)).toEqual(['trabajo']);
+    // Sin número, por el nombre de la ley.
+    expect(relacionDe({ titulo: 'reformas al Código Penal' }, normas).cambia.map((n) => n.id)).toEqual(['penal']);
+  });
+
+  test('aprobada: en qué decreto se volvió; una ley nueva no cambia otra', () => {
+    const rel = relacionDe({ numero: 6605, titulo: 'Reforma a la Ley de Competencia, Decreto Número 32-2024', decreto_resultante: '8-2025' }, normas);
+    expect(rel.aprobada).toBe(true);
+    expect(rel.resultante.id).toBe('reforma-comp');
+    expect(rel.cambia.map((n) => n.id)).toEqual(['comp']);
+    expect(relacionDe({ titulo: 'Iniciativa que dispone aprobar Ley de Aguas' }, normas)).toMatchObject({ proposito: 'nueva', cambia: [] });
+    expect(propositoDe('aprobar ampliación al presupuesto')).toBe('otra');
+  });
+
+  test('desde una ley: de qué iniciativa nació y cuáles la cambiarían, primero las en trámite', () => {
+    const inis = [
+      { numero: 6605, titulo: 'Reforma a la Ley de Competencia, Decreto Número 32-2024', decreto_resultante: '8-2025' },
+      { numero: 6700, titulo: 'Reformas al Decreto Número 32-2024, Ley de Competencia' },
+      { numero: 6400, titulo: 'Ley de Competencia', decreto_resultante: '32-2024' },
+    ];
+    const { origen, cambios } = iniciativasDeLey(normas[2], inis);
+    expect(origen.numero).toBe(6400);
+    expect(cambios.map((c) => c.ini.numero)).toEqual([6700, 6605]);
+  });
+
+  test('el rótulo de una ley no repite el título', () => {
+    expect(rotuloDeNorma(normas[1])).toBe('DECRETO 1441');
+    expect(rotuloDeNorma({ titulo: 'Constitución Política de la República de Guatemala', decreto: 'Constitución 1985', tipo: 'constitucion' })).toBe('CONSTITUCIÓN 1985');
+    expect(rotuloDeNorma(normas[4])).toBe('CONVENIO');
+    expect(rotuloDeNorma({ titulo: 'Declarar electos…', decreto: 'Acuerdo 5-2025', tipo: 'otro' })).toBe('ACUERDO 5-2025');
+  });
+
+  test('la descripción no empieza repitiendo el nombre de la ley', () => {
+    expect(descripcionDe({ titulo: 'Código de Trabajo', descripcion: 'Código de Trabajo de Guatemala. Regula las relaciones entre empleadores y trabajadores.' }))
+      .toBe('Regula las relaciones entre empleadores y trabajadores.');
+    expect(descripcionDe({ titulo: 'Código de Comercio', descripcion: 'Código de Comercio (Decreto 2-70). Arts. 45 y 125 reformados por el Decreto 15-2026.' }))
+      .toBe('Arts. 45 y 125 reformados por el Decreto 15-2026.');
+  });
+});
+
+test('el fragmento no lleva notas internas ni el final cortado del título', () => {
+  expect(sinTitulo('Penal (Decreto 51-92). Regula el proceso. Ojo: hay una reforma pendiente, el Decreto 23-2026', 'Código Procesal Penal'))
+    .toBe('Regula el proceso.');
 });

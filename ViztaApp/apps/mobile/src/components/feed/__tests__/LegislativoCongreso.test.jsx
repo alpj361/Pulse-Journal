@@ -5,6 +5,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '../../../utils/supabase';
 import { ListaIniciativas, ListaLeyes, ListaVotaciones, Iniciativa, registroCompleto, resumenDe } from '../LegislativoCongreso';
 
+// El lector se reemplaza por un texto con lo que recibió, para ver qué abre.
+jest.mock('../../LectorDocumento', () => {
+  const { Text } = require('react-native');
+  return ({ documento }) => (documento ? <Text>{`lector:${documento.uri}`}</Text> : null);
+});
 jest.mock('../../../utils/supabase', () => ({ supabase: { from: jest.fn() } }));
 jest.mock('../TarjetasCongreso', () => {
   const { Text } = require('react-native');
@@ -72,14 +77,14 @@ test('filtra por la etapa documentada en una nota y pliega las sin número', asy
   expect(texto()).toContain('Resumen que explica');
 });
 
-test('el PDF abre desde la card cerrada y muestra el error si falla', async () => {
-  jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('falló'));
+test('el PDF se lee en Vizta desde la card cerrada, sin salir al navegador', async () => {
+  jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
   act(() => { renderer = TestRenderer.create(<Iniciativa ini={registro[0]} />); });
   const link = boton('documento de la iniciativa, iniciativa 7000');
   expect(link).toBeDefined();
   await act(async () => { link.props.onPress(); });
-  expect(Linking.openURL).toHaveBeenCalledWith(registro[0].url_pdf);
-  expect(texto()).toContain('No se pudo abrir. Prueba de nuevo.');
+  expect(Linking.openURL).not.toHaveBeenCalled();
+  expect(texto()).toContain(`lector:${registro[0].url_pdf}`);
 });
 
 test('un resumen útil de la nota reemplaza al objetivo que repite el título', () => {

@@ -7,6 +7,7 @@ import { INK } from '../theme';
 import { Camino, GrupoVotacion, RAYA, Rotulo, TINTA, Titulo, cabezaDe, useDiputados, useNombresDeLeyes } from './TarjetasCongreso';
 import { CLASES, repartirActores } from './clasesCongreso';
 import Pegatina from './Pegatina';
+import LectorDocumento from '../LectorDocumento';
 import { nombreDelDia } from './congreso';
 import FiltroChips from './FiltroChips';
 import { anoDecreto, buscarRegistro, fechaRegistro, periodoDe, resultadoVotacion } from './organizacion';
@@ -216,6 +217,13 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
   const rotulo = ROTULOS_ETAPA[parada];
   const enlace = enlaceDe(ini, notas);
   const [errorEnlace, setErrorEnlace] = useState(false);
+  const [leyendo, setLeyendo] = useState(null);
+  // El documento se lee en Vizta; la ficha y las notas siguen abriéndose afuera.
+  const abrirEnlace = () => {
+    setErrorEnlace(false);
+    if (enlace.tipo === 'PDF') setLeyendo({ uri: enlace.url, titulo: limpiarTitulo(ini.titulo), origen: `Iniciativa ${ini.numero}` });
+    else Linking.openURL(enlace.url).catch(() => setErrorEnlace(true));
+  };
   const fecha = ini.fecha_presentacion || ini.fecha_conocio_pleno;
   const ponentes = nombres(ini.ponentes);
   const eventos = [...(ini.eventos_timeline || [])].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
@@ -242,8 +250,8 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
       {parada ? <Camino etapa={parada} /> : null}
       {ponentes.length ? <Text style={{ fontSize: 12, color: INK.faint, marginTop: 8 }}>{ponentes.join(' · ')}</Text> : null}
       {enlace ? (
-        <Pressable onPress={() => { setErrorEnlace(false); Linking.openURL(enlace.url).catch(() => setErrorEnlace(true)); }}
-          accessibilityRole="link" accessibilityLabel={`${enlace.titulo}, iniciativa ${ini.numero}`}
+        <Pressable onPress={abrirEnlace}
+          accessibilityRole={enlace.tipo === 'PDF' ? 'button' : 'link'} accessibilityLabel={`${enlace.titulo}, iniciativa ${ini.numero}`}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 10, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
           <FileText size={20} color={TINTA} />
           <View style={{ flex: 1 }}><Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>{enlace.titulo}</Text>
@@ -279,6 +287,7 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
           ))}
         </View>
       ) : null}
+      <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
     </View>
   );
 }
@@ -468,19 +477,19 @@ export function ListaLeyes({ onPagina }) {
 }
 
 export function Decreto({ decreto: d }) {
-  const [error, setError] = useState(false);
+  const [leyendo, setLeyendo] = useState(null);
   const enlace = /^https?:\/\//i.test(d.pdf_url || '') ? d.pdf_url : null;
   return (
     <View style={CARD_REGISTRO}>
       <Rotulo>{`DECRETO ${d.numero}`}</Rotulo>
       <Titulo>{d.resumen || `Decreto ${d.numero}`}</Titulo>
       {d.fecha ? <Text style={{ color: INK.meta, fontSize: 12, marginTop: 8 }}>{fechaRegistro(d.fecha)}</Text> : null}
-      {enlace ? <Pressable accessibilityRole="link" accessibilityLabel={`documento del decreto ${d.numero}`}
-        onPress={() => { setError(false); Linking.openURL(enlace).catch(() => setError(true)); }}
+      {enlace ? <Pressable accessibilityRole="button" accessibilityLabel={`documento del decreto ${d.numero}`}
+        onPress={() => setLeyendo({ uri: enlace, titulo: d.resumen || `Decreto ${d.numero}`, origen: `Decreto ${d.numero}` })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
         <FileText size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento del decreto</Text>
       </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
-      {error ? <Text accessibilityLiveRegion="polite" style={{ color: INK.body, marginTop: 6 }}>No se pudo abrir. Prueba de nuevo.</Text> : null}
+      <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
     </View>
   );
 }

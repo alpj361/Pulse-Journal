@@ -3,6 +3,7 @@ import { Text, TextInput } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { ActividadLista, Entrada } from '../CongresoOrganizado';
 
+jest.mock('../../LectorDocumento', () => () => null);
 jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
 jest.mock('../../Sticker', () => () => null);
 jest.mock('../PlenoDiputados', () => ({ __esModule: true, default: () => null, useDiputados: () => ({ data: undefined }) }));
