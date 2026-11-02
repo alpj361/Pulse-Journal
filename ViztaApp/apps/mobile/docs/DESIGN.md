@@ -148,12 +148,36 @@ cabecera del chat, gira el diamante de píxeles (`Diamante`). No lleva texto:
 el diamante ya dice que está en marcha. Es distinto de «cargando», que sigue
 siendo `MorphingInfinity`.
 
+**Abajo del chat, el diamante solo cuando te está escribiendo** (PJ,
+1-nov-2026). Crear o editar cosas no es escribir: eso se ve solo arriba, al
+lado del nombre. Al final de la conversación aparece un globo suyo, sin texto,
+con el diamante adentro, únicamente si te debe una respuesta reciente (tu
+mensaje lleva menos de 10 minutos sin contestar) y está activo. Cuando llega
+la respuesta, el globo se va y entra el mensaje.
+
 **Lo que hace un agente se cuenta en su chat** (PJ, 1-nov-2026). Entre los
 mensajes, sin globo, va un renglón con el ícono de la acción y lo que hizo:
 «Creó 4 elementos en tu Codex», «Editó el espacio «Caso X»», «Sumó «Milo» a
 un espacio». Cada cosa va con su enlace para abrirla. Lo seguido del mismo
 tipo va en un solo renglón; con más de cuatro, el resto se pliega con su
 flecha. Leer no se cuenta: solo lo que cambia algo tuyo.
+
+**El chat se mueve como una conversación** (PJ, 1-nov-2026). Todo es corto,
+porque se repite muchas veces al día; el movimiento vive en
+`colaboradores/movimiento.js`.
+
+- Una pantalla nueva entra desde la derecha y la anterior vuelve desde la
+  izquierda, en un tramo corto.
+- Un mensaje que llega sube y crece desde su esquina, con un toque háptico
+  leve. El tuyo entra a media tinta mientras se envía y, ya guardado, solo
+  termina de encenderse: no vuelve a entrar.
+- Lo que ya estaba se corre con resorte; nada salta.
+- Enviar se enciende con un rebote cuando hay algo escrito y se hunde al
+  tocarlo.
+- Lo que hace un agente entra en vivo: el renglón aparece, su ícono salta y,
+  si el renglón crece («Creó 4…» → «Creó 5…»), la cosa nueva se suma debajo.
+- El diamante entra y sale con escala. La vista previa de un chat se funde
+  cuando llega algo nuevo.
 
 **Plegar y desplegar llevan su flecha.** «7 votaciones más de esta ley» va con
 la flecha hacia abajo, y al abrir queda «ocultar» con la flecha hacia arriba.

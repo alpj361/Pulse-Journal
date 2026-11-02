@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import Animated from 'react-native-reanimated';
+import { cambiaTexto, entraDiamante, saleDiamante } from './movimiento';
 import { useQuery } from '@tanstack/react-query';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Bell, ChevronRight, Plus, X } from 'lucide-react-native';
@@ -232,6 +234,11 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
     retry: false,
   });
   const trabajando = useTrabajando(agentePropio ? c : null, tareas.data);
+  // La vista previa se funde cuando llega un mensaje con la lista abierta; al
+  // abrirla, ya está.
+  const ultimoId = c.ultimo_mensaje?.id || c.ultimo_mensaje?.created_at || null;
+  const primero = useRef(ultimoId);
+  const cambio = ultimoId !== primero.current;
   return (
     <Pressable
       onPress={onPress}
@@ -254,17 +261,23 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
           <Text style={{ fontSize: 16, fontWeight: '700', color: INK.title, flexShrink: 1 }} numberOfLines={1}>
             {nombre}
           </Text>
-          {trabajando ? <Diamante size={11} color={TONO.verde} style={{ alignSelf: 'center' }} /> : null}
+          {trabajando ? (
+            <Animated.View entering={entraDiamante} exiting={saleDiamante} style={{ alignSelf: 'center' }}>
+              <Diamante size={11} color={TONO.verde} />
+            </Animated.View>
+          ) : null}
           <View style={{ flex: 1 }} />
           <Text style={{ fontSize: 12, color: INK.meta }}>{horaCorta(c.ultimo_mensaje?.created_at)}</Text>
         </View>
         {texto ? (
-          <Text
+          <Animated.Text
+            key={ultimoId || 'previa'}
+            entering={cambio ? cambiaTexto : undefined}
             style={{ fontSize: 13.5, color: pendientes ? '#2E3B33' : INK.body, fontWeight: pendientes ? '600' : '400' }}
             numberOfLines={1}
           >
             {texto}
-          </Text>
+          </Animated.Text>
         ) : null}
         <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
           {pendientes ? (

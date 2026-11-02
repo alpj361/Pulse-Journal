@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { escuchar } from '../../utils/enVivo';
 import { supabase } from '../../utils/supabase';
 import { enMarcha } from './logica';
 
@@ -40,6 +42,25 @@ export async function traerAgentesActivos(ahora = Date.now()) {
  */
 export function useTrabajando(colaborador, tareas) {
   const esAgente = colaborador?.cuenta_tipo === 'agente';
+  const ids = idsDeAgente(colaborador);
+  const clave = ids.join(',');
+  // Lo que toca en vivo (`colab_cambios`) lo enciende al momento, sin esperar
+  // a la próxima consulta; y se apaga solo cuando pasa la ventana.
+  const [vivoHasta, setVivoHasta] = useState(0);
+  const [, setReloj] = useState(0);
+  useEffect(() => {
+    if (!clave) return undefined;
+    const mios = clave.split(',');
+    return escuchar(['colab_cambios'], ({ fila }) => {
+      if (fila?.agente_id && mios.includes(fila.agente_id)) setVivoHasta(Date.now() + ACTIVO_MS);
+    });
+  }, [clave]);
+  useEffect(() => {
+    const falta = vivoHasta - Date.now();
+    if (falta <= 0) return undefined;
+    const t = setTimeout(() => setReloj((n) => n + 1), falta + 50);
+    return () => clearTimeout(t);
+  }, [vivoHasta]);
   const { data } = useQuery({
     queryKey: ['colab-activos'],
     queryFn: () => traerAgentesActivos(),
@@ -49,8 +70,7 @@ export function useTrabajando(colaborador, tareas) {
     retry: false,
   });
   if (!esAgente) return false;
-  const ids = idsDeAgente(colaborador);
-  return ids.some((id) => (data || []).includes(id)) || enMarcha(tareas?.haciendo_ahora);
+  return vivoHasta > Date.now() || ids.some((id) => (data || []).includes(id)) || enMarcha(tareas?.haciendo_ahora);
 }
 
 // --- Lo que hizo -------------------------------------------------------------

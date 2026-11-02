@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { ArrowUp, FolderOpen, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { INK, MOTION } from '../theme';
 import { EV, evento } from '../../utils/analitica';
-import { roce } from '../../utils/haptics';
+import { falla, roce, toque } from '../../utils/haptics';
+import { useEnVivo } from '../../utils/enVivo';
 import { supabase } from '../../utils/supabase';
 import { abrirChat, chatDe, enviarMensaje, leerMensajes, seguimientosDe, tareasDe } from './api';
 import { claveTareas } from './Ficha';
@@ -20,7 +21,8 @@ import Compartido from './Compartido';
 import Monitoreo from './Monitoreo';
 import { Cabecera, TONO, nombreDe } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
-import AccionAgente from './AccionAgente';
+import AccionAgente, { Escribiendo } from './AccionAgente';
+import { aparecer, correrse, llegaMensaje, quedaEnviado } from './movimiento';
 import { agruparAcciones, idsDeAgente, traerAccionesDe, useTrabajando } from './actividad';
 
 const PESTANAS = [
@@ -46,6 +48,9 @@ const ULTIMA_PESTANA = new Map();
  * queda de respaldo, por si el canal se corta.
  */
 const CADA = 30000;
+
+/** Hasta cuánto un mensaje sin respuesta cuenta como «te está escribiendo». */
+const POR_RESPONDER_MS = 10 * 60 * 1000;
 
 /**
  * El chat con un colaborador (pantallas 4 y 8). Con un agente tuyo: Chat, Su
@@ -176,6 +181,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
           onAbrirArtifact={onAbrirArtifact}
           onAbrirEspacio={onAbrirEspacio}
           conAcciones={esAgente}
+          trabajando={trabajando}
           onAbrirMonitoreo={setMonitoreo}
           onAbrirContacto={onAbrirContacto}
           bottomInset={bottomInset}
@@ -222,7 +228,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   );
 }
 
-function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirEspacio, conAcciones, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto }) {
+function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirEspacio, conAcciones, trabajando, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto }) {
   // Algo mío que le compartí: se abre con su propia pantalla.
   const [mioAbierto, setMioAbierto] = useState(null);
   // Mantener presionado un adjunto: reenviarlo a otro chat.
@@ -254,8 +260,10 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
     };
   }, [colaborador]);
 
-  // Los mensajes que entraron en vivo: se animan al aparecer.
+  // Los mensajes que entraron en vivo: se animan al aparecer. Los tuyos, ya
+  // guardados, solo terminan de encenderse (`confirmados`): no vuelven a entrar.
   const [llegados, setLlegados] = useState(() => new Set());
+  const [confirmados, setConfirmados] = useState(() => new Set());
 
   // En vivo: cada mensaje nuevo de esta conversación entra sin reabrir el chat.
   useEffect(() => {
@@ -264,17 +272,27 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
       .channel(`colab-chat-${convId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes', filter: `conversacion_id=eq.${convId}` }, ({ new: m }) => {
         if (!m?.id || m.ciphertext) return;
-        setLlegados((prev) => new Set(prev).add(m.id));
+        if (esMio(m, yo)) {
+          setConfirmados((prev) => new Set(prev).add(m.id));
+        } else {
+          setLlegados((prev) => new Set(prev).add(m.id));
+          // Lo que llega con el chat abierto se siente, apenas.
+          roce();
+        }
         setViejos((prev) => unirMensajes(prev, [m]));
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversaciones', filter: `id=eq.${convId}` }, () => {
         queryClient.invalidateQueries({ queryKey: ['colab-lista'] });
       })
+      // Lo que el agente te debe contestar: entra al mandarle algo, sale al responder.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cola_agente_chat', filter: `conversacion_id=eq.${convId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['colab-por-responder', convId] });
+      })
       .subscribe();
     return () => {
       supabase.removeChannel(canal);
     };
-  }, [convId, queryClient]);
+  }, [convId, queryClient, yo]);
 
   // Sin chat todavía: si el agente lo abre primero, se engancha solo.
   useEffect(() => {
@@ -331,18 +349,24 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
     if ((!limpio && !adjuntos.length) || enviando) return;
     setFallo(false);
     setTexto('');
+    toque();
     setEnviando({ id: 'enviando', autor_tipo: yo.tipo, autor_id: yo.id, cuerpo: limpio || null, adjuntos, created_at: new Date().toISOString() });
     try {
       const id = convId || (await abrirChat(colaborador));
       if (id !== convId) setConvId(id);
       const mensaje = await enviarMensaje(id, { texto: limpio, adjuntos });
-      if (mensaje) setViejos((prev) => unirMensajes(prev, [mensaje]));
+      if (mensaje) {
+        setConfirmados((prev) => new Set(prev).add(mensaje.id));
+        setViejos((prev) => unirMensajes(prev, [mensaje]));
+      }
       evento(EV.COLAB_MENSAJE_ENVIADO, { a: colaborador.cuenta_tipo });
       queryClient.invalidateQueries({ queryKey: ['colab-mensajes', id] });
       queryClient.invalidateQueries({ queryKey: ['colab-lista'] });
+      queryClient.invalidateQueries({ queryKey: ['colab-por-responder', id] });
     } catch {
       setTexto(limpio);
       setFallo(true);
+      falla();
     } finally {
       setEnviando(null);
     }
@@ -356,9 +380,35 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
     queryFn: () => traerAccionesDe(idsAgente, new Date(Date.now() - 30 * 86400000).toISOString()),
     enabled: idsAgente.length > 0,
     staleTime: 10 * 1000,
-    refetchInterval: 15 * 1000,
+    // Mientras trabaja se mira seguido; quieto, de vez en cuando. Lo que toca
+    // en vivo (`colab_cambios`) llega antes por el canal.
+    refetchInterval: trabajando ? 5 * 1000 : 30 * 1000,
     retry: false,
   });
+  // El servidor anota la acción al terminar la herramienta, un poco después
+  // del cambio: se pide al momento y otra vez enseguida.
+  const pedirAcciones = acciones.refetch;
+  useEnVivo(['colab_cambios'], () => {
+    pedirAcciones();
+    setTimeout(() => pedirAcciones(), 2500);
+  }, { espera: 600, activo: idsAgente.length > 0 });
+  // Escribiendo: te debe una respuesta reciente (tu mensaje sigue en su cola
+  // desde hace menos de 10 minutos) y está activo. Lo que quedó sin contestar
+  // de otro día no cuenta, y si solo crea o edita cosas no está escribiendo:
+  // eso se ve en el diamante de arriba, al lado de su nombre.
+  const porResponder = useQuery({
+    queryKey: ['colab-por-responder', convId],
+    queryFn: async () => {
+      const { data } = await supabase.from('cola_agente_chat').select('id').eq('conversacion_id', convId).eq('estado', 'pendiente')
+        .gte('created_at', new Date(Date.now() - POR_RESPONDER_MS).toISOString()).limit(1);
+      return !!data?.length;
+    },
+    enabled: !!convId && !!conAcciones,
+    staleTime: 10 * 1000,
+    refetchInterval: 30 * 1000,
+    retry: false,
+  });
+  const escribiendo = !!conAcciones && !!trabajando && !!porResponder.data;
   const abrirCosa = (ref, titulo) => {
     roce();
     if (ref.tabla === 'spaces') onAbrirEspacio?.({ id: ref.id, name: titulo, nombre: titulo });
@@ -366,20 +416,46 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
     else setMioAbierto({ id: ref.id, ajeno: false });
   };
 
-  // Invertida: lo nuevo abajo y el teclado no lo tapa.
-  const invertidos = useMemo(() => {
-    const visibles = mensajes.filter(seVe);
+  const visibles = useMemo(() => mensajes.filter(seVe), [mensajes]);
+  const grupos = useMemo(() => {
     // Si hay mensajes más viejos sin cargar, las acciones de antes esperan a
     // que lleguen: si no, quedarían arriba de una conversación cortada.
     const desde = cursorActual && visibles.length ? visibles[0].created_at : '';
-    const grupos = agruparAcciones(
+    return agruparAcciones(
       (acciones.data || []).filter((a) => a.en >= desde),
       visibles.map((m) => m.created_at),
     ).map((g) => ({ ...g, created_at: g.hasta, _accion: true }));
-    return [...visibles, ...grupos]
-      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
-      .reverse();
-  }, [mensajes, acciones.data, cursorActual]);
+  }, [visibles, acciones.data, cursorActual]);
+
+  // Qué acciones son nuevas: las que llegan después de abrir el chat. Las que
+  // ya estaban no se animan; las nuevas entran, y un renglón que crece suma
+  // sus cosas una a una.
+  const conocidas = useRef(null);
+  const [frescas, setFrescas] = useState({ grupos: new Set(), cosas: new Set() });
+  const claveCosa = (c) => c.ref?.id || c.id;
+  useEffect(() => {
+    if (!acciones.isSuccess) return;
+    if (!conocidas.current) {
+      conocidas.current = { grupos: new Set(grupos.map((g) => g.id)), cosas: new Set(grupos.flatMap((g) => g.cosas.map(claveCosa))) };
+      return;
+    }
+    const nuevosGrupos = grupos.filter((g) => !conocidas.current.grupos.has(g.id)).map((g) => g.id);
+    const nuevasCosas = grupos.flatMap((g) => g.cosas.map(claveCosa)).filter((k) => !conocidas.current.cosas.has(k));
+    if (!nuevosGrupos.length && !nuevasCosas.length) return;
+    nuevosGrupos.forEach((id) => conocidas.current.grupos.add(id));
+    nuevasCosas.forEach((k) => conocidas.current.cosas.add(k));
+    setFrescas((f) => ({ grupos: new Set([...f.grupos, ...nuevosGrupos]), cosas: new Set([...f.cosas, ...nuevasCosas]) }));
+    roce();
+  }, [grupos, acciones.isSuccess]);
+
+  // Invertida: lo nuevo abajo y el teclado no lo tapa.
+  const invertidos = useMemo(
+    () =>
+      [...visibles, ...grupos]
+        .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
+        .reverse(),
+    [visibles, grupos],
+  );
   const cargando = !resuelto || (convId && recientes.isLoading);
 
   return (
@@ -397,10 +473,16 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
           </Text>
         </View>
       ) : (
-        <FlatList
+        <Animated.View entering={aparecer} style={{ flex: 1 }}>
+        <Animated.FlatList
           inverted
           data={invertidos}
           keyExtractor={(m) => m.id}
+          // Lo que ya estaba se corre con resorte cuando entra algo abajo.
+          itemLayoutAnimation={correrse}
+          // En la lista invertida, el encabezado queda abajo: ahí va el globo
+          // de «escribiendo», donde aparecerá su respuesta.
+          ListHeaderComponent={escribiendo ? <View style={{ marginTop: 9 }}><Escribiendo nombre={nombre} /></View> : null}
           contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 12 }}
           ItemSeparatorComponent={() => <View style={{ height: 9 }} />}
           ListFooterComponent={cargandoViejos ? <MorphingInfinity size={20} color={INK.meta} style={{ marginVertical: 12, alignSelf: 'center' }} /> : null}
@@ -408,7 +490,7 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
           onEndReachedThreshold={0.3}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => item._accion ? (
-            <AccionAgente grupo={item} onAbrir={abrirCosa} />
+            <AccionAgente grupo={item} onAbrir={abrirCosa} nuevo={frescas.grupos.has(item.id)} nuevas={frescas.cosas} />
           ) : (
             <Mensaje
               mensaje={item}
@@ -425,9 +507,11 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
               onAbrirSeguimiento={onAbrirSeguimiento}
               enviando={item.id === 'enviando'}
               enVivo={llegados.has(item.id)}
+              confirmado={confirmados.has(item.id)}
             />
           )}
         />
+        </Animated.View>
       )}
 
       {fallo ? (
@@ -486,24 +570,7 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
             color: INK.title,
           }}
         />
-        <Pressable
-          onPress={() => enviar()}
-          disabled={!texto.trim() || !!enviando}
-          accessibilityRole="button"
-          accessibilityLabel="Enviar"
-          accessibilityState={{ disabled: !texto.trim() || !!enviando }}
-          style={({ pressed }) => ({
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: TONO.verde,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: !texto.trim() || enviando ? 0.4 : pressed ? 0.7 : 1,
-          })}
-        >
-          <ArrowUp size={18} color="#FFFFFF" strokeWidth={2.2} />
-        </Pressable>
+        <BotonEnviar activo={!!texto.trim() && !enviando} onPress={() => enviar()} />
       </View>
       {adjuntando ? (
         <Adjuntar
@@ -523,13 +590,16 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
   );
 }
 
-function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto, onReenviar, enviando, enVivo }) {
+function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto, onReenviar, enviando, enVivo, confirmado }) {
   const bloques = bloquesDe(mensaje);
-  // Lo que llega en vivo sube desde abajo (la lista está invertida).
+  // Lo que llega en vivo sube y crece desde su esquina (la del otro a la
+  // izquierda, la tuya a la derecha). Lo tuyo entra a media tinta mientras se
+  // envía y, guardado, solo termina de encenderse.
+  const entrada = enviando ? llegaMensaje(0.55) : enVivo ? llegaMensaje(1) : confirmado ? quedaEnviado : undefined;
   return (
     <Animated.View
-      entering={enVivo ? FadeInDown.springify().damping(MOTION.enter.damping).stiffness(MOTION.enter.stiffness) : undefined}
-      style={{ gap: 6, opacity: enviando ? 0.55 : 1 }}
+      entering={entrada}
+      style={{ gap: 6, opacity: enviando ? 0.55 : 1, transformOrigin: mio ? 'right bottom' : 'left bottom' }}
     >
       {bloques.map((b) => (
         <Bloque key={b.id} bloque={b} mio={mio} onAbrirItem={onAbrirItem} onAbrirMio={onAbrirMio} onAbrirArtifact={onAbrirArtifact} onAbrirSeguimiento={onAbrirSeguimiento} onAbrirMonitoreo={onAbrirMonitoreo} onAbrirContacto={onAbrirContacto} onReenviar={onReenviar} />
@@ -538,3 +608,34 @@ function Mensaje({ mensaje, mio, onAbrirItem, onAbrirMio, onAbrirArtifact, onAbr
   );
 }
 
+
+/**
+ * Enviar: se enciende con un pequeño rebote cuando hay algo escrito, y se
+ * hunde al tocarlo. Apagado queda chico y a media tinta.
+ */
+function BotonEnviar({ activo, onPress }) {
+  const encendido = useSharedValue(activo ? 1 : 0);
+  const hundido = useSharedValue(0);
+  useEffect(() => {
+    encendido.value = withSpring(activo ? 1 : 0, { damping: 13, stiffness: 320, mass: 0.6 });
+  }, [activo, encendido]);
+  const estilo = useAnimatedStyle(() => ({
+    opacity: 0.4 + 0.6 * encendido.value,
+    transform: [{ scale: (0.88 + 0.12 * encendido.value) * (1 - 0.08 * hundido.value) }],
+  }));
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => { hundido.value = withTiming(1, MOTION.press); }}
+      onPressOut={() => { hundido.value = withSpring(0, MOTION.tap); }}
+      disabled={!activo}
+      accessibilityRole="button"
+      accessibilityLabel="Enviar"
+      accessibilityState={{ disabled: !activo }}
+    >
+      <Animated.View style={[{ width: 44, height: 44, borderRadius: 22, backgroundColor: TONO.verde, alignItems: 'center', justifyContent: 'center' }, estilo]}>
+        <ArrowUp size={18} color="#FFFFFF" strokeWidth={2.2} />
+      </Animated.View>
+    </Pressable>
+  );
+}

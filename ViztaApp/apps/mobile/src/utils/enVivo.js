@@ -44,6 +44,9 @@ function repartir(tabla, payload) {
     tabla,
     tipo: payload.eventType,
     id: payload.new?.id ?? payload.old?.id ?? null,
+    // La fila tal como llegó. Puede venir sin las columnas largas (ver arriba):
+    // sirve para saber de quién es, no para copiarla a una lista.
+    fila: payload.new && Object.keys(payload.new).length ? payload.new : payload.old || null,
   };
   for (const o of oyentes) {
     if (o.tablas.has(tabla)) o.fn(ev);
