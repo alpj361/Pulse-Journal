@@ -27,7 +27,7 @@ test('lo de un día va en círculo; lo que dura varios días, como tramo', () =>
   expect(tramoDelDia(fechas, '2026-11-08')).toBeNull();
 });
 
-test('tocar un día solo lo muestra; el feed se filtra con el botón de adentro', async () => {
+test('con el filtro apagado, tocar un día solo lo muestra; encendido, filtra salvo los días que no llegan', async () => {
   traerFechasClaves.mockResolvedValue(fechas);
   traerDiasConPublicaciones.mockResolvedValue([]);
   const onElegir = jest.fn();
@@ -38,12 +38,25 @@ test('tocar un día solo lo muestra; el feed se filtra con el botón de adentro'
   });
   const boton = (inicio) => r.root.findAll((n) => String(n.props.accessibilityLabel || '').startsWith(inicio) && typeof n.props.onPress === 'function')[0];
   await act(async () => { boton('Calendario de fechas claves').props.onPress(); });
-  // El mes abre en el de hoy; se va directo a noviembre de 2026 por la fila de la fecha.
-  act(() => boton('Sesión ordinaria').props.onPress());
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guatemala' });
+  const [a, m, d] = hoy.split('-').map(Number);
+  const nombre = (dia) => new Date(...dia.split('-').map((n, i) => Number(n) - (i === 1 ? 1 : 0))).toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const manana = new Date(a, m - 1, d + 1);
+  const diaManana = manana.toLocaleDateString('en-CA');
+  // Apagado: tocar hoy no filtra.
+  act(() => boton(nombre(hoy)).props.onPress());
   expect(onElegir).not.toHaveBeenCalled();
-  expect(JSON.stringify(r.toJSON())).toContain('MARTES, 3 DE NOVIEMBRE');
-  act(() => boton('filtrar el feed por este día').props.onPress());
-  expect(onElegir).toHaveBeenCalledWith('2026-11-03');
+  // Encendido: el día que se mira pasa al feed.
+  act(() => boton('Filtrar el feed por el día elegido').props.onPress());
+  expect(onElegir).toHaveBeenLastCalledWith(hoy);
+  // Un día que aún no llega no filtra, aunque el filtro esté encendido.
+  if (manana.getMonth() === m - 1) {
+    act(() => boton(nombre(diaManana)).props.onPress());
+    expect(onElegir).toHaveBeenCalledTimes(1);
+  }
+  // Apagarlo vuelve a todos los días.
+  act(() => boton('Filtrar el feed por el día elegido').props.onPress());
+  expect(onElegir).toHaveBeenLastCalledWith(null);
   act(() => r.unmount());
   cliente.clear();
 });

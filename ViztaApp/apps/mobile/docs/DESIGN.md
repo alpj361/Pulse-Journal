@@ -129,9 +129,11 @@ electoral, asueto…), nunca un punto; lo que dura varios días va como una
 franja de ese color de su inicio a su fin, para que se lea como un tramo. Los
 días con publicaciones van en tinta firme y los vacíos en gris. Una fecha que
 todavía no es oficial dice «prevista». Tocar un día solo muestra sus fechas
-claves: el feed cambia únicamente con el botón «filtrar el feed por este día»,
-que está dentro del calendario. Mirar fechas no mueve lo que se estaba
-leyendo. Filtrado, el feed queda en ese día: arriba sus fechas claves y abajo
+claves. El filtro es un ícono al lado del mes: mientras está encendido (queda
+marcado), el día que se toque es el que muestra el feed, salvo los días que
+aún no llegan, que solo muestran sus fechas; apagarlo vuelve a todos los días.
+No hay botón que aparezca al tocar un día. Mirar fechas con el filtro apagado
+no mueve lo que se estaba leyendo. Filtrado, el feed queda en ese día: arriba sus fechas claves y abajo
 lo publicado; lo que es «de ahora» (tendencias, últimas publicaciones) no
 se muestra mientras se mira otro día. El día se nombra una sola vez: si el
 título ya lo dice, la pastilla queda con el ícono y su equis.

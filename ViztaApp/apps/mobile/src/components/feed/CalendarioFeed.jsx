@@ -49,14 +49,16 @@ function nombreLargo(dia) {
  * lleva su equis para volver a todos los días. Donde el título ya nombra el
  * día (`conFecha` en falso), la pastilla no lo repite.
  *
- * Abierto, el mes. Tocar un día solo lo muestra —sus fechas claves, abajo—;
- * el feed cambia recién con «filtrar el feed por este día». Mirar el
- * calendario no tiene que mover lo que se estaba leyendo.
+ * Abierto, el mes. Tocar un día muestra sus fechas claves, abajo. El feed
+ * cambia solo con el filtro encendido (el ícono al lado del mes): mientras
+ * está encendido, el día que se toque es el que muestra el feed, salvo los que
+ * aún no llegan, que solo muestran sus fechas. Apagarlo vuelve a todos los días.
  */
 export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true }) {
   const insets = useSafeAreaInsets();
   const [panel, setPanel] = useState(false);
   const [visto, setVisto] = useState(null); // el día tocado en el mes, filtre o no
+  const [filtro, setFiltro] = useState(false);
   const hoy = hoyGT();
   const base = (dia || hoy).split('-').map(Number);
   const [mes, setMes] = useState({ anio: base[0], mes: base[1] - 1 });
@@ -74,16 +76,27 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
     const [a, m] = (dia || hoy).split('-').map(Number);
     setMes({ anio: a, mes: m - 1 });
     setVisto(dia);
+    setFiltro(!!dia);
     setPanel(true);
   };
   const ver = (d) => {
     roce();
+    if (filtro) {
+      setVisto(d);
+      if (d <= hoy) onElegir?.(d);
+      return;
+    }
     setVisto((v) => (v === d ? null : d));
   };
-  const filtrar = (d) => {
+  const alternarFiltro = () => {
     roce();
-    onElegir?.(d);
-    setPanel(false);
+    if (filtro) {
+      setFiltro(false);
+      onElegir?.(null);
+      return;
+    }
+    setFiltro(true);
+    if (visto && visto <= hoy) onElegir?.(visto);
   };
   const mover = (paso) => {
     roce();
@@ -140,7 +153,8 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
                 <Cristal radio={RADIUS.xl}>
                   <Animated.View entering={FadeIn.duration(140)}>
                     <ScrollView style={{ maxHeight: alto * 0.78 }} contentContainerStyle={{ padding: 14 }} showsVerticalScrollIndicator={false}>
-                      <Mes anio={mes.anio} mes={mes.mes} hoy={hoy} visto={visto} filtrado={dia} fechas={fechas} publicados={publicados} onVer={ver} onMover={mover} />
+                      <Mes anio={mes.anio} mes={mes.mes} hoy={hoy} visto={visto} filtrado={dia} fechas={fechas} publicados={publicados} onVer={ver} onMover={mover}
+                        filtro={filtro} onFiltro={alternarFiltro} />
                       <View style={{ height: 1, backgroundColor: 'rgba(28,43,34,0.08)', marginVertical: 12 }} />
                       <Text style={{ fontSize: 10, fontWeight: '800', color: INK.faint, letterSpacing: 1.2, marginBottom: 8 }}>
                         {(visto ? nombreLargo(visto) : 'próximas fechas claves').toUpperCase()}
@@ -158,14 +172,6 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
                           {visto ? 'Sin fechas claves este día.' : 'Sin fechas claves por delante.'}
                         </Text>
                       )}
-                      {visto && visto !== dia ? (
-                        <BotonFiltro onPress={() => filtrar(visto)} etiqueta="filtrar el feed por este día" />
-                      ) : null}
-                      {dia ? (
-                        <Pressable onPress={() => filtrar(null)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}>
-                          <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>mostrar todos los días</Text>
-                        </Pressable>
-                      ) : null}
                     </ScrollView>
                   </Animated.View>
                 </Cristal>
@@ -178,25 +184,7 @@ export default function CalendarioFeed({ feed, dia, onElegir, conFecha = true })
   );
 }
 
-/** El único control que cambia el feed desde el calendario. */
-function BotonFiltro({ onPress, etiqueta }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={etiqueta}
-      style={({ pressed }) => ({
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-        minHeight: 46, marginTop: 10, borderRadius: RADIUS.pill, backgroundColor: TINTA, opacity: pressed ? 0.8 : 1,
-      })}
-    >
-      <ListFilter size={16} color="#FFFFFF" strokeWidth={2.4} />
-      <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{etiqueta}</Text>
-    </Pressable>
-  );
-}
-
-function Mes({ anio, mes, hoy, visto, filtrado, fechas, publicados, onVer, onMover }) {
+function Mes({ anio, mes, hoy, visto, filtrado, fechas, publicados, onVer, onMover, filtro, onFiltro }) {
   const semanas = semanasDelMes(anio, mes);
   return (
     <View>
@@ -207,6 +195,16 @@ function Mes({ anio, mes, hoy, visto, filtrado, fechas, publicados, onVer, onMov
         <Text style={{ flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: INK.title }}>{`${MESES[mes]} ${anio}`}</Text>
         <Pressable onPress={() => onMover(1)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Mes siguiente" style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
           <ChevronRight size={18} color={INK.meta} strokeWidth={2.2} />
+        </Pressable>
+        {/* El filtro: encendido, el día que se toque es el que muestra el feed. */}
+        <Pressable onPress={onFiltro} hitSlop={6} accessibilityRole="switch" accessibilityLabel="Filtrar el feed por el día elegido"
+          accessibilityState={{ checked: filtro }}
+          style={({ pressed }) => ({
+            width: 36, height: 36, borderRadius: 18, marginLeft: 4, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: filtro ? TINTA : 'rgba(28,43,34,0.05)', borderWidth: 1, borderColor: filtro ? TINTA : 'rgba(28,43,34,0.10)',
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <ListFilter size={16} color={filtro ? '#FFFFFF' : INK.meta} strokeWidth={2.4} />
         </Pressable>
       </View>
       <View style={{ flexDirection: 'row', marginBottom: 4 }}>
