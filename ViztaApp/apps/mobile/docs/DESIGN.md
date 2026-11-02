@@ -141,6 +141,20 @@ lo publicado; lo que es «de ahora» (tendencias, últimas publicaciones) no
 se muestra mientras se mira otro día. El día se nombra una sola vez: si el
 título ya lo dice, la pastilla queda con el ícono y su equis.
 
+**Un agente trabajando lleva el diamante al lado del nombre** (PJ,
+1-nov-2026). Mientras un agente hace algo (usó una herramienta hace un par de
+minutos o tiene una tarea en curso), al lado de su nombre, en la lista y en la
+cabecera del chat, gira el diamante de píxeles (`Diamante`). No lleva texto:
+el diamante ya dice que está en marcha. Es distinto de «cargando», que sigue
+siendo `MorphingInfinity`.
+
+**Lo que hace un agente se cuenta en su chat** (PJ, 1-nov-2026). Entre los
+mensajes, sin globo, va un renglón con el ícono de la acción y lo que hizo:
+«Creó 4 elementos en tu Codex», «Editó el espacio «Caso X»», «Sumó «Milo» a
+un espacio». Cada cosa va con su enlace para abrirla. Lo seguido del mismo
+tipo va en un solo renglón; con más de cuatro, el resto se pliega con su
+flecha. Leer no se cuenta: solo lo que cambia algo tuyo.
+
 **Plegar y desplegar llevan su flecha.** «7 votaciones más de esta ley» va con
 la flecha hacia abajo, y al abrir queda «ocultar» con la flecha hacia arriba.
 Un texto suelto que abre o cierra algo no se reconoce como control.

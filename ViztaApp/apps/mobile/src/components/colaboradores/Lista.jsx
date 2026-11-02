@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Bell, ChevronRight, Plus, X } from 'lucide-react-native';
 import { INK } from '../theme';
 import { usePistasStore, PISTA } from '../../state/pistasStore';
-import { NoDisponible, humanosHabilitados } from './api';
+import { NoDisponible, humanosHabilitados, tareasDe } from './api';
+import { useTrabajando } from './actividad';
+import Diamante from '../Diamante';
 import { esContacto, filtrar, horaCorta, ordenar, porAprobar, previa, queHace } from './logica';
 import { Avatar, Boton, Chip, EstadoCentro, TONO, nombreDe, Refrescar } from './piezas';
 import { TarjetaConexion } from './AutorizarConexion';
@@ -219,11 +222,21 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
   const texto = previa(c);
   const pendientes = porAprobar(c.solicitudes_pendientes);
   const nombre = nombreDe(c);
+  // El diamante al lado del nombre: el agente está haciendo algo ahora.
+  const agentePropio = c.cuenta_tipo === 'agente' && !esContacto(c);
+  const tareas = useQuery({
+    queryKey: ['colab-tareas', c.id],
+    queryFn: () => tareasDe(c.id),
+    enabled: agentePropio,
+    staleTime: 1000 * 60,
+    retry: false,
+  });
+  const trabajando = useTrabajando(agentePropio ? c : null, tareas.data);
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={[nombre, c.cuenta_tipo === 'agente' ? 'agente' : null, texto, pendientes].filter(Boolean).join(', ')}
+      accessibilityLabel={[nombre, c.cuenta_tipo === 'agente' ? 'agente' : null, trabajando ? 'trabajando' : null, texto, pendientes].filter(Boolean).join(', ')}
       style={({ pressed }) => ({
         flexDirection: 'row',
         gap: 14,
@@ -241,6 +254,7 @@ function Fila({ colaborador: c, ultima, onPress, onPorAprobar }) {
           <Text style={{ fontSize: 16, fontWeight: '700', color: INK.title, flexShrink: 1 }} numberOfLines={1}>
             {nombre}
           </Text>
+          {trabajando ? <Diamante size={11} color={TONO.verde} style={{ alignSelf: 'center' }} /> : null}
           <View style={{ flex: 1 }} />
           <Text style={{ fontSize: 12, color: INK.meta }}>{horaCorta(c.ultimo_mensaje?.created_at)}</Text>
         </View>

@@ -20,6 +20,8 @@ import Compartido from './Compartido';
 import Monitoreo from './Monitoreo';
 import { Cabecera, TONO, nombreDe } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
+import AccionAgente from './AccionAgente';
+import { agruparAcciones, idsDeAgente, traerAccionesDe, useTrabajando } from './actividad';
 
 const PESTANAS = [
   { clave: 'chat', texto: 'Chat' },
@@ -95,6 +97,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   const [abrirId, setAbrirId] = useState(null);
   const nombre = nombreDe(colaborador);
   const esAgente = colaborador.cuenta_tipo === 'agente' && !contacto;
+  const trabajando = useTrabajando(esAgente ? colaborador : null, tareas.data);
 
   return (
     <View style={{ flex: 1 }}>
@@ -102,6 +105,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
         <Cabecera
           colaborador={colaborador}
           subtitulo={esAgente ? haciendoAhora(tareas.data) : contacto && colaborador.owner_nombre ? `de ${colaborador.owner_nombre}` : null}
+          trabajando={trabajando}
           onVolver={onVolver}
           volverLabel="Volver a Colaboradores"
           topInset={topInset}
@@ -170,6 +174,8 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
             else setPestana('sigue');
           }}
           onAbrirArtifact={onAbrirArtifact}
+          onAbrirEspacio={onAbrirEspacio}
+          conAcciones={esAgente}
           onAbrirMonitoreo={setMonitoreo}
           onAbrirContacto={onAbrirContacto}
           bottomInset={bottomInset}
@@ -216,7 +222,7 @@ export default function Chat({ colaborador, yo, borrador, topInset, bottomInset,
   );
 }
 
-function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto }) {
+function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbrirItem, onAbrirArtifact, onAbrirEspacio, conAcciones, onAbrirSeguimiento, onAbrirMonitoreo, onAbrirContacto }) {
   // Algo mío que le compartí: se abre con su propia pantalla.
   const [mioAbierto, setMioAbierto] = useState(null);
   // Mantener presionado un adjunto: reenviarlo a otro chat.
@@ -342,8 +348,38 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
     }
   };
 
+  // Lo que el agente hizo (creó, editó, sumó a un espacio), contado entre
+  // los mensajes, con enlace a cada cosa. Sale de su actividad por MCP.
+  const idsAgente = conAcciones ? idsDeAgente(colaborador) : [];
+  const acciones = useQuery({
+    queryKey: ['colab-acciones', idsAgente.join(',')],
+    queryFn: () => traerAccionesDe(idsAgente, new Date(Date.now() - 30 * 86400000).toISOString()),
+    enabled: idsAgente.length > 0,
+    staleTime: 10 * 1000,
+    refetchInterval: 15 * 1000,
+    retry: false,
+  });
+  const abrirCosa = (ref, titulo) => {
+    roce();
+    if (ref.tabla === 'spaces') onAbrirEspacio?.({ id: ref.id, name: titulo, nombre: titulo });
+    else if (ref.tabla === 'artifacts') onAbrirArtifact?.(ref.id);
+    else setMioAbierto({ id: ref.id, ajeno: false });
+  };
+
   // Invertida: lo nuevo abajo y el teclado no lo tapa.
-  const invertidos = useMemo(() => mensajes.filter(seVe).reverse(), [mensajes]);
+  const invertidos = useMemo(() => {
+    const visibles = mensajes.filter(seVe);
+    // Si hay mensajes más viejos sin cargar, las acciones de antes esperan a
+    // que lleguen: si no, quedarían arriba de una conversación cortada.
+    const desde = cursorActual && visibles.length ? visibles[0].created_at : '';
+    const grupos = agruparAcciones(
+      (acciones.data || []).filter((a) => a.en >= desde),
+      visibles.map((m) => m.created_at),
+    ).map((g) => ({ ...g, created_at: g.hasta, _accion: true }));
+    return [...visibles, ...grupos]
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
+      .reverse();
+  }, [mensajes, acciones.data, cursorActual]);
   const cargando = !resuelto || (convId && recientes.isLoading);
 
   return (
@@ -371,7 +407,9 @@ function Conversacion({ colaborador, yo, borrador, topInset, bottomInset, onAbri
           onEndReached={cargarViejos}
           onEndReachedThreshold={0.3}
           keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => (
+          renderItem={({ item }) => item._accion ? (
+            <AccionAgente grupo={item} onAbrir={abrirCosa} />
+          ) : (
             <Mensaje
               mensaje={item}
               mio={esMio(item, yo)}
