@@ -1,14 +1,18 @@
 import {
-  buscarLegal, compararArticulos, consultaAmplia, decretosNombrados, descripcionDe, iniciativasDeLey, numeroDeDecreto, propositoDe, relacionDe, rotuloDeNorma, sinTitulo, leerConsulta, nombreEstado, partesDelFragmento, porCoincidencia, recorteAlrededor, separarEncabezado, textoLegible,
+  buscarLegal, compararArticulos, consultaAmplia, decretosNombrados, deResolucion, descripcionDe, iniciativasDeLey, nombreDecreto, notaVisible, numeroDeDecreto, propositoDe, reformaDe, reformaDeArticulo, relacionDe, rotuloDeNorma, sinTitulo, leerConsulta, nombreEstado, partesDelFragmento, porCoincidencia, recorteAlrededor, separarEncabezado, textoLegible, ultimaReforma,
 } from '../buscadorLegal';
 
 const mockRpc = jest.fn();
 const mockFrom = jest.fn();
-jest.mock('../../../utils/supabase', () => ({ supabase: { rpc: (...a) => mockRpc(...a), from: (...a) => mockFrom(...a) } }));
+const mockSesion = jest.fn();
+jest.mock('../../../utils/supabase', () => ({ supabase: { rpc: (...a) => mockRpc(...a), from: (...a) => mockFrom(...a), auth: { getSession: () => mockSesion() } } }));
 
 beforeEach(() => {
   mockRpc.mockReset();
   mockFrom.mockReset();
+  mockSesion.mockReset();
+  mockSesion.mockResolvedValue({ data: { session: null } });
+  global.fetch = jest.fn();
 });
 
 test('un artículo por número se separa de la ley que se nombra', () => {
@@ -16,6 +20,15 @@ test('un artículo por número se separa de la ley que se nombra', () => {
   expect(leerConsulta('Artículo 41 bis del Código de Trabajo')).toMatchObject({ numero: '41 BIS', resto: 'Código Trabajo' });
   expect(leerConsulta('art. 78')).toMatchObject({ numero: '78', resto: '' });
   expect(leerConsulta('despido sin justa causa').numero).toBeNull();
+});
+
+test('los sufijos: latinos completos, letras con Ñ, y una letra suelta que no es sufijo', () => {
+  expect(leerConsulta('artículo 327 "G" del Código Penal')).toMatchObject({ numero: '327 G', resto: 'Código Penal' });
+  expect(leerConsulta('art 327 g del código penal').numero).toBe('327 G');
+  expect(leerConsulta('art 407 Ñ código penal').numero).toBe('407 Ñ');
+  expect(leerConsulta('art 491 sexies código penal').numero).toBe('491 SEXIES');
+  expect(leerConsulta('art 195 quáter').numero).toBe('195 QUATER');
+  expect(leerConsulta('art 5 a la ley de tránsito')).toMatchObject({ numero: '5', resto: 'a ley tránsito' });
 });
 
 test('la búsqueda amplia deja solo las palabras que dicen algo', () => {
@@ -39,6 +52,9 @@ test('el texto del PDF se lee sin sus cortes de renglón', () => {
 
 test('los artículos van en orden de lectura', () => {
   expect(['42', '41 TER', '41', '41 BIS', '100', 'Transitorio I'].sort(compararArticulos)).toEqual(['41', '41 BIS', '41 TER', '42', '100', 'Transitorio I']);
+  // La serie latina va por su rango, no por el abecedario; luego las letras, con Ñ después de N.
+  expect(['195 TER', '195 QUINQUIES', '195 QUATER', '195 BIS', '195'].sort(compararArticulos)).toEqual(['195', '195 BIS', '195 TER', '195 QUATER', '195 QUINQUIES']);
+  expect(['407 O', '407 Ñ', '407 N', '407 A'].sort(compararArticulos)).toEqual(['407 A', '407 N', '407 Ñ', '407 O']);
 });
 
 test('la descripción no lleva notas internas ni repite el título', () => {
@@ -67,12 +83,12 @@ test('busca leyes, artículos e iniciativas a la vez', async () => {
 });
 
 test('si nada tiene todas las palabras, busca con alguna y lo dice', async () => {
-  respuestas((nombre, q) => (q.includes(' or ') && nombre === 'buscar_articulos'
+  respuestas((nombre, q) => (String(q).includes(' or ') && nombre === 'buscar_articulos'
     ? [{ articulo_id: 'a2', numero_articulo: '82', norma_id: 'n1', norma_titulo: 'Código de Trabajo', fragmento: '' }]
     : []));
   const { resultados, amplia } = await buscarLegal('qué pasa si me despiden del trabajo');
   expect(amplia).toBe(true);
-  expect(mockRpc).toHaveBeenLastCalledWith('buscar_iniciativas', { q: 'despiden or trabajo', limite: 30 });
+  expect(mockRpc).toHaveBeenCalledWith('buscar_iniciativas', { q: 'despiden or trabajo', limite: 30 });
   expect(resultados).toHaveLength(1);
 });
 
@@ -81,10 +97,75 @@ test('un artículo por número sale de la ley que se nombró', async () => {
     { id: 'x1', numero_articulo: '102', texto: 'Derechos sociales mínimos', norma_id: 'c', normas: { titulo: 'Constitución Política de la República de Guatemala', tipo: 'constitucion' } },
     { id: 'x2', numero_articulo: '102', texto: 'Otro', norma_id: 'p', normas: { titulo: 'Código Penal', tipo: 'codigo' } },
   ];
-  mockFrom.mockReturnValue({ select: () => ({ ilike: () => ({ limit: () => Promise.resolve({ data: filas, error: null }) }) }) });
+  const consulta = { select: () => consulta, ilike: () => consulta, eq: () => consulta, in: () => consulta, limit: () => Promise.resolve({ data: filas, error: null }) };
+  mockFrom.mockReturnValue(consulta);
+  mockRpc.mockResolvedValue({ data: [{ articulo_id: 'x1', decreto_reforma: null, reformado_por: null }], error: null });
   const { resultados } = await buscarLegal('art 102 constitucion');
   expect(resultados.map((r) => r.id)).toEqual(['x1']);
-  expect(mockRpc).not.toHaveBeenCalled();
+  // Sin sesión no se pregunta al servidor; la procedencia va en una sola consulta.
+  expect(global.fetch).not.toHaveBeenCalled();
+  expect(mockRpc).toHaveBeenCalledTimes(1);
+  expect(mockRpc).toHaveBeenCalledWith('legal_procedencia_articulos', { p_ids: ['x1'] });
+});
+
+test('con sesión, el artículo por número lo resuelve el servidor, sin adivinar', async () => {
+  mockSesion.mockResolvedValue({ data: { session: { access_token: 't' } } });
+  global.fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({
+    found: 1,
+    results: [{ articulo_id: 'g', norma_id: 'cp', articulo: 'Art. 327 G', norma: 'Código Penal', decreto: 'Decreto 17-73', texto: 'Artículo 327 "G". Clonación de tarjeta.',
+      procedencia: { decreto_reforma: 'Decreto 2-2025', reformado_por: 'd2', vigente_desde: '2025-03-08' } }],
+  }) });
+  const { resultados } = await buscarLegal('art 327 G código penal');
+  expect(global.fetch.mock.calls[0][0]).toContain('/api/legal/resolve?limit=10&query=art%20327%20G');
+  expect(resultados).toEqual([expect.objectContaining({ id: 'g', normaId: 'cp', numero: '327 G', reforma: { decreto: 'Decreto 2-2025', normaId: 'd2', desde: '2025-03-08' } })]);
+  expect(mockFrom).not.toHaveBeenCalled();
+});
+
+test('si el servidor ve varias leyes posibles, se muestra el artículo en cada una', async () => {
+  mockSesion.mockResolvedValue({ data: { session: { access_token: 't' } } });
+  global.fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ found: 0, results: [], seleccion: { ambigua: true, candidatos: [{ id: 'cp' }, { id: 'cpp' }] } }) });
+  const enLeyes = jest.fn();
+  const filas = [
+    { id: 'a', numero_articulo: '5', texto: 'x', norma_id: 'cp', normas: { titulo: 'Código Penal', tipo: 'codigo' } },
+    { id: 'b', numero_articulo: '5', texto: 'y', norma_id: 'cpp', normas: { titulo: 'Código Procesal Penal', tipo: 'codigo' } },
+  ];
+  const consulta = { select: () => consulta, ilike: () => consulta, eq: () => consulta, in: (...a) => { enLeyes(...a); return consulta; }, limit: () => Promise.resolve({ data: filas, error: null }) };
+  mockFrom.mockReturnValue(consulta);
+  mockRpc.mockResolvedValue({ data: null, error: new Error('sin procedencia') });
+  const { resultados } = await buscarLegal('art 5 código penal');
+  expect(enLeyes).toHaveBeenCalledWith('norma_id', ['cp', 'cpp']);
+  expect(resultados.map((r) => r.id)).toEqual(['a', 'b']);
+});
+
+test('la reforma de un artículo, como la acredita la base', () => {
+  expect(nombreDecreto('9-2009')).toBe('Decreto 9-2009');
+  expect(nombreDecreto('Decreto 2-2025')).toBe('Decreto 2-2025');
+  expect(numeroDeDecreto('9-2009')).toBe('9-2009');
+  expect(rotuloDeNorma({ titulo: 'Ley contra la Violencia Sexual', decreto: '9-2009', tipo: 'ley' })).toBe('DECRETO 9-2009');
+  expect(reformaDe({ decreto_reforma: '9-2009', reformado_por: 'v', vigente_desde: '2009-04-04' })).toEqual({ decreto: 'Decreto 9-2009', normaId: 'v', desde: '2009-04-04' });
+  expect(reformaDe({ decreto_reforma: null, reformado_por: null })).toBeNull();
+  expect(deResolucion({ articulo_id: 'g', articulo: 'Art. 407 Ñ', norma: 'Código Penal', texto: '' }).numero).toBe('407 Ñ');
+  const decretos = new Map([['d2', { decreto: 'Decreto 2-2025', titulo: 'Reformas al Código Penal' }], ['v', { decreto: '9-2009' }]]);
+  const reformas = new Map([['d2|327 G', 'adiciona']]);
+  const g = reformaDeArticulo({ numero_articulo: '327 G', reformado_por: 'd2', vigente_desde: '2025-03-08' }, reformas, decretos);
+  expect(g).toMatchObject({ decreto: 'Decreto 2-2025', accion: 'adiciona', desde: '2025-03-08' });
+  const d = reformaDeArticulo({ numero_articulo: '175', reformado_por: 'v', vigente_desde: '2009-04-04', derogado: true }, reformas, decretos);
+  expect(d).toMatchObject({ decreto: 'Decreto 9-2009', accion: 'deroga' });
+  expect(reformaDeArticulo({ numero_articulo: '1' }, reformas, decretos)).toBeNull();
+  expect(ultimaReforma([{ reforma: d }, { reforma: g }, { reforma: null }])).toBe(g);
+});
+
+test('el número repetido se quita aunque traiga su sufijo entre comillas', () => {
+  expect(textoLegible('Artículo 327 "G". Clonación de tarjeta.', { numero: '327 G' })).toBe('Clonación de tarjeta.');
+  expect(textoLegible('Artículo 327 “D”. Distribución.', { numero: '327 D' })).toBe('Distribución.');
+  expect(textoLegible('Artículo 195 Quáter. Utilización.', { numero: '195 QUATER' })).toBe('Utilización.');
+  expect(textoLegible('Artículo 132 BIS. (Ejecución extrajudicial).', { numero: '132 BIS' })).toBe('(Ejecución extrajudicial).');
+});
+
+test('la nota de un artículo, sin lo que es de quien cargó el texto', () => {
+  expect(notaVisible('Reformado por el Decreto 15-2026, art. 104 (vigente desde 17/09/2026). Texto anterior en backup 2026-10-02.'))
+    .toBe('Reformado por el Decreto 15-2026, art. 104 (vigente desde 17/09/2026).');
+  expect(notaVisible('Nota de carga 2026-10-02: la fuente imprime por error «337».')).toBeNull();
 });
 
 test('sin el número repetido ni el encabezado de página del PDF', () => {

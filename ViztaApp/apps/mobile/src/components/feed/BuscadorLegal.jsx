@@ -18,8 +18,8 @@ import { normalizar } from './organizacion';
 import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
 import {
-  buscarLegal, descripcionDe, iniciativasDeLey, nombreEstado, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
-  traerIndiceNormas, traerLeyesDeBase, traerNorma, urlDeDocumento,
+  buscarLegal, descripcionDe, iniciativasDeLey, nombreDecreto, nombreEstado, notaVisible, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
+  traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
 } from './buscadorLegal';
 
 const ICONO = { ley: Scale, articulo: Pilcrow, iniciativa: ScrollText };
@@ -179,7 +179,7 @@ function Panel({ onClose }) {
         </View>
 
         {abierta?.tipo === 'norma' ? (
-          <Norma key={`${pila.length}-${abierta.id}`} id={abierta.id} foco={abierta.foco} abajo={insets.bottom} registro={registro} onIniciativa={abrirIniciativa} />
+          <Norma key={`${pila.length}-${abierta.id}`} id={abierta.id} foco={abierta.foco} abajo={insets.bottom} registro={registro} onIniciativa={abrirIniciativa} onLey={abrirLey} />
         ) : abierta?.tipo === 'iniciativa' ? (
           <IniciativaAbierta key={`${pila.length}-${abierta.numero}`} numero={abierta.numero} abajo={insets.bottom} registro={registro} onLey={abrirLey} />
         ) : (
@@ -305,6 +305,7 @@ function Resultado({ r, tipo, onPress }) {
           <Icono size={12} color={TINTA} strokeWidth={2.4} />
           <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA, flexShrink: 1 }} numberOfLines={1}>{rotulo}</Text>
           {estado ? <Pastilla>{estado}</Pastilla> : null}
+          {r.derogado ? <Pastilla>derogado</Pastilla> : null}
         </View>
         <Text numberOfLines={2} style={r.tipo === 'articulo'
           ? { fontSize: 13, fontWeight: '600', color: INK.meta, marginTop: 4 }
@@ -312,9 +313,27 @@ function Resultado({ r, tipo, onPress }) {
           {titulo}
         </Text>
         <Fragmento partes={r.partes} />
+        {r.reforma?.decreto ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 }}>
+            <PencilLine size={11.5} color={INK.meta} strokeWidth={2.2} />
+            <Text numberOfLines={1} style={{ fontSize: 12, color: INK.meta, flexShrink: 1 }}>
+              {[`texto del ${r.reforma.decreto}`, r.reforma.desde ? `vigente desde el ${fechaLegal(r.reforma.desde)}` : null].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        ) : null}
       </Pressable>
     </Animated.View>
   );
+}
+
+/** «2025-03-08» → «8 mar 2025». */
+const fechaLegal = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** El último día de una versión: su fin no está incluido, así que es el día antes. */
+function ultimoDia(iso) {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /**
@@ -457,7 +476,7 @@ function LeyesDeBase({ leyes, onAbrir }) {
           <Scale size={16} color={TINTA} strokeWidth={2.2} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontFamily: SERIF, fontSize: 17, lineHeight: 21, color: INK.title }}>{n.titulo}</Text>
-            <Text style={{ fontSize: 12, color: INK.meta, marginTop: 2 }}>{[n.decreto, `${n.articulos_count} artículos`].filter(Boolean).join(' · ')}</Text>
+            <Text style={{ fontSize: 12, color: INK.meta, marginTop: 2 }}>{[nombreDecreto(n.decreto), `${n.articulos_count} artículos`].filter(Boolean).join(' · ')}</Text>
           </View>
         </Pressable>
       ))}
@@ -470,7 +489,7 @@ function LeyesDeBase({ leyes, onAbrir }) {
 /** La ruta de un artículo dentro de su ley: libro › título › capítulo. */
 const seccionDe = (a) => [a.libro, a.titulo_seccion, a.capitulo].filter(Boolean).join(' › ');
 
-function Norma({ id, foco, abajo, registro, onIniciativa }) {
+function Norma({ id, foco, abajo, registro, onIniciativa, onLey }) {
   const q = useQuery({ queryKey: ['norma-legal', id], queryFn: () => traerNorma(id), staleTime: 30 * 60 * 1000 });
   const [dentro, setDentro] = useState('');
   const lista = useRef(null);
@@ -525,7 +544,7 @@ function Norma({ id, foco, abajo, registro, onIniciativa }) {
       renderItem={({ item, index }) => {
         const seccion = seccionDe(item);
         const nueva = seccion && (index === 0 || seccionDe(articulos[index - 1]) !== seccion);
-        return <Articulo articulo={item} seccion={nueva ? seccion : dentro ? null : item.antes} enFoco={item.id === foco} resaltar={dentro} />;
+        return <Articulo articulo={item} seccion={nueva ? seccion : dentro ? null : item.antes} enFoco={item.id === foco} resaltar={dentro} onLey={onLey} />;
       }}
     />
   );
@@ -548,6 +567,7 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onInic
       </View>
       <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title, marginTop: 6 }}>{norma.titulo}</Text>
       <Text style={{ fontSize: 12, color: INK.meta, marginTop: 6 }}>{[fecha, `${total} artículos`].filter(Boolean).join(' · ')}</Text>
+      <AlDia norma={norma} />
       {descripcion ? <Text style={{ fontSize: 14, lineHeight: 20, color: INK.body, marginTop: 10 }}>{descripcion}</Text> : null}
       {norma.necesita_revision ? (
         <Text style={{ fontSize: 12.5, lineHeight: 18, color: INK.meta, marginTop: 8 }}>Texto en revisión: puede faltar alguna reforma o artículo.</Text>
@@ -566,6 +586,27 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onInic
       </View>
       {dentro && cuantos ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.meta, marginTop: 6 }}>{cuantos} de {total} artículos</Text> : null}
       <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
+    </View>
+  );
+}
+
+/**
+ * Hasta dónde llega el texto: la última reforma aplicada, la fecha del texto
+ * si se conoce, y cuántos cambios de otros decretos faltan por confirmar.
+ * Dice lo que hay; no promete que la ley esté completa.
+ */
+function AlDia({ norma }) {
+  const u = norma.ultimaReforma;
+  const partes = [
+    u ? `última reforma aplicada: ${u.decreto}${u.desde ? `, desde el ${fechaLegal(u.desde)}` : ''}` : null,
+    norma.texto_al ? `texto al ${fechaLegal(norma.texto_al)}` : null,
+    norma.porConfirmar ? `${norma.porConfirmar} ${norma.porConfirmar === 1 ? 'cambio' : 'cambios'} por confirmar` : null,
+  ].filter(Boolean);
+  if (!partes.length) return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 4 }}>
+      <PencilLine size={11.5} color={INK.meta} strokeWidth={2.2} style={{ marginTop: 2.5 }} />
+      <Text style={{ fontSize: 12, lineHeight: 17, color: INK.meta, flex: 1 }}>{partes.join(' · ')}</Text>
     </View>
   );
 }
@@ -634,7 +675,79 @@ function resaltado(texto, buscado) {
   return partes;
 }
 
-function Articulo({ articulo: a, seccion, enFoco, resaltar }) {
+const HIZO = { reforma: 'reformado por el', adiciona: 'agregado por el', deroga: 'derogado por el' };
+
+function Articulo({ articulo: a, seccion, enFoco, resaltar, onLey }) {
+  // Un derogado no es ley vigente: su texto se ve solo si se pide.
+  const [verDerogado, setVerDerogado] = useState(false);
+  if (a.derogado && !verDerogado) {
+    return (
+      <View>
+        {seccion ? <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4, color: INK.faint, marginTop: 18, marginBottom: 2 }}>{seccion.toUpperCase()}</Text> : null}
+        <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: RAYA }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: INK.faint }}>Artículo {a.numero_articulo}</Text>
+            {/* «derogado por el Decreto…» ya lo dice; la pastilla, solo si no se sabe cuál. */}
+            {a.reforma?.decreto ? null : <Pastilla>derogado</Pastilla>}
+          </View>
+          <Reforma reforma={a.reforma} onLey={onLey} />
+          <Pressable onPress={() => { roce(); setVerDerogado(true); }} accessibilityRole="button" accessibilityState={{ expanded: false }} accessibilityLabel={`ver el texto que tuvo, artículo ${a.numero_articulo}`}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
+            <Text style={{ fontSize: 12, color: INK.meta }}>ver el texto que tuvo</Text>
+            <ChevronDown size={13} color={INK.meta} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+  return <ArticuloVigente a={a} seccion={seccion} enFoco={enFoco} resaltar={resaltar} onLey={onLey} onOcultar={a.derogado ? () => setVerDerogado(false) : null} />;
+}
+
+/** Qué decreto le cambió el texto y desde cuándo; se toca y abre el decreto. */
+function Reforma({ reforma, onLey }) {
+  if (!reforma?.decreto) return null;
+  const texto = [`${HIZO[reforma.accion] || HIZO.reforma} ${reforma.decreto}`, reforma.desde ? `desde el ${fechaLegal(reforma.desde)}` : null].filter(Boolean).join(' · ');
+  return (
+    <Pressable onPress={reforma.normaId ? () => { roce(); onLey?.({ id: reforma.normaId }); } : null} disabled={!reforma.normaId}
+      accessibilityRole="button" accessibilityLabel={`${texto}, abrir el decreto`}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, minHeight: 28, alignSelf: 'flex-start', opacity: pressed ? 0.5 : 1 })}>
+      <PencilLine size={12} color={TINTA} strokeWidth={2.2} />
+      <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{texto}</Text>
+    </Pressable>
+  );
+}
+
+/** La versión anterior de un artículo reformado, plegada; se trae al abrirla. */
+function VersionAnterior({ articuloId, numero }) {
+  const [abierta, setAbierta] = useState(false);
+  const q = useQuery({ queryKey: ['version-anterior', articuloId], queryFn: () => traerVersionAnterior(articuloId), enabled: abierta, staleTime: 60 * 60 * 1000 });
+  const Flecha = abierta ? ChevronUp : ChevronDown;
+  return (
+    <View>
+      <Pressable onPress={() => { roce(); setAbierta(!abierta); }} accessibilityRole="button" accessibilityState={{ expanded: abierta }} accessibilityLabel={`versión anterior, artículo ${numero}`}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
+        <Text style={{ fontSize: 12, color: INK.meta }}>versión anterior</Text>
+        <Flecha size={13} color={INK.meta} />
+      </Pressable>
+      {abierta ? (
+        q.isLoading ? <MorphingInfinity size={20} color={INK.meta} />
+          : q.isError ? <Text style={{ fontSize: 12.5, color: INK.meta }}>No se pudo traer. Puede intentarse de nuevo.</Text>
+          : q.data?.texto ? (
+            <View style={{ borderLeftWidth: 2, borderLeftColor: RAYA, paddingLeft: 10, marginBottom: 4 }}>
+              {q.data.hasta ? <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.4, color: INK.faint }}>{`VIGENTE HASTA EL ${ultimoDia(q.data.hasta).toUpperCase()}`}</Text> : null}
+              <Text selectable style={{ fontSize: 13.5, lineHeight: 20, color: INK.meta, marginTop: 3 }}>{textoLegible(q.data.texto, { numero })}</Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12.5, lineHeight: 18, color: INK.meta }}>
+              {q.data?.desconocida ? 'El texto anterior a esta reforma no está en la biblioteca.' : 'No tenía una versión anterior: este decreto lo agregó.'}
+            </Text>
+          )
+      ) : null}
+    </View>
+  );
+}
+
+function ArticuloVigente({ a, seccion, enFoco, resaltar, onLey, onOcultar }) {
   const texto = a.legible;
   const largo = texto.length > 520;
   // Abierto si se tocó; si no, el buscado entra abierto. Buscando adentro,
@@ -652,16 +765,28 @@ function Articulo({ articulo: a, seccion, enFoco, resaltar }) {
         paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: RAYA,
         ...(enFoco ? { backgroundColor: 'rgba(47,74,122,0.06)', borderRadius: 12, paddingHorizontal: 12, marginHorizontal: -12, borderBottomColor: 'transparent' } : null),
       }}>
-        <Text style={{ fontSize: 13, fontWeight: '800', color: enFoco ? TINTA : INK.title }}>Artículo {a.numero_articulo}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: enFoco ? TINTA : INK.title }}>Artículo {a.numero_articulo}</Text>
+          {a.derogado && !a.reforma?.decreto ? <Pastilla>derogado</Pastilla> : null}
+        </View>
+        <Reforma reforma={a.reforma} onLey={onLey} />
         <Text selectable numberOfLines={cortado && !recorte ? 7 : undefined} style={{ fontSize: 14, lineHeight: 21, color: INK.body, marginTop: 5 }}>
           {resaltar ? resaltado(visible, resaltar) : visible}
         </Text>
-        {a.notas_reforma ? <Text style={{ fontSize: 12, lineHeight: 17, color: INK.meta, marginTop: 6 }}>{textoLegible(a.notas_reforma)}</Text> : null}
+        {!a.reforma && notaVisible(a.notas_reforma) ? <Text style={{ fontSize: 12, lineHeight: 17, color: INK.meta, marginTop: 6 }}>{textoLegible(notaVisible(a.notas_reforma))}</Text> : null}
         {largo ? (
           <Pressable onPress={() => setAbierto(!abierto)} accessibilityRole="button" accessibilityState={{ expanded: abierto }} accessibilityLabel={`${abierto ? 'ocultar' : 'leer completo'}, artículo ${a.numero_articulo}`}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
             <Text style={{ fontSize: 12, color: INK.meta }}>{abierto ? 'ocultar' : 'leer completo'}</Text>
             <Flecha size={13} color={INK.meta} />
+          </Pressable>
+        ) : null}
+        {a.reforma?.accion === 'reforma' ? <VersionAnterior articuloId={a.id} numero={a.numero_articulo} /> : null}
+        {onOcultar ? (
+          <Pressable onPress={() => { roce(); onOcultar(); }} accessibilityRole="button" accessibilityState={{ expanded: true }} accessibilityLabel={`ocultar el texto que tuvo, artículo ${a.numero_articulo}`}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
+            <Text style={{ fontSize: 12, color: INK.meta }}>ocultar</Text>
+            <ChevronUp size={13} color={INK.meta} />
           </Pressable>
         ) : null}
       </View>

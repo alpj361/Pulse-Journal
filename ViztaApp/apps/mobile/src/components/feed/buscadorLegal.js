@@ -1,4 +1,5 @@
 import { supabase } from '../../utils/supabase';
+import { EXTRACTORW_URL } from '../../utils/servicios';
 import { normalizar } from './organizacion';
 import { etapaDe } from './iniciativas';
 
@@ -31,7 +32,25 @@ const VACIAS = new Set([
   'ese', 'esa', 'eso', 'mi', 'mis', 'me', 'se', 'si', 'sí', 'es', 'son', 'ley', 'leyes', 'guatemala', 'según',
 ]);
 
-const NUMERO_ARTICULO = /\bart(?:[íi]culos?|s?\.)?\s*(\d+(?:\s*(?:bis|ter|quater|[a-g]))?)\b/i;
+const NUMERO_ARTICULO = /\bart(?:[íi]culos?|s?\.)?\s*(\d+)(?![\d])/i;
+// Los sufijos latinos van en serie (bis, ter, quáter…) y las letras en otra
+// (A, B… Ñ). Ñ no es N y sexies no es el número solo: cada uno es su artículo.
+const LATINOS = ['BIS', 'TER', 'QUATER', 'QUINQUIES', 'SEXIES', 'SEPTIES', 'OCTIES', 'NONIES', 'DECIES'];
+const SUFIJO_LATINO = /^\s*[«"“”]?\s*(bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies)(?![a-zñáéíóú])\s*[»"“”]?/i;
+const SUFIJO_LETRA = /^\s*([«"“”])?\s*([a-zñ])(?![a-zñáéíóú])\s*([»"“”])?/i;
+
+/** El sufijo que sigue al número, si lo hay, y cuánto texto ocupa. */
+function sufijoDe(despues) {
+  const latino = despues.match(SUFIJO_LATINO);
+  if (latino) return { sufijo: latino[1].toUpperCase().replace('Á', 'A'), largo: latino[0].length };
+  const letra = despues.match(SUFIJO_LETRA);
+  if (!letra) return null;
+  // «art 5 a la ley» no es el 5 A: una letra suelta cuenta si va entre
+  // comillas, en mayúscula o justo antes de la ley («327 g del código»).
+  const sigue = despues.slice(letra[0].length);
+  const esSufijo = (letra[1] && letra[3]) || /[A-ZÑ]/.test(letra[2]) || /^\s*(?:$|[,.;:)]|del?\b)/i.test(sigue);
+  return esSufijo ? { sufijo: letra[2].toUpperCase(), largo: letra[0].length } : null;
+}
 
 /**
  * Qué se pidió: el texto tal cual, y si nombra un artículo, su número y lo
@@ -41,8 +60,10 @@ export function leerConsulta(texto) {
   const q = String(texto || '').replace(/\s+/g, ' ').trim();
   const m = q.match(NUMERO_ARTICULO);
   if (!m) return { q, numero: null, resto: '' };
-  const numero = m[1].replace(/\s+/g, ' ').toUpperCase();
-  const resto = (q.slice(0, m.index) + ' ' + q.slice(m.index + m[0].length)).replace(/\b(de|del|la|el)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  const fin = m.index + m[0].length;
+  const suf = sufijoDe(q.slice(fin));
+  const numero = suf ? `${m[1]} ${suf.sufijo}` : m[1];
+  const resto = (q.slice(0, m.index) + ' ' + q.slice(fin + (suf?.largo || 0))).replace(/\b(de|del|la|el)\b/gi, ' ').replace(/\s+/g, ' ').trim();
   return { q, numero, resto };
 }
 
@@ -120,9 +141,17 @@ export function partesDelFragmento(fragmento, articulo) {
  * repetir «Artículo 102.» (ya va arriba) y sin el encabezado de página que se
  * cuela en medio («CONSTITUCIÓN POLÍTICA… 20»).
  */
+/** «327 G» como lo escribe una ley: «327 "G"», «327 “G”», «195 Quáter». */
+function patronArticulo(numero) {
+  const [base, ...resto] = String(numero).trim().split(/\s+/);
+  const sufijo = resto.join(' ');
+  if (!sufijo) return escapar(base);
+  return `${escapar(base)}\\s*[«"“”']?\\s*${escapar(sufijo).replace(/A/gi, '[aá]')}\\s*[»"“”']?`;
+}
+
 export function textoLegible(texto, { numero, titulo } = {}) {
   let t = String(texto || '').replace(/\r/g, '');
-  if (numero) t = t.replace(new RegExp(`^\\s*art[íi]culo\\s+${escapar(String(numero))}\\s*[.:\\-–—]?\\s*`, 'i'), '');
+  if (numero) t = t.replace(new RegExp(`^\\s*art[íi]culo\\.?\\s+${patronArticulo(numero)}(?![a-zñ\\d])\\s*[.:\\-–—]?\\s*`, 'i'), '');
   if (titulo) {
     const palabras = String(titulo).toLocaleUpperCase('es').trim().split(/\s+/).map(escapar).join('\\s+');
     t = t.replace(new RegExp(`\\s*${palabras}\\s+\\d{1,4}\\b\\s*`, 'g'), ' ');
@@ -169,7 +198,30 @@ export function compararArticulos(a, b) {
   const na = parseInt(a, 10);
   const nb = parseInt(b, 10);
   if (Number.isNaN(na) || Number.isNaN(nb)) return Number.isNaN(na) - Number.isNaN(nb) || String(a).localeCompare(String(b));
-  return na - nb || String(a).localeCompare(String(b), 'es', { numeric: true });
+  return na - nb || rangoSufijo(a) - rangoSufijo(b) || String(a).localeCompare(String(b), 'es', { numeric: true });
+}
+
+/** El lugar del sufijo: sin sufijo, luego bis, ter, quáter…, luego A, B… Ñ… Z. */
+function rangoSufijo(numero) {
+  const suf = String(numero).replace(/^\d+\s*/, '').toUpperCase().replace('Á', 'A');
+  if (!suf) return 0;
+  const latino = LATINOS.indexOf(suf);
+  if (latino >= 0) return 1 + latino;
+  if (/^[A-ZÑ]$/.test(suf)) return 20 + 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'.indexOf(suf);
+  return 100;
+}
+
+/**
+ * La nota de reforma que trae un artículo, sin lo que es de quien cargó el
+ * texto (respaldos, notas de carga): queda lo que le sirve a quien lee.
+ */
+export function notaVisible(nota) {
+  const limpia = String(nota || '')
+    .split(/(?<=\.)\s+/)
+    .filter((o) => !/backup|respaldo|nota de carga|texto anterior en/i.test(o))
+    .join(' ')
+    .trim();
+  return limpia || null;
 }
 
 /**
@@ -206,7 +258,8 @@ export const nombreTipo = (tipo) => NOMBRE_TIPO[tipo] || tipo || null;
 export function rotuloDeNorma(norma) {
   const titulo = compacto(norma?.titulo);
   const tipo = nombreTipo(norma?.tipo);
-  const decreto = norma?.decreto && !titulo.includes(compacto(norma.decreto)) ? norma.decreto : null;
+  const nombre = nombreDecreto(norma?.decreto);
+  const decreto = nombre && !titulo.includes(compacto(nombre)) ? nombre : null;
   const tipoDicho = tipo && (titulo.startsWith(compacto(tipo)) || compacto(decreto).startsWith(compacto(tipo)));
   const partes = [tipoDicho ? null : tipo, decreto].filter(Boolean);
   return (partes.length ? partes : [tipo || 'ley']).join(' · ').toUpperCase();
@@ -228,8 +281,14 @@ export function decretosNombrados(texto) {
   return [...vistos];
 }
 
-/** El número de una ley de la base: «Decreto 51-92» → «51-92». Los acuerdos y tratados no tienen. */
-export const numeroDeDecreto = (decreto) => String(decreto || '').match(/^decreto(?:[\s-]+ley)?\s+(\d{1,4}(?:-\d{2,4})?)$/i)?.[1] || null;
+/** El número de una ley de la base: «Decreto 51-92» (o «51-92» solo) → «51-92». Los acuerdos y tratados no tienen. */
+export const numeroDeDecreto = (decreto) => String(decreto || '').trim().match(/^(?:decreto(?:[\s-]+ley)?\s+)?(\d{1,4}(?:-\d{2,4})?)$/i)?.[1] || null;
+
+/** Algunas leyes se cargaron con el número solo: «9-2009» se dice «Decreto 9-2009». */
+export const nombreDecreto = (decreto) => {
+  const d = String(decreto || '').trim();
+  return d ? (/^\d/.test(d) ? `Decreto ${d}` : d) : null;
+};
 
 /**
  * A qué leyes de la base se refiere una iniciativa: las que nombra por su
@@ -318,12 +377,65 @@ export async function urlDeDocumento(norma) {
 
 // ─── Consultas ───────────────────────────────────────────────────────────────
 
-async function porNumero(numero, resto) {
-  const { data, error } = await supabase
+/**
+ * Un artículo por su número: primero la resolución exacta del servidor (la
+ * misma de Vizta), que distingue el Código Penal del Procesal Penal y no
+ * cambia un artículo por otro parecido. Sin sesión o sin servidor, se busca
+ * el número aquí.
+ */
+async function porNumero(numero, resto, q) {
+  if (resto) {
+    const exacto = await resolverExacto(q);
+    if (exacto?.ambigua) return conProcedencia(await numeroEnLaBase(numero, '', exacto.candidatos));
+    if (exacto) return exacto.resultados;
+  }
+  return conProcedencia(await numeroEnLaBase(numero, resto));
+}
+
+/** null si no se pudo preguntar; si no, lo que el servidor resolvió, sin adivinar. */
+async function resolverExacto(q) {
+  try {
+    const { data: sesion } = await supabase.auth.getSession();
+    const token = sesion?.session?.access_token;
+    if (!token) return null;
+    const control = new AbortController();
+    const espera = setTimeout(() => control.abort(), 6000);
+    const res = await fetch(`${EXTRACTORW_URL}/api/legal/resolve?limit=10&query=${encodeURIComponent(q)}`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: control.signal,
+    }).finally(() => clearTimeout(espera));
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json?.seleccion?.referencia_invalida) return null;
+    // Varias leyes posibles: se muestra el artículo en cada una, sin elegir.
+    if (json?.seleccion?.ambigua) return { ambigua: true, candidatos: (json.seleccion.candidatos || []).map((c) => c.id) };
+    return { resultados: (json?.results || []).map(deResolucion) };
+  } catch {
+    return null;
+  }
+}
+
+/** Un artículo como lo devuelve el servidor, como un resultado del buscador. */
+export function deResolucion(r) {
+  const numero = String(r.articulo || '').replace(/^art\.?\s*/i, '');
+  return {
+    tipo: 'articulo', clave: `articulo-${r.articulo_id}`, id: r.articulo_id, normaId: r.norma_id, numero,
+    titulo: r.norma, decreto: r.decreto,
+    partes: [{ texto: textoLegible(r.texto, { numero, titulo: r.norma }).slice(0, 260), marca: false }],
+    reforma: reformaDe(r.procedencia),
+  };
+}
+
+/** El número escrito como está en la base: quáter va con y sin tilde. */
+const patronNumero = (numero) => numero.replace(/QUATER$/, 'QU_TER');
+
+async function numeroEnLaBase(numero, resto, soloNormas = null) {
+  let consulta = supabase
     .from('articulos')
-    .select('id, numero_articulo, texto, norma_id, normas(titulo, decreto, tipo)')
-    .ilike('numero_articulo', numero)
-    .limit(300);
+    .select('id, numero_articulo, texto, norma_id, derogado, normas(titulo, decreto, tipo)')
+    .ilike('numero_articulo', patronNumero(numero))
+    .eq('excluido_busqueda', false);
+  if (soloNormas?.length) consulta = consulta.in('norma_id', soloNormas);
+  const { data, error } = await consulta.limit(300);
   if (error) throw error;
   const palabras = normalizar(resto).split(/\s+/).filter((p) => p.length >= 3);
   const puntaje = (f) => {
@@ -346,8 +458,29 @@ async function porNumero(numero, resto) {
       numero: f.numero_articulo,
       titulo: f.normas?.titulo,
       decreto: f.normas?.decreto,
+      derogado: !!f.derogado,
       partes: [{ texto: textoLegible(f.texto, { numero: f.numero_articulo, titulo: f.normas?.titulo }).slice(0, 260), marca: false }],
     }));
+}
+
+/**
+ * Qué decreto cambió el texto de un artículo y desde cuándo vale, como lo
+ * acredita la base. Sin reforma acreditada, nada: no se adivina.
+ */
+export function reformaDe(p) {
+  if (!p?.decreto_reforma && !p?.reformado_por) return null;
+  return { decreto: nombreDecreto(p.decreto_reforma), normaId: p.reformado_por || null, desde: p.vigente_desde || null };
+}
+
+/** Los artículos encontrados, con su reforma: una sola consulta para todos. */
+async function conProcedencia(resultados) {
+  const ids = resultados.filter((r) => r.tipo === 'articulo').map((r) => r.id);
+  if (!ids.length) return resultados;
+  const { data, error } = await supabase.rpc('legal_procedencia_articulos', { p_ids: ids });
+  // La procedencia acompaña; si no llega, los artículos se muestran igual.
+  if (error || !Array.isArray(data)) return resultados;
+  const porId = new Map(data.map((p) => [p.articulo_id, p]));
+  return resultados.map((r) => (r.tipo === 'articulo' && porId.has(r.id) ? { ...r, reforma: reformaDe(porId.get(r.id)) } : r));
 }
 
 async function deLaBase(q) {
@@ -384,14 +517,14 @@ export async function buscarLegal(texto) {
   const { q, numero, resto } = leerConsulta(texto);
   if (q.length < 2) return { resultados: [], amplia: false };
   if (numero) {
-    const exactos = await porNumero(numero, resto);
+    const exactos = await porNumero(numero, resto, q);
     if (exactos.length) return { resultados: exactos, amplia: false, numero };
   }
   const resultados = await deLaBase(q);
-  if (resultados.length) return { resultados: porCoincidencia(resultados), amplia: false };
+  if (resultados.length) return { resultados: porCoincidencia(await conProcedencia(resultados)), amplia: false };
   const amplia = consultaAmplia(q);
   if (!amplia) return { resultados: [], amplia: false };
-  return { resultados: porCoincidencia(await deLaBase(amplia)), amplia: true };
+  return { resultados: porCoincidencia(await conProcedencia(await deLaBase(amplia))), amplia: true };
 }
 
 /**
@@ -412,25 +545,83 @@ export function porCoincidencia(resultados) {
 export async function traerNorma(id) {
   const { data: norma, error } = await supabase
     .from('normas')
-    .select('id, titulo, decreto, tipo, area, estado, descripcion, storage_path, fecha_publicacion, fecha_vigencia, articulos_count, necesita_revision')
+    .select('id, titulo, decreto, tipo, area, estado, descripcion, storage_path, fecha_publicacion, fecha_vigencia, articulos_count, necesita_revision, texto_al')
     .eq('id', id)
     .single();
   if (error) throw error;
-  const articulos = [];
+  const filas = [];
   const lote = 250;
   for (let desde = 0; ; desde += lote) {
     const { data, error: e } = await supabase
       .from('articulos')
-      .select('id, numero_articulo, libro, titulo_seccion, capitulo, texto, notas_reforma')
+      .select('id, numero_articulo, libro, titulo_seccion, capitulo, texto, notas_reforma, derogado, reformado_por, vigente_desde')
       .eq('norma_id', id)
+      .eq('excluido_busqueda', false)
       .order('id')
       .range(desde, desde + lote - 1);
     if (e) throw e;
-    articulos.push(...(data || []));
+    filas.push(...(data || []));
     if ((data || []).length < lote) break;
   }
-  articulos.sort((a, b) => compararArticulos(a.numero_articulo, b.numero_articulo));
-  return { norma, articulos };
+  const { reformas, porConfirmar, decretos } = await reformasDeLaLey(id, filas);
+  const articulos = filas
+    .map((a) => ({ ...a, reforma: reformaDeArticulo(a, reformas, decretos) }))
+    .sort((a, b) => compararArticulos(a.numero_articulo, b.numero_articulo));
+  return { norma: { ...norma, ultimaReforma: ultimaReforma(articulos), porConfirmar }, articulos };
+}
+
+/**
+ * Lo que los decretos le hicieron a una ley: qué artículo reformaron,
+ * agregaron o derogaron (lo aplicado), y cuántas instrucciones siguen por
+ * confirmar. Los decretos se traen por su id para nombrarlos.
+ */
+async function reformasDeLaLey(normaId, filas) {
+  const { data } = await supabase
+    .from('reformas')
+    .select('numero_destino, accion, estado, decreto_id')
+    .eq('norma_destino_id', normaId)
+    .in('estado', ['aplicada', 'revision']);
+  const lista = data || [];
+  const reformas = new Map(lista.filter((r) => r.estado === 'aplicada').map((r) => [`${r.decreto_id}|${r.numero_destino}`, r.accion]));
+  const ids = [...new Set(filas.map((a) => a.reformado_por).filter(Boolean))];
+  const decretos = new Map();
+  if (ids.length) {
+    const { data: normas } = await supabase.from('normas').select('id, titulo, decreto').in('id', ids);
+    for (const n of normas || []) decretos.set(n.id, n);
+  }
+  return { reformas, decretos, porConfirmar: lista.filter((r) => r.estado === 'revision').length };
+}
+
+/** La reforma de un artículo: qué decreto, qué hizo y desde cuándo. */
+export function reformaDeArticulo(a, reformas, decretos) {
+  if (!a.reformado_por) return null;
+  const decreto = decretos.get(a.reformado_por);
+  const accion = a.derogado ? 'deroga' : reformas.get(`${a.reformado_por}|${a.numero_articulo}`) || 'reforma';
+  return { decreto: nombreDecreto(decreto?.decreto), titulo: decreto?.titulo || null, normaId: a.reformado_por, desde: a.vigente_desde || null, accion };
+}
+
+/** La reforma más reciente que se aplicó a la ley, para decir hasta dónde llega. */
+export function ultimaReforma(articulos) {
+  return articulos
+    .filter((a) => a.reforma?.desde && a.reforma.decreto)
+    .reduce((ultima, a) => (!ultima || a.reforma.desde > ultima.desde ? a.reforma : ultima), null);
+}
+
+/**
+ * El texto que tuvo un artículo antes de su última reforma, solo cuando se
+ * pide. Si la base no lo tiene (el artículo se reformó pero su texto anterior
+ * nunca se cargó), se dice; no se completa con el texto actual.
+ */
+export async function traerVersionAnterior(articuloId) {
+  const { data, error } = await supabase.rpc('legal_detalle_articulo', { p_articulo: articuloId, p_fecha: null, p_version: null, p_offset: 0, p_limite: 20 });
+  if (error) throw error;
+  const versiones = data?.versiones || [];
+  const actual = versiones.find((v) => v.es_actual);
+  const anterior = versiones.find((v) => !v.es_actual);
+  if (!anterior) return { texto: null, desconocida: !!actual?.anterior_desconocida };
+  const { data: elegida, error: e } = await supabase.rpc('legal_detalle_articulo', { p_articulo: articuloId, p_fecha: null, p_version: anterior.id, p_offset: 0, p_limite: 1 });
+  if (e) throw e;
+  return { texto: elegida?.version_seleccionada?.texto || null, hasta: anterior.vigente_hasta || null, desconocida: false };
 }
 
 /** La Constitución y los códigos, para empezar sin escribir nada. */

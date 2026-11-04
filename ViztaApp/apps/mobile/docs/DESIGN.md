@@ -168,6 +168,21 @@ decreto se volvió si ya se aprobó. Al abrir una ley, «En el Congreso» dice d
 qué iniciativa nació y cuáles la quieren cambiar, primero las que siguen en
 trámite.
 
+**Un artículo dice qué decreto le dio su texto** (PJ, 4-nov-2026, STA-319).
+Debajo del número, con un lápiz y en tinta: «reformado por el Decreto 2-2025 ·
+desde el 8 mar 2025» (o «agregado por», «derogado por»); se toca y abre el
+decreto. La fecha es la de vigencia que acredita la base, nunca la de
+aprobación. Un reformado lleva «versión anterior» plegada con flecha, que se
+trae al abrirla; si la base no tiene ese texto, lo dice y no lo completa con
+el actual. Un derogado no se lee como ley: queda su número, «derogado por el
+Decreto X» y «ver el texto que tuvo» (la pastilla «derogado» va solo si no se
+sabe qué decreto lo derogó: no se dice dos veces). En los resultados, un artículo reformado dice «texto
+del Decreto X · vigente desde…». La cabeza de la ley dice la última reforma
+aplicada y cuántos cambios faltan por confirmar, sin prometer que esté
+completa. Los artículos van por número y, dentro de él, bis, ter, quáter… y
+luego A, B… (Ñ va después de N). Una nota de quien cargó el texto
+(respaldos, notas de carga) no se muestra.
+
 **Una vetada no es aprobada** (PJ, 2-nov-2026). Si el Ejecutivo vetó el
 decreto, la iniciativa no dice «aprobada»: dice «vetada» (ícono de prohibido,
 rojo apagado), su tarjeta es firme en ese mismo tono, «no entró en vigor» va
