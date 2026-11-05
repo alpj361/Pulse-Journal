@@ -162,6 +162,15 @@ test('el número repetido se quita aunque traiga su sufijo entre comillas', () =
   expect(textoLegible('Artículo 132 BIS. (Ejecución extrajudicial).', { numero: '132 BIS' })).toBe('(Ejecución extrajudicial).');
 });
 
+test('si lo buscado es el nombre de una ley, esa ley va primero', () => {
+  const r = (clave, titulo, rank, marca) => ({ tipo: 'ley', clave, titulo, rank, partes: [{ texto: 'x', marca }] });
+  const orden = porCoincidencia([
+    r('reforma', 'Reformas al Decreto 51-92, Código Procesal Penal', 0.9, true),
+    r('penal', 'Código Penal', 0.2, false),
+  ], 'codigo penal').map((x) => x.clave);
+  expect(orden).toEqual(['penal', 'reforma']);
+});
+
 test('la nota de un artículo, sin lo que es de quien cargó el texto', () => {
   expect(notaVisible('Reformado por el Decreto 15-2026, art. 104 (vigente desde 17/09/2026). Texto anterior en backup 2026-10-02.'))
     .toBe('Reformado por el Decreto 15-2026, art. 104 (vigente desde 17/09/2026).');

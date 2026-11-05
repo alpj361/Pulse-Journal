@@ -521,7 +521,7 @@ export async function buscarLegal(texto) {
     if (exactos.length) return { resultados: exactos, amplia: false, numero };
   }
   const resultados = await deLaBase(q);
-  if (resultados.length) return { resultados: porCoincidencia(await conProcedencia(resultados)), amplia: false };
+  if (resultados.length) return { resultados: porCoincidencia(await conProcedencia(resultados), q), amplia: false };
   const amplia = consultaAmplia(q);
   if (!amplia) return { resultados: [], amplia: false };
   return { resultados: porCoincidencia(await conProcedencia(await deLaBase(amplia))), amplia: true };
@@ -533,12 +533,15 @@ export async function buscarLegal(texto) {
  * completo, lejos del fragmento) va después de lo que sí. Un fragmento sin
  * nada marcado no se muestra: solo repetiría el título.
  */
-export function porCoincidencia(resultados) {
+export function porCoincidencia(resultados, q = '') {
   const ORDEN = { ley: 0, articulo: 1, iniciativa: 2 };
   const seVe = (r) => (r.coincide ?? r.partes.some((p) => p.marca)) ? 1 : 0;
+  // Si lo buscado es el nombre de una ley («código penal»), esa ley va primero.
+  const buscado = compacto(q);
+  const esLaLey = (r) => (r.tipo === 'ley' && buscado && compacto(r.titulo) === buscado ? 1 : 0);
   return resultados
     .map((r) => (r.tipo !== 'articulo' && !r.partes.some((p) => p.marca) ? { ...r, partes: [] } : r))
-    .sort((a, b) => seVe(b) - seVe(a) || (b.rank || 0) - (a.rank || 0) || ORDEN[a.tipo] - ORDEN[b.tipo]);
+    .sort((a, b) => esLaLey(b) - esLaLey(a) || seVe(b) - seVe(a) || (b.rank || 0) - (a.rank || 0) || ORDEN[a.tipo] - ORDEN[b.tipo]);
 }
 
 /** Una ley con todos sus artículos, en orden. */
