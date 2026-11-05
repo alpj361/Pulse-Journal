@@ -289,7 +289,12 @@ function Elegido({ persona, onAbrir }) {
  * persona; un voto («a favor»), las fotos de todos los que votaron así; una
  * bancada, las de los suyos. La ficha completa queda para quien la abra.
  */
-export function VotosDelPleno({ votacionId }) {
+/**
+ * `resumen` es el hemiciclo de conteos de la tarjeta: se ve mientras llegan
+ * los votos de cada diputado, o si no están. Con ellos, este hemiciclo lo
+ * reemplaza: no van dos medias lunas del mismo voto.
+ */
+export function VotosDelPleno({ votacionId, resumen = null }) {
   const { width } = useWindowDimensions();
   const ancho = Math.min(width - 48, 340);
   const votos = useQuery({ queryKey: ['congreso-votos', votacionId], queryFn: () => traerVotos(votacionId), staleTime: 60 * 60 * 1000 });
@@ -302,8 +307,8 @@ export function VotosDelPleno({ votacionId }) {
   const bancadas = useMemo(() => bancadasDeLaVotacion(unicos, diputados.data || []), [unicos, diputados.data]);
   const personas = useMemo(() => bancadas.flatMap((b) => b.personas), [bancadas]);
 
-  if (votos.isLoading || diputados.isLoading) return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Trayendo los votos…</Text>;
-  if (votos.isError || !unicos.size) return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Los votos de cada diputado no están por ahora.</Text>;
+  if (votos.isLoading || diputados.isLoading) return <>{resumen}<Text style={{ fontSize: 12, color: INK.faint, marginTop: 12, textAlign: resumen ? 'center' : 'left' }}>Trayendo los votos…</Text></>;
+  if (votos.isError || !unicos.size) return <>{resumen}<Text style={{ fontSize: 12, color: INK.faint, marginTop: 12, textAlign: resumen ? 'center' : 'left' }}>Los votos de cada diputado no están por ahora.</Text></>;
 
   const votoDe = (d) => unicos.get(claveNombre(d.nombre))?.voto;
   const cuenta = (k) => personas.filter((p) => p.voto === k).length;

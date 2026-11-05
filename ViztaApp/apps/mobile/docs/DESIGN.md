@@ -109,6 +109,11 @@ la pantalla: su foto, su nombre, su bancada y su distrito, y en una votación
 cómo votó, con su ícono. No se navega a otra pantalla ni se escribe el nombre
 debajo del dibujo.
 
+**Una votación, un hemiciclo** (PJ, 5-nov-2026). Cerrada, la votación lleva
+el hemiciclo de conteos. Al abrirla, el de cada diputado (el que se toca) lo
+reemplaza; no se apilan dos medias lunas del mismo voto. El de conteos queda
+solo mientras llegan los votos de cada diputado o si no están.
+
 **Un grupo se mira como un distrito** (PJ, 1-nov-2026). En una votación, tocar
 una curul muestra a esa persona en una línea (foto, nombre, bancada y voto),
 sin abrir nada encima; tocar un voto («122 a favor») o una bancada muestra las

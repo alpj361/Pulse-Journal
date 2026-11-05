@@ -192,6 +192,25 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
       </View>
       {/* De una ley se lee su nombre; el paso que se votó ya va en el rótulo. */}
       <Titulo>{ley ? ley.nombre || legible(v.asunto) : v.asunto}</Titulo>
+      {/* Cerrada, el hemiciclo de conteos. Abierta, el de cada diputado lo
+          reemplaza (se tocan sus curules y sus votos); el de conteos queda
+          solo mientras llegan esos votos o si no están. */}
+      {abierta ? (
+        <VotosDelPleno votacionId={v.id} resumen={<ConteoDelPleno v={v} compacta={compacta} ancho={ancho} />} />
+      ) : (
+        <ConteoDelPleno v={v} compacta={compacta} ancho={ancho} />
+      )}
+      <View style={{ alignItems: compacta ? 'flex-start' : 'center', marginTop: 6 }}>
+        <Flecha size={15} color={INK.faint} />
+      </View>
+    </Pressable>
+  );
+}
+
+/** El hemiciclo de conteos y sus cifras: cuántos a favor, en contra, ausentes y con licencia. */
+function ConteoDelPleno({ v, compacta, ancho }) {
+  return (
+    <>
       {compacta ? null : (
         <View style={{ alignItems: 'center', marginTop: 14 }}>
           <Hemiciclo favor={v.a_favor} contra={v.en_contra} ausentes={v.ausentes} licencia={v.licencia} ancho={Math.min(ancho, 320)} />
@@ -212,10 +231,8 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
         <Conteo color={VOTO.contra} cuantos={v.en_contra} nombre="en contra" />
         <Conteo color={VOTO.ausente} cuantos={v.ausentes} nombre="ausentes" />
         <Conteo color={VOTO.licencia} cuantos={v.licencia} nombre="con licencia" />
-        <Flecha size={15} color={INK.faint} />
       </View>
-      {abierta ? <VotosDelPleno votacionId={v.id} /> : null}
-    </Pressable>
+    </>
   );
 }
 
