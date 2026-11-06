@@ -143,18 +143,30 @@ arriba; abajo, «En el Congreso» solo dice de qué iniciativas nació (todas, s
 son varias), sin repetir su etapa.
 
 **El camino de un decreto** (PJ, 6-nov-2026). Un decreto reciente lleva sus
-pasos en puntos que se van llenando: aprobado, al Ejecutivo, sancionado (o
-vetado, en rojo, y ahí termina), publicado, en vigor; cada uno con su fecha si
-consta. Debajo, una oración que dice qué significa el paso en que va («Espera
-la sanción del Ejecutivo, que tiene 15 días desde que lo recibe para
-sancionarlo o vetarlo», «Vigente desde el 1 oct 2026»). Si no tiene ficha de
-la ley, una línea dice por qué. La descripción larga de una ley se pliega a
-tres renglones con «leer más».
+pasos en puntos que se van llenando: aprobado, Ejecutivo, sancionado,
+publicado, en vigor; cada uno con su fecha si consta. Los rótulos son
+sustantivos cortos: «Ejecutivo», no «al Ejecutivo». Mientras no se sanciona,
+el paso en que va es «Ejecutivo». Un decreto vetado sigue al Congreso: el
+punto rojo de «vetado» y después «Congreso» (sin resolver), «veto aceptado»
+(en rojo: ahí termina) o «veto superado» (sigue a publicado y en vigor). Lo
+que el pleno resolvió sale de su votación, no se supone. La descripción larga
+de una ley se pliega a tres renglones con «leer más».
+
+**Las explicaciones del camino van en helpers** (PJ, 6-nov-2026). Debajo de los
+puntos no va ninguna oración fija ni la razón de que falte la ficha de la ley.
+Cada paso se toca y abre su helper: un globo oscuro con pico debajo del paso,
+en frases completas, que enseña cómo funciona el trámite (por ejemplo, en
+«Ejecutivo»: «Actualmente se espera la sanción del Ejecutivo. Puede tardar,
+según cuándo se entregue a la Secretaría General de la Presidencia…»). La
+primera vez se abre solo en el paso en que va, con la nota de que cada paso se
+puede tocar; al tocar un paso o cerrarlo no vuelve a abrirse solo. Los plazos
+que cita salen de la Constitución (arts. 177 a 180).
 
 **Lo nuevo se ve como lo de antes** (PJ, 6-nov-2026). Todo dato que se agregue
 (sobre todo desde el backend) usa los patrones ya trabajados —pill, camino con
 puntos, plegable con flecha, una línea con fecha— y es dinámico: nada de
-párrafos largos. Cada estado visual lleva una frase corta que lo explique.
+párrafos largos. Cada estado visual se explica en su helper, que se abre al
+tocarlo.
 
 **Un grupo se mira como un distrito** (PJ, 1-nov-2026). En una votación, tocar
 una curul muestra a esa persona en una línea (foto, nombre, bancada y voto),

@@ -584,7 +584,7 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onInic
       <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title, marginTop: 6 }}>{norma.titulo}</Text>
       <Text style={{ fontSize: 12, color: INK.meta, marginTop: 6 }}>{[fecha, `${total} artículos`].filter(Boolean).join(' · ')}</Text>
       <AlDia norma={norma} />
-      {conCamino ? <CaminoDecreto eventos={camino.eventos} estado={norma.estado} fechaVigencia={norma.fecha_vigencia} /> : null}
+      {conCamino ? <CaminoDecreto decreto={norma.decreto} eventos={camino.eventos} estado={norma.estado} fechaVigencia={norma.fecha_vigencia} guia /> : null}
       {/* Lo largo se pliega: tres renglones y «leer más». */}
       {descripcion ? (
         <Pressable onPress={() => setTodo(!todo)} accessibilityRole="button" accessibilityState={{ expanded: todo }} accessibilityLabel={todo ? 'plegar la descripción' : 'leer toda la descripción'}>

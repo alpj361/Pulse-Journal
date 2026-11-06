@@ -501,8 +501,8 @@ export function ListaLeyes({ onPagina }) {
       </View>
       <EstadoRegistro q={q} vacio={!filas.length} />
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
-      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((d) => (
-        <Decreto key={d.numero} decreto={d} ficha={fichas.get(String(d.numero).replace(/\s+/g, ''))} cargandoEstado={biblioteca.isLoading}
+      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((d, i) => (
+        <Decreto key={d.numero} decreto={d} ficha={fichas.get(String(d.numero).replace(/\s+/g, ''))} cargandoEstado={biblioteca.isLoading} guia={i === 0}
           eventos={delDecreto(d.numero, registroIniciativas.data || []).eventos} />
       ))}
       <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="decretos" />
@@ -516,7 +516,7 @@ export function ListaLeyes({ onPagina }) {
  * «vigente» solo por estar aprobado), las leyes que cambió con sus artículos
  * y su ficha completa en el buscador legal.
  */
-export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, eventos = [] }) {
+export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, eventos = [], guia = false }) {
   const [leyendo, setLeyendo] = useState(null);
   const [ley, setLey] = useState(null);
   const enlace = /^https?:\/\//i.test(d.pdf_url || '') ? d.pdf_url : null;
@@ -531,7 +531,7 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
       <Titulo>{d.resumen || `Decreto ${d.numero}`}</Titulo>
       {/* La fecha del registro es la de su aprobación, si sus iniciativas no la traen. */}
       {cargandoEstado ? null : <CaminoDecreto eventos={eventos.some((e) => e.tipo === 'aprobada') || !d.fecha ? eventos : [...eventos, { tipo: 'aprobada', fecha: d.fecha }]}
-        estado={estado} fechaVigencia={ficha?.norma?.fecha_vigencia} />}
+        decreto={d.numero} estado={estado} fechaVigencia={ficha?.norma?.fecha_vigencia} sinFicha={!abrible} guia={guia} />}
       {(ficha?.cambia || []).map((c) => (
         <Pressable key={c.norma.id} onPress={c.norma.indexado ? () => setLey(c.norma.id) : null} disabled={!c.norma.indexado}
           accessibilityRole="button" accessibilityLabel={`reforma ${c.nombre}${c.articulos.length ? `, ${articulosDichos(c.articulos)}` : ''}`}
@@ -543,11 +543,6 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
           </Text>
         </Pressable>
       ))}
-      {!abrible && !cargandoEstado ? (
-        <Text style={{ fontSize: 12, lineHeight: 17, color: INK.meta, marginTop: 10 }}>
-          {estado === 'vetado' ? 'Sin ficha de la ley: un decreto vetado no tiene texto vigente.' : 'La ficha de la ley se arma cuando se publica el texto oficial.'}
-        </Text>
-      ) : null}
       {abrible ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`ficha de la ley, decreto ${d.numero}`} onPress={() => setLey(abrible)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>

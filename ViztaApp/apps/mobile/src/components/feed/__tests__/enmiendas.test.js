@@ -72,35 +72,66 @@ test('el estado de un decreto sale de la biblioteca; sin ficha, sin confirmar', 
 
 describe('el camino de un decreto', () => {
   // eslint-disable-next-line global-require
-  const { caminoDelDecreto, delDecreto } = require('../estadoDeLeyes');
+  const { caminoDelDecreto, conResolucion, delDecreto, resolucionesDeVeto } = require('../estadoDeLeyes');
   const pasos = (c) => c.pasos.map((p) => `${p.clave}${p.hecho ? '✓' : '·'}`).join(' ');
 
-  test('aprobado y enviado: espera la sanción, con su plazo', () => {
+  test('aprobado y entregado: se espera en el Ejecutivo, y su ayuda lo dice', () => {
     const c = caminoDelDecreto({ estado: 'pendiente_sancion', eventos: [
       { tipo: 'aprobada', fecha: '2026-10-27', fuente_tipo: 'noticia' },
       { tipo: 'pendiente_sancion', fecha: '2026-11-02', fuente_tipo: 'listado' },
     ] });
-    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ sancionado· publicado· vigor·');
-    expect(c.pasos[c.actual].clave).toBe('sancionado');
+    expect(pasos(c)).toBe('aprobado✓ ejecutivo· sancionado· publicado· vigor·');
+    expect(c.pasos[c.actual].clave).toBe('ejecutivo');
+    expect(c.pasos[1].nombre).toBe('Ejecutivo');
     expect(c.pasos[0]).toMatchObject({ fecha: '2026-10-27', prensa: true });
-    expect(c.explicacion).toBe('En manos del Ejecutivo desde el 2 nov 2026: tiene 15 días para sancionarlo o vetarlo.');
+    expect(c.pasos[1].ayuda).toMatch(/^Actualmente se espera la sanción del Ejecutivo, que lo recibió el 2 nov 2026/);
   });
 
-  test('vetado: el camino termina en el veto', () => {
+  test('sin fecha de entrega, la ayuda dice que depende de la Secretaría General de la Presidencia', () => {
+    const c = caminoDelDecreto({ estado: 'pendiente_sancion', sinFicha: true, eventos: [{ tipo: 'aprobada', fecha: '2026-10-27' }] });
+    expect(c.pasos[1].ayuda).toMatch(/Secretaría General de la Presidencia/);
+    expect(c.pasos[3].ayuda).toMatch(/La ficha de la ley, con su texto, aparece cuando se publica/);
+    expect(caminoDelDecreto({ estado: 'pendiente_sancion' }).pasos[3].ayuda).not.toMatch(/ficha/);
+  });
+
+  test('vetado y sin resolver: queda en el Congreso', () => {
     const c = caminoDelDecreto({ estado: 'vetado', eventos: [{ tipo: 'aprobada', fecha: '2026-09-29' }, { tipo: 'vetada', fecha: '2026-10-28' }] });
-    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ vetado✓');
+    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ vetado✓ congreso·');
     expect(c.vetado).toBe(true);
     expect(c.pasos[2]).toMatchObject({ veto: true, fecha: '2026-10-28' });
-    expect(c.explicacion).toMatch(/dos tercios/);
+    expect(c.pasos[c.actual].clave).toBe('congreso');
+    expect(c.pasos[3].ayuda).toMatch(/todavía no ha resuelto.*30 días.*dos tercios/);
+  });
+
+  test('el veto aceptado por el pleno cierra el camino', () => {
+    const resoluciones = resolucionesDeVeto([
+      { id: 'v1', fecha: '2026-10-06', asunto: 'Aprobacion del Proyecto de Acuerdo (aceptacion del Veto Al Decreto Numero 21-2026)', decreto: '21-2026', resultado: 'aprobada', a_favor: 129 },
+      { id: 'v2', fecha: '2026-10-07', asunto: 'Rechazo del veto al Decreto Numero 5-2026', decreto: null, resultado: 'no aprobada', a_favor: 80 },
+    ]);
+    expect([...resoluciones.keys()]).toEqual(['21-2026']);
+    const eventos = conResolucion([{ tipo: 'aprobada', fecha: '2026-09-08' },
+      { tipo: 'vetada', fecha: '2026-09-30', detalle: { acuerdo_gubernativo: '159-2026' } }], 'Decreto 21-2026', resoluciones);
+    const c = caminoDelDecreto({ estado: 'vetado', eventos });
+    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ vetado✓ congreso✓');
+    expect(c.pasos[3]).toMatchObject({ nombre: 'veto aceptado', fecha: '2026-10-06', veto: true });
+    expect(c.pasos[3].ayuda).toBe('El Congreso aceptó el veto el 6 oct 2026, con 129 votos a favor. El decreto no llega a ser ley.');
+    expect(c.pasos[2].ayuda).toMatch(/Acuerdo Gubernativo 159-2026/);
+  });
+
+  test('el veto superado sigue a la publicación', () => {
+    const r = resolucionesDeVeto([{ id: 'x', fecha: '2026-10-20', asunto: 'Rechazo del veto al Decreto Número 9-2026', resultado: 'aprobada', a_favor: 110 }]);
+    const c = caminoDelDecreto({ estado: 'vetado', eventos: conResolucion([{ tipo: 'vetada', fecha: '2026-10-01' }], '9-2026', r) });
+    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ vetado✓ congreso✓ publicado· vigor·');
+    expect(c.pasos[3].nombre).toBe('veto superado');
   });
 
   test('vigencia diferida: publicado, en vigor en su fecha; vigente, todo pasó', () => {
     const d = caminoDelDecreto({ estado: 'vigencia_diferida', fechaVigencia: '2027-01-01', hoy: '2026-11-06', eventos: [{ tipo: 'sancionada', fecha: '2026-05-14' }] });
     expect(pasos(d)).toBe('aprobado✓ ejecutivo✓ sancionado✓ publicado✓ vigor·');
-    expect(d.explicacion).toMatch(/entra en vigor el 1 ene 2027/);
+    expect(d.pasos[4].ayuda).toMatch(/Entra en vigor el 1 ene 2027/);
     const v = caminoDelDecreto({ estado: 'vigente', fechaVigencia: '2026-10-01' });
     expect(pasos(v)).toBe('aprobado✓ ejecutivo✓ sancionado✓ publicado✓ vigor✓');
-    expect(v.explicacion).toMatch(/Vigente desde el 1 oct 2026/);
+    expect(v.pasos[4].ayuda).toMatch(/vigente desde el 1 oct 2026/);
   });
 
   test('las iniciativas de un decreto, aunque sean varias', () => {

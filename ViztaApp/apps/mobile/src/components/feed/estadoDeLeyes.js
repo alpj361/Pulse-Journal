@@ -92,59 +92,131 @@ export function delDecreto(numero, iniciativas = []) {
 function fechaDe(eventos, tipo) {
   const de = eventos.filter((e) => e.tipo === tipo && e.fecha).sort((a, b) =>
     (a.fuente_tipo === 'noticia') - (b.fuente_tipo === 'noticia') || String(a.fecha).localeCompare(String(b.fecha)));
-  return de[0] ? { fecha: String(de[0].fecha).slice(0, 10), prensa: de[0].fuente_tipo === 'noticia' } : null;
+  return de[0] ? { fecha: String(de[0].fecha).slice(0, 10), prensa: de[0].fuente_tipo === 'noticia', detalle: de[0].detalle || null } : null;
 }
 
 const VIGOR = new Set(['vigente', 'reformada', 'derogada']);
 const PUBLICADA = new Set(['vigente', 'reformada', 'derogada', 'vigencia_diferida']);
+
+const dia = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+const el = (p) => (p?.fecha ? ` el ${dia(p.fecha)}` : '');
 
 /**
  * Por dónde va un decreto, del pleno a su vigencia: aprobado, en manos del
  * Ejecutivo, sancionado (o vetado), publicado en el Diario de Centro América
  * y en vigor. Cada paso dice si ya pasó y su fecha, si consta. Un paso
  * posterior que ya pasó da por pasados los anteriores. Un decreto vetado
- * termina en el veto.
+ * vuelve al Congreso: el camino sigue hasta que el pleno acepta el veto o lo
+ * supera.
  *
- * Devuelve { pasos, actual, vetado, explicacion }.
+ * Cada paso trae su ayuda: qué significa, en frases completas. La pantalla
+ * solo muestra los puntos; la ayuda se abre al tocar un paso.
+ *
+ * Devuelve { pasos, actual, vetado }.
  */
-export function caminoDelDecreto({ eventos = [], estado = null, fechaVigencia = null, hoy = new Date().toISOString().slice(0, 10) } = {}) {
+export function caminoDelDecreto({ eventos = [], estado = null, fechaVigencia = null, sinFicha = false, hoy = new Date().toISOString().slice(0, 10) } = {}) {
   const aprobado = fechaDe(eventos, 'aprobada');
   const enviado = fechaDe(eventos, 'pendiente_sancion');
   const sancionado = fechaDe(eventos, 'sancionada');
   const vetado = fechaDe(eventos, 'vetada') || (estado === 'vetado' ? {} : null);
+  const aceptado = vetado && fechaDe(eventos, 'veto_aceptado');
+  const superado = vetado && !aceptado && fechaDe(eventos, 'veto_superado');
   const enVigor = VIGOR.has(estado) || (estado === 'vigencia_diferida' && fechaVigencia && fechaVigencia <= hoy);
   const publicado = PUBLICADA.has(estado);
 
   const pasos = [
     { clave: 'aprobado', nombre: 'aprobado', ...aprobado, hecho: true },
-    { clave: 'ejecutivo', nombre: 'al Ejecutivo', ...enviado, hecho: !!enviado },
+    // El Ejecutivo es el paso en que se espera: queda hecho cuando lo sanciona o lo veta.
+    { clave: 'ejecutivo', nombre: 'Ejecutivo', ...enviado, enviado: !!enviado, hecho: false },
   ];
   if (vetado) {
     pasos.push({ clave: 'vetado', nombre: 'vetado', ...vetado, hecho: true, veto: true });
-  } else {
+    if (aceptado) pasos.push({ clave: 'congreso', nombre: 'veto aceptado', ...aceptado, hecho: true, veto: true, final: true });
+    else if (superado) pasos.push({ clave: 'congreso', nombre: 'veto superado', ...superado, hecho: true });
+    else pasos.push({ clave: 'congreso', nombre: 'Congreso', hecho: false });
+  }
+  if (!vetado || superado) {
     pasos.push(
-      { clave: 'sancionado', nombre: 'sancionado', ...sancionado, hecho: !!sancionado },
+      ...(vetado ? [] : [{ clave: 'sancionado', nombre: 'sancionado', ...sancionado, hecho: !!sancionado }]),
       { clave: 'publicado', nombre: 'publicado', hecho: publicado },
       { clave: 'vigor', nombre: 'en vigor', fecha: fechaVigencia || null, hecho: !!enVigor },
     );
   }
   // Lo que ya pasó después dice que lo de antes también pasó.
   for (let i = pasos.length - 2; i >= 0; i -= 1) if (pasos[i + 1].hecho) pasos[i].hecho = true;
-  const actual = vetado ? pasos.length - 1 : Math.max(0, pasos.findIndex((p) => !p.hecho));
-  return { pasos, actual: pasos.every((p) => p.hecho) && !vetado ? pasos.length - 1 : actual, vetado: !!vetado, explicacion: explicar(pasos, { vetado, estado, fechaVigencia, enVigor }) };
+  const pendiente = pasos.findIndex((p) => !p.hecho);
+  const actual = pendiente === -1 ? pasos.length - 1 : pendiente;
+  const ctx = { estado, fechaVigencia, enVigor, sinFicha };
+  return { pasos: pasos.map((p) => ({ ...p, ayuda: ayudaDelPaso(p, ctx) })), actual, vetado: !!vetado };
 }
 
-const dia = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+/**
+ * Qué significa cada paso, para la ayuda. Frases completas y en registro
+ * neutro: explican el trámite (Constitución, arts. 177 a 180).
+ */
+export function ayudaDelPaso(p, { estado, fechaVigencia, enVigor, sinFicha } = {}) {
+  switch (p.clave) {
+    case 'aprobado':
+      return `El pleno del Congreso lo aprobó${el(p)}. Después, la Junta Directiva tiene hasta diez días para enviarlo al Organismo Ejecutivo.`;
+    case 'ejecutivo':
+      if (p.hecho) return `El Ejecutivo lo recibió${el(p)}. Tenía 15 días para sancionarlo o vetarlo.`;
+      return p.enviado
+        ? `Actualmente se espera la sanción del Ejecutivo, que lo recibió${el(p)}. Desde que lo recibe, tiene 15 días para sancionarlo o vetarlo.`
+        : 'Actualmente se espera la sanción del Ejecutivo. Puede tardar, según cuándo se entregue a la Secretaría General de la Presidencia; desde que lo recibe, el Ejecutivo tiene 15 días para sancionarlo o vetarlo.';
+    case 'sancionado':
+      return p.hecho
+        ? `El Presidente lo sancionó${el(p)}: lo firmó y ordenó publicarlo.`
+        : 'Sancionar es firmar el decreto y ordenar su publicación. Si el Ejecutivo deja pasar los 15 días sin vetarlo, se tiene por sancionado.';
+    case 'publicado':
+      if (p.hecho) return 'Se publicó en el Diario de Centro América, el diario oficial. Desde la publicación cuenta el plazo para que entre en vigor.';
+      return `Después de la sanción se publica en el Diario de Centro América, el diario oficial.${sinFicha ? ' La ficha de la ley, con su texto, aparece cuando se publica.' : ''}`;
+    case 'vigor':
+      if (estado === 'derogada') return 'Estuvo vigente, pero otra ley la derogó.';
+      if (enVigor) return fechaVigencia ? `Está vigente desde el ${dia(fechaVigencia)}: ya se aplica.` : 'Está vigente: ya se aplica.';
+      if (fechaVigencia) return `Entra en vigor el ${dia(fechaVigencia)}, la fecha que fija el decreto.`;
+      return 'Una ley entra en vigor ocho días después de publicarse, salvo que ella misma fije otro plazo.';
+    case 'vetado': {
+      const acuerdo = p.detalle?.acuerdo_gubernativo ? `, mediante el Acuerdo Gubernativo ${p.detalle.acuerdo_gubernativo}` : '';
+      return `El Presidente, en Consejo de Ministros, lo vetó${el(p)}${acuerdo}: no lo sancionó y lo devolvió al Congreso con sus objeciones. Un veto es siempre de todo el decreto, no de una parte.`;
+    }
+    case 'congreso': {
+      const votos = p.detalle?.a_favor ? `, con ${p.detalle.a_favor} votos a favor` : '';
+      if (p.final) return `El Congreso aceptó el veto${el(p)}${votos}. El decreto no llega a ser ley.`;
+      if (p.hecho) return `El Congreso superó el veto${el(p)}${votos}. El Ejecutivo debe sancionarlo y publicarlo dentro de los ocho días siguientes.`;
+      return 'El Congreso todavía no ha resuelto el veto. Tiene hasta 30 días para aceptarlo, y entonces el decreto no llega a ser ley, o para superarlo con dos tercios de los diputados (107 de 160).';
+    }
+    default:
+      return '';
+  }
+}
 
-/** Lo que significa el paso en que va, en una oración. */
-function explicar(pasos, { vetado, estado, fechaVigencia, enVigor }) {
-  if (vetado) return 'El Ejecutivo lo vetó. Vuelve al Congreso, que puede aceptar el veto o superarlo con dos tercios de los votos.';
-  if (estado === 'derogada') return 'Ya no está vigente: otra ley la derogó.';
-  if (enVigor) return fechaVigencia ? `Vigente desde el ${dia(fechaVigencia)}.` : 'Vigente.';
-  if (estado === 'vigencia_diferida') return fechaVigencia ? `Ya se publicó; entra en vigor el ${dia(fechaVigencia)}.` : 'Ya se publicó; entra en vigor en la fecha que fija el decreto.';
-  const sancionado = pasos.find((p) => p.clave === 'sancionado')?.hecho;
-  if (sancionado) return 'Sancionado. Entra en vigor cuando se publique en el Diario de Centro América, en el plazo que fija el decreto.';
-  const enviado = pasos.find((p) => p.clave === 'ejecutivo');
-  if (enviado?.fecha) return `En manos del Ejecutivo desde el ${dia(enviado.fecha)}: tiene 15 días para sancionarlo o vetarlo.`;
-  return 'Aprobado por el pleno. Cuando lo recibe el Ejecutivo, tiene 15 días para sancionarlo o vetarlo.';
+/**
+ * Lo que el pleno resolvió de cada veto, desde sus votaciones: «aceptación
+ * del veto al Decreto 21-2026», aprobada, es un veto aceptado. Una votación
+ * que no se aprobó no resuelve nada.
+ */
+export function resolucionesDeVeto(votos = []) {
+  const porDecreto = new Map();
+  for (const v of votos) {
+    if (v.resultado !== 'aprobada' || !/veto/i.test(v.asunto || '')) continue;
+    const numero = limpio(v.decreto) || limpio((String(v.asunto).match(/decreto\s+(?:n[uú]mero\s+)?(\d+-\d{4})/i) || [])[1]);
+    if (!numero) continue;
+    const asunto = String(v.asunto);
+    const tipo = /(rechaz|super|primac|no\s+acept)/i.test(asunto) ? 'veto_superado' : /acept/i.test(asunto) ? 'veto_aceptado' : null;
+    if (!tipo) continue;
+    porDecreto.set(numero, { tipo, fecha: String(v.fecha).slice(0, 10), fuente_tipo: 'acta', detalle: { a_favor: v.a_favor ?? null, votacion_id: v.id } });
+  }
+  return porDecreto;
+}
+
+export async function traerResolucionesVeto() {
+  const { data, error } = await supabase.from('votaciones').select('id, fecha, asunto, decreto, resultado, a_favor').ilike('asunto', '%veto%');
+  if (error) throw error;
+  return resolucionesDeVeto(data || []);
+}
+
+/** Los eventos de un decreto, con lo que el pleno resolvió de su veto. */
+export function conResolucion(eventos = [], numero, resoluciones) {
+  const r = resoluciones?.get?.(limpio(numero));
+  return r && !eventos.some((e) => e.tipo === r.tipo) ? [...eventos, r] : eventos;
 }
