@@ -168,6 +168,12 @@ puntos, plegable con flecha, una línea con fecha— y es dinámico: nada de
 párrafos largos. Cada estado visual se explica en su helper, que se abre al
 tocarlo.
 
+**La etiqueta dice de qué trata la nota, no lo que menciona** (PJ, 6-nov-2026).
+Una nota del tablero es «Interpelación» solo si trata de una interpelación: la
+comparecencia del ministro, la interpelación misma. El orden del día de una
+sesión o su cierre por falta de quórum son del pleno, aunque entre sus puntos
+haya una interpelación; y que el resumen la nombre no basta.
+
 **Un grupo se mira como un distrito** (PJ, 1-nov-2026). En una votación, tocar
 una curul muestra a esa persona en una línea (foto, nombre, bancada y voto),
 sin abrir nada encima; tocar un voto («122 a favor») o una bancada muestra las

@@ -20,6 +20,14 @@ describe('claseDe', () => {
     expect(claseDe({ stage: 'otro', titulo: 'CITACIÓN A PNC REPORTA 58 AGENTES CONSIGNADOS' })).toBe('citacion');
     expect(claseDe({ stage: 'citacion', titulo: 'Interpelan al ministro de Comunicaciones' })).toBe('interpelacion');
   });
+  test('interpelación solo si la nota trata de ella, no si la sesión o el resumen la mencionan', () => {
+    expect(claseDe({ origin: 'pleno', titulo: 'Abelardo Pinto acudió al Congreso el 5 de noviembre para su interpelación' })).toBe('interpelacion');
+    expect(claseDe({ origin: 'jefes_bloque', titulo: 'Proyecto de Orden del Día de la 57ª Sesión Ordinaria', summary: 'Agenda propuesta: acta anterior, interpelaciones a Desarrollo Social, Trabajo y Salud' })).toBe('pleno');
+    expect(claseDe({ origin: 'pleno', titulo: 'Sesión 57 cerrada por falta de quórum; interpelación al Mides pendiente' })).toBe('pleno');
+    expect(claseDe({ origin: 'pleno', titulo: '57ª Sesión Ordinaria / interpelación — 5 de noviembre de 2026' })).toBe('pleno');
+    expect(claseDe({ stage: 'otro', origin: 'otro', titulo: 'PIDEN PROHIBIR PROMOCIONES POLÍTICAS EN ESCUELAS', summary: 'pidió la interpelación de la ministra' })).toBe('noticia');
+    expect(claseDe({ stage: 'interpelacion', titulo: 'Comparece la ministra de Educación' })).toBe('interpelacion');
+  });
   test('iniciativa: presentada, o con número en el camino de una ley', () => {
     expect(claseDe({ stage: 'iniciativa_presentada', card_type: 'timeline' })).toBe('iniciativa');
     expect(claseDe({ stage: 'dictamen', iniciativa_numero: '6512' })).toBe('iniciativa');

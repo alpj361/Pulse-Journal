@@ -80,11 +80,25 @@ const ETAPAS_DE_LEY = ['en_comision', 'dictamen', 'primer_debate', 'segundo_deba
 
 export const numeroDe = (item) => item?.iniciativa_numero || item?.card_data?.iniciativa_numero || null;
 
+// Lo que habla de una sesión entera: su agenda, su apertura o su cierre.
+const DE_LA_SESION = /\b(orden del dia|agenda|sesion (ordinaria|extraordinaria|solemne)|\d+a sesion|quorum)\b/;
+
+/**
+ * Una interpelación es la nota que trata de ella: la marca el monitor o la
+ * dice el título. Que la mencione el resumen no basta, y la nota de una
+ * sesión —su orden del día, su cierre por falta de quórum— es del pleno
+ * aunque entre sus puntos haya una interpelación.
+ */
+function esInterpelacion(item, texto) {
+  if (item?.stage === 'interpelacion') return true;
+  return /\binterpel/.test(texto) && !DE_LA_SESION.test(texto);
+}
+
 /** La clase de una nota del tablero. El orden importa: la primera que aplica gana. */
 export function claseDe(item) {
   const texto = plano(`${item?.titulo || ''} ${item?.card_data?.subject || ''}`);
   const favor = Number(item?.votes?.favor);
-  if (/\binterpel/.test(texto) || /\binterpel/.test(plano(item?.summary))) return 'interpelacion';
+  if (esInterpelacion(item, texto)) return 'interpelacion';
   if (item?.stage === 'eleccion' || item?.card_type === 'ficha') return 'eleccion';
   // Aprobado con hemiciclo solo si la nota trae los votos: sin conteo es una
   // nota que cuenta una aprobación, y se dibuja como nota.
