@@ -117,13 +117,14 @@ solo mientras llegan los votos de cada diputado o si no están.
 **Una enmienda se explica, no solo se cuenta** (PJ, 6-nov-2026, STA-323).
 Toda votación de enmienda abre su ficha, desde la votación suelta («ficha de
 la enmienda») o desde su paso plegado bajo la ley, que ya lleva su nombre en
-sencillo. La ficha dice, en este orden: en qué quedó (con votos y fecha), qué
-significa en sencillo, a qué pertenece (iniciativa, ley con su estado y
-artículo del proyecto), quién la propuso, lo que decía antes frente a lo que
-se propuso, su efecto, el trámite de la iniciativa (comisión aparte del
-pleno) y el momento en el video. Lo que no está identificado se dice («no
-identificada»), nunca se deduce. Un paso que solo cuenta la prensa dice
-«según prensa». El hemiciclo va al final, de apoyo. «Con las enmiendas
+sencillo. La ficha dice, en este orden: en qué quedó (con votos y fecha), el
+enlace para verla en la sesión (siempre, arriba: al momento exacto si se
+sabe), qué significa en sencillo, a qué pertenece (iniciativa, ley con su
+estado y artículo del proyecto), quién la propuso, lo que decía antes frente a
+lo que se propuso, su efecto y el trámite de la iniciativa (hasta el dictamen
+y después). Cada parte va solo si hay algo que decir: lo que falta no se
+anuncia («no identificada» no se escribe). Un paso que solo cuenta la prensa
+dice «según prensa». El hemiciclo va al final, de apoyo. «Con las enmiendas
 incorporadas» no es una enmienda: es el título ya enmendado.
 
 **Un decreto dice su estado real** (PJ, 6-nov-2026, STA-323). En «Leyes y
@@ -133,6 +134,27 @@ o vigencia diferida. Sin ficha en la biblioteca dice «estado sin confirmar»:
 aprobado no es vigente. Las leyes que cambió van con sus artículos solo si la
 biblioteca ya tiene esa relación («reforma Código Penal · arts. 327 B, 327 F
 y 327 G»), y «ficha de la ley» la abre en el buscador legal.
+
+**El veto se ve antes que el título** (PJ, 6-nov-2026). «vetada» va en una
+pill redonda, fondo rojo y letra blanca, en todo lugar donde aparece (lista de
+decretos, ficha de la ley, iniciativas, buscador, enmiendas). Los demás
+estados van en pill gris. En la ficha de una ley el veto se dice una vez,
+arriba; abajo, «En el Congreso» solo dice de qué iniciativas nació (todas, si
+son varias), sin repetir su etapa.
+
+**El camino de un decreto** (PJ, 6-nov-2026). Un decreto reciente lleva sus
+pasos en puntos que se van llenando: aprobado, al Ejecutivo, sancionado (o
+vetado, en rojo, y ahí termina), publicado, en vigor; cada uno con su fecha si
+consta. Debajo, una oración que dice qué significa el paso en que va («Espera
+la sanción del Ejecutivo, que tiene 15 días desde que lo recibe para
+sancionarlo o vetarlo», «Vigente desde el 1 oct 2026»). Si no tiene ficha de
+la ley, una línea dice por qué. La descripción larga de una ley se pliega a
+tres renglones con «leer más».
+
+**Lo nuevo se ve como lo de antes** (PJ, 6-nov-2026). Todo dato que se agregue
+(sobre todo desde el backend) usa los patrones ya trabajados —pill, camino con
+puntos, plegable con flecha, una línea con fecha— y es dinámico: nada de
+párrafos largos. Cada estado visual lleva una frase corta que lo explique.
 
 **Un grupo se mira como un distrito** (PJ, 1-nov-2026). En una votación, tocar
 una curul muestra a esa persona en una línea (foto, nombre, bancada y voto),

@@ -69,3 +69,47 @@ test('el estado de un decreto sale de la biblioteca; sin ficha, sin confirmar', 
   expect(articulosDichos(['327 B', '327 F', '327 G'])).toBe('arts. 327 B, 327 F y 327 G');
   expect(articulosDichos(['5'])).toBe('art. 5');
 });
+
+describe('el camino de un decreto', () => {
+  // eslint-disable-next-line global-require
+  const { caminoDelDecreto, delDecreto } = require('../estadoDeLeyes');
+  const pasos = (c) => c.pasos.map((p) => `${p.clave}${p.hecho ? '✓' : '·'}`).join(' ');
+
+  test('aprobado y enviado: espera la sanción, con su plazo', () => {
+    const c = caminoDelDecreto({ estado: 'pendiente_sancion', eventos: [
+      { tipo: 'aprobada', fecha: '2026-10-27', fuente_tipo: 'noticia' },
+      { tipo: 'pendiente_sancion', fecha: '2026-11-02', fuente_tipo: 'listado' },
+    ] });
+    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ sancionado· publicado· vigor·');
+    expect(c.pasos[c.actual].clave).toBe('sancionado');
+    expect(c.pasos[0]).toMatchObject({ fecha: '2026-10-27', prensa: true });
+    expect(c.explicacion).toBe('En manos del Ejecutivo desde el 2 nov 2026: tiene 15 días para sancionarlo o vetarlo.');
+  });
+
+  test('vetado: el camino termina en el veto', () => {
+    const c = caminoDelDecreto({ estado: 'vetado', eventos: [{ tipo: 'aprobada', fecha: '2026-09-29' }, { tipo: 'vetada', fecha: '2026-10-28' }] });
+    expect(pasos(c)).toBe('aprobado✓ ejecutivo✓ vetado✓');
+    expect(c.vetado).toBe(true);
+    expect(c.pasos[2]).toMatchObject({ veto: true, fecha: '2026-10-28' });
+    expect(c.explicacion).toMatch(/dos tercios/);
+  });
+
+  test('vigencia diferida: publicado, en vigor en su fecha; vigente, todo pasó', () => {
+    const d = caminoDelDecreto({ estado: 'vigencia_diferida', fechaVigencia: '2027-01-01', hoy: '2026-11-06', eventos: [{ tipo: 'sancionada', fecha: '2026-05-14' }] });
+    expect(pasos(d)).toBe('aprobado✓ ejecutivo✓ sancionado✓ publicado✓ vigor·');
+    expect(d.explicacion).toMatch(/entra en vigor el 1 ene 2027/);
+    const v = caminoDelDecreto({ estado: 'vigente', fechaVigencia: '2026-10-01' });
+    expect(pasos(v)).toBe('aprobado✓ ejecutivo✓ sancionado✓ publicado✓ vigor✓');
+    expect(v.explicacion).toMatch(/Vigente desde el 1 oct 2026/);
+  });
+
+  test('las iniciativas de un decreto, aunque sean varias', () => {
+    const r = delDecreto('Decreto 23-2026', [
+      { numero: 6493, decreto_resultante: '23-2026', eventos_timeline: [{ tipo: 'vetada', fecha: '2026-10-28' }] },
+      { numero: 6719, decreto_resultante: '23-2026', eventos_timeline: [] },
+      { numero: 1, decreto_resultante: '2-2026' },
+    ]);
+    expect(r.iniciativas.map((i) => i.numero)).toEqual([6493, 6719]);
+    expect(r.eventos).toHaveLength(1);
+  });
+});

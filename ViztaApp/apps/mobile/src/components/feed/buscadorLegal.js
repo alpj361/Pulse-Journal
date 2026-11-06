@@ -343,13 +343,14 @@ export function relacionDe(ini, normas) {
  */
 export function iniciativasDeLey(norma, iniciativas, normas = []) {
   const numero = numeroDeDecreto(norma?.decreto);
-  const origen = numero ? iniciativas.find((i) => String(i.decreto_resultante || '').replace(/\s+/g, '') === numero) || null : null;
+  // Un decreto puede nacer de varias iniciativas juntas (el 23-2026, de la 6493 y la 6719).
+  const origenes = numero ? iniciativas.filter((i) => String(i.decreto_resultante || '').replace(/\s+/g, '') === numero) : [];
   const indice = normas.some((n) => n.id === norma?.id) ? normas : [...normas, norma];
   const cambios = iniciativas
-    .filter((i) => i !== origen && propositoDe(i.titulo) === 'reforma' && leyesNombradas(i.titulo, [norma]).length)
+    .filter((i) => !origenes.includes(i) && propositoDe(i.titulo) === 'reforma' && leyesNombradas(i.titulo, [norma]).length)
     .map((i) => ({ ini: i, rel: relacionDe(i, indice) }))
     .sort((a, b) => terminada(a.rel) - terminada(b.rel) || b.ini.numero - a.ini.numero);
-  return { origen: origen ? { ini: origen, rel: relacionDe(origen, indice) } : null, cambios };
+  return { origenes: origenes.sort((a, b) => a.numero - b.numero).map((i) => ({ ini: i, rel: relacionDe(i, indice) })), cambios };
 }
 
 const terminada = (rel) => Number(rel.aprobada || rel.vetada);

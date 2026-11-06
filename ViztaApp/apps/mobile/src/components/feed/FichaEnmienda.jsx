@@ -12,10 +12,10 @@ import { COLOR_VOTO } from './diputados';
 import { normalizar, resultadoVotacion } from './organizacion';
 import { legible } from './votaciones';
 import { enlaceAlMomento, partesResaltadas, traerEnmienda, tramiteDe } from './enmiendas';
+import { PillEstado } from './CaminoDecreto';
 
 const TINTA = '#2F4A7A';
 const RAYA = 'rgba(28,43,34,0.09)';
-const VETO = '#A0463C';
 // Con año: el trámite de una iniciativa puede empezar años antes de la votación.
 const fecha = (f) => (f ? new Date(`${String(f).slice(0, 10)}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' }) : null);
 
@@ -68,6 +68,15 @@ function Ficha({ votacion: v, apoyo, onClose }) {
           <Text style={{ fontSize: 13.5, color: INK.meta, marginTop: 18 }}>No se pudo traer la ficha. Puede intentarse de nuevo.</Text>
         ) : (
           <>
+            {/* Verla en la sesión va siempre, arriba: es lo que hay aunque falte lo demás. */}
+            {d?.video ? (
+              <Pressable onPress={() => { roce(); Linking.openURL(enlaceAlMomento(d.video, f?.video_seg)).catch(() => {}); }}
+                accessibilityRole="link" accessibilityLabel={f?.video_seg ? 'ver el momento en el video de la sesión' : 'ver el video de la sesión'}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, paddingHorizontal: 12, marginTop: 18, borderWidth: 1, borderColor: RAYA, borderRadius: 10, opacity: pressed ? 0.6 : 1 })}>
+                <Play size={17} color={TINTA} />
+                <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>{f?.video_seg ? 'ver el momento en la sesión' : 'ver la sesión'}</Text>
+              </Pressable>
+            ) : null}
             {f?.resumen ? (
               <>
                 <Seccion Icono={MessageSquareText}>EN SENCILLO</Seccion>
@@ -77,21 +86,25 @@ function Ficha({ votacion: v, apoyo, onClose }) {
               </>
             ) : null}
 
-            <Seccion Icono={ScrollText}>A QUÉ PERTENECE</Seccion>
+            {/* Cada parte va solo si hay algo que decir: lo que falta no se anuncia. */}
             <Pertenece d={d} onLey={setLey} />
 
-            <Seccion Icono={Users}>PROPUESTA POR</Seccion>
-            <Proponentes nombres={f?.proponentes} />
+            {(f?.proponentes || []).filter(Boolean).length ? (
+              <>
+                <Seccion Icono={Users}>PROPUESTA POR</Seccion>
+                <Proponentes nombres={f.proponentes} />
+              </>
+            ) : null}
 
-            <Seccion Icono={FileText}>EL TEXTO</Seccion>
             {f?.texto_antes || f?.texto_propuesto ? (
-              <View style={{ gap: 12 }}>
-                {f.texto_antes ? <Bloque etiqueta={f.t_dice || 'Lo que decía antes'} texto={f.texto_antes} /> : <Falta>No está cargado lo que decía antes.</Falta>}
-                {f.texto_propuesto ? <Bloque etiqueta="Lo que se propuso" texto={f.texto_propuesto} propuesto /> : <Falta>No está cargado el texto propuesto.</Falta>}
-              </View>
-            ) : (
-              <Falta>El texto anterior y el propuesto no están cargados para esta enmienda.</Falta>
-            )}
+              <>
+                <Seccion Icono={FileText}>EL TEXTO</Seccion>
+                <View style={{ gap: 12 }}>
+                  {f.texto_antes ? <Bloque etiqueta={f.t_dice || 'Lo que decía antes'} texto={f.texto_antes} /> : null}
+                  {f.texto_propuesto ? <Bloque etiqueta="Lo que se propuso" texto={f.texto_propuesto} propuesto /> : null}
+                </View>
+              </>
+            ) : null}
 
             {f?.efecto ? (
               <>
@@ -102,14 +115,6 @@ function Ficha({ votacion: v, apoyo, onClose }) {
 
             <Tramite iniciativa={d?.iniciativa} />
 
-            {d?.video ? (
-              <Pressable onPress={() => { roce(); Linking.openURL(enlaceAlMomento(d.video, f?.video_seg)).catch(() => {}); }}
-                accessibilityRole="link" accessibilityLabel={f?.video_seg ? 'ver el momento en el video de la sesión' : 'ver el video de la sesión'}
-                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, paddingHorizontal: 12, marginTop: 18, borderWidth: 1, borderColor: RAYA, borderRadius: 10, opacity: pressed ? 0.6 : 1 })}>
-                <Play size={17} color={TINTA} />
-                <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>{f?.video_seg ? 'ver el momento en la sesión' : 'ver la sesión'}</Text>
-              </Pressable>
-            ) : null}
           </>
         )}
 
@@ -141,10 +146,6 @@ function Seccion({ Icono, children }) {
   );
 }
 
-function Falta({ children }) {
-  return <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.faint }}>{children}</Text>;
-}
-
 /** En qué quedó: el ícono del resultado, los votos y el día. */
 function Resultado({ resultado, v }) {
   const color = resultado === 'aprobada' ? COLOR_VOTO.favor : resultado === 'no_aprobada' ? COLOR_VOTO.contra : INK.meta;
@@ -165,33 +166,33 @@ function Pertenece({ d, onLey }) {
   const ini = d?.iniciativa;
   const articulo = d?.ficha?.articulo || d?.asunto?.articulo;
   const norma = ini?.norma;
+  const filas = [
+    d?.numero ? <Fila key="ini" etiqueta="Iniciativa">{`${d.numero}${ini?.titulo ? ` · ${limpiar(ini.titulo)}` : ''}`}</Fila> : null,
+    ini?.decreto_resultante ? (
+      <View key="ley" style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+        <Text style={{ width: 70, fontSize: 12.5, color: INK.meta }}>Ley</Text>
+        <Text style={{ fontSize: 14, color: INK.title }}>{`Decreto ${ini.decreto_resultante}`}</Text>
+        {norma?.estado ? <PillEstado estado={norma.estado}>{ESTADO_LEY[norma.estado] || norma.estado}</PillEstado> : null}
+      </View>
+    ) : null,
+    articulo ? <Fila key="art" etiqueta="Artículo">{`${articulo} del proyecto`}</Fila> : null,
+    d?.asunto?.clase ? <Fila key="tipo" etiqueta="Tipo">{`enmienda ${d.asunto.clase}`}</Fila> : null,
+  ].filter(Boolean);
+  if (!filas.length) return null;
   return (
-    <View style={{ gap: 8 }}>
-      <Fila etiqueta="Iniciativa">
-        {d?.numero ? `${d.numero}${ini?.titulo ? ` · ${limpiar(ini.titulo)}` : ''}` : <Falta>no identificada</Falta>}
-      </Fila>
-      <Fila etiqueta="Ley">
-        {!d?.numero ? <Falta>no identificada</Falta>
-          : !ini?.decreto_resultante ? <Falta>la iniciativa todavía no tiene decreto</Falta>
-            : (
-              <Text>
-                {`Decreto ${ini.decreto_resultante}`}
-                {norma?.estado ? <Text style={{ color: norma.estado === 'vetado' ? VETO : INK.meta }}>{` · ${ESTADO_LEY[norma.estado] || norma.estado}`}</Text> : null}
-              </Text>
-            )}
-      </Fila>
-      <Fila etiqueta="Artículo">
-        {articulo ? `${articulo} del proyecto` : <Falta>no identificado</Falta>}
-      </Fila>
-      {d?.asunto?.clase ? <Fila etiqueta="Tipo">{`enmienda ${d.asunto.clase}`}</Fila> : null}
-      {norma?.id && norma.indexado ? (
-        <Pressable onPress={() => { roce(); onLey(norma.id); }} accessibilityRole="button" accessibilityLabel={`abrir la ficha del Decreto ${ini.decreto_resultante}`}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, alignSelf: 'flex-start', opacity: pressed ? 0.5 : 1 })}>
-          <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>ficha de la ley</Text>
-          <ArrowRight size={14} color={TINTA} />
-        </Pressable>
-      ) : null}
-    </View>
+    <>
+      <Seccion Icono={ScrollText}>A QUÉ PERTENECE</Seccion>
+      <View style={{ gap: 8 }}>
+        {filas}
+        {norma?.id && norma.indexado ? (
+          <Pressable onPress={() => { roce(); onLey(norma.id); }} accessibilityRole="button" accessibilityLabel={`abrir la ficha del Decreto ${ini.decreto_resultante}`}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, alignSelf: 'flex-start', opacity: pressed ? 0.5 : 1 })}>
+            <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>ficha de la ley</Text>
+            <ArrowRight size={14} color={TINTA} />
+          </Pressable>
+        ) : null}
+      </View>
+    </>
   );
 }
 
@@ -211,7 +212,7 @@ const VISIBLES = 3;
 function Proponentes({ nombres }) {
   const [todos, setTodos] = useState(false);
   const lista = (nombres || []).filter(Boolean);
-  if (!lista.length) return <Falta>No identificado.</Falta>;
+  if (!lista.length) return null;
   const vistos = todos ? lista : lista.slice(0, VISIBLES);
   const Flecha = todos ? ChevronUp : ChevronDown;
   return (

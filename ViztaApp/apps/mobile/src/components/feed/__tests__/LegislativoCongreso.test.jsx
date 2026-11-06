@@ -184,6 +184,6 @@ test('una iniciativa cuyo decreto fue vetado dice «vetada», no «aprobada»', 
   const vetada = { ...registro[0], numero: 6355, decreto_resultante: '10-2026' };
   await act(async () => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={vetada} /></QueryClientProvider>); });
   await esperar();
-  expect(texto()).toContain('VETADA');
+  expect(texto()).toContain('vetada');
   expect(texto()).not.toContain('APROBADA');
 });

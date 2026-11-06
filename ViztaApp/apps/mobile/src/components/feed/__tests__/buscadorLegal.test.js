@@ -264,8 +264,8 @@ describe('iniciativas al lado de las leyes', () => {
       { numero: 6700, titulo: 'Reformas al Decreto Número 32-2024, Ley de Competencia' },
       { numero: 6400, titulo: 'Ley de Competencia', decreto_resultante: '32-2024' },
     ];
-    const { origen, cambios } = iniciativasDeLey(normas[2], inis, normas);
-    expect(origen.ini.numero).toBe(6400);
+    const { origenes, cambios } = iniciativasDeLey(normas[2], inis, normas);
+    expect(origenes.map((o) => o.ini.numero)).toEqual([6400]);
     expect(cambios.map((c) => c.ini.numero)).toEqual([6700, 6605]);
     expect(cambios.map((c) => c.rel.aprobada)).toEqual([false, true]);
   });

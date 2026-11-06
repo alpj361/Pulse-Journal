@@ -9,6 +9,8 @@ import { PAPEL } from '../codex/Papel';
 import { ROTULO } from '../colaboradores/piezas';
 import MorphingInfinity from '../MorphingInfinity';
 import LectorDocumento from '../LectorDocumento';
+import CaminoDecreto, { PillEstado } from './CaminoDecreto';
+import { delDecreto } from './estadoDeLeyes';
 import { Cristal } from './SelectorFeed';
 import FiltroChips from './FiltroChips';
 import { RAYA, TINTA } from './TarjetasCongreso';
@@ -389,14 +391,7 @@ const palabraEtapa = (rel) => (rel.vetada ? 'vetada' : rel.aprobada ? 'aprobada'
 
 /** La etapa en un ícono y una palabra: aprobada (visto verde), vetada o dónde va. */
 function Etapa({ rel }) {
-  if (rel.vetada) {
-    return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <Ban size={11.5} color={VETO} strokeWidth={2.4} />
-        <Text style={{ fontSize: 11.5, color: VETO, fontWeight: '600' }}>vetada</Text>
-      </View>
-    );
-  }
+  if (rel.vetada) return <PillEstado estado="vetado">vetada</PillEstado>;
   if (rel.aprobada) {
     return (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -466,7 +461,9 @@ function Chip({ onPress, children }) {
   );
 }
 
+/** El estado de una ley: el veto, en su pill roja; lo demás, en gris. */
 function Pastilla({ children }) {
+  if (/^vetad[ao]$/.test(String(children || ''))) return <PillEstado estado="vetado">{children}</PillEstado>;
   return (
     <View style={{ backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 }}>
       <Text style={{ fontSize: 11, color: INK.body }}>{children}</Text>
@@ -567,9 +564,14 @@ function Norma({ id, foco, abajo, registro, onIniciativa, onLey }) {
 function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onIniciativa }) {
   const [leyendo, setLeyendo] = useState(null);
   const documento = useQuery({ queryKey: ['documento-norma', norma.id], queryFn: () => urlDeDocumento(norma), staleTime: 50 * 60 * 1000 });
+  const [todo, setTodo] = useState(false);
   const descripcion = descripcionDe(norma);
   const estado = nombreEstado(norma.estado);
-  const fecha = norma.fecha_publicacion
+  // Un decreto reciente lleva su camino (aprobado, sancionado, publicado, en
+  // vigor), que ya tiene sus fechas; un código de hace décadas, no.
+  const camino = useMemo(() => delDecreto(norma.decreto, registro.iniciativas), [norma.decreto, registro.iniciativas]);
+  const conCamino = camino.iniciativas.length > 0 || ['vetado', 'pendiente_sancion', 'vigencia_diferida'].includes(norma.estado);
+  const fecha = !conCamino && norma.fecha_publicacion
     ? new Date(`${norma.fecha_publicacion}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
   return (
@@ -582,7 +584,19 @@ function CabezaNorma({ norma, dentro, onDentro, cuantos, total, registro, onInic
       <Text accessibilityRole="header" style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 32, color: INK.title, marginTop: 6 }}>{norma.titulo}</Text>
       <Text style={{ fontSize: 12, color: INK.meta, marginTop: 6 }}>{[fecha, `${total} artículos`].filter(Boolean).join(' · ')}</Text>
       <AlDia norma={norma} />
-      {descripcion ? <Text style={{ fontSize: 14, lineHeight: 20, color: INK.body, marginTop: 10 }}>{descripcion}</Text> : null}
+      {conCamino ? <CaminoDecreto eventos={camino.eventos} estado={norma.estado} fechaVigencia={norma.fecha_vigencia} /> : null}
+      {/* Lo largo se pliega: tres renglones y «leer más». */}
+      {descripcion ? (
+        <Pressable onPress={() => setTodo(!todo)} accessibilityRole="button" accessibilityState={{ expanded: todo }} accessibilityLabel={todo ? 'plegar la descripción' : 'leer toda la descripción'}>
+          <Text numberOfLines={todo ? undefined : 3} style={{ fontSize: 14, lineHeight: 20, color: INK.body, marginTop: 10 }}>{descripcion}</Text>
+          {descripcion.length > 180 ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32 }}>
+              <Text style={{ fontSize: 12, color: INK.meta }}>{todo ? 'leer menos' : 'leer más'}</Text>
+              {todo ? <ChevronUp size={13} color={INK.meta} /> : <ChevronDown size={13} color={INK.meta} />}
+            </View>
+          ) : null}
+        </Pressable>
+      ) : null}
       {norma.necesita_revision ? (
         <Text style={{ fontSize: 12.5, lineHeight: 18, color: INK.meta, marginTop: 8 }}>Texto en revisión: puede faltar alguna reforma o artículo.</Text>
       ) : null}
@@ -633,15 +647,16 @@ const VISIBLES_CONGRESO = 3;
  */
 function EnElCongreso({ norma, iniciativas, normas, onIniciativa }) {
   const [todas, setTodas] = useState(false);
-  const { origen, cambios } = useMemo(() => iniciativasDeLey(norma, iniciativas, normas), [norma, iniciativas, normas]);
-  if (!origen && !cambios.length) return null;
+  const { origenes, cambios } = useMemo(() => iniciativasDeLey(norma, iniciativas, normas), [norma, iniciativas, normas]);
+  if (!origenes.length && !cambios.length) return null;
   const vistas = todas ? cambios : cambios.slice(0, VISIBLES_CONGRESO);
   return (
     <View style={{ marginTop: 18 }}>
       <Parte Icono={ScrollText}>EN EL CONGRESO</Parte>
-      {origen ? (
-        <FilaIniciativa ini={origen.ini} rel={origen.rel} detalle="nació de esta iniciativa" onPress={() => onIniciativa(origen.ini.numero)} />
-      ) : null}
+      {/* De dónde nació, sin repetir su etapa: el estado de la ley ya va arriba. */}
+      {origenes.map((o) => (
+        <FilaIniciativa key={o.ini.numero} ini={o.ini} rel={o.rel} sinEtapa detalle="nació de esta iniciativa" onPress={() => onIniciativa(o.ini.numero)} />
+      ))}
       {vistas.map(({ ini, rel }) => (
         <FilaIniciativa key={ini.numero} ini={ini} rel={rel} detalle={rel.aprobada ? 'la cambió' : rel.vetada ? 'la iba a cambiar' : 'la cambiaría'} onPress={() => onIniciativa(ini.numero)} />
       ))}
@@ -656,13 +671,13 @@ function EnElCongreso({ norma, iniciativas, normas, onIniciativa }) {
   );
 }
 
-function FilaIniciativa({ ini, rel, detalle, onPress }) {
+function FilaIniciativa({ ini, rel, detalle, onPress, sinEtapa = false }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${ini.numero}, ${palabraEtapa(rel)}, ${detalle}, ${limpiarTitulo(ini.titulo)}`}
-      style={({ pressed }) => ({ ...tarjetaIniciativa(rel), padding: 10, marginTop: 8, opacity: pressed ? 0.6 : 1 })}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`iniciativa ${ini.numero}, ${sinEtapa ? '' : `${palabraEtapa(rel)}, `}${detalle}, ${limpiarTitulo(ini.titulo)}`}
+      style={({ pressed }) => ({ ...tarjetaIniciativa(sinEtapa ? { aprobada: true } : rel), padding: 10, marginTop: 8, opacity: pressed ? 0.6 : 1 })}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{`INICIATIVA ${ini.numero}`}</Text>
-        <Etapa rel={rel} />
+        {sinEtapa ? null : <Etapa rel={rel} />}
       </View>
       <Text numberOfLines={2} style={{ fontSize: 13.5, lineHeight: 19, color: INK.title, marginTop: 4 }}>{limpiarTitulo(ini.titulo)}</Text>
       <Text style={{ fontSize: 12, color: INK.meta, marginTop: 3 }}>{detalle}</Text>
