@@ -114,6 +114,26 @@ el hemiciclo de conteos. Al abrirla, el de cada diputado (el que se toca) lo
 reemplaza; no se apilan dos medias lunas del mismo voto. El de conteos queda
 solo mientras llegan los votos de cada diputado o si no están.
 
+**Una enmienda se explica, no solo se cuenta** (PJ, 6-nov-2026, STA-323).
+Toda votación de enmienda abre su ficha, desde la votación suelta («ficha de
+la enmienda») o desde su paso plegado bajo la ley, que ya lleva su nombre en
+sencillo. La ficha dice, en este orden: en qué quedó (con votos y fecha), qué
+significa en sencillo, a qué pertenece (iniciativa, ley con su estado y
+artículo del proyecto), quién la propuso, lo que decía antes frente a lo que
+se propuso, su efecto, el trámite de la iniciativa (comisión aparte del
+pleno) y el momento en el video. Lo que no está identificado se dice («no
+identificada»), nunca se deduce. Un paso que solo cuenta la prensa dice
+«según prensa». El hemiciclo va al final, de apoyo. «Con las enmiendas
+incorporadas» no es una enmienda: es el título ya enmendado.
+
+**Un decreto dice su estado real** (PJ, 6-nov-2026, STA-323). En «Leyes y
+decretos», cada decreto lleva su estado de la biblioteca legal: vigente,
+vigente · reformada, vetada (en rojo apagado), derogada, pendiente de sanción
+o vigencia diferida. Sin ficha en la biblioteca dice «estado sin confirmar»:
+aprobado no es vigente. Las leyes que cambió van con sus artículos solo si la
+biblioteca ya tiene esa relación («reforma Código Penal · arts. 327 B, 327 F
+y 327 G»), y «ficha de la ley» la abre en el buscador legal.
+
 **Un grupo se mira como un distrito** (PJ, 1-nov-2026). En una votación, tocar
 una curul muestra a esa persona en una línea (foto, nombre, bancada y voto),
 sin abrir nada encima; tocar un voto («122 a favor») o una bancada muestra las

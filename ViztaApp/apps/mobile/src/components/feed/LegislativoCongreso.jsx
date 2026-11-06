@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText, Scale } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
 import { Camino, GrupoVotacion, RAYA, Rotulo, TINTA, Titulo, cabezaDe, useDiputados, useNombresDeLeyes } from './TarjetasCongreso';
@@ -13,6 +13,7 @@ import FiltroChips from './FiltroChips';
 import { anoDecreto, buscarRegistro, fechaRegistro, periodoDe, resultadoVotacion } from './organizacion';
 import { TIPOS_VOTACION, agruparVotaciones, enFiltro, fechaYSesion } from './votaciones';
 import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS_ETAPA } from './iniciativas';
+import { articulosDichos, indexarBiblioteca, nombreDelEstado, traerBiblioteca } from './estadoDeLeyes';
 
 /**
  * Iniciativas y leyes del Congreso, de su registro y no de las noticias.
@@ -466,6 +467,8 @@ export function ListaLeyes({ onPagina }) {
       .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.numero).localeCompare(String(a.numero), undefined, { numeric: true })),
     staleTime: 30 * 60 * 1000,
   });
+  const biblioteca = useQuery({ queryKey: ['biblioteca-estados'], queryFn: traerBiblioteca, staleTime: 30 * 60 * 1000 });
+  const fichas = useMemo(() => indexarBiblioteca(biblioteca.data), [biblioteca.data]);
   const [ano, setAno] = useState('todos');
   const [texto, setTexto] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -488,29 +491,73 @@ export function ListaLeyes({ onPagina }) {
       </View>
       <EstadoRegistro q={q} vacio={!filas.length} />
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
-      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((d) => <Decreto key={d.numero} decreto={d} />)}
+      {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((d) => (
+        <Decreto key={d.numero} decreto={d} ficha={fichas.get(String(d.numero).replace(/\s+/g, ''))} cargandoEstado={biblioteca.isLoading} />
+      ))}
       <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="decretos" />
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
     </View>
   );
 }
 
-export function Decreto({ decreto: d }) {
+const VETO = '#A0463C';
+
+/**
+ * Un decreto del registro: su estado real (de la biblioteca legal, nunca
+ * «vigente» solo por estar aprobado), las leyes que cambió con sus artículos
+ * y su ficha completa en el buscador legal.
+ */
+export function Decreto({ decreto: d, ficha = null, cargandoEstado = false }) {
   const [leyendo, setLeyendo] = useState(null);
+  const [ley, setLey] = useState(null);
   const enlace = /^https?:\/\//i.test(d.pdf_url || '') ? d.pdf_url : null;
+  const estado = ficha?.estado || null;
+  const abrible = ficha?.norma?.indexado ? ficha.norma.id : null;
   return (
     <View style={CARD_REGISTRO}>
-      <Rotulo>{`DECRETO ${d.numero}`}</Rotulo>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Rotulo>{`DECRETO ${d.numero}`}</Rotulo>
+        {cargandoEstado ? null : (
+          <Text style={{ fontSize: 11, fontWeight: '600', color: estado === 'vetado' ? VETO : estado ? INK.meta : INK.faint, marginBottom: 5 }}>
+            {nombreDelEstado(estado)}
+          </Text>
+        )}
+      </View>
       <Titulo>{d.resumen || `Decreto ${d.numero}`}</Titulo>
       {d.fecha ? <Text style={{ color: INK.meta, fontSize: 12, marginTop: 8 }}>{fechaRegistro(d.fecha)}</Text> : null}
+      {(ficha?.cambia || []).map((c) => (
+        <Pressable key={c.norma.id} onPress={c.norma.indexado ? () => setLey(c.norma.id) : null} disabled={!c.norma.indexado}
+          accessibilityRole="button" accessibilityLabel={`reforma ${c.nombre}${c.articulos.length ? `, ${articulosDichos(c.articulos)}` : ''}`}
+          style={({ pressed }) => ({ marginTop: 8, opacity: pressed ? 0.5 : 1 })}>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: INK.body }}>
+            <Text style={{ color: INK.meta }}>reforma </Text>
+            <Text style={{ color: TINTA, fontWeight: '600' }}>{c.nombre}</Text>
+            {c.articulos.length ? <Text style={{ color: INK.meta }}>{` · ${articulosDichos(c.articulos)}`}</Text> : null}
+          </Text>
+        </Pressable>
+      ))}
+      {abrible ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`ficha de la ley, decreto ${d.numero}`} onPress={() => setLey(abrible)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
+          <Scale size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>ficha de la ley</Text>
+          <ChevronRight size={16} color={TINTA} />
+        </Pressable>
+      ) : null}
       {enlace ? <Pressable accessibilityRole="button" accessibilityLabel={`documento del decreto ${d.numero}`}
         onPress={() => setLeyendo({ uri: enlace, titulo: d.resumen || `Decreto ${d.numero}`, origen: `Decreto ${d.numero}` })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
         <FileText size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento del decreto</Text>
       </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
       <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
+      {ley ? <FichaLey normaId={ley} onClose={() => setLey(null)} /> : null}
     </View>
   );
+}
+
+// El buscador legal importa esta parte del Congreso: se trae al abrir la ley.
+function FichaLey(props) {
+  const { FichaDeLey } = require('./BuscadorLegal'); // eslint-disable-line global-require
+  return <FichaDeLey {...props} />;
 }
 
 /**

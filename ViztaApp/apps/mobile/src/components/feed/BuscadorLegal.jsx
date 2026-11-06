@@ -66,6 +66,16 @@ export default function BuscadorLegal() {
   );
 }
 
+/**
+ * La ficha de una ley abierta desde otra pantalla (un decreto del Congreso,
+ * una enmienda): el mismo buscador, parado en esa ley. Volver desde ella
+ * cierra; no lleva a una búsqueda que nadie hizo.
+ */
+export function FichaDeLey({ normaId, onClose }) {
+  if (!normaId) return null;
+  return <Panel onClose={onClose} inicio={{ tipo: 'norma', id: normaId, foco: null }} />;
+}
+
 /** Un libro con su lupa: buscar adentro de lo legal. */
 function IconoBuscador({ color = INK.meta }) {
   return (
@@ -95,7 +105,7 @@ function useRegistro() {
   }), [normas.data, iniciativas.data]);
 }
 
-function Panel({ onClose }) {
+function Panel({ onClose, inicio = null }) {
   const insets = useSafeAreaInsets();
   const [texto, setTexto] = useState('');
   const [buscado, setBuscado] = useState('');
@@ -103,7 +113,7 @@ function Panel({ onClose }) {
   const [abiertas, setAbiertas] = useState({}); // las partes desplegadas en «todo»
   // Lo abierto, en pila: de una ley a una iniciativa que la cambia, y de
   // vuelta. Cada paso: { tipo: 'norma', id, foco } | { tipo: 'iniciativa', numero }.
-  const [pila, setPila] = useState([]);
+  const [pila, setPila] = useState(inicio ? [inicio] : []);
   const abierta = pila[pila.length - 1] || null;
   const registro = useRegistro();
 
@@ -153,7 +163,11 @@ function Panel({ onClose }) {
   }, [visibles, abiertas]);
 
   const ir = (paso) => { roce(); setPila((p) => [...p, paso]); };
-  const volver = () => { roce(); setPila((p) => p.slice(0, -1)); };
+  const volver = () => {
+    roce();
+    if (inicio && pila.length === 1) { onClose(); return; }
+    setPila((p) => p.slice(0, -1));
+  };
   const abrir = (r) => (r.tipo === 'iniciativa'
     ? ir({ tipo: 'iniciativa', numero: r.numero })
     : ir({ tipo: 'norma', id: r.normaId, foco: r.tipo === 'articulo' ? r.id : null }));
@@ -168,7 +182,7 @@ function Panel({ onClose }) {
             <Pressable onPress={volver} hitSlop={12} accessibilityRole="button" accessibilityLabel="Volver"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -6, flex: 1 }}>
               <ChevronLeft size={20} color={INK.meta} />
-              <Text style={{ fontSize: 13, color: INK.meta }}>{pila.length > 1 ? 'volver' : buscado ? 'resultados' : 'buscador legal'}</Text>
+              <Text style={{ fontSize: 13, color: INK.meta }}>{pila.length > 1 ? 'volver' : inicio ? 'cerrar' : buscado ? 'resultados' : 'buscador legal'}</Text>
             </Pressable>
           ) : (
             <Text style={[ROTULO, { flex: 1 }]}>BUSCADOR LEGAL</Text>

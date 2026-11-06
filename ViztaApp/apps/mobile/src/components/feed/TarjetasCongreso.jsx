@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, CircleCheck, CircleDashed, CircleX, Landmark, UserRound } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronUp, CircleCheck, CircleDashed, CircleX, FileText, Landmark, UserRound } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { supabase } from '../../utils/supabase';
 import { normalizar, resultadoVotacion } from './organizacion';
@@ -14,6 +14,8 @@ import { VotosDelPleno } from './PlenoDiputados';
 import { CLASES, claseDe, mayoriaDe, repartirActores } from './clasesCongreso';
 import Pegatina from './Pegatina';
 import { TIPOS_VOTACION, agruparVotaciones, legible, nombreDeLey, nombrePasos, pasoCorto } from './votaciones';
+import { esEnmienda, traerFichas } from './enmiendas';
+import FichaEnmienda from './FichaEnmienda';
 
 /**
  * Lo del Congreso, cada cosa con la forma que le toca.
@@ -165,13 +167,16 @@ function Conteo({ color, cuantos, nombre }) {
  * cada bloque. `compacta` es la misma sin el hemiciclo, para cuando van muchas
  * seguidas.
  */
-export function VotacionCongreso({ votacion: v, compacta = false, ley = null, tipo = null }) {
+export function VotacionCongreso({ votacion: v, compacta = false, ley = null, tipo = null, sinFicha = false }) {
   // El feed lleva 24 de margen a cada lado.
   const { width } = useWindowDimensions();
   const ancho = width - 48;
   const [abierta, setAbierta] = useState(false);
+  const [ficha, setFicha] = useState(false);
   const resultado = resultadoVotacion(v);
   const aprobada = resultado === 'aprobada';
+  // Una enmienda no se entiende por sus votos: lleva su ficha.
+  const enmienda = !sinFicha && esEnmienda(v.asunto);
   const Flecha = abierta ? ChevronUp : ChevronDown;
   return (
     <Pressable
@@ -192,6 +197,14 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
       </View>
       {/* De una ley se lee su nombre; el paso que se votó ya va en el rótulo. */}
       <Titulo>{ley ? ley.nombre || legible(v.asunto) : v.asunto}</Titulo>
+      {enmienda ? (
+        <Pressable onPress={() => setFicha(true)} accessibilityRole="button" accessibilityLabel={`ficha de la enmienda: qué cambia, quién la propuso y a qué pertenece, ${v.asunto}`}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginTop: 8, alignSelf: 'flex-start', opacity: pressed ? 0.5 : 1 })}>
+          <FileText size={16} color={TINTA} />
+          <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>ficha de la enmienda</Text>
+          <ChevronRight size={14} color={TINTA} />
+        </Pressable>
+      ) : null}
       {/* Cerrada, el hemiciclo de conteos. Abierta, el de cada diputado lo
           reemplaza (se tocan sus curules y sus votos); el de conteos queda
           solo mientras llegan esos votos o si no están. */}
@@ -203,6 +216,7 @@ export function VotacionCongreso({ votacion: v, compacta = false, ley = null, ti
       <View style={{ alignItems: compacta ? 'flex-start' : 'center', marginTop: 6 }}>
         <Flecha size={15} color={INK.faint} />
       </View>
+      {ficha ? <FichaEnmienda votacion={v} apoyo={<VotacionCongreso votacion={v} tipo={tipo} ley={ley} sinFicha />} onClose={() => setFicha(false)} /> : null}
     </Pressable>
   );
 }
@@ -290,26 +304,50 @@ export function GrupoVotacion({ grupo, nombres = {}, compacta = false }) {
   const [abierto, setAbierto] = useState(false);
   const ley = grupo.tipo === 'ley' && grupo.iniciativa ? { numero: grupo.iniciativa, nombre: nombres[grupo.iniciativa] || null } : null;
   const pasos = nombrePasos(grupo);
+  // Al abrir los pasos, las fichas de sus enmiendas: su nombre en sencillo.
+  const idsEnmienda = abierto ? grupo.pasos.filter((v) => esEnmienda(v.asunto)).map((v) => v.id) : [];
+  const fichas = useQuery({ queryKey: ['fichas-enmienda', idsEnmienda], queryFn: () => traerFichas(idsEnmienda), enabled: idsEnmienda.length > 0, staleTime: 30 * 60 * 1000 });
   return (
     <View style={grupo.principal ? null : { paddingTop: 12 }}>
       {grupo.principal ? <VotacionCongreso votacion={grupo.principal} compacta={compacta} ley={ley} tipo={grupo.tipo} />
         : <Rotulo color={INK.meta}>{TIPOS_VOTACION[grupo.tipo].rotulo}</Rotulo>}
       {pasos ? <Plegable abierto={abierto} onPress={() => setAbierto((x) => !x)} texto={pasos} color={grupo.principal ? TINTA : INK.meta} /> : null}
-      {abierto ? grupo.pasos.map((v) => <Paso key={v.id} votacion={v} corto={grupo.tipo !== 'eleccion' && grupo.tipo !== 'acuerdo'} />) : null}
+      {abierto ? grupo.pasos.map((v) => <Paso key={v.id} votacion={v} tipo={grupo.tipo} ficha={fichas.data?.get(v.id)} corto={grupo.tipo !== 'eleccion' && grupo.tipo !== 'acuerdo'} />) : null}
     </View>
   );
 }
 
-/** Un paso plegado: qué se votó, y el ícono del resultado con su número. */
-function Paso({ votacion: v, corto }) {
+/**
+ * Un paso plegado: qué se votó, y el ícono del resultado con su número. Una
+ * enmienda se toca y abre su ficha; con ficha, va su nombre en sencillo
+ * («Artículo 31: en cuánto tiempo se avisa un ataque») sobre el del acta.
+ */
+function Paso({ votacion: v, corto, tipo = null, ficha = null }) {
+  const [abierta, setAbierta] = useState(false);
   const resultado = resultadoVotacion(v);
   const cifra = cifraDe(v);
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: RAYA }}>
-      <Text style={{ flex: 1, fontSize: 13, lineHeight: 18, color: INK.title }}>{corto ? pasoCorto(v.asunto) : v.asunto}</Text>
+  const enmienda = esEnmienda(v.asunto);
+  const fila = (
+    <>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: INK.title }}>{ficha?.titulo || (corto ? pasoCorto(v.asunto) : v.asunto)}</Text>
+        {ficha?.titulo ? <Text style={{ fontSize: 11.5, lineHeight: 16, color: INK.meta, marginTop: 2 }}>{pasoCorto(v.asunto)}</Text> : null}
+      </View>
       <IconoResultado resultado={resultado} size={14} />
       {cifra ? <Text style={{ fontSize: 11.5, color: INK.meta, minWidth: 70 }}>{cifra}</Text> : null}
-    </View>
+      {enmienda ? <ChevronRight size={14} color={INK.faint} /> : null}
+    </>
+  );
+  const estilo = { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: RAYA };
+  if (!enmienda) return <View style={estilo}>{fila}</View>;
+  return (
+    <>
+      <Pressable onPress={() => setAbierta(true)} accessibilityRole="button" accessibilityLabel={`ficha de la enmienda, ${ficha?.titulo || v.asunto}`}
+        style={({ pressed }) => ({ ...estilo, minHeight: 44, opacity: pressed ? 0.6 : 1 })}>
+        {fila}
+      </Pressable>
+      {abierta ? <FichaEnmienda votacion={v} apoyo={<VotacionCongreso votacion={v} tipo={tipo} sinFicha />} onClose={() => setAbierta(false)} /> : null}
+    </>
   );
 }
 
