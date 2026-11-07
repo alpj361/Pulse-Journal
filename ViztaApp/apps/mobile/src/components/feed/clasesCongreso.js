@@ -180,11 +180,15 @@ export function repartirActores(actores = [], diputados = []) {
   return out;
 }
 
-/** Qué alcanzó una votación con `n` votos a favor de 160. */
+/**
+ * Qué alcanzó una votación con `n` votos a favor de 160. Solo dice lo que
+ * alcanzó: no supone que hicieran falta 81 (hay votaciones que se aprueban con
+ * quórum reducido), así que por debajo no dice nada.
+ */
 export function mayoriaDe(n) {
   const v = Number(n);
   if (!Number.isFinite(v) || v <= 0) return null;
   if (v >= 107) return 'alcanzó los dos tercios (107)';
   if (v >= 81) return 'alcanzó la mayoría absoluta (81)';
-  return 'no llegó a la mayoría absoluta (81)';
+  return null;
 }

@@ -59,7 +59,7 @@ describe('quién es quién', () => {
   test('qué alcanzó una votación', () => {
     expect(mayoriaDe(134)).toMatch(/dos tercios/);
     expect(mayoriaDe(90)).toMatch(/alcanzó la mayoría absoluta/);
-    expect(mayoriaDe(60)).toMatch(/no llegó/);
+    expect(mayoriaDe(60)).toBeNull();
     expect(mayoriaDe(null)).toBeNull();
   });
 });

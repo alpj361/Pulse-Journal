@@ -439,3 +439,19 @@ cualquier enlace, no solo posts (PJ, 7-nov-2026):
   llegar · Lo encontrás ya leído…»), y los avisos de error son impersonales:
   «No se pudo enviar. Se puede intentar de nuevo.», «La cuenta se conecta al
   abrir Vizta una vez.».
+
+## Resultado de una votación
+
+El resultado (aprobada o no aprobada) sale del registro (`votaciones.resultado`)
+y se muestra con su ícono. **No se deduce de las cifras** (PJ, 7-nov-2026): no
+se supone que hagan falta 81 votos ni que baste con más a favor que en contra.
+Un orden del día con 33 a favor y 25 en contra se aprueba con quórum reducido;
+una moción con 63 a favor y 49 en contra puede quedar rechazada. Sin resultado
+en el registro, va el ícono de «sin confirmar».
+
+- Cada paso muestra **las dos cifras**, a favor y en contra, no solo la que
+  coincide con el resultado.
+- Todo paso de una sesión (trámite, artículos, mociones) se toca y abre cómo
+  votó cada diputado; una enmienda abre su ficha, que también los trae.
+- La mayoría absoluta o los dos tercios se nombran solo cuando se alcanzaron;
+  por debajo no se dice «no llegó».

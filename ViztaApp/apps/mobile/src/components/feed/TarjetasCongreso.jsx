@@ -272,12 +272,20 @@ export function IconoResultado({ resultado, size = 15 }) {
   return <CircleDashed size={size} color={INK.meta} accessibilityLabel="resultado sin confirmar" />;
 }
 
-/** El número que acompaña al ícono: a favor si se aprobó, en contra si no. */
-function cifraDe(v) {
-  const resultado = resultadoVotacion(v);
-  if (resultado === 'aprobada' && v.a_favor != null) return `${v.a_favor} a favor`;
-  if (resultado === 'no_aprobada' && v.en_contra != null) return `${v.en_contra} en contra`;
-  return null;
+/**
+ * Los votos de un paso, a favor y en contra, siempre los dos. El resultado lo
+ * dice el ícono, y sale del registro (`resultado`): de las cifras no se deduce
+ * si se aprobó. 33 a favor y 25 en contra puede ser aprobada con quórum
+ * reducido, y 63 contra 49 una moción rechazada.
+ */
+function CifrasDe({ v }) {
+  if (v.a_favor == null && v.en_contra == null) return <View style={{ minWidth: 74 }} />;
+  return (
+    <View style={{ minWidth: 74 }}>
+      <Text style={{ fontSize: 11.5, color: INK.meta }}><Text style={{ color: VOTO.favor, fontWeight: '700' }}>{v.a_favor ?? 0}</Text> a favor</Text>
+      <Text style={{ fontSize: 11.5, color: INK.meta }}><Text style={{ color: VOTO.contra, fontWeight: '700' }}>{v.en_contra ?? 0}</Text> en contra</Text>
+    </View>
+  );
 }
 
 /** Desplegar y plegar: el texto con su flecha. */
@@ -324,27 +332,42 @@ export function GrupoVotacion({ grupo, nombres = {}, compacta = false }) {
  */
 function Paso({ votacion: v, corto, tipo = null, ficha = null, conFlecha = false }) {
   const [abierta, setAbierta] = useState(false);
+  const [votos, setVotos] = useState(false);
   const resultado = resultadoVotacion(v);
-  const cifra = cifraDe(v);
   const enmienda = esEnmienda(v.asunto);
+  const titulo = ficha?.titulo || (corto ? pasoCorto(v.asunto) : v.asunto);
   const fila = (
     <>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, lineHeight: 18, color: INK.title }}>{ficha?.titulo || (corto ? pasoCorto(v.asunto) : v.asunto)}</Text>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: INK.title }}>{titulo}</Text>
         {ficha?.titulo ? <Text style={{ fontSize: 11.5, lineHeight: 16, color: INK.meta, marginTop: 2 }}>{pasoCorto(v.asunto)}</Text> : null}
       </View>
       <IconoResultado resultado={resultado} size={14} />
-      {/* La cifra y la flecha guardan su lugar aunque falten, para que los votos queden en columna. */}
-      <Text style={{ fontSize: 11.5, color: INK.meta, minWidth: 70 }}>{cifra || ''}</Text>
-      {enmienda ? <ChevronRight size={14} color={INK.faint} /> : conFlecha ? <View style={{ width: 14 }} /> : null}
+      {/* Las cifras y la flecha guardan su lugar aunque falten, para que los votos queden en columna. */}
+      <CifrasDe v={v} />
+      {enmienda ? <ChevronRight size={14} color={INK.faint} />
+        : votos ? <ChevronUp size={14} color={INK.faint} /> : <ChevronDown size={14} color={INK.faint} />}
     </>
   );
-  const estilo = { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: RAYA };
-  if (!enmienda) return <View style={estilo}>{fila}</View>;
+  const estilo = { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, minHeight: 44, borderTopWidth: 1, borderTopColor: RAYA };
+  // Una enmienda abre su ficha (que trae sus votos); los demás pasos abren
+  // aquí mismo cómo votó cada diputado.
+  if (!enmienda) {
+    return (
+      <View>
+        <Pressable onPress={() => setVotos((x) => !x)} accessibilityRole="button" accessibilityState={{ expanded: votos }}
+          accessibilityLabel={`${titulo}, ${v.a_favor ?? 0} a favor, ${v.en_contra ?? 0} en contra, votos por diputado`}
+          style={({ pressed }) => ({ ...estilo, opacity: pressed ? 0.6 : 1 })}>
+          {fila}
+        </Pressable>
+        {votos ? <View style={{ paddingBottom: 12 }}><VotosDelPleno votacionId={v.id} /></View> : null}
+      </View>
+    );
+  }
   return (
     <>
       <Pressable onPress={() => setAbierta(true)} accessibilityRole="button" accessibilityLabel={`ficha de la enmienda, ${ficha?.titulo || v.asunto}`}
-        style={({ pressed }) => ({ ...estilo, minHeight: 44, opacity: pressed ? 0.6 : 1 })}>
+        style={({ pressed }) => ({ ...estilo, opacity: pressed ? 0.6 : 1 })}>
         {fila}
       </Pressable>
       {abierta ? <FichaEnmienda votacion={v} apoyo={<VotacionCongreso votacion={v} tipo={tipo} sinFicha />} onClose={() => setAbierta(false)} /> : null}
