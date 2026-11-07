@@ -1,16 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react-native';
 import { INK } from '../theme';
 import { COLOR_VOTO } from './diputados';
 import { caminoDelDecreto, conResolucion, traerResolucionesVeto } from './estadoDeLeyes';
 import { PISTA, usePistasStore } from '../../state/pistasStore';
+import GloboAyuda from './GloboAyuda';
 
 const TINTA = '#2F4A7A';
 const RAYA = 'rgba(28,43,34,0.12)';
 const ROJO = COLOR_VOTO.contra;
-const GLOBO = 'rgba(28,43,34,0.92)';
 
 /**
  * El estado de una ley o un decreto, en su pill. El veto va en rojo con letra
@@ -87,30 +86,8 @@ export default function CaminoDecreto({ decreto, eventos, estado, fechaVigencia,
         })}
       </View>
       {abierto !== null && pasos[abierto] ? (
-        <Ayuda texto={pasos[abierto].ayuda} lugar={(abierto + 0.5) / pasos.length} primeraVez={primeraVez} onCerrar={cerrar} />
+        <GloboAyuda texto={pasos[abierto].ayuda} lugar={(abierto + 0.5) / pasos.length} nota={primeraVez ? 'Cada paso del camino se puede tocar para ver qué significa.' : null} onCerrar={cerrar} />
       ) : null}
     </View>
-  );
-}
-
-/** El globo de la ayuda, con su pico debajo del paso que explica. */
-function Ayuda({ texto, lugar, primeraVez, onCerrar }) {
-  const aparece = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    aparece.setValue(0);
-    Animated.timing(aparece, { toValue: 1, duration: 220, useNativeDriver: true }).start();
-  }, [texto, aparece]);
-  return (
-    <Animated.View style={{ marginTop: 8, opacity: aparece, transform: [{ translateY: aparece.interpolate({ inputRange: [0, 1], outputRange: [-4, 0] }) }] }}>
-      <View style={{ position: 'absolute', top: -5, left: `${lugar * 100}%`, marginLeft: -6, width: 12, height: 12, backgroundColor: GLOBO, transform: [{ rotate: '45deg' }] }} />
-      <View style={{ backgroundColor: GLOBO, borderRadius: 12, paddingVertical: 11, paddingLeft: 13, paddingRight: 36 }} accessibilityLiveRegion="polite">
-        <Text style={{ fontSize: 13, lineHeight: 19, color: '#FFFFFF' }}>{texto}</Text>
-        {primeraVez ? <Text style={{ fontSize: 11.5, lineHeight: 16, color: 'rgba(255,255,255,0.68)', marginTop: 6 }}>Cada paso del camino se puede tocar para ver qué significa.</Text> : null}
-        <Pressable onPress={onCerrar} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cerrar la ayuda"
-          style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}>
-          <X size={15} color="rgba(255,255,255,0.75)" />
-        </Pressable>
-      </View>
-    </Animated.View>
   );
 }

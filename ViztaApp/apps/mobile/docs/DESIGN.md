@@ -168,6 +168,13 @@ puntos, plegable con flecha, una línea con fecha— y es dinámico: nada de
 párrafos largos. Cada estado visual se explica en su helper, que se abre al
 tocarlo.
 
+**Los avisos de una sesión van en pill, con su helper** (PJ, 6-nov-2026). Lo
+que le pasa a una sesión —sin acta, sin votaciones, solo prensa, sin quórum,
+suspendida— no lo deduce la app: viene de la base (`avisos_automaticos` y
+`aviso_editorial` de la sesión). Se muestra como pill gris al lado de la línea
+de la sesión («27 oct 2026 · Sesión ordinaria 54»), y al tocarla se abre el
+helper con la explicación. Sin aviso, la línea va sola.
+
 **La etiqueta dice de qué trata la nota, no lo que menciona** (PJ, 6-nov-2026).
 Una nota del tablero es «Interpelación» solo si trata de una interpelación: la
 comparecencia del ministro, la interpelación misma. El orden del día de una

@@ -15,6 +15,7 @@ import { TIPOS_VOTACION, agruparVotaciones, enFiltro, fechaYSesion } from './vot
 import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS_ETAPA } from './iniciativas';
 import { articulosDichos, delDecreto, indexarBiblioteca, nombreDelEstado, traerBiblioteca } from './estadoDeLeyes';
 import CaminoDecreto, { PillEstado } from './CaminoDecreto';
+import LineaSesion from './LineaSesion';
 
 /**
  * Iniciativas y leyes del Congreso, de su registro y no de las noticias.
@@ -616,7 +617,7 @@ export function ListaVotaciones({ onPagina }) {
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
       {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((g) => (
         <View key={g.clave} style={CARD_REGISTRO}>
-          <Text style={{ color: INK.meta, fontSize: 12 }}>{fechaYSesion(fechaRegistro(g.fecha), (g.principal || g.pasos[0])?.sesion)}</Text>
+          <LineaSesion texto={fechaYSesion(fechaRegistro(g.fecha), (g.principal || g.pasos[0])?.sesion)} fecha={g.fecha} sesion={(g.principal || g.pasos[0])?.sesion} />
           <GrupoVotacion grupo={g} nombres={nombres} compacta />
         </View>
       ))}
