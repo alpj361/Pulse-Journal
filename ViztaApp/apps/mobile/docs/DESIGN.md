@@ -420,3 +420,22 @@ primera vez y después con el «?» de arriba. Ejemplo: `huella/GuiaHuella.jsx`.
 Un cero es una respuesta legítima, no una falla: «nada de lo escrito nombra un
 lugar del mapa» es mejor que «0 resultados». Y un error dice qué se puede
 hacer ahora, no qué salió mal adentro.
+
+## La hoja de compartir
+
+La hoja que abre Vizta desde «Compartir» (`plugins/compartir`) recibe
+cualquier enlace, no solo posts (PJ, 7-nov-2026):
+
+- **Un post de Instagram o de X va a Posts**; cualquier otro enlace (un
+  artículo, un paper, una lista) se guarda en la **biblioteca** como Bookmark.
+  Un enlace que no es post no se rechaza.
+- **Lo compartido se ve como en Mensajes**: su imagen, su título y el sitio
+  («prensalibre.com»). La URL cruda no se muestra.
+- **El tipo se elige con chips de ícono** (Película, Libro, Artículo, Paper,
+  Lista, Videojuego…). En un post, la fila dice «Guardar también en la
+  biblioteca»: el post habla de una obra y la obra queda guardada, con el post
+  como origen. Sin elegir, el Bookmark queda sin tipo; no se adivina.
+- Los controles van sin subtítulo fijo («Analizar al llegar», no «Analizar al
+  llegar · Lo encontrás ya leído…»), y los avisos de error son impersonales:
+  «No se pudo enviar. Se puede intentar de nuevo.», «La cuenta se conecta al
+  abrir Vizta una vez.».
