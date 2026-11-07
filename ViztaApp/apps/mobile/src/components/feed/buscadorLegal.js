@@ -149,8 +149,18 @@ function patronArticulo(numero) {
   return `${escapar(base)}\\s*[«"“”']?\\s*${escapar(sufijo).replace(/A/gi, '[aá]')}\\s*[»"“”']?`;
 }
 
+/**
+ * El pie de página de un PDF escaneado que se cuela en el artículo: «Página 12
+ * de 22» y, en los dictámenes, el sello del Congreso que el OCR lee a medias
+ * («CONGRESO … APROBADO FECHA Dictamen Favorable Iniciativas No. 6493 y 6719»).
+ * Lo que va antes de «Página» en el mismo renglón son restos del sello (1 a 3
+ * letras sueltas).
+ */
+const PIE_DE_PAGINA = /(?:\n[^\S\n]*(?:\S{1,3}[^\S\n]+)?)?P[áa]gina\s+\d+\s+de\s+\d+(?:[\s\S]{0,200}?Dictamen\s+Favorable\s*Iniciativas?\s+No\.?[^\n]*)?/g;
+export const sinPieDePagina = (texto) => String(texto || '').replace(PIE_DE_PAGINA, ' ');
+
 export function textoLegible(texto, { numero, titulo } = {}) {
-  let t = String(texto || '').replace(/\r/g, '');
+  let t = sinPieDePagina(String(texto || '').replace(/\r/g, ''));
   if (numero) t = t.replace(new RegExp(`^\\s*art[íi]culo\\.?\\s+${patronArticulo(numero)}(?![a-zñ\\d])\\s*[.:\\-–—]?\\s*`, 'i'), '');
   if (titulo) {
     const palabras = String(titulo).toLocaleUpperCase('es').trim().split(/\s+/).map(escapar).join('\\s+');

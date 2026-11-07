@@ -319,3 +319,12 @@ test('lo que todavía no es ley no sale en el buscador; las iniciativas, sí', (
   expect(seBusca('derogada')).toBe(true);
   expect(seBusca(undefined)).toBe(true);
 });
+
+test('el pie de página y el sello del Congreso no son parte del artículo', () => {
+  const art4 = 'Se reforma el artículo 262 del Decreto Número 51-92 del Congreso de la República, el cual qued\nasí:\nPágina 12 de 22\n—ZQ. A\n\nW:4 CONGRESO\nZo ELAREPÚBLICA APROBAD O\nFECMA\nDictamen Favorable\nIniciativas No. 6493 y 6719\n“Artículo 262.- Peligro de fuga.';
+  expect(textoLegible(art4)).toBe('Se reforma el artículo 262 del Decreto Número 51-92 del Congreso de la República, el cual qued así: “Artículo 262.- Peligro de fuga.');
+  const art8 = 'productos farmacéuticos falsificados,\nMN Página 18 de 22\n“\n\n64 CONGRESO\n77 MN DE AREPÚBLICA\ny APROBADO\nFECMA\nDictamen Favorable\nIniciativas No. 6493 y 6719\nmedicamentos adulterados';
+  expect(textoLegible(art8)).toBe('productos farmacéuticos falsificados, medicamentos adulterados');
+  expect(textoLegible('DEL AÑO DOS MIL\nVEINTISÉIS. N\nPágina 22 de 22')).toBe('DEL AÑO DOS MIL VEINTISÉIS. N');
+  expect(textoLegible('La página 3 de este libro')).toBe('La página 3 de este libro');
+});
