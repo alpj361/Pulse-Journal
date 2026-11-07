@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bookmark, BookmarkCheck, ChevronLeft, Forward } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { guardarDashboard, leerArtifact, tengoDashboard, titulosDeFuentes } from './api';
+import { CSP, ORIGENES_DEL_VISOR, decidirNavegacion } from './visorDashboard';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { falla, listo } from '../../utils/haptics';
 import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
@@ -35,23 +36,11 @@ const pagina = (html) =>
   `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${ESTILO_PULZOS}</style></head><body>${html}</body></html>`;
 
 /**
- * Un dashboard trae su propio JavaScript (gráficos, filtros, pestañas). Corre
- * encerrado: puede cargar librerías de los CDN conocidos y nada más, y no
- * puede hablar con ningún servidor (`connect-src 'none'`), así que los datos
- * van dentro del HTML y no salen de ahí. No hay puente con la app.
+ * Un dashboard trae su propio JavaScript (gráficos, filtros, pestañas) y
+ * puede traer un iframe https. La política (`visorDashboard`) lo encierra:
+ * librerías solo de los CDN conocidos, sin fetch, y el iframe solo por https.
+ * No hay puente con la app.
  */
-const CDN = 'https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com';
-const CSP = [
-  "default-src 'none'",
-  `script-src 'unsafe-inline' ${CDN}`,
-  `style-src 'unsafe-inline' ${CDN} https://fonts.googleapis.com`,
-  "font-src https://fonts.gstatic.com data:",
-  'img-src https: data: blob:',
-  "connect-src 'none'",
-  "frame-src 'none'",
-  "form-action 'none'",
-].join('; ');
-
 const paginaInteractiva = (html) => {
   // Si el agente mandó un documento entero, se le agrega la política y los
   // tokens en su <head>; si mandó solo el cuerpo, se arma la página.
@@ -219,7 +208,7 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
           <WebView
             style={{ flex: 1, backgroundColor: '#FBFAF6' }}
             onLoadEnd={() => setDibujando(false)}
-            originWhitelist={['about:blank']}
+            originWhitelist={ORIGENES_DEL_VISOR}
             source={{ html: paginaInteractiva(a.html) }}
             javaScriptEnabled
             domStorageEnabled={false}
@@ -228,12 +217,16 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
             allowFileAccess={false}
             setSupportMultipleWindows={false}
             javaScriptCanOpenWindowsAutomatically={false}
+            // allowsInlineMediaPlayback no hace falta para que el iframe se
+            // dibuje: en WKWebView solo decide si un <video> queda adentro o
+            // pasa a pantalla completa. Si el embed trae video, sigue pidiendo
+            // un toque.
             mediaPlaybackRequiresUserAction
             onShouldStartLoadWithRequest={(r) => {
-              if (r.url === 'about:blank' || r.url.startsWith('about:') || r.url.startsWith('data:') || r.url.startsWith('#')) return true;
-              // Un enlace del dashboard se abre afuera; el dashboard no navega.
-              if (r.isTopFrame !== false && /^https?:\/\//i.test(r.url)) Linking.openURL(r.url).catch(() => {});
-              return false;
+              const { cargar, abrirAfuera } = decidirNavegacion(r);
+              // Un enlace del frame principal se abre afuera; el dashboard no navega.
+              if (abrirAfuera) Linking.openURL(r.url).catch(() => {});
+              return cargar;
             }}
           />
         ) : a.tipo === 'html' && a.html ? (
