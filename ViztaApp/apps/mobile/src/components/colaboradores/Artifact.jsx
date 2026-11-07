@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bookmark, BookmarkCheck, ChevronLeft, Forward } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { guardarDashboard, leerArtifact, tengoDashboard, titulosDeFuentes } from './api';
-import { CSP, ORIGENES_DEL_VISOR, decidirNavegacion } from './visorDashboard';
+import { CSP, ORIGENES_DEL_VISOR, decidirNavegacion, decidirVentana } from './visorDashboard';
 import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { falla, listo } from '../../utils/haptics';
 import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
@@ -36,10 +36,10 @@ const pagina = (html) =>
   `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${ESTILO_PULZOS}</style></head><body>${html}</body></html>`;
 
 /**
- * Un dashboard trae su propio JavaScript (gráficos, filtros, pestañas) y
- * puede traer un iframe https. La política (`visorDashboard`) lo encierra:
- * librerías solo de los CDN conocidos, sin fetch, y el iframe solo por https.
- * No hay puente con la app.
+ * Un dashboard trae su propio JavaScript y puede traer un embed https (un
+ * iframe, o un script externo que lo arma, como Flourish). La política
+ * (`visorDashboard`) lo encierra: scripts por https, sin fetch, iframe solo
+ * por https. No hay puente con la app.
  */
 const paginaInteractiva = (html) => {
   // Si el agente mandó un documento entero, se le agrega la política y los
@@ -215,8 +215,16 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
             incognito
             allowsLinkPreview={false}
             allowFileAccess={false}
-            setSupportMultipleWindows={false}
+            // window.open y target=_blank no se dibujan acá. En Android el
+            // aviso solo llega si el WebView acepta otra ventana; esa vista
+            // no se agrega a la pantalla: onOpenWindow manda la URL afuera.
+            // Sin un toque, el script sigue sin poder abrir sola.
+            setSupportMultipleWindows
             javaScriptCanOpenWindowsAutomatically={false}
+            onOpenWindow={(e) => {
+              const { abrirAfuera, url } = decidirVentana(e?.nativeEvent);
+              if (abrirAfuera) Linking.openURL(url).catch(() => {});
+            }}
             // allowsInlineMediaPlayback no hace falta para que el iframe se
             // dibuje: en WKWebView solo decide si un <video> queda adentro o
             // pasa a pantalla completa. Si el embed trae video, sigue pidiendo

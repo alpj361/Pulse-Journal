@@ -1,4 +1,4 @@
-import { CSP, ORIGENES_DEL_VISOR, decidirNavegacion, directivasCsp } from '../visorDashboard';
+import { CSP, ORIGENES_DEL_VISOR, decidirNavegacion, decidirVentana, directivasCsp } from '../visorDashboard';
 
 const directiva = (nombre) => directivasCsp().find((d) => d.startsWith(`${nombre} `));
 
@@ -14,11 +14,13 @@ describe('la política del dashboard', () => {
     expect(CSP).not.toContain("child-src 'none'");
   });
 
-  test('script, estilo, fuentes e imágenes quedan como estaban', () => {
-    expect(directiva('script-src')).toBe(
-      "script-src 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com",
+  test('un script https externo puede armar el embed; el estilo no se abre', () => {
+    // Flourish: <script src="https://public.flourish.studio/resources/embed.js">
+    expect(directiva('script-src')).toBe("script-src 'unsafe-inline' https:");
+    expect(directiva('script-src')).not.toContain('cdn.jsdelivr.net');
+    expect(directiva('style-src')).toBe(
+      "style-src 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com",
     );
-    expect(directiva('style-src')).toContain('https://fonts.googleapis.com');
     expect(directiva('font-src')).toBe('font-src https://fonts.gstatic.com data:');
     expect(directiva('img-src')).toBe('img-src https: data: blob:');
     expect(directivasCsp()).toHaveLength(9);
@@ -69,5 +71,25 @@ describe('decidirNavegacion', () => {
       cargar: false,
       abrirAfuera: false,
     });
+  });
+});
+
+describe('decidirVentana', () => {
+  test('un popup http(s) del iframe sale al navegador', () => {
+    expect(decidirVentana({ targetUrl: 'https://public.flourish.studio/visualisation/1' })).toEqual({
+      abrirAfuera: true,
+      url: 'https://public.flourish.studio/visualisation/1',
+    });
+    expect(decidirVentana({ targetUrl: 'http://ejemplo.test/nota' }).abrirAfuera).toBe(true);
+    expect(decidirVentana({ url: 'https://ejemplo.test/nota' })).toEqual({
+      abrirAfuera: true,
+      url: 'https://ejemplo.test/nota',
+    });
+  });
+
+  test('otro esquema no se abre ni adentro ni afuera', () => {
+    for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'data:text/html,hola', 'about:blank', '']) {
+      expect(decidirVentana({ targetUrl: url })).toEqual({ abrirAfuera: false, url });
+    }
   });
 });
