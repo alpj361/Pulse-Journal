@@ -165,7 +165,7 @@ uno con «leer completo», en lugar de «ficha de la ley». Desde una iniciativa
 **Diputados que dejan el cargo** (PJ, 7-nov-2026). El estado sale del dataset
 «Congreso de Guatemala» (`estado`, `fecha_estado`, `ocupa_la_curul_de`). Quien
 falleció va con la foto y el anillo en gris; quien renunció o fue destituido, sin
-gris. Todos llevan su pill («falleció · 6 nov») y su helper. Su curul queda solo
+gris. Todos llevan su pill («fallecimiento · 6 nov») y su helper. Su curul queda solo
 en contorno hasta que la ocupa el reemplazo, y la leyenda no la cuenta en su
 bancada. Las votaciones pasadas no cambian: sus votos siguen con su nombre.
 
@@ -395,6 +395,13 @@ primera vez y después con el «?» de arriba. Ejemplo: `huella/GuiaHuella.jsx`.
   ni frases cortadas. «Aparecen en lo que publica, no son su postura» no se
   entiende; «Ideas que aparecen en sus publicaciones, con la frase exacta. No
   son necesariamente la opinión de la cuenta» sí.
+- **Helpers e instructivos van en registro informativo, no casual** (PJ,
+  7-nov-2026). Lo casual queda para la conversación; un helper informa el
+  hecho, su fecha y su consecuencia. Sustantivos en los rótulos
+  («fallecimiento · 6 nov», «renuncia»), fechas completas en el helper («6 de
+  noviembre de 2026») y vocabulario del trámite («la curul permanece vacante
+  hasta la juramentación de quien sustituya en el cargo», no «queda vacía hasta
+  que jure quien lo reemplaza»).
 - **Cada concepto, con el mismo ícono y el mismo nombre** que tiene en la
   pantalla, para que se reconozca al volver.
 - **Los rótulos de la pantalla dicen el hecho completo**: «1 de 4

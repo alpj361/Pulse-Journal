@@ -98,9 +98,9 @@ export function FichaDiputado({ diputado, voto, onCerrar }) {
             </View>
             {rotulo || (diputado.ocupaLaCurulDe && explica) ? (
               <Pressable onPress={() => setAyuda((a) => !a)} disabled={!explica} hitSlop={8} accessibilityRole="button"
-                accessibilityLabel={rotulo || 'reemplazo'} accessibilityHint="Abre qué significa"
+                accessibilityLabel={rotulo || 'sustitución'} accessibilityHint="Abre la explicación"
                 style={{ marginTop: 10, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(28,43,34,0.06)' }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: INK.meta }}>{rotulo || 'reemplazo'}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: INK.meta }}>{rotulo || 'sustitución'}</Text>
               </Pressable>
             ) : null}
             {ayuda && explica ? <View style={{ alignSelf: 'stretch' }}><GloboAyuda texto={explica} lugar={0.5} onCerrar={() => setAyuda(false)} /></View> : null}
