@@ -69,8 +69,50 @@ export function diputadosDe(filas = []) {
       partido: v.partido || null,
       distrito: v.distrito || null,
       foto: v.foto_diputado || null,
+      estado: v.estado || null,
+      fechaEstado: v.fecha_estado || null,
+      ocupaLaCurulDe: v.ocupa_la_curul_de ? String(v.ocupa_la_curul_de).replace(/\s+/g, ' ').trim() : null,
     }))
     .filter((d) => d.nombre);
+}
+
+/*
+ * Quien deja de ser diputado (falleció, renunció, lo destituyeron) sigue en la
+ * lista: sus votos pasados son suyos. Su curul queda vacía hasta que la ocupa
+ * quien lo reemplaza, que en el dataset lleva su nombre en `ocupa_la_curul_de`.
+ * La licencia no deja la curul. Ver docs/DESIGN.md › Diputados que dejan el cargo.
+ */
+const NOMBRE_ESTADO = { fallecido: 'falleció', renuncio: 'renunció', destituido: 'destituido', licencia: 'con licencia' };
+const dia = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short' });
+const diaLargo = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** Dejó la curul: no se cuenta la licencia, que es temporal. */
+export const dejoLaCurul = (d) => !!d && ['fallecido', 'renuncio', 'destituido'].includes(d.estado);
+
+/** La pill de su estado: «falleció · 6 nov». */
+export function rotuloEstado(d) {
+  const nombre = NOMBRE_ESTADO[d?.estado];
+  if (!nombre) return null;
+  return d.fechaEstado ? `${nombre} · ${dia(d.fechaEstado)}` : nombre;
+}
+
+/** Lo que dice el helper de la pill, y en la ficha de quien entra, a quién reemplaza. */
+export function ayudaEstado(d, diputados = []) {
+  if (!d) return null;
+  const el = d.fechaEstado ? ` el ${diaLargo(d.fechaEstado)}` : '';
+  if (d.ocupaLaCurulDe) return `Ocupa la curul de ${d.ocupaLaCurulDe}${d.fechaEstado ? ` desde el ${diaLargo(d.fechaEstado)}` : ''}.`;
+  if (!dejoLaCurul(d)) return d.estado === 'licencia' ? `Tiene licencia${d.fechaEstado ? ` desde el ${diaLargo(d.fechaEstado)}` : ''}; su suplente vota mientras dure.` : null;
+  const que = { fallecido: `Falleció${el}`, renuncio: `Renunció${el}`, destituido: `Fue destituido${el}` }[d.estado];
+  const quien = diputados.find((o) => o.ocupaLaCurulDe && claveNombre(o.ocupaLaCurulDe) === claveNombre(d.nombre));
+  return quien
+    ? `${que}. Su curul la ocupa ${quien.nombre}. Sus votos anteriores quedan en el registro.`
+    : `${que}. Su curul queda vacía hasta que jure quien lo reemplaza. Sus votos anteriores quedan en el registro.`;
+}
+
+/** Los que se sientan hoy: quien dejó la curul y ya tiene reemplazo sale; el reemplazo entra en su lugar. */
+export function enElPleno(diputados = []) {
+  const reemplazados = new Set(diputados.filter((d) => d.ocupaLaCurulDe).map((d) => claveNombre(d.ocupaLaCurulDe)));
+  return diputados.filter((d) => !(dejoLaCurul(d) && reemplazados.has(claveNombre(d.nombre))));
 }
 
 export async function traerDiputados() {

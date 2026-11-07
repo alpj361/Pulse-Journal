@@ -6,6 +6,7 @@ import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarOff, ChevronDown, ChevronUp, CircleCheck, CircleDashed, CircleX, X } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
+import GloboAyuda from './GloboAyuda';
 import { traerVotos } from './congreso';
 import { DISTRITOS, LISTADO_NACIONAL, VISTA_GUATEMALA, distritoEn } from './distritosGuatemala';
 import {
@@ -14,13 +15,17 @@ import {
   COLOR_VOTO,
   ORDEN_VOTO,
   asignarCurules,
+  ayudaEstado,
   bancadasDeLaVotacion,
   claveNombre,
   colorBancada,
+  dejoLaCurul,
+  enElPleno,
   iniciales,
   nombreBancada,
   ordenBancadas,
   porDistrito,
+  rotuloEstado,
   traerDiputados,
   votosUnicos,
 } from './diputados';
@@ -46,7 +51,9 @@ export function IconoVoto({ voto, size = 15 }) {
 export function FotoDiputado({ diputado, size = 34, anillo = false }) {
   const [fallo, setFallo] = useState(false);
   // `anillo` en true es el color de su bancada; un color, ese color (p. ej. el de su voto).
-  const borde = anillo ? { borderWidth: 2, borderColor: anillo === true ? colorBancada(diputado.sigla) : anillo } : null;
+  // Quien falleció va en gris, foto y anillo: así se distingue de quien solo renunció.
+  const gris = diputado.estado === 'fallecido';
+  const borde = anillo ? { borderWidth: 2, borderColor: gris ? INK.faint : anillo === true ? colorBancada(diputado.sigla) : anillo } : null;
   const caja = { width: size, height: size, borderRadius: size / 2, overflow: 'hidden', backgroundColor: 'rgba(28,43,34,0.06)', ...borde };
   if (!diputado.foto || fallo) {
     return (
@@ -58,6 +65,7 @@ export function FotoDiputado({ diputado, size = 34, anillo = false }) {
   return (
     <View style={caja}>
       <Image source={{ uri: diputado.foto }} style={{ width: '100%', height: '100%' }} contentFit="cover" contentPosition="top" onError={() => setFallo(true)} accessible={false} />
+      {gris ? <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#808080', mixBlendMode: 'saturation' }} /> : null}
     </View>
   );
 }
@@ -67,14 +75,19 @@ export function FotoDiputado({ diputado, size = 34, anillo = false }) {
  * su bancada y su distrito, y —en una votación— cómo votó.
  */
 export function FichaDiputado({ diputado, voto, onCerrar }) {
+  const diputados = useDiputados({ enabled: !!diputado });
+  const [ayuda, setAyuda] = useState(false);
+  const rotulo = rotuloEstado(diputado);
+  const explica = ayudaEstado(diputado, diputados.data || []);
+  const cerrar = () => { setAyuda(false); onCerrar?.(); };
   return (
-    <Modal visible={!!diputado} transparent animationType="none" onRequestClose={onCerrar}>
+    <Modal visible={!!diputado} transparent animationType="none" onRequestClose={cerrar}>
       {diputado ? (
         <Animated.View entering={FadeIn.duration(140)} style={{ flex: 1, backgroundColor: 'rgba(16,22,30,0.32)', justifyContent: 'center', padding: 28 }}>
-          <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={onCerrar} accessibilityRole="button" accessibilityLabel="cerrar la ficha" />
+          <Pressable style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} onPress={cerrar} accessibilityRole="button" accessibilityLabel="cerrar la ficha" />
           <Animated.View entering={ZoomIn.springify().damping(16).stiffness(220)}
             style={{ backgroundColor: '#FBFAF7', borderRadius: 22, padding: 18, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-            <Pressable onPress={onCerrar} hitSlop={12} accessibilityRole="button" accessibilityLabel="cerrar" style={{ position: 'absolute', top: 12, right: 12, padding: 4 }}>
+            <Pressable onPress={cerrar} hitSlop={12} accessibilityRole="button" accessibilityLabel="cerrar" style={{ position: 'absolute', top: 12, right: 12, padding: 4 }}>
               <X size={18} color={INK.meta} />
             </Pressable>
             <FotoDiputado diputado={diputado} size={112} anillo />
@@ -83,6 +96,14 @@ export function FichaDiputado({ diputado, voto, onCerrar }) {
               <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: colorBancada(diputado.sigla) }} />
               <Text style={{ fontSize: 13, color: INK.body }}>{[nombreBancada(diputado.sigla), diputado.distrito].filter(Boolean).join(' · ')}</Text>
             </View>
+            {rotulo || (diputado.ocupaLaCurulDe && explica) ? (
+              <Pressable onPress={() => setAyuda((a) => !a)} disabled={!explica} hitSlop={8} accessibilityRole="button"
+                accessibilityLabel={rotulo || 'reemplazo'} accessibilityHint="Abre qué significa"
+                style={{ marginTop: 10, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: 'rgba(28,43,34,0.06)' }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: INK.meta }}>{rotulo || 'reemplazo'}</Text>
+              </Pressable>
+            ) : null}
+            {ayuda && explica ? <View style={{ alignSelf: 'stretch' }}><GloboAyuda texto={explica} lugar={0.5} onCerrar={() => setAyuda(false)} /></View> : null}
             {voto ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(28,43,34,0.05)' }}>
                 <IconoVoto voto={voto} size={16} />
@@ -101,7 +122,7 @@ export function FichaDiputado({ diputado, voto, onCerrar }) {
  * tocar cerca de una curul se elige la más cercana (son demasiado chicas para
  * acertarles con el dedo).
  */
-export function HemicicloDiputados({ curules, colorDe, onTocar, atenuar, ancho = 300 }) {
+export function HemicicloDiputados({ curules, colorDe, onTocar, atenuar, vacia, ancho = 300 }) {
   const [elegido, setElegido] = useState(null);
   const alto = ancho / 2 + 6;
   const R = ancho / 2 - 6;
@@ -122,8 +143,14 @@ export function HemicicloDiputados({ curules, colorDe, onTocar, atenuar, ancho =
     <Pressable onPress={tocar} accessibilityRole="image" accessibilityLabel="hemiciclo del Congreso, toca una curul para ver al diputado">
       <Svg width={ancho} height={alto} pointerEvents="none">
         {puntos.map((p) => (
-          <Circle key={p.diputado.id} cx={p.px} cy={p.py} r={ancho / 96} fill={colorDe(p.diputado)}
-            fillOpacity={atenuar?.(p.diputado) ? 0.18 : 1} stroke={p.diputado.id === elegido ? INK.title : 'none'} strokeWidth={1.4} />
+          vacia?.(p.diputado) ? (
+            // La curul de quien la dejó, sin reemplazo todavía: solo el contorno.
+            <Circle key={p.diputado.id} cx={p.px} cy={p.py} r={ancho / 96 - 0.6} fill="none"
+              stroke={p.diputado.id === elegido ? INK.title : colorDe(p.diputado)} strokeWidth={1.2} />
+          ) : (
+            <Circle key={p.diputado.id} cx={p.px} cy={p.py} r={ancho / 96} fill={colorDe(p.diputado)}
+              fillOpacity={atenuar?.(p.diputado) ? 0.18 : 1} stroke={p.diputado.id === elegido ? INK.title : 'none'} strokeWidth={1.4} />
+          )
         ))}
       </Svg>
     </Pressable>
@@ -171,9 +198,10 @@ export default function PlenoDiputados() {
   const ancho = Math.min(width - 48, 360);
   const diputados = useDiputados();
   const [ficha, setFicha] = useState(null);
-  const lista = diputados.data || [];
+  const lista = useMemo(() => enElPleno(diputados.data || []), [diputados.data]);
   const curules = useMemo(() => asignarCurules(lista), [lista]);
-  const bancadas = useMemo(() => ordenBancadas(lista), [lista]);
+  // La leyenda cuenta a quienes están en el cargo; la curul vacía no suma a su bancada.
+  const bancadas = useMemo(() => ordenBancadas(lista.filter((d) => !dejoLaCurul(d))), [lista]);
 
   if (diputados.isLoading) return <Text style={{ color: INK.meta, paddingVertical: 16 }}>Trayendo a los diputados…</Text>;
   if (diputados.isError || !lista.length) {
@@ -187,7 +215,7 @@ export default function PlenoDiputados() {
     <View>
       <Subtitulo rotulo={`EL PLENO · ${lista.length} CURULES`} titulo="Hemiciclo por bancada" />
       <View style={{ alignItems: 'center' }}>
-        <HemicicloDiputados curules={curules} colorDe={(d) => colorBancada(d.sigla)} onTocar={setFicha} ancho={ancho} />
+        <HemicicloDiputados curules={curules} colorDe={(d) => colorBancada(d.sigla)} vacia={dejoLaCurul} onTocar={setFicha} ancho={ancho} />
       </View>
       <LeyendaBancadas bancadas={bancadas} />
       <View style={{ height: 1, backgroundColor: RAYA, marginVertical: 22 }} />

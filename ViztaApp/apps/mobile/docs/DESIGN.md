@@ -162,6 +162,13 @@ leen en su tarjeta del registro de decretos, plegados («14 artículos») y cada
 uno con «leer completo», en lugar de «ficha de la ley». Desde una iniciativa,
 «no entró en vigor» nombra el decreto sin enlace.
 
+**Diputados que dejan el cargo** (PJ, 7-nov-2026). El estado sale del dataset
+«Congreso de Guatemala» (`estado`, `fecha_estado`, `ocupa_la_curul_de`). Quien
+falleció va con la foto y el anillo en gris; quien renunció o fue destituido, sin
+gris. Todos llevan su pill («falleció · 6 nov») y su helper. Su curul queda solo
+en contorno hasta que la ocupa el reemplazo, y la leyenda no la cuenta en su
+bancada. Las votaciones pasadas no cambian: sus votos siguen con su nombre.
+
 **Las explicaciones del camino van en helpers** (PJ, 6-nov-2026). Debajo de los
 puntos no va ninguna oración fija ni la razón de que falte la ficha de la ley.
 Cada paso se toca y abre su helper: un globo oscuro con pico debajo del paso,

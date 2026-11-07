@@ -69,3 +69,35 @@ test('un toque en el mapa cae en su distrito, y en el centro de la capital, en e
   expect(toque(-91.6, 15.7)).toBe('Huehuetenango');
   expect(toque(-87.5, 14.0)).toBeNull();
 });
+
+describe('diputados que dejan el cargo', () => {
+  // eslint-disable-next-line global-require
+  const { ayudaEstado, dejoLaCurul, enElPleno, rotuloEstado } = require('../diputados');
+  const fila = (id, values) => ({ id, values: { partido: 'Unidad Nacional de la Esperanza - UNE', distrito: 'Zacapa', ...values } });
+
+  test('el fallecido queda en la lista, con su pill y su curul vacía hasta el reemplazo', () => {
+    const [p] = diputadosDe([fila('p', { nombre: 'Julio César Portillo Paz', estado: 'fallecido', fecha_estado: '2026-11-06' })]);
+    expect(dejoLaCurul(p)).toBe(true);
+    expect(rotuloEstado(p)).toBe('falleció · 6 nov');
+    expect(ayudaEstado(p, [p])).toMatch(/^Falleció el 6 nov 2026\. Su curul queda vacía hasta que jure quien lo reemplaza/);
+    expect(enElPleno([p])).toEqual([p]);
+  });
+
+  test('con reemplazo, el que entra ocupa la curul y el helper lo dice', () => {
+    const lista = diputadosDe([
+      fila('p', { nombre: 'Julio César Portillo Paz', estado: 'fallecido', fecha_estado: '2026-11-06' }),
+      fila('r', { nombre: 'Ana Reemplazo', ocupa_la_curul_de: 'Julio César Portillo Paz', fecha_estado: '2026-11-20' }),
+    ]);
+    expect(enElPleno(lista).map((d) => d.id)).toEqual(['r']);
+    expect(ayudaEstado(lista[0], lista)).toMatch(/Su curul la ocupa Ana Reemplazo/);
+    expect(ayudaEstado(lista[1], lista)).toBe('Ocupa la curul de Julio César Portillo Paz desde el 20 nov 2026.');
+  });
+
+  test('la licencia no deja la curul; sin estado, nada', () => {
+    const [l, n] = diputadosDe([fila('l', { nombre: 'Con Licencia', estado: 'licencia' }), fila('n', { nombre: 'En Funciones' })]);
+    expect(dejoLaCurul(l)).toBe(false);
+    expect(rotuloEstado(l)).toBe('con licencia');
+    expect(rotuloEstado(n)).toBeNull();
+    expect(ayudaEstado(n, [])).toBeNull();
+  });
+});
