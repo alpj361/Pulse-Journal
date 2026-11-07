@@ -301,3 +301,21 @@ test('el fragmento no lleva notas internas ni el final cortado del título', () 
   expect(sinTitulo('Penal (Decreto 51-92). Regula el proceso. Ojo: hay una reforma pendiente, el Decreto 23-2026', 'Código Procesal Penal'))
     .toBe('Regula el proceso.');
 });
+
+test('lo que todavía no es ley no sale en el buscador; las iniciativas, sí', () => {
+  // eslint-disable-next-line global-require
+  const { seBusca, soloVigentes } = require('../buscadorLegal');
+  const fuera = new Set(['veto']);
+  const r = soloVigentes([
+    { tipo: 'ley', normaId: 'cp', estado: 'vigente' },
+    { tipo: 'ley', normaId: 'diferida', estado: 'vigencia_diferida' },
+    { tipo: 'articulo', normaId: 'veto' },
+    { tipo: 'articulo', normaId: 'cp' },
+    { tipo: 'iniciativa', numero: 6493 },
+  ], fuera);
+  expect(r.map((x) => x.normaId || x.numero)).toEqual(['cp', 'cp', 6493]);
+  expect(seBusca('vetado')).toBe(false);
+  expect(seBusca('pendiente_sancion')).toBe(false);
+  expect(seBusca('derogada')).toBe(true);
+  expect(seBusca(undefined)).toBe(true);
+});

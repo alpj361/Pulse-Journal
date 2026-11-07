@@ -21,7 +21,7 @@ import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
 import {
   buscarLegal, descripcionDe, iniciativasDeLey, nombreDecreto, nombreEstado, notaVisible, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
-  traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
+  seBusca, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
 } from './buscadorLegal';
 
 const ICONO = { ley: Scale, articulo: Pilcrow, iniciativa: ScrollText };
@@ -418,7 +418,7 @@ function Relacion({ rel, onLey }) {
   if (rel.resultante) {
     filas.push(
       <Linea key="es" Icono={rel.vetada ? Ban : CircleCheck} texto={rel.vetada ? 'no entró en vigor' : 'se volvió'}>
-        <Chip onPress={rel.resultante.id ? () => onLey(rel.resultante) : null}>{rel.resultante.titulo ? `${rel.resultante.decreto} · ${rel.resultante.titulo}` : rel.resultante.decreto}</Chip>
+        <Chip onPress={rel.resultante.id && seBusca(rel.resultante.estado) ? () => onLey(rel.resultante) : null}>{rel.resultante.titulo ? `${rel.resultante.decreto} · ${rel.resultante.titulo}` : rel.resultante.decreto}</Chip>
       </Linea>,
     );
   }

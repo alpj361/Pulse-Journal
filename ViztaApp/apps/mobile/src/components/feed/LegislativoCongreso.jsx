@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText, Scale } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
-import { Camino, GrupoVotacion, RAYA, Rotulo, TINTA, Titulo, cabezaDe, useDiputados, useNombresDeLeyes } from './TarjetasCongreso';
+import { Camino, GrupoVotacion, Plegable, RAYA, Rotulo, TINTA, Titulo, cabezaDe, useDiputados, useNombresDeLeyes } from './TarjetasCongreso';
+import { seBusca, textoLegible, traerNorma } from './buscadorLegal';
 import { CLASES, repartirActores } from './clasesCongreso';
 import Pegatina from './Pegatina';
 import LectorDocumento from '../LectorDocumento';
@@ -544,7 +545,8 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
           </Text>
         </Pressable>
       ))}
-      {abrible ? (
+      {/* Lo que todavía no es ley no está en el buscador legal: sus artículos se leen aquí. */}
+      {abrible && !seBusca(estado) ? <ArticulosDelDecreto normaId={abrible} cuantos={ficha.norma.articulos_count} titulo={ficha.norma.titulo} /> : abrible ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`ficha de la ley, decreto ${d.numero}`} onPress={() => setLey(abrible)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
           <Scale size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>ficha de la ley</Text>
@@ -560,6 +562,51 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
       {ley ? <FichaLey normaId={ley} onClose={() => setLey(null)} /> : null}
     </View>
   );
+}
+
+/**
+ * Los artículos de un decreto que todavía no es ley (vetado, sin sancionar o
+ * sin entrar en vigor), plegados en su tarjeta. Cada uno muestra sus primeras
+ * líneas y, si es largo, «leer completo», como en el buscador legal.
+ */
+function ArticulosDelDecreto({ normaId, cuantos, titulo }) {
+  const [abierto, setAbierto] = useState(false);
+  const q = useQuery({ queryKey: ['norma-legal', normaId], queryFn: () => traerNorma(normaId), enabled: abierto, staleTime: 30 * 60 * 1000 });
+  const articulos = q.data?.articulos || [];
+  return (
+    <View style={{ marginTop: 6 }}>
+      <Plegable abierto={abierto} onPress={() => setAbierto((x) => !x)} texto={cuantos ? `${cuantos} ${cuantos === 1 ? 'artículo' : 'artículos'}` : 'artículos'} />
+      {abierto && q.isLoading ? <View style={{ alignItems: 'center', paddingVertical: 14 }}><CargandoSimbolo /></View> : null}
+      {abierto ? articulos.map((a) => <ArticuloDelDecreto key={a.id} a={a} titulo={titulo} />) : null}
+    </View>
+  );
+}
+
+function ArticuloDelDecreto({ a, titulo }) {
+  const [completo, setCompleto] = useState(false);
+  const texto = textoLegible(a.texto, { numero: a.numero_articulo, titulo });
+  const largo = texto.length > 260;
+  const Flecha = completo ? ChevronUp : ChevronDown;
+  return (
+    <View style={{ paddingVertical: 10, borderTopWidth: 1, borderTopColor: RAYA }}>
+      <Text style={{ fontSize: 13, fontWeight: '800', color: INK.title }}>Artículo {a.numero_articulo}</Text>
+      <Text selectable numberOfLines={largo && !completo ? 4 : undefined} style={{ fontSize: 13.5, lineHeight: 20, color: INK.body, marginTop: 4 }}>{texto}</Text>
+      {largo ? (
+        <Pressable onPress={() => setCompleto((x) => !x)} accessibilityRole="button" accessibilityState={{ expanded: completo }}
+          accessibilityLabel={`${completo ? 'ocultar' : 'leer completo'}, artículo ${a.numero_articulo}`}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
+          <Text style={{ fontSize: 12, color: INK.meta }}>{completo ? 'ocultar' : 'leer completo'}</Text>
+          <Flecha size={13} color={INK.meta} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+// El símbolo de carga dibuja con Skia: se trae solo cuando se usa.
+function CargandoSimbolo() {
+  const MorphingInfinity = require('../MorphingInfinity').default; // eslint-disable-line global-require
+  return <MorphingInfinity size={22} color={INK.meta} />;
 }
 
 // El buscador legal importa esta parte del Congreso: se trae al abrir la ley.

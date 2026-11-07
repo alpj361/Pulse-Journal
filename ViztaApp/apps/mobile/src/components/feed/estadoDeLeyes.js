@@ -28,7 +28,7 @@ export const nombreDelEstado = (estado) => NOMBRE[estado] || (estado ? estado.re
 export async function traerBiblioteca() {
   const normas = [];
   for (let desde = 0; ; desde += 500) {
-    const { data, error } = await supabase.from('normas').select('id, titulo, decreto, estado, indexado, fecha_vigencia').order('id').range(desde, desde + 499);
+    const { data, error } = await supabase.from('normas').select('id, titulo, decreto, estado, indexado, fecha_vigencia, articulos_count').order('id').range(desde, desde + 499);
     if (error) throw error;
     normas.push(...(data || []));
     if ((data || []).length < 500) break;

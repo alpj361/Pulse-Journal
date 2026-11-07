@@ -155,6 +155,13 @@ punto rojo de «vetado» y después «Congreso» (sin resolver), «veto aceptado
 que el pleno resolvió sale de su votación, no se supone. La descripción larga
 de una ley se pliega a tres renglones con «leer más».
 
+**Lo que todavía no es ley no está en el buscador legal** (PJ, 7-nov-2026). Un
+decreto vetado, sin sancionar o que aún no entra en vigor no sale en el
+buscador legal: ni la ley ni sus artículos, porque no rigen. Sus artículos se
+leen en su tarjeta del registro de decretos, plegados («14 artículos») y cada
+uno con «leer completo», en lugar de «ficha de la ley». Desde una iniciativa,
+«no entró en vigor» nombra el decreto sin enlace.
+
 **Las explicaciones del camino van en helpers** (PJ, 6-nov-2026). Debajo de los
 puntos no va ninguna oración fija ni la razón de que falte la ficha de la ley.
 Cada paso se toca y abre su helper: un globo oscuro con pico debajo del paso,

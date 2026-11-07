@@ -511,21 +511,52 @@ async function deLaBase(q) {
 }
 
 /**
+ * Lo que todavía no es ley no se busca: un decreto vetado, sin sancionar o que
+ * aún no entra en vigor se lee en su decreto, en el registro del Congreso.
+ */
+const NO_VIGENTES = ['vetado', 'pendiente_sancion', 'vigencia_diferida'];
+export const seBusca = (estado) => !NO_VIGENTES.includes(estado);
+
+let fueraDelBuscador = null;
+/** Los ids de las leyes que no se buscan: una consulta, guardada mientras dure la app. */
+function idsFueraDelBuscador() {
+  if (!fueraDelBuscador) {
+    fueraDelBuscador = (async () => {
+      try {
+        const { data, error } = await supabase.from('normas').select('id').in('estado', NO_VIGENTES);
+        if (error) throw error;
+        return new Set((data || []).map((n) => n.id));
+      } catch {
+        fueraDelBuscador = null; // se vuelve a pedir en la próxima búsqueda
+        return new Set();
+      }
+    })();
+  }
+  return fueraDelBuscador;
+}
+
+/** Quita de los resultados las leyes y artículos de lo que todavía no es ley. */
+export function soloVigentes(resultados, fuera) {
+  return resultados.filter((r) => r.tipo === 'iniciativa' || (seBusca(r.estado) && !fuera.has(r.normaId)));
+}
+
+/**
  * Busca en todo lo indexado. Devuelve los resultados y si la búsqueda fue
  * amplia (ninguno tenía todas las palabras).
  */
 export async function buscarLegal(texto) {
   const { q, numero, resto } = leerConsulta(texto);
   if (q.length < 2) return { resultados: [], amplia: false };
+  const fuera = await idsFueraDelBuscador();
   if (numero) {
-    const exactos = await porNumero(numero, resto, q);
+    const exactos = soloVigentes(await porNumero(numero, resto, q), fuera);
     if (exactos.length) return { resultados: exactos, amplia: false, numero };
   }
-  const resultados = await deLaBase(q);
+  const resultados = soloVigentes(await deLaBase(q), fuera);
   if (resultados.length) return { resultados: porCoincidencia(await conProcedencia(resultados), q), amplia: false };
   const amplia = consultaAmplia(q);
   if (!amplia) return { resultados: [], amplia: false };
-  return { resultados: porCoincidencia(await conProcedencia(await deLaBase(amplia))), amplia: true };
+  return { resultados: porCoincidencia(await conProcedencia(soloVigentes(await deLaBase(amplia), fuera))), amplia: true };
 }
 
 /**
