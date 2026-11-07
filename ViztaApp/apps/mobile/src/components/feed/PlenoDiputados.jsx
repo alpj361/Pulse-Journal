@@ -11,7 +11,6 @@ import { traerVotos } from './congreso';
 import { DISTRITOS, LISTADO_NACIONAL, VISTA_GUATEMALA, distritoEn } from './distritosGuatemala';
 import {
   COLOR_BANCADA,
-  COLOR_OTRA,
   COLOR_VOTO,
   ORDEN_VOTO,
   asignarCurules,
@@ -20,8 +19,10 @@ import {
   claveNombre,
   colorBancada,
   dejoLaCurul,
+  distritosOrdenados,
   enElPleno,
   iniciales,
+  logosDeBancadas,
   nombreBancada,
   ordenBancadas,
   porDistrito,
@@ -94,7 +95,9 @@ export function FichaDiputado({ diputado, voto, onCerrar }) {
             <FotoDiputado diputado={diputado} size={112} anillo />
             <Text style={{ fontFamily: SERIF, fontSize: 22, lineHeight: 26, color: INK.title, textAlign: 'center', marginTop: 14 }}>{diputado.nombre}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: colorBancada(diputado.sigla) }} />
+              {diputado.logo && diputado.sigla !== 'IND'
+                ? <LogoBancada logo={diputado.logo} size={20} />
+                : <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: colorBancada(diputado.sigla) }} />}
               <Text style={{ fontSize: 13, color: INK.body }}>{[nombreBancada(diputado.sigla), diputado.distrito].filter(Boolean).join(' · ')}</Text>
             </View>
             {rotulo || (diputado.ocupaLaCurulDe && explica) ? (
@@ -176,16 +179,42 @@ function Subtitulo({ rotulo, titulo }) {
   );
 }
 
-/** Las bancadas con color, una por una; las demás, juntas en un punto gris. */
-export function LeyendaBancadas({ bancadas }) {
-  const conColor = bancadas.filter((b) => COLOR_BANCADA[b.sigla] && b.sigla !== 'IND');
-  const otras = bancadas.filter((b) => !COLOR_BANCADA[b.sigla]);
-  const ind = bancadas.find((b) => b.sigla === 'IND');
+/** El logo de un partido, en su círculo blanco. */
+export function LogoBancada({ logo, size = 30 }) {
+  const [fallo, setFallo] = useState(false);
+  if (!logo || fallo) return null;
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 6, marginTop: 10 }}>
-      {conColor.map((b) => <Punto key={b.sigla} color={colorBancada(b.sigla)} texto={`${nombreBancada(b.sigla)} ${b.total}`} />)}
-      {otras.length ? <Punto color={COLOR_OTRA} texto={`${otras.length} bancadas más ${otras.reduce((s, b) => s + b.total, 0)}`} /> : null}
-      {ind ? <Punto color={colorBancada('IND')} texto={`Independientes ${ind.total}`} /> : null}
+    <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: RAYA }}>
+      <Image source={{ uri: logo }} style={{ width: '100%', height: '100%' }} contentFit="contain" onError={() => setFallo(true)} accessible={false} />
+    </View>
+  );
+}
+
+/**
+ * Las bancadas, cada una con su logo y cuántos diputados tiene; los
+ * independientes, que no son partido, en texto. Tocar una la elige: el
+ * hemiciclo resalta sus curules y el mapa cuenta solo a los suyos.
+ */
+export function LeyendaBancadas({ bancadas, logos = {}, elegida = null, onElegir }) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+      {bancadas.map((b) => {
+        const activa = elegida === b.sigla;
+        const conLogo = b.sigla !== 'IND' && logos[b.sigla];
+        return (
+          <Pressable key={b.sigla} onPress={onElegir ? () => onElegir(activa ? null : b.sigla) : undefined} disabled={!onElegir}
+            accessibilityRole="button" accessibilityState={{ selected: activa }}
+            accessibilityLabel={`${nombreBancada(b.sigla, { plural: b.sigla === 'IND' })}, ${b.total} ${b.total === 1 ? 'diputado' : 'diputados'}`}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingLeft: conLogo ? 4 : 12, paddingRight: 10, borderRadius: 999,
+              borderWidth: 1.5, borderColor: activa ? colorBancada(b.sigla) : 'transparent',
+              backgroundColor: activa ? '#FFFFFF' : 'rgba(28,43,34,0.04)', opacity: elegida && !activa ? 0.5 : 1 }}>
+            {conLogo ? <LogoBancada logo={logos[b.sigla]} size={30} /> : (
+              <Text style={{ fontSize: 13, fontWeight: '600', color: INK.title }}>{nombreBancada(b.sigla, { plural: true })}</Text>
+            )}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: INK.meta }}>{b.total}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -199,7 +228,10 @@ export default function PlenoDiputados() {
   const ancho = Math.min(width - 48, 360);
   const diputados = useDiputados();
   const [ficha, setFicha] = useState(null);
+  const [partido, setPartido] = useState(null);
   const lista = useMemo(() => enElPleno(diputados.data || []), [diputados.data]);
+  const logos = useMemo(() => logosDeBancadas(lista), [lista]);
+  const delPartido = useMemo(() => (partido ? lista.filter((d) => d.sigla === partido) : lista), [lista, partido]);
   const curules = useMemo(() => asignarCurules(lista), [lista]);
   // La leyenda cuenta a quienes están en el cargo; la curul vacía no suma a su bancada.
   const bancadas = useMemo(() => ordenBancadas(lista.filter((d) => !dejoLaCurul(d))), [lista]);
@@ -216,12 +248,13 @@ export default function PlenoDiputados() {
     <View>
       <Subtitulo rotulo={`EL PLENO · ${lista.length} CURULES`} titulo="Hemiciclo por bancada" />
       <View style={{ alignItems: 'center' }}>
-        <HemicicloDiputados curules={curules} colorDe={(d) => colorBancada(d.sigla)} vacia={dejoLaCurul} onTocar={setFicha} ancho={ancho} />
+        <HemicicloDiputados curules={curules} colorDe={(d) => colorBancada(d.sigla)} vacia={dejoLaCurul} onTocar={setFicha} ancho={ancho}
+          atenuar={partido ? (d) => d.sigla !== partido : null} />
       </View>
-      <LeyendaBancadas bancadas={bancadas} />
+      <LeyendaBancadas bancadas={bancadas} logos={logos} elegida={partido} onElegir={setPartido} />
       <View style={{ height: 1, backgroundColor: RAYA, marginVertical: 22 }} />
-      <Subtitulo rotulo="QUIÉN REPRESENTA QUÉ" titulo="Diputados por distrito" />
-      <MapaDiputados diputados={lista} onTocar={setFicha} />
+      <Subtitulo rotulo="QUIÉN REPRESENTA QUÉ" titulo={partido ? `${nombreBancada(partido, { plural: true })} por distrito` : 'Diputados por distrito'} />
+      <MapaDiputados key={partido || 'todos'} diputados={delPartido} color={partido ? colorBancada(partido) : null} onTocar={setFicha} />
       <FichaDiputado diputado={ficha} onCerrar={() => setFicha(null)} />
     </View>
   );
@@ -231,14 +264,24 @@ export default function PlenoDiputados() {
 const [, , VW, VH] = VISTA_GUATEMALA.split(' ').map(Number);
 const ASPECTO = VW / VH;
 const tono = (n) => (n >= 10 ? 0.85 : n >= 7 ? 0.62 : n >= 4 ? 0.42 : n >= 3 ? 0.26 : 0.14);
+const conAlfa = (hex, a) => {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+// Con un partido, el color es el suyo y el tono es relativo a su distrito con más diputados;
+// donde no tiene ninguno, el distrito queda casi en blanco.
+const VACIO = 'rgba(28,43,34,0.05)';
 
 /**
  * Los distritos de Guatemala, cada uno con el tono de cuántos diputados elige.
  * Al tocar uno se ven sus diputados; el Listado Nacional, que no es un
  * territorio, va en su propio recuadro.
  */
-export function MapaDiputados({ diputados, onTocar }) {
+export function MapaDiputados({ diputados, color = null, onTocar }) {
+  const porPartido = !!color;
   const grupos = useMemo(() => porDistrito(diputados), [diputados]);
+  const mayor = useMemo(() => Math.max(1, ...Object.values(grupos).map((g) => g.length)), [grupos]);
+  const relleno = (n) => (!porPartido ? `rgba(47,74,122,${tono(n)})` : n ? conAlfa(color, 0.35 + 0.55 * (n / mayor)) : VACIO);
   const [elegido, setElegido] = useState(null);
   const orden = useMemo(() => ordenBancadas(diputados).map((b) => b.sigla), [diputados]);
   const delElegido = (grupos[elegido] || []).slice().sort((a, b) => orden.indexOf(a.sigla) - orden.indexOf(b.sigla) || a.nombre.localeCompare(b.nombre));
@@ -253,20 +296,25 @@ export function MapaDiputados({ diputados, onTocar }) {
           style={{ flex: 1, aspectRatio: ASPECTO }}>
           <Svg width="100%" height="100%" viewBox={VISTA_GUATEMALA} pointerEvents="none">
             {Object.entries(DISTRITOS).map(([nombre, d]) => (
-              <Path key={nombre} d={d} fill={`rgba(47,74,122,${tono((grupos[nombre] || []).length)})`}
+              <Path key={nombre} d={d} fill={relleno((grupos[nombre] || []).length)}
                 stroke={nombre === elegido ? INK.title : '#FBFAF7'} strokeWidth={nombre === elegido ? 0.03 : 0.012} />
             ))}
           </Svg>
         </Pressable>
         <Pressable onPress={() => setElegido(LISTADO_NACIONAL)} accessibilityRole="button" accessibilityLabel={`Listado Nacional, ${nacional} diputados`}
           style={{ width: 76, paddingVertical: 10, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1, alignItems: 'center',
-            borderColor: elegido === LISTADO_NACIONAL ? INK.title : 'rgba(28,43,34,0.16)', backgroundColor: `rgba(47,74,122,${tono(nacional)})` }}>
-          <Text style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>{nacional}</Text>
-          <Text style={{ fontSize: 11, lineHeight: 14, color: '#fff', textAlign: 'center' }}>Listado Nacional</Text>
+            borderColor: elegido === LISTADO_NACIONAL ? INK.title : 'rgba(28,43,34,0.16)', backgroundColor: relleno(nacional) }}>
+          <Text style={{ fontSize: 22, fontWeight: '700', color: nacional || !porPartido ? '#fff' : INK.faint }}>{nacional}</Text>
+          <Text style={{ fontSize: 11, lineHeight: 14, color: nacional || !porPartido ? '#fff' : INK.faint, textAlign: 'center' }}>Listado Nacional</Text>
         </Pressable>
       </View>
       {elegido ? (
         <RejillaFotos titulo={`${elegido} · ${delElegido.length} ${delElegido.length === 1 ? 'diputado' : 'diputados'}`} personas={delElegido} onTocar={onTocar} />
+      ) : porPartido ? (
+        // Con un partido elegido, sus diputados ya agrupados por el distrito que representan.
+        distritosOrdenados(diputados).map(({ distrito, personas }) => (
+          <RejillaFotos key={distrito} titulo={`${distrito} · ${personas.length}`} personas={personas} onTocar={onTocar} />
+        ))
       ) : (
         <Text style={{ fontSize: 12, color: INK.meta, marginTop: 10 }}>Toca un distrito para ver a sus diputados.</Text>
       )}

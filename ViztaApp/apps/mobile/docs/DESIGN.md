@@ -162,6 +162,13 @@ leen en su tarjeta del registro de decretos, plegados («14 artículos») y cada
 uno con «leer completo», en lugar de «ficha de la ley». Desde una iniciativa,
 «no entró en vigor» nombra el decreto sin enlace.
 
+**Los partidos, por su logo** (PJ, 7-nov-2026). Debajo del hemiciclo, cada
+bancada va con su logo (del dataset, `logo_del_partido`) y su cifra, no con el
+nombre; los independientes, que no son partido, van en texto. Tocar un logo
+resalta sus curules, pinta el mapa con su color (tono relativo a su distrito con
+más diputados) y lista a sus diputados agrupados por el distrito que
+representan.
+
 **Diputados que dejan el cargo** (PJ, 7-nov-2026). El estado sale del dataset
 «Congreso de Guatemala» (`estado`, `fecha_estado`, `ocupa_la_curul_de`). Quien
 falleció va con la foto y el anillo en gris; quien renunció o fue destituido, sin

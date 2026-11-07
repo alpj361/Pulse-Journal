@@ -101,3 +101,17 @@ describe('diputados que dejan el cargo', () => {
     expect(ayudaEstado(n, [])).toBeNull();
   });
 });
+
+test('el logo de cada bancada sale del dataset y los distritos se agrupan, el Listado Nacional primero', () => {
+  // eslint-disable-next-line global-require
+  const { distritosOrdenados, logosDeBancadas } = require('../diputados');
+  const lista = diputadosDe([
+    { id: 'a', values: { nombre: 'Ana Uno', partido: 'CABAL - CABAL', distrito: 'Quiché', logo_del_partido: 'cabal.png' } },
+    { id: 'b', values: { nombre: 'Beto Dos', partido: 'CABAL - CABAL', distrito: 'Quiché' } },
+    { id: 'c', values: { nombre: 'Ceci Tres', partido: 'CABAL - CABAL', distrito: 'Listado Nacional', logo_del_partido: 'cabal.png' } },
+    { id: 'd', values: { nombre: 'Dani Cuatro', partido: 'Independiente - IND', distrito: 'Petén', logo_del_partido: 'ind.jpg' } },
+  ]);
+  expect(logosDeBancadas(lista)).toEqual({ CABAL: 'cabal.png', IND: 'ind.jpg' });
+  expect(distritosOrdenados(lista.filter((d) => d.sigla === 'CABAL')).map((g) => `${g.distrito} ${g.personas.length}`))
+    .toEqual(['Listado Nacional 1', 'Quiché 2']);
+});

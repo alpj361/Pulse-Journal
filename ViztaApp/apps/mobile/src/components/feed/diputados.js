@@ -69,6 +69,7 @@ export function diputadosDe(filas = []) {
       partido: v.partido || null,
       distrito: v.distrito || null,
       foto: v.foto_diputado || null,
+      logo: v.logo_del_partido || null,
       estado: v.estado || null,
       fechaEstado: v.fecha_estado || null,
       ocupaLaCurulDe: v.ocupa_la_curul_de ? String(v.ocupa_la_curul_de).replace(/\s+/g, ' ').trim() : null,
@@ -229,6 +230,21 @@ export function porDistrito(diputados = []) {
   const grupos = {};
   for (const d of diputados) (grupos[d.distrito] = grupos[d.distrito] || []).push(d);
   return grupos;
+}
+
+/** El logo de cada bancada, del dataset: { CABAL: 'https://…' }. */
+export function logosDeBancadas(diputados = []) {
+  const logos = {};
+  for (const d of diputados) if (d.logo && !logos[d.sigla]) logos[d.sigla] = d.logo;
+  return logos;
+}
+
+/** Los distritos con sus diputados, de más a menos y el Listado Nacional primero. */
+export function distritosOrdenados(diputados = []) {
+  return Object.entries(porDistrito(diputados))
+    .map(([distrito, personas]) => ({ distrito, personas: [...personas].sort((a, b) => a.nombre.localeCompare(b.nombre)) }))
+    .sort((a, b) => (b.distrito === 'Listado Nacional') - (a.distrito === 'Listado Nacional')
+      || b.personas.length - a.personas.length || a.distrito.localeCompare(b.distrito));
 }
 
 /** «Ana Patricia Orantes Thomas» → «AO», para cuando no hay foto. */
