@@ -38,7 +38,8 @@ const PLURAL_VOTO = { favor: 'a favor', contra: 'en contra', ausente: 'ausentes'
 const ICONO_VOTO = { favor: CircleCheck, contra: CircleX, ausente: CircleDashed, licencia: CalendarOff };
 
 export function useDiputados({ enabled = true } = {}) {
-  return useQuery({ queryKey: ['congreso-diputados'], queryFn: traerDiputados, enabled, staleTime: 6 * 60 * 60 * 1000 });
+  // Lo que se edita en el dataset se ve en minutos, no al día siguiente.
+  return useQuery({ queryKey: ['congreso-diputados'], queryFn: traerDiputados, enabled, staleTime: 5 * 60 * 1000 });
 }
 
 /** El voto, en un ícono con su color. */
