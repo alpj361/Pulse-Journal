@@ -97,6 +97,9 @@ no aprobada un círculo con equis roja. Al lado va solo la cifra que lo
 explica: «125 a favor» si se aprobó, «20 en contra» si no. Los rótulos no se
 alargan con palabras que el ícono ya dice («APROBADA · EN ÚNICO DEBATE ·
 INICIATIVA…» pierde la jerarquía): el rótulo queda para *qué* se votó.
+En una lista de pasos, ícono y cifra van en columna: la fila que no tiene
+flecha (no abre ficha) o no tiene cifra guarda ese lugar vacío, para que los
+votos queden alineados (PJ, 7-nov-2026).
 
 **De quién es algo también va en un ícono** (PJ, 1-nov-2026). Donde se mezcla
 lo de un agente con lo de la persona, cada cosa lleva su ícono: una persona si

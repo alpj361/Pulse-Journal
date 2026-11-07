@@ -312,7 +312,7 @@ export function GrupoVotacion({ grupo, nombres = {}, compacta = false }) {
       {grupo.principal ? <VotacionCongreso votacion={grupo.principal} compacta={compacta} ley={ley} tipo={grupo.tipo} />
         : <Rotulo color={INK.meta}>{TIPOS_VOTACION[grupo.tipo].rotulo}</Rotulo>}
       {pasos ? <Plegable abierto={abierto} onPress={() => setAbierto((x) => !x)} texto={pasos} color={grupo.principal ? TINTA : INK.meta} /> : null}
-      {abierto ? grupo.pasos.map((v) => <Paso key={v.id} votacion={v} tipo={grupo.tipo} ficha={fichas.data?.get(v.id)} corto={grupo.tipo !== 'eleccion' && grupo.tipo !== 'acuerdo'} />) : null}
+      {abierto ? grupo.pasos.map((v) => <Paso key={v.id} votacion={v} tipo={grupo.tipo} ficha={fichas.data?.get(v.id)} conFlecha={idsEnmienda.length > 0} corto={grupo.tipo !== 'eleccion' && grupo.tipo !== 'acuerdo'} />) : null}
     </View>
   );
 }
@@ -322,7 +322,7 @@ export function GrupoVotacion({ grupo, nombres = {}, compacta = false }) {
  * enmienda se toca y abre su ficha; con ficha, va su nombre en sencillo
  * («Artículo 31: en cuánto tiempo se avisa un ataque») sobre el del acta.
  */
-function Paso({ votacion: v, corto, tipo = null, ficha = null }) {
+function Paso({ votacion: v, corto, tipo = null, ficha = null, conFlecha = false }) {
   const [abierta, setAbierta] = useState(false);
   const resultado = resultadoVotacion(v);
   const cifra = cifraDe(v);
@@ -334,8 +334,9 @@ function Paso({ votacion: v, corto, tipo = null, ficha = null }) {
         {ficha?.titulo ? <Text style={{ fontSize: 11.5, lineHeight: 16, color: INK.meta, marginTop: 2 }}>{pasoCorto(v.asunto)}</Text> : null}
       </View>
       <IconoResultado resultado={resultado} size={14} />
-      {cifra ? <Text style={{ fontSize: 11.5, color: INK.meta, minWidth: 70 }}>{cifra}</Text> : null}
-      {enmienda ? <ChevronRight size={14} color={INK.faint} /> : null}
+      {/* La cifra y la flecha guardan su lugar aunque falten, para que los votos queden en columna. */}
+      <Text style={{ fontSize: 11.5, color: INK.meta, minWidth: 70 }}>{cifra || ''}</Text>
+      {enmienda ? <ChevronRight size={14} color={INK.faint} /> : conFlecha ? <View style={{ width: 14 }} /> : null}
     </>
   );
   const estilo = { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: RAYA };
