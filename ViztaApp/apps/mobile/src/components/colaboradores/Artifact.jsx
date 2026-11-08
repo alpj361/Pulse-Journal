@@ -10,6 +10,7 @@ import { falla, listo } from '../../utils/haptics';
 import { Boton, EstadoCentro, ROTULO, TONO } from './piezas';
 import MorphingInfinity from '../MorphingInfinity';
 import Reenviar from './Reenviar';
+import VistaVizta from '../visual/VistaVizta';
 
 /**
  * Los tokens de diseño que un artifact HTML puede usar (`var(--pulzos-*)` o
@@ -59,6 +60,9 @@ const paginaInteractiva = (html) => {
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (h) => `${h}${cabeza}`);
   return `<!doctype html><html><head><meta charset="utf-8">${cabeza}</head><body>${html}</body></html>`;
 };
+
+/** Un dashboard armado con las piezas de Vizta (OpenUI Lang): se dibuja en nativo. */
+export const esVista = (a) => a?.contenido?.formato === 'openui' && typeof a?.contenido?.programa === 'string';
 
 /** Un dashboard (interactivo) o un HTML de solo lectura. */
 export const esInteractivo = (a) => a?.tipo === 'dashboard' || a?.subtipo === 'dashboard' || a?.interactivo === true;
@@ -193,7 +197,7 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
     return (
       <View style={{ flex: 1 }}>
         {cabecera}
-        <EstadoCentro titulo="No se pudo abrir" texto="Revisá la conexión y probá de nuevo.">
+        <EstadoCentro titulo="No se pudo abrir" texto="Revisa la conexión y prueba de nuevo.">
           <Boton texto="probar de nuevo" onPress={() => consulta.refetch()} />
         </EstadoCentro>
       </View>
@@ -215,7 +219,9 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
     <View style={{ flex: 1 }}>
       {cabecera}
       <View style={{ flex: 1 }}>
-        {a.html && esInteractivo(a) ? (
+        {esVista(a) ? (
+          <VistaVizta programa={a.contenido.programa} entidades={a.entidades} relaciones={a.relaciones} bottomInset={bottomInset} />
+        ) : a.html && esInteractivo(a) ? (
           <WebView
             style={{ flex: 1, backgroundColor: '#FBFAF6' }}
             onLoadEnd={() => setDibujando(false)}
@@ -264,7 +270,7 @@ export default function Artifact({ id, topInset, bottomInset, onVolver }) {
         ) : null}
       </View>
       {/* El dashboard ya trae sus fuentes al pie: no se repiten afuera. */}
-      {esInteractivo(a) ? null : listaFuentes}
+      {esInteractivo(a) && !esVista(a) ? null : listaFuentes}
     </View>
   );
 }
