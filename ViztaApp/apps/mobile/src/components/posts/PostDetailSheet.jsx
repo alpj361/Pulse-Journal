@@ -36,6 +36,8 @@ import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
 import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, ObraDelPost, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
 import { esBreve, esInformativo, esLaObra, obraDelPost } from './profundidad';
+import GuardadosDelPost, { useGuardadosDelPost } from './GuardadosDelPost';
+import { guardadoDeLaObra } from './bookmarks';
 import { armarPiezas, norm } from './piezas';
 import { Pieza, Refs, Saltos } from './Saltos';
 import { supabase } from '../../utils/supabase';
@@ -257,6 +259,11 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
     enabled: !!obra?.titulo && !muestra && !soloLectura,
     staleTime: 1000 * 60,
   });
+  // Lo guardado en la biblioteca desde este post. La obra ya va arriba con su
+  // marca; aquí abajo, el resto (un libro, una lista que menciona).
+  const { data: guardadosPost = [] } = useGuardadosDelPost(post?.id, !muestra && !soloLectura);
+  const guardadoObra = guardadoDeLaObra(guardadosPost, obra);
+  const otrosGuardados = guardadosPost.filter((g) => g !== guardadoObra);
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
   const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) ? 'anotado' : vista;
 
@@ -728,7 +735,8 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                   {loEsencial ? (
                     <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22, marginBottom: obra ? 12 : 22 }}>{loEsencial}</Text>
                   ) : null}
-                  <ObraDelPost obra={obra} guardada={!!obraGuardada} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+                  <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+                  <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
 
                   {narrativa && (!breve || completo) && narrativa !== loEsencial ? (
                     <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21, marginTop: obra ? 16 : 0, marginBottom: 22 }}>
