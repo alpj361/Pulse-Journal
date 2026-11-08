@@ -22,7 +22,7 @@ returns void
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $fn$
 begin
   -- 1. Mociones y propuestas: el resultado que publica Poder Ciudadano.
   update votaciones v
@@ -80,18 +80,18 @@ begin
   update votaciones set resultado = null
    where resultado_fuente is null and resultado is not null;
 end;
-$$;
+$fn$;
 
 revoke all on function public.votaciones_resultado_oficial() from public, anon, authenticated;
 
 -- Se recalcula sola cuando llegan votaciones, mociones o capítulos de PC.
 create or replace function public.votaciones_resultado_oficial_trigger()
-returns trigger language plpgsql security definer set search_path = public as $$
+returns trigger language plpgsql security definer set search_path = public as $tg$
 begin
   perform public.votaciones_resultado_oficial();
   return null;
 end;
-$$;
+$tg$;
 revoke all on function public.votaciones_resultado_oficial_trigger() from public, anon, authenticated;
 
 drop trigger if exists votaciones_resultado_al_insertar on public.votaciones;
