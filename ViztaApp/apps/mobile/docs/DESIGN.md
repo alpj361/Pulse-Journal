@@ -468,3 +468,21 @@ los generó**, no en una lista aparte (PJ, 8-nov-2026).
   fecha de guardado. La fila abre el enlace; la marca de la derecha la da por
   revisada.
 - Sin guardados, la sección no aparece.
+
+## Smart UI de posts
+
+La ficha de un post se arma según lo que trae (PJ, 8-nov-2026):
+
+- **Post breve** (sin análisis profundo): se arma alrededor de lo que presenta.
+  Su guardado principal va grande arriba (carátula o ícono del tipo, nombre en
+  la serif de los titulares, tipo, «abrir» y «por revisar»); el resto, en
+  «en tu biblioteca».
+- **Análisis profundo** (se pide a mano): se dibuja con las piezas de Vizta
+  (OpenUI) en la solapa **vista**, que se abre primero. Las piezas salen de
+  reglas fijas (`posts/vistaDelPost.js`), sin modelos: lo que dice (citas con
+  quién las dijo), las cifras, quién aparece (lo que está en el Codex), cuándo
+  (solo hitos con fecha), cómo se relacionan y en qué se apoya. Una sección
+  sin datos no aparece; con menos de dos, no hay solapa **vista**.
+- Lo que repite el título no se vuelve a decir, y una fuente cuya cita es solo
+  «según X» se muestra como nombre, no como cita.
+- «anotado» y «organizado» siguen al lado, con sus acciones de guardar.

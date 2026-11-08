@@ -17,11 +17,17 @@ export const HERRAMIENTAS = {
   codex_items: async (args = {}) => ({ items: await traerItems(idsDe(args.ids)) }),
 };
 
+/** Sola, la vista se desplaza; dentro de otra pantalla que ya se desplaza (`enLinea`), no. */
+function Envoltura({ enLinea, bottomInset, children }) {
+  if (enLinea) return <View>{children}</View>;
+  return <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: bottomInset + 32 }}>{children}</ScrollView>;
+}
+
 /**
  * Una vista de Vizta: un programa de OpenUI Lang dibujado con el catálogo
  * propio, en nativo. Tocar a alguien abre su ficha encima.
  */
-export default function VistaVizta({ programa, entidades = null, relaciones = null, bottomInset = 0, enStreaming = false, onErrores }) {
+export default function VistaVizta({ programa, entidades = null, relaciones = null, bottomInset = 0, enStreaming = false, onErrores, enLinea = false }) {
   const [abierto, setAbierto] = useState(null);
   const contexto = useMemo(
     () => ({
@@ -34,7 +40,7 @@ export default function VistaVizta({ programa, entidades = null, relaciones = nu
 
   return (
     <VisualContexto.Provider value={contexto}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: bottomInset + 32 }}>
+      <Envoltura enLinea={enLinea} bottomInset={bottomInset}>
         <Renderer
           response={programa}
           library={catalogo}
@@ -47,7 +53,7 @@ export default function VistaVizta({ programa, entidades = null, relaciones = nu
           }
           onError={onErrores}
         />
-      </ScrollView>
+      </Envoltura>
       {abierto ? <ItemDetailSheet item={abierto} soloLectura bottomInset={bottomInset} onClose={() => setAbierto(null)} /> : null}
     </VisualContexto.Provider>
   );

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Image, Linking, Pressable, Text, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bookmark, BookmarkCheck, FileText, GraduationCap, List, Play, Quote, AudioLines, School, Link2 } from 'lucide-react-native';
-import { INK } from '../theme';
+import { ArrowUpRight, Bookmark, BookmarkCheck, FileText, GraduationCap, List, Play, Quote, AudioLines, School, Link2 } from 'lucide-react-native';
+import { INK, SERIF } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL } from '../codex/materiales';
@@ -47,7 +47,7 @@ export function useGuardadosDelPost(postId, activo = true) {
  * o desde la hoja de compartir. Cada fila abre su enlace; la marca de la
  * derecha la da por revisada. Sin guardados, la sección no aparece.
  */
-export default function GuardadosDelPost({ postId, items = [] }) {
+export default function GuardadosDelPost({ postId, items = [], destacar = false }) {
   const cliente = useQueryClient();
   const [ocupado, setOcupado] = useState(null);
   if (!items.length) return null;
@@ -70,14 +70,63 @@ export default function GuardadosDelPost({ postId, items = [] }) {
     }
   };
 
+  const abrir = (it) => (it.bookmark?.url ? () => { roce(); Linking.openURL(it.bookmark.url).catch(() => {}); } : undefined);
+  // En un post breve, lo guardado es lo principal: el primero va grande.
+  const [primero, ...resto] = destacar ? items : [null, ...items];
   return (
     <View style={{ marginTop: 18, marginBottom: 8 }}>
-      <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 4 }}>en tu biblioteca</Text>
-      {items.map((it) => (
+      {primero ? <Protagonista item={primero} ocupado={ocupado === primero.id} onAbrir={abrir(primero)} onRevisado={() => alternarRevisado(primero)} /> : null}
+      {resto.length ? <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 4, marginTop: primero ? 18 : 0 }}>en tu biblioteca</Text> : null}
+      {resto.map((it) => (
         <FilaGuardado key={it.id} item={it} ocupado={ocupado === it.id}
-          onAbrir={it.bookmark?.url ? () => { roce(); Linking.openURL(it.bookmark.url).catch(() => {}); } : undefined}
+          onAbrir={abrir(it)}
           onRevisado={() => alternarRevisado(it)} />
       ))}
+    </View>
+  );
+}
+
+/**
+ * Lo que el post presenta, en grande: la carátula o el ícono del tipo, el
+ * nombre en la serif de los titulares, su tipo y, si tiene enlace, para abrirlo.
+ */
+function Protagonista({ item: it, ocupado, onAbrir, onRevisado }) {
+  const tipo = tipoDeBookmark(it);
+  const info = infoTipo(tipo);
+  const revisado = it.bookmark?.status === 'reviewed';
+  const Marca = revisado ? BookmarkCheck : Bookmark;
+  const imagen = it.bookmark?.image_url;
+  return (
+    <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
+      {imagen ? (
+        <Image source={{ uri: imagen }} style={{ width: 84, height: 120, borderRadius: 10, backgroundColor: 'rgba(28,43,34,0.06)' }} />
+      ) : (
+        <View style={{ width: 84, height: 84, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: `${info.color}14` }}>
+          <IconoGuardado tipo={tipo} size={30} />
+        </View>
+      )}
+      <View style={{ flex: 1, gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <IconoGuardado tipo={tipo} size={13} />
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: info.color }}>{info.etiqueta}</Text>
+        </View>
+        <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 31, color: INK.title }}>{it.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 }}>
+          {onAbrir ? (
+            <Pressable onPress={onAbrir} hitSlop={8} accessibilityRole="link" accessibilityLabel={`Abrir ${it.name}`}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.5 : 1 })}>
+              <Text style={{ fontFamily: MONO, fontSize: 12.5, color: INK.title }}>abrir</Text>
+              <ArrowUpRight size={14} color={INK.title} />
+            </Pressable>
+          ) : null}
+          <Pressable onPress={onRevisado} disabled={ocupado} hitSlop={8} accessibilityRole="button" accessibilityState={{ checked: revisado }}
+            accessibilityLabel={revisado ? `${it.name}, revisado. Marcar por revisar` : `${it.name}, por revisar. Marcar revisado`}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, opacity: ocupado ? 0.4 : pressed ? 0.5 : 1 })}>
+            <Marca size={15} color={revisado ? info.color : INK.meta} strokeWidth={1.8} />
+            <Text style={{ fontFamily: MONO, fontSize: 12.5, color: revisado ? info.color : INK.meta }}>{revisado ? 'revisado' : 'por revisar'}</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }

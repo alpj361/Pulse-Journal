@@ -37,6 +37,8 @@ import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
 import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, ObraDelPost, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
 import { esBreve, esInformativo, esLaObra, obraDelPost } from './profundidad';
 import GuardadosDelPost, { useGuardadosDelPost } from './GuardadosDelPost';
+import { programaDelAnalisis } from './vistaDelPost';
+import VistaVizta from '../visual/VistaVizta';
 import { guardadoDeLaObra } from './bookmarks';
 import { armarPiezas, norm } from './piezas';
 import { Pieza, Refs, Saltos } from './Saltos';
@@ -265,7 +267,15 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const guardadoObra = guardadoDeLaObra(guardadosPost, obra);
   const otrosGuardados = guardadosPost.filter((g) => g !== guardadoObra);
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
-  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) ? 'anotado' : vista;
+  // Smart UI: un análisis profundo que da para varias secciones se dibuja con
+  // las piezas de Vizta (reglas fijas en `vistaDelPost.js`). Un post breve no.
+  const programa = useMemo(() => (analisis && !breve ? programaDelAnalisis(analisis) : null), [analisis, breve]);
+  // Con vista, se abre en ella; si la persona ya eligió solapa, se respeta.
+  const eligioSolapa = useRef(false);
+  useEffect(() => {
+    if (programa && !eligioSolapa.current) setVista('vista');
+  }, [programa]);
+  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) || (vista === 'vista' && !programa) ? 'anotado' : vista;
 
   const extraer = async () => {
     if (cargando) return;
@@ -643,11 +653,16 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
           {textoBase || analisis || d.vistazo ? (
             <Animated.View layout={LinearTransition.springify().damping(22)} entering={FadeIn.duration(260)}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 28, marginBottom: 4 }}>
-                <Solapa activa={vistaReal === 'anotado'} onPress={() => { roce(); setVista('anotado'); }}>
+                {programa ? (
+                  <Solapa activa={vistaReal === 'vista'} onPress={() => { roce(); eligioSolapa.current = true; setVista('vista'); }}>
+                    vista
+                  </Solapa>
+                ) : null}
+                <Solapa activa={vistaReal === 'anotado'} onPress={() => { roce(); eligioSolapa.current = true; setVista('anotado'); }}>
                   anotado
                 </Solapa>
                 {analisis ? (
-                  <Solapa activa={vistaReal === 'organizado'} onPress={() => { roce(); setVista('organizado'); }}>
+                  <Solapa activa={vistaReal === 'organizado'} onPress={() => { roce(); eligioSolapa.current = true; setVista('organizado'); }}>
                     organizado
                   </Solapa>
                 ) : null}
@@ -728,6 +743,12 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                 </View>
               ) : vistaReal === 'aprender' ? (
                 <Aprender aprender={analisis.aprender} piezas={piezas} />
+              ) : vistaReal === 'vista' ? (
+                <View style={{ marginTop: 18 }}>
+                  <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+                  <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
+                  <VistaVizta programa={programa} enLinea />
+                </View>
               ) : (
                 <View style={{ marginTop: 14 }}>
                   {/* Lo esencial primero: qué es el post en una línea y la obra
@@ -735,8 +756,16 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                   {loEsencial ? (
                     <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22, marginBottom: obra ? 12 : 22 }}>{loEsencial}</Text>
                   ) : null}
-                  <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
-                  <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
+                  {/* Un post breve se arma alrededor de lo que presenta: su
+                      guardado principal va grande y en lugar de la obra. */}
+                  {breve && guardadosPost.length ? (
+                    <GuardadosDelPost postId={post?.id} items={guardadosPost} destacar />
+                  ) : (
+                    <>
+                      <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+                      <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
+                    </>
+                  )}
 
                   {narrativa && (!breve || completo) && narrativa !== loEsencial ? (
                     <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21, marginTop: obra ? 16 : 0, marginBottom: 22 }}>
