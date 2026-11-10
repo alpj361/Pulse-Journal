@@ -19,7 +19,7 @@ const MAX_RELACIONES = 6;
 const MAX_FUENTES = 4;
 
 /** Lo que hace cada voz en el video, como se lee. */
-const ROLES = { anfitrion: 'conduce', invitado: 'invitado', narrador: 'narra', entrevistador: 'entrevista', entrevistado: 'entrevistado', presentador: 'presenta' };
+export const ROLES = { anfitrion: 'conduce', invitado: 'invitado', narrador: 'narra', entrevistador: 'entrevista', entrevistado: 'entrevistado', presentador: 'presenta' };
 
 const s = (t) => JSON.stringify(String(t ?? '').replace(/\s+/g, ' ').trim());
 // Tal cual: lo que la pieza busca después en el análisis vivo (relaciones, ids).
@@ -82,7 +82,11 @@ export function programaDelAnalisis(analisis, extras = {}) {
     secciones.push(id);
   };
 
-  const titulo = limpio(analisis.resumen) || primeraOracion(analisis.narrativa || analisis.contexto) || 'El análisis';
+  // El resumen a veces llega cortado a la mitad de una palabra: entonces el título
+  // es la primera oración de la narrativa.
+  const resumen = limpio(analisis.resumen);
+  const cortado = resumen && !/[.!?»"”)]$/.test(resumen) && resumen.length >= 120;
+  const titulo = (!cortado && resumen) || primeraOracion(analisis.narrativa || analisis.contexto) || resumen || 'El análisis';
 
   // Lo que dice: citas literales con quién las dijo; si no hay, los hechos. Lo
   // que repite el título no se vuelve a decir.
@@ -119,8 +123,8 @@ export function programaDelAnalisis(analisis, extras = {}) {
   const clave = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   const menciones = [...(analisis.menciones || [])].sort((a, b) => (a?.rol === 'central' ? 0 : 1) - (b?.rol === 'central' ? 0 : 1));
   const mencionDe = (nombre) => menciones.find((m) => clave(m?.texto) === clave(nombre)) || null;
-  const persona = (texto, { id = '', tipo = '', rol = '', detalle = '' } = {}) => {
-    const args = [exacto(texto), exacto(id || ''), s(tipo), s(rol), s(detalle)];
+  const persona = (texto, { id = '', tipo = '', rol = '', detalle = '', voz = '' } = {}) => {
+    const args = [exacto(texto), exacto(id || ''), s(tipo), s(rol), s(detalle), exacto(voz || '')];
     while (args.length > 1 && args[args.length - 1] === '""') args.pop();
     return `Persona(${args.join(', ')})`;
   };
@@ -128,17 +132,21 @@ export function programaDelAnalisis(analisis, extras = {}) {
   const aparecen = [];
   const yaAparece = new Set();
   const voces = (analisis.hablantes || []).filter((v) => v && typeof v === 'object');
+  // Lo que se dijo a mano (relaciones «aparece en» del Codex): una voz nombrada
+  // o alguien que el análisis no detectó.
+  const aMano = Array.isArray(extras.aparecen) ? extras.aparecen : [];
   for (const v of voces) {
-    const nombre = limpio(v.nombre) || (v.es_autor ? limpio(extras.hablante?.nombre) : '');
+    const nombrada = aMano.find((x) => x.voz && x.voz === v.id);
+    const nombre = limpio(nombrada?.name) || limpio(v.nombre) || (v.es_autor ? limpio(extras.hablante?.nombre) : '');
     const rol = ROLES[v.rol] || limpio(v.rol);
     if (nombre) {
       if (yaAparece.has(clave(nombre))) continue;
       yaAparece.add(clave(nombre));
       const m = mencionDe(nombre);
-      aparecen.push(persona(nombre, { id: v.persona_item_id || m?.codex?.id, tipo: 'Actor', rol }));
+      aparecen.push(persona(nombre, { id: nombrada?.id || v.persona_item_id || m?.codex?.id, tipo: 'Actor', rol, voz: v.id }));
     } else {
-      // Sin nombre: se reconoce por cómo suena o se ve.
-      aparecen.push(persona(rol ? rol.charAt(0).toUpperCase() + rol.slice(1) : 'Voz', { detalle: limpio(v.descripcion) }));
+      // Sin nombre: se reconoce por cómo suena o se ve, y se puede decir quién es.
+      aparecen.push(persona(rol ? rol.charAt(0).toUpperCase() + rol.slice(1) : 'Voz', { detalle: limpio(v.descripcion), voz: v.id }));
     }
   }
   // Sin voces separadas, quien habla a cámara (suele ser el autor).
@@ -148,7 +156,14 @@ export function programaDelAnalisis(analisis, extras = {}) {
     const m = mencionDe(habla.nombre);
     aparecen.push(persona(limpio(habla.nombre), { id: m?.codex?.id, tipo: 'Actor', rol: 'habla a cámara' }));
   }
-  if (aparecen.length) seccion('Quién aparece', [`Personas([${aparecen.slice(0, MAX_ACTORES).join(', ')}])`], 'actores');
+  for (const x of aMano) {
+    if (x.voz && voces.some((v) => v.id === x.voz)) continue;
+    if (!limpio(x.name) || yaAparece.has(clave(x.name))) continue;
+    yaAparece.add(clave(x.name));
+    aparecen.push(persona(limpio(x.name), { id: x.id, tipo: x.tipo || 'Actor' }));
+  }
+  // En la ficha del post, la sección ofrece agregar a alguien más (`agregar`).
+  if (aparecen.length) seccion('Quién aparece', [`Personas([${aparecen.slice(0, MAX_ACTORES).join(', ')}], true)`], 'actores');
 
   const porTipo = (tipo) => {
     const vistos = new Set();
@@ -189,7 +204,7 @@ export function programaDelAnalisis(analisis, extras = {}) {
 
   if (secciones.length < 2) return null;
   const bajada = primeraOracion(analisis.narrativa || analisis.contexto);
-  const raiz = bajada && bajada !== titulo
+  const raiz = bajada && !repite(bajada, titulo)
     ? `root = Vista(${s(titulo)}, [${secciones.join(', ')}], ${s(bajada)})`
     : `root = Vista(${s(titulo)}, [${secciones.join(', ')}])`;
   return [raiz, ...lineas].join('\n');

@@ -5,8 +5,10 @@ import { z } from 'zod';
 import { createLibrary, defineComponent } from '@openuidev/react-lang';
 import {
   ArrowRight,
+  AudioLines,
   Check,
   Plus,
+  UserPlus,
   BarChart3,
   Building2,
   CalendarDays,
@@ -425,6 +427,7 @@ const Persona = defineComponent({
     tipo: z.string().optional(),
     rol: z.string().optional(),
     detalle: z.string().optional(),
+    voz: z.string().optional(),
   }),
   description:
     'Alguien de un post: su nombre como sale en el post y, si ya está en el Codex, su id. rol: qué hace en el video («conduce», «invitado», «habla a cámara»); detalle: cómo se le reconoce si no tiene nombre.',
@@ -433,7 +436,7 @@ const Persona = defineComponent({
 
 const Personas = defineComponent({
   name: 'Personas',
-  props: z.object({ personas: z.array(Persona.ref) }),
+  props: z.object({ personas: z.array(Persona.ref), agregar: z.boolean().optional() }),
   description:
     'Personas o entidades de un post (quién aparece, a quién se menciona, qué organizaciones). Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos.',
   component: ({ props }) => {
@@ -446,7 +449,8 @@ const Personas = defineComponent({
     });
     const q = useItems(conId.filter((p) => p.id).map((p) => p.id));
     const items = new Map((q.data || []).map((it) => [it.id, it]));
-    if (!conId.length) return null;
+    const puedeAgregar = props.agregar && acciones?.agregarAparece;
+    if (!conId.length && !puedeAgregar) return null;
     return (
       <View style={{ gap: 10 }}>
         {conId.map((p) => {
@@ -468,9 +472,12 @@ const Personas = defineComponent({
           return (
             <View key={p.texto} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 42, height: 42, borderRadius: p.tipo === 'Entidad' ? 10 : 21, borderWidth: 1.5, borderStyle: 'dashed', borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: INK.meta }}>
-                  {p.texto.split(/\s+/).filter((w) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'}
-                </Text>
+                {/* Una voz sin nombre no tiene iniciales: se marca como voz. */}
+                {p.voz && !p.tipo ? <AudioLines size={17} color={INK.meta} /> : (
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: INK.meta }}>
+                    {p.texto.split(/\s+/).filter((w) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'}
+                  </Text>
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>{p.texto}</Text>
@@ -480,10 +487,25 @@ const Personas = defineComponent({
               </View>
               {acciones?.agregarMencion && p.mencion ? (
                 <BotonGuardar hecho={false} ocupado={ocupado} onPress={() => acciones.agregarMencion(p.mencion)} etiqueta={`Agregar ${p.texto} a tu Codex`} />
+              ) : acciones?.identificarVoz && p.voz ? (
+                <Pressable onPress={() => acciones.identificarVoz(p.voz)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Decir quién es: ${p.texto}`}
+                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 30, borderRadius: 15, backgroundColor: 'rgba(28,43,34,0.05)', opacity: pressed ? 0.5 : 1 })}>
+                  <UserPlus size={14} color={INK.title} />
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: INK.title }}>quién es</Text>
+                </Pressable>
               ) : null}
             </View>
           );
         })}
+        {puedeAgregar ? (
+          <Pressable onPress={() => acciones.agregarAparece()} accessibilityRole="button" accessibilityLabel="Agregar a alguien que aparece"
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.5 : 1 })}>
+            <View style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1.5, borderStyle: 'dashed', borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}>
+              <Plus size={17} color={INK.title} />
+            </View>
+            <Text style={{ fontSize: 14.5, fontWeight: '600', color: INK.title }}>agregar a alguien</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   },

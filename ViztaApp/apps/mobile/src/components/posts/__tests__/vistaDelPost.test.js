@@ -69,7 +69,7 @@ test('quién aparece es quien está en el video; los nombrados y las entidades v
       { texto: 'Matthew Berman', tipo: 'Actor', codex: { id: 'a1', tipo: 'Actor' } },
     ],
   }, { hablante: { tipo: 'persona', nombre: 'Alvaro Sanchez' } });
-  expect(p).toMatch(/Seccion\("Quién aparece", \[Personas\(\[Persona\("Alvaro Sanchez", "", "Actor", "habla a cámara"\)\]\)\]/);
+  expect(p).toMatch(/Seccion\("Quién aparece", \[Personas\(\[Persona\("Alvaro Sanchez", "", "Actor", "habla a cámara"\)\], true\)\]/);
   expect(p).toMatch(/Seccion\("Mencionados", \[Personas\(\[Persona\("Matthew Berman", "a1", "Actor"\)\]\)\]/);
   expect(p).toMatch(/Seccion\("Entidades", \[Personas\(\[Persona\("TypeSafe AI", "", "Entidad"\)\]\)\]/);
 });
@@ -82,8 +82,18 @@ test('las voces: con nombre y su rol; sin nombre, por cómo se reconocen', () =>
       { id: 'H2', rol: 'invitado', nombre: 'Ana Pérez', persona_item_id: 'p9' },
     ],
   });
-  expect(p).toMatch(/Persona\("Conduce", "", "", "", "hombre, charla con humor"\)/);
-  expect(p).toMatch(/Persona\("Ana Pérez", "p9", "Actor", "invitado"\)/);
+  expect(p).toMatch(/Persona\("Conduce", "", "", "", "hombre, charla con humor", "H1"\)/);
+  expect(p).toMatch(/Persona\("Ana Pérez", "p9", "Actor", "invitado", "", "H2"\)/);
+});
+
+test('lo dicho a mano: una voz nombrada y alguien que el análisis no detectó', () => {
+  const p = programaDelAnalisis({
+    ...ANALISIS,
+    hablantes: [{ id: 'H1', rol: 'anfitrion', nombre: null, descripcion: 'hombre' }],
+  }, { aparecen: [{ id: 'p1', name: 'Luis Ruiz', voz: 'H1' }, { id: 'p2', name: 'Marta Gil', voz: null }] });
+  expect(p).toMatch(/Persona\("Luis Ruiz", "p1", "Actor", "conduce", "", "H1"\)/);
+  expect(p).toMatch(/Persona\("Marta Gil", "p2", "Actor"\)/);
+  expect(p).not.toMatch(/"Conduce"/);
 });
 
 test('sin con qué armar dos secciones, se queda la vista de siempre', () => {
@@ -95,6 +105,13 @@ test('las comillas y saltos del texto no rompen el programa', () => {
   const p = programaDelAnalisis({ ...ANALISIS, resumen: 'Dijo "basta"\ny se fue' });
   expect(leer(p).meta.errors).toEqual([]);
   expect(p).toMatch(/Dijo \\"basta\\" y se fue/);
+});
+
+test('un resumen cortado a la mitad no es el título, y la bajada no repite al título', () => {
+  const cortado = 'El contenido es una atribución de autoría informativa que identifica a Andres Johnson como el creador del material audiovisual publicado baj';
+  const narrativa = 'El contenido es una atribución de autoría informativa que identifica a Andres Johnson como el creador del material audiovisual publicado bajo la cuenta andres.gjohnson.';
+  const p = programaDelAnalisis({ ...ANALISIS, resumen: cortado, narrativa });
+  expect(p.split('\n')[0]).toBe(`root = Vista(${JSON.stringify(narrativa)}, [s1, s2, s3, s4, s5])`);
 });
 
 test('la bajada es la primera oración', () => {

@@ -37,7 +37,10 @@ import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
 import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, ObraDelPost, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
 import { esBreve, esInformativo, esLaObra, obraDelPost } from './profundidad';
 import GuardadosDelPost, { useGuardadosDelPost } from './GuardadosDelPost';
-import { programaDelAnalisis } from './vistaDelPost';
+import { ROLES, programaDelAnalisis } from './vistaDelPost';
+import HojaQuienAparece from './QuienAparece';
+import { apareceEnPost, personaPorNombre, quienesAparecen } from './capaPost';
+import { revisarVoz } from '../huella/api';
 import VistaVizta from '../visual/VistaVizta';
 import { guardadoDeLaObra } from './bookmarks';
 import { armarPiezas, norm } from './piezas';
@@ -271,7 +274,18 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
   // Smart UI: un análisis profundo que da para varias secciones se dibuja con
   // las piezas de Vizta (reglas fijas en `vistaDelPost.js`). Un post breve no.
-  const programa = useMemo(() => (analisis && !breve ? programaDelAnalisis(analisis, { hablante: d.hablante }) : null), [analisis, breve, d.hablante]);
+  // Quién aparece dicho a mano (relaciones «aparece en» del Codex).
+  const { data: aparecen = [], refetch: releerAparecen } = useQuery({
+    queryKey: ['post-aparecen', post?.id],
+    queryFn: () => quienesAparecen(post.id),
+    enabled: !!post?.id && !muestra,
+    staleTime: 30 * 1000,
+  });
+  const [hojaAparece, setHojaAparece] = useState(null); // null | { voz }
+  const programa = useMemo(
+    () => (analisis && !breve ? programaDelAnalisis(analisis, { hablante: d.hablante, aparecen }) : null),
+    [analisis, breve, d.hablante, aparecen]
+  );
   // Con vista, se abre en ella; si la persona ya eligió solapa, se respeta.
   const eligioSolapa = useRef(false);
   useEffect(() => {
@@ -500,12 +514,55 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
     () => (muestra || soloLectura ? null : {
       ocupado,
       agregarMencion: (m) => guardarRef(m, m.tipo || null),
+      agregarAparece: () => { roce(); setHojaAparece({ voz: null }); },
+      identificarVoz: (vozId) => {
+        const v = (analisis?.hablantes || []).find((x) => x?.id === vozId);
+        if (!v) return;
+        roce();
+        setHojaAparece({ voz: { id: v.id, rol: v.rol, rolLegible: ROLES[v.rol] || v.rol, descripcion: v.descripcion } });
+      },
       conectar,
       guardarHecho,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ocupado, muestra, soloLectura, d]
+    [ocupado, muestra, soloLectura, d, analisis]
   );
+
+  // Las personas del mismo post, para elegir sin escribir: quien habla a cámara
+  // y los mencionados (con su ficha si ya la tienen).
+  const sugeridosAparece = useMemo(() => {
+    const vistos = new Set((aparecen || []).map((x) => (x.name || '').toLowerCase()));
+    const lista = [];
+    const sumar = (name, id = null) => {
+      const k = String(name || '').trim().toLowerCase();
+      if (!k || vistos.has(k)) return;
+      vistos.add(k);
+      lista.push({ name: String(name).trim(), id });
+    };
+    if (d.hablante?.tipo === 'persona') sumar(d.hablante.nombre);
+    for (const m of menciones) if ((m.codex?.tipo || m.tipo) === 'Actor') sumar(m.texto, m.codex?.id || null);
+    return lista.slice(0, 8);
+  }, [aparecen, d.hablante, menciones]);
+
+  /**
+   * Guardar quién aparece: la persona (elegida o nueva) con su relación «aparece
+   * en» y, si nombra una voz, la revisión de esa voz en la huella del autor.
+   */
+  const guardarAparece = async ({ persona, nombreNuevo, motivo }) => {
+    const voz = hojaAparece?.voz || null;
+    const p = persona || (await personaPorNombre(nombreNuevo));
+    await apareceEnPost({ post: { ...post, details: d }, persona: p, voz });
+    if (voz && autorId) {
+      try {
+        await revisarVoz(autorId, 'voz', { post_id: post.id, voz: voz.id, rol: voz.rol || 'invitado', relacion: 'tercero', persona_item_id: p.id, motivo });
+      } catch (e) {
+        // La relación ya quedó en el Codex; la huella se puede revisar después.
+        console.warn('[post] la voz no se registró en la huella:', e?.message);
+      }
+    }
+    toque();
+    await releerAparecen();
+  };
 
   /** El análisis profundo, pedido a mano sobre un post que solo tiene su lectura breve. */
   const pedirProfundo = async () => {
@@ -990,6 +1047,10 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
 
       {/* La ficha del Codex cuelga de esta hoja y no se abre al lado: iOS
           presenta un Modal a la vez, y como hermana no aparecería. */}
+      {hojaAparece ? (
+        <HojaQuienAparece voz={hojaAparece.voz} sugeridos={sugeridosAparece} onElegir={guardarAparece} onClose={() => setHojaAparece(null)} topInset={topInset} bottomInset={bottomInset} />
+      ) : null}
+
       {viendoHuella && autorId ? (
         <HuellaAutor autorId={autorId} nombre={autor} topInset={topInset} bottomInset={bottomInset} onClose={() => setViendoHuella(false)} />
       ) : null}

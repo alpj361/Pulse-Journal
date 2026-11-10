@@ -494,6 +494,15 @@ La ficha de un post se arma según lo que trae (PJ, 8-nov-2026):
     (en cuadrado, no en círculo); no se mezclan (PJ, 10-nov-2026). En las tres,
     el que está en el Codex va con su cara (tocarla abre su ficha) y un ✓; el
     que no, con sus iniciales en un contorno punteado y un + para agregarlo.
+  - Una **voz sin nombre** lleva el ícono de voz (no iniciales) y el botón
+    **quién es**. Al final de «Quién aparece», **agregar a alguien** suma a
+    quien el análisis no detectó. Las dos abren la misma hoja: sugiere a las
+    personas del mismo post, busca en el Codex o crea a la persona; para una
+    voz pide además cómo se sabe (los motivos de la huella). Se guarda como
+    relación del Codex «persona — aparece en → post» y, si es una voz, como
+    revisión de esa voz en la huella del autor.
+- Si el resumen llega cortado a media palabra, el título es la primera
+  oración de la narrativa; la bajada no repite al título.
   - Cómo se relacionan: + para guardar el vínculo; ✓ si ya está.
   - Lo que dice: + para guardar el hecho; ✓ si ya está.
   La misma vista fuera de la ficha (el chat, un dashboard) va sin botones.

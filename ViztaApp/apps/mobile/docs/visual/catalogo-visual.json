@@ -538,6 +538,9 @@
             "items": {
               "$ref": "#/$defs/Persona"
             }
+          },
+          "agregar": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -563,6 +566,9 @@
             "type": "string"
           },
           "detalle": {
+            "type": "string"
+          },
+          "voz": {
             "type": "string"
           }
         },
@@ -778,11 +784,11 @@
         "description": "Con quién y con qué está vinculado un item del Codex (partidos, cargos, alianzas), leído de sus relaciones guardadas."
       },
       "Personas": {
-        "signature": "Personas(personas: Persona[])",
+        "signature": "Personas(personas: Persona[], agregar?: boolean)",
         "description": "Personas o entidades de un post (quién aparece, a quién se menciona, qué organizaciones). Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos."
       },
       "Persona": {
-        "signature": "Persona(texto: string, id?: string, tipo?: string, rol?: string, detalle?: string)",
+        "signature": "Persona(texto: string, id?: string, tipo?: string, rol?: string, detalle?: string, voz?: string)",
         "description": "Alguien de un post: su nombre como sale en el post y, si ya está en el Codex, su id. rol: qué hace en el video («conduce», «invitado», «habla a cámara»); detalle: cómo se le reconoce si no tiene nombre."
       },
       "Relacion": {
@@ -1385,6 +1391,9 @@
               "items": {
                 "$ref": "#/$defs/Persona"
               }
+            },
+            "agregar": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -1410,6 +1419,9 @@
               "type": "string"
             },
             "detalle": {
+              "type": "string"
+            },
+            "voz": {
               "type": "string"
             }
           },
