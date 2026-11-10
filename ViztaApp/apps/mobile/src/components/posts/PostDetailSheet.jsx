@@ -291,8 +291,12 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   // Con vista, se abre en ella; si la persona ya eligió solapa, se respeta.
   const eligioSolapa = useRef(false);
   useEffect(() => {
-    if (programa && !eligioSolapa.current) setVista('vista');
-  }, [programa]);
+    if (eligioSolapa.current) return;
+    if (programa) setVista('vista');
+    // Un post con solo su lectura breve abre en lo que se guardó de él y el
+    // botón del análisis profundo, no en su texto (PJ, 10-nov-2026).
+    else if (analisis && (soloBreve || breve)) setVista('organizado');
+  }, [programa, analisis, soloBreve, breve]);
   const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) || (vista === 'vista' && !programa) ? 'anotado'
     // Con vista, «organizado» no existe: lo que hacía (guardar) lo hacen sus piezas.
     : vista === 'organizado' && programa ? 'vista' : vista;
@@ -849,7 +853,7 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
               ) : vistaReal === 'vista' ? (
                 <View style={{ marginTop: 18 }}>
                   <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
-                  <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
+                  <GuardadosDelPost postId={post?.id} miniatura={d.thumbnail_url || post?.thumbnail_url || null} items={otrosGuardados} />
                   <VistaVizta programa={programa} enLinea post={postVivo} acciones={acciones} />
                 </View>
               ) : (
@@ -862,11 +866,11 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                   {/* Un post breve se arma alrededor de lo que presenta: su
                       guardado principal va grande y en lugar de la obra. */}
                   {breve && guardadosPost.length ? (
-                    <GuardadosDelPost postId={post?.id} items={guardadosPost} destacar />
+                    <GuardadosDelPost postId={post?.id} miniatura={d.thumbnail_url || post?.thumbnail_url || null} items={guardadosPost} destacar />
                   ) : (
                     <>
                       <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
-                      <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
+                      <GuardadosDelPost postId={post?.id} miniatura={d.thumbnail_url || post?.thumbnail_url || null} items={otrosGuardados} />
                     </>
                   )}
 

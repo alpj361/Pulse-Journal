@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Image, Linking, Pressable, Text, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, Bookmark, BookmarkCheck, FileText, GraduationCap, List, Play, Quote, AudioLines, School, Link2 } from 'lucide-react-native';
+import { ArrowUpRight, Bookmark, BookmarkCheck, BrainCircuit, FileText, GraduationCap, List, Play, Quote, AudioLines, School, Link2 } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { MONO } from '../codex/mono';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL } from '../codex/materiales';
-import { cambiarEstado, fechaGuardado, infoTipo, tipoDeBookmark, traerBookmarks } from './bookmarks';
+import { cambiarEstado, fechaGuardado, identidadesWikidata, infoTipo, ordenarGuardados, qDe, traerBookmarks } from './bookmarks';
 import { roce, toque, falla } from '../../utils/haptics';
 
 const TENUE = 'rgba(28,43,34,0.35)';
@@ -22,6 +22,7 @@ const ICONOS_OTROS = {
   audio: AudioLines,
   course: School,
   other: Bookmark,
+  modelo: BrainCircuit,
 };
 
 /** El ícono de un tipo de guardado: el del material si lo es, si no uno propio. */
@@ -47,9 +48,17 @@ export function useGuardadosDelPost(postId, activo = true) {
  * o desde la hoja de compartir. Cada fila abre su enlace; la marca de la
  * derecha la da por revisada. Sin guardados, la sección no aparece.
  */
-export default function GuardadosDelPost({ postId, items = [], destacar = false }) {
+export default function GuardadosDelPost({ postId, items = [], destacar = false, miniatura = null }) {
   const cliente = useQueryClient();
   const [ocupado, setOcupado] = useState(null);
+  // El logo y si es un modelo, de Wikidata (donde se identificó la herramienta).
+  const ids = [...new Set(items.map(qDe).filter(Boolean))].sort();
+  const { data: identidades = {} } = useQuery({
+    queryKey: ['wikidata-identidad', ids.join(',')],
+    queryFn: () => identidadesWikidata(ids),
+    enabled: ids.length > 0,
+    staleTime: 24 * 60 * 60 * 1000,
+  });
   if (!items.length) return null;
 
   const alternarRevisado = async (it) => {
@@ -71,47 +80,82 @@ export default function GuardadosDelPost({ postId, items = [], destacar = false 
   };
 
   const abrir = (it) => (it.bookmark?.url ? () => { roce(); Linking.openURL(it.bookmark.url).catch(() => {}); } : undefined);
-  // En un post breve, lo guardado es lo principal: el primero va grande.
-  const [primero, ...resto] = destacar ? items : [null, ...items];
+  // Los modelos van dentro de la herramienta que los usa; el resto, en fila.
+  const { principal, modelos, resto } = ordenarGuardados(items, identidades, miniatura);
+  const fila = (v, conModelos = []) => (
+    <FilaGuardado key={v.item.id} guardado={v} modelos={conModelos} ocupado={ocupado === v.item.id}
+      onAbrir={abrir(v.item)} onRevisado={() => alternarRevisado(v.item)} />
+  );
   return (
     <View style={{ marginTop: 18, marginBottom: 8 }}>
-      {primero ? <Protagonista item={primero} ocupado={ocupado === primero.id} onAbrir={abrir(primero)} onRevisado={() => alternarRevisado(primero)} /> : null}
-      {resto.length ? <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 4, marginTop: primero ? 18 : 0 }}>en tu biblioteca</Text> : null}
-      {resto.map((it) => (
-        <FilaGuardado key={it.id} item={it} ocupado={ocupado === it.id}
-          onAbrir={abrir(it)}
-          onRevisado={() => alternarRevisado(it)} />
-      ))}
+      {destacar && principal ? (
+        <Protagonista guardado={principal} modelos={modelos} ocupado={ocupado === principal.item.id}
+          onAbrir={abrir(principal.item)} onRevisado={() => alternarRevisado(principal.item)} />
+      ) : null}
+      {(destacar ? resto : [principal, ...resto].filter(Boolean)).length ? (
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 4, marginTop: destacar ? 18 : 0 }}>en tu biblioteca</Text>
+      ) : null}
+      {destacar ? resto.map((v) => fila(v)) : [principal, ...resto].filter(Boolean).map((v) => fila(v, v === principal ? modelos : []))}
     </View>
   );
 }
 
 /**
- * Lo que el post presenta, en grande: la carátula o el ícono del tipo, el
- * nombre en la serif de los titulares, su tipo y, si tiene enlace, para abrirlo.
+ * La imagen de un guardado: su logo o póster; sin imagen, el ícono de su tipo
+ * en un recuadro. Es el único ícono del tipo: al lado no se repite.
  */
-function Protagonista({ item: it, ocupado, onAbrir, onRevisado }) {
-  const tipo = tipoDeBookmark(it);
-  const info = infoTipo(tipo);
+function Imagen({ guardado: v, grande = false }) {
+  const info = infoTipo(v.tipo);
+  const esLogo = ['tool', 'modelo', 'website', 'product'].includes(v.tipo);
+  const lado = grande ? 84 : 40;
+  if (v.imagen && esLogo) {
+    // Un logo va entero y con aire, sobre blanco.
+    const aire = grande ? 14 : 7;
+    return (
+      <View style={{ width: lado, height: lado, borderRadius: grande ? 18 : 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(28,43,34,0.08)', padding: aire }}>
+        <Image source={{ uri: v.imagen }} resizeMode="contain" style={{ width: lado - aire * 2 - 2, height: lado - aire * 2 - 2 }} />
+      </View>
+    );
+  }
+  if (v.imagen) {
+    return <Image source={{ uri: v.imagen }} resizeMode="cover" style={{ width: lado, height: grande ? 120 : 56, borderRadius: grande ? 10 : 6, backgroundColor: 'rgba(28,43,34,0.06)' }} />;
+  }
+  return (
+    <View style={{ width: lado, height: lado, borderRadius: grande ? 18 : 10, alignItems: 'center', justifyContent: 'center', backgroundColor: `${info.color}14` }}>
+      <IconoGuardado tipo={v.tipo} size={grande ? 30 : 17} />
+    </View>
+  );
+}
+
+/** «modelo GPT-6 Astra»: los modelos que usa la herramienta, en una línea. */
+function LineaModelos({ modelos }) {
+  if (!modelos.length) return null;
+  return (
+    <Text style={{ fontFamily: MONO, fontSize: 12, color: INK.meta, marginTop: 2 }}>
+      {modelos.length === 1 ? 'modelo ' : 'modelos '}
+      <Text style={{ color: INK.title }}>{modelos.map((m) => m.item.name).join(', ')}</Text>
+    </Text>
+  );
+}
+
+/**
+ * Lo que el post presenta, en grande: su logo o carátula (o el ícono de su
+ * tipo), el tipo en palabra, el nombre en la serif de los titulares, los
+ * modelos que usa si es una herramienta, y para abrirlo.
+ */
+function Protagonista({ guardado: v, modelos = [], ocupado, onAbrir, onRevisado }) {
+  const it = v.item;
+  const info = infoTipo(v.tipo);
   const revisado = it.bookmark?.status === 'reviewed';
   const Marca = revisado ? BookmarkCheck : Bookmark;
-  const imagen = it.bookmark?.image_url;
   return (
     <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
-      {imagen ? (
-        <Image source={{ uri: imagen }} style={{ width: 84, height: 120, borderRadius: 10, backgroundColor: 'rgba(28,43,34,0.06)' }} />
-      ) : (
-        <View style={{ width: 84, height: 84, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: `${info.color}14` }}>
-          <IconoGuardado tipo={tipo} size={30} />
-        </View>
-      )}
-      <View style={{ flex: 1, gap: 6 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <IconoGuardado tipo={tipo} size={13} />
-          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: info.color }}>{info.etiqueta}</Text>
-        </View>
+      <Imagen guardado={v} grande />
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={{ fontFamily: MONO, fontSize: 11.5, color: info.color }}>{info.etiqueta}</Text>
         <Text style={{ fontFamily: SERIF, fontSize: 28, lineHeight: 31, color: INK.title }}>{it.name}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 }}>
+        <LineaModelos modelos={modelos} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6 }}>
           {onAbrir ? (
             <Pressable onPress={onAbrir} hitSlop={8} accessibilityRole="link" accessibilityLabel={`Abrir ${it.name}`}
               style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 4, opacity: pressed ? 0.5 : 1 })}>
@@ -131,31 +175,25 @@ function Protagonista({ item: it, ocupado, onAbrir, onRevisado }) {
   );
 }
 
-/** Un guardado: imagen o ícono, nombre, tipo y fecha, y la marca de revisado. */
-export function FilaGuardado({ item: it, ocupado = false, onAbrir, onRevisado }) {
-  const tipo = tipoDeBookmark(it);
-  const info = infoTipo(tipo);
+/** Un guardado en fila: su imagen, nombre, tipo y fecha, y la marca de revisado. */
+export function FilaGuardado({ guardado: v, modelos = [], ocupado = false, onAbrir, onRevisado }) {
+  const it = v.item;
+  const info = infoTipo(v.tipo);
   const revisado = it.bookmark?.status === 'reviewed';
   const Marca = revisado ? BookmarkCheck : Bookmark;
   const fecha = fechaGuardado(it.bookmark?.saved_at);
-  const imagen = it.bookmark?.image_url;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: RAYA }}>
       <Pressable onPress={onAbrir} disabled={!onAbrir} style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.55 : 1 })}
         accessibilityRole="button" accessibilityLabel={`${it.name}, ${info.etiqueta}${fecha ? `, guardado el ${fecha}` : ''}`}>
-        {imagen ? (
-          <Image source={{ uri: imagen }} style={{ width: 40, height: 56, borderRadius: 6, backgroundColor: 'rgba(28,43,34,0.06)' }} />
-        ) : (
-          <View style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: `${info.color}14` }}>
-            <IconoGuardado tipo={tipo} size={17} />
-          </View>
-        )}
+        <Imagen guardado={v} />
         <View style={{ flex: 1 }}>
           <Text numberOfLines={2} style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 18 }}>{it.name}</Text>
           <Text style={{ fontFamily: MONO, fontSize: 11, color: TENUE, marginTop: 3 }}>
             <Text style={{ color: info.color }}>{info.etiqueta}</Text>
             {fecha ? ` · ${fecha}` : ''}
           </Text>
+          <LineaModelos modelos={modelos} />
         </View>
       </Pressable>
       {onRevisado ? (

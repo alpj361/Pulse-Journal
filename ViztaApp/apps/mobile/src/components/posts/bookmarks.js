@@ -24,6 +24,7 @@ const OTROS = {
   audio: { etiqueta: 'audio', plural: 'audios', color: '#9333EA' },
   course: { etiqueta: 'curso', plural: 'cursos', color: '#0369A1' },
   other: { etiqueta: 'guardado', plural: 'guardados', color: '#64748B' },
+  modelo: { etiqueta: 'modelo', plural: 'modelos', color: '#7C3AED' },
 };
 const PAPER = { etiqueta: 'paper', plural: 'papers', color: '#1E3A8A' };
 
@@ -31,7 +32,21 @@ const PAPER = { etiqueta: 'paper', plural: 'papers', color: '#1E3A8A' };
 export function tipoDeBookmark(item) {
   const kind = item?.bookmark?.kind || 'other';
   if (kind === 'article' && (item?.tags || []).includes('paper')) return 'paper';
+  // Un modelo de lenguaje (GPT-6, Claude) es una herramienta, pero no la app que lo usa.
+  if (kind === 'tool' && (item?.tags || []).includes('modelo')) return 'modelo';
   return MATERIAL[kind] || OTROS[kind] ? kind : 'other';
+}
+
+/**
+ * La imagen de un guardado, si es suya. Los guardados viejos traían la
+ * miniatura del post como imagen: no es del material, y se descarta.
+ */
+export function imagenDe(item, miniaturaDelPost = null) {
+  const url = item?.bookmark?.image_url || null;
+  if (!url) return null;
+  if (miniaturaDelPost && url === miniaturaDelPost) return null;
+  if (/cdninstagram\.com|fbcdn\.net|twimg\.com/.test(url)) return null;
+  return url;
 }
 
 /** Nombre, plural y color de un tipo. */
@@ -100,4 +115,67 @@ export async function cambiarEstado(item, status) {
     body: JSON.stringify({ expected_revision: item.bookmark?.revision, bookmark: { status } }),
   });
   return json.item || json;
+}
+
+// ─── Identidad desde Wikidata: el logo y si es un modelo ──────────────────────
+
+const ES_MODELO = /modelo de lenguaje|language model|modelo de (inteligencia artificial|ia)\b/i;
+const ES_APLICACION = /\bbot\b|chatbot|aplicaci[oó]n|application|asistente|assistant|servicio|sitio web|plataforma/i;
+
+/** ¿La descripción de Wikidata es la de un modelo (GPT-6) y no la de una app (ChatGPT)? */
+export const esModelo = (descripcion) => ES_MODELO.test(descripcion || '') && !ES_APLICACION.test(descripcion || '');
+
+/** El id de Wikidata de un guardado identificado ahí (`https://www.wikidata.org/wiki/Q…`). */
+export const qDe = (item) => String(item?.bookmark?.url || '').match(/wikidata\.org\/wiki\/(Q\d+)/)?.[1] || null;
+
+/** La imagen de Commons de un archivo de Wikidata, en PNG de 256 px. */
+export const archivoACommons = (archivo) =>
+  `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(archivo).replace(/ /g, '_'))}?width=256`;
+
+/**
+ * Logo (P154, o imagen P18) y si es modelo, para varios ids de Wikidata en una
+ * consulta. `{ Q…: { logo, modelo } }`. Si falla, vacío: el guardado queda con
+ * el ícono de su tipo.
+ */
+export async function identidadesWikidata(ids = []) {
+  const lista = [...new Set(ids.filter(Boolean))].slice(0, 50);
+  if (!lista.length) return {};
+  try {
+    const res = await fetch(
+      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims%7Cdescriptions&languages=es%7Cen&ids=${lista.join('%7C')}`
+    );
+    const j = await res.json();
+    const out = {};
+    for (const id of lista) {
+      const e = j?.entities?.[id];
+      if (!e) continue;
+      const c = e.claims || {};
+      const archivo = [...(c.P154 || []), ...(c.P18 || [])].map((x) => x?.mainsnak?.datavalue?.value).find((v) => typeof v === 'string');
+      const descripcion = e.descriptions?.es?.value || e.descriptions?.en?.value || '';
+      out[id] = { logo: archivo ? archivoACommons(archivo) : null, modelo: esModelo(descripcion) };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Los guardados de un post, ordenados para mostrarse: cada uno con su imagen
+ * (la suya o el logo de Wikidata, nunca la miniatura del post) y su tipo (un
+ * modelo es «modelo»). Los modelos van dentro de la herramienta del mismo post
+ * que los usa (GPT-6 Astra en ChatGPT): no son otra herramienta al mismo nivel.
+ * Devuelve `{ principal, modelos, resto }`.
+ */
+export function ordenarGuardados(items = [], identidades = {}, miniaturaDelPost = null) {
+  const vistos = items.map((it) => {
+    const wd = identidades[qDe(it)] || null;
+    const tipo = wd?.modelo ? 'modelo' : tipoDeBookmark(it);
+    return { item: it, tipo, imagen: imagenDe(it, miniaturaDelPost) || wd?.logo || null };
+  });
+  const herramienta = vistos.find((v) => v.tipo === 'tool');
+  const modelos = herramienta ? vistos.filter((v) => v.tipo === 'modelo') : [];
+  const principal = herramienta || vistos.find((v) => v.tipo !== 'modelo') || vistos[0] || null;
+  const resto = vistos.filter((v) => v !== principal && !modelos.includes(v));
+  return { principal, modelos, resto };
 }

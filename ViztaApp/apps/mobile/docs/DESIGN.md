@@ -468,6 +468,17 @@ los generó**, no en una lista aparte (PJ, 8-nov-2026).
   fecha de guardado. La fila abre el enlace; la marca de la derecha la da por
   revisada.
 - Sin guardados, la sección no aparece.
+- **Un solo ícono por guardado** (PJ, 10-nov-2026): el recuadro de la imagen
+  ya dice qué tipo es; al lado, el tipo va en palabra, sin repetir el ícono.
+- **Marcas y herramientas reconocidas van con su logo** (de Wikidata, donde se
+  identificaron), entero y con aire sobre blanco. La imagen de un guardado es
+  la suya (logo o póster), nunca la miniatura del post. Sin imagen propia, el
+  ícono de su tipo.
+- **Un modelo va dentro de la herramienta que lo usa**: «ChatGPT · modelo
+  GPT-6 Astra», no dos herramientas al mismo nivel. Sin herramienta en el post,
+  el modelo va solo, como «modelo».
+- **Un post con solo su lectura breve abre en «organizado»**: lo guardado y el
+  botón «análisis profundo» se ven sin buscar la solapa.
 
 ## Smart UI de posts
 
