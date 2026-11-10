@@ -503,6 +503,13 @@ La ficha de un post se arma según lo que trae (PJ, 8-nov-2026):
     revisión de esa voz en la huella del autor.
 - Si el resumen llega cortado a media palabra, el título es la primera
   oración de la narrativa; la bajada no repite al título.
+- **Un video que se entiende por lo que se ve** (una actuación, un baile,
+  labios sincronizados con un audio ajeno) se titula con lo que se ve, no con
+  su pie de foto; con eso y quién aparece ya hay vista (PJ, 10-nov-2026).
+- **El autor que aparece a cámara va primero en «Quién aparece», como
+  «autor»; nunca es un mencionado.** Las demás personas a cámara que nadie
+  identificó van como «Otra persona · a cámara» con **quién es**. Las voces
+  de un audio prestado no son de quienes aparecen y no se listan.
   - Cómo se relacionan: + para guardar el vínculo; ✓ si ya está.
   - Lo que dice: + para guardar el hecho; ✓ si ya está.
   La misma vista fuera de la ficha (el chat, un dashboard) va sin botones.

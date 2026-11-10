@@ -86,7 +86,13 @@ export function programaDelAnalisis(analisis, extras = {}) {
   // es la primera oración de la narrativa.
   const resumen = limpio(analisis.resumen);
   const cortado = resumen && !/[.!?»"”)]$/.test(resumen) && resumen.length >= 120;
-  const titulo = (!cortado && resumen) || primeraOracion(analisis.narrativa || analisis.contexto) || resumen || 'El análisis';
+  // Un video que se entiende por lo que se ve (una actuación, un baile, labios
+  // sincronizados con un audio ajeno): lo que es, es lo que se ve. Su texto no
+  // alcanza para decirlo.
+  const vistazo = extras.vistazo || analisis.vistazo || null;
+  const esVisual = !!limpio(vistazo?.que_se_ve) && (vistazo?.audio_propio === false || ['actuacion', 'baile'].includes(vistazo?.actividad));
+  const titulo = (esVisual && primeraOracion(vistazo.que_se_ve, 220))
+    || (!cortado && resumen) || primeraOracion(analisis.narrativa || analisis.contexto) || resumen || 'El análisis';
 
   // Lo que dice: citas literales con quién las dijo; si no hay, los hechos. Lo
   // que repite el título no se vuelve a decir.
@@ -131,7 +137,18 @@ export function programaDelAnalisis(analisis, extras = {}) {
 
   const aparecen = [];
   const yaAparece = new Set();
-  const voces = (analisis.hablantes || []).filter((v) => v && typeof v === 'object');
+  // Las voces de un audio prestado (labios sincronizados, el diálogo de una
+  // obra) no son de quienes aparecen: no van aquí.
+  const ajeno = vistazo?.audio_propio === false;
+  const voces = (analisis.hablantes || []).filter((v) => v && typeof v === 'object' && !ajeno && v.identidad_metodo !== 'audio_ajeno');
+  // Quien publica y aparece a cámara va primero: nunca es un «mencionado».
+  const autor = limpio(extras.autor);
+  const autorACamara = autor && (vistazo?.a_camara || extras.hablante?.tipo === 'persona');
+  if (autorACamara && !voces.some((v) => clave(v.nombre) === clave(autor))) {
+    yaAparece.add(clave(autor));
+    const m = mencionDe(autor);
+    aparecen.push(persona(autor, { id: m?.codex?.id, tipo: 'Actor', rol: 'autor' }));
+  }
   // Lo que se dijo a mano (relaciones «aparece en» del Codex): una voz nombrada
   // o alguien que el análisis no detectó.
   const aMano = Array.isArray(extras.aparecen) ? extras.aparecen : [];
@@ -161,6 +178,12 @@ export function programaDelAnalisis(analisis, extras = {}) {
     if (!limpio(x.name) || yaAparece.has(clave(x.name))) continue;
     yaAparece.add(clave(x.name));
     aparecen.push(persona(limpio(x.name), { id: x.id, tipo: x.tipo || 'Actor' }));
+  }
+  // Las demás personas que se ven a cámara y nadie identificó todavía: van con
+  // «quién es» (su «voz» es `camara:N`, no una voz del audio).
+  const aCamara = Number(vistazo?.personas) || 0;
+  for (let i = aparecen.length; i < Math.min(aCamara, MAX_ACTORES); i += 1) {
+    aparecen.push(persona('Otra persona', { rol: 'a cámara', voz: `camara:${i + 1}` }));
   }
   // En la ficha del post, la sección ofrece agregar a alguien más (`agregar`).
   if (aparecen.length) seccion('Quién aparece', [`Personas([${aparecen.slice(0, MAX_ACTORES).join(', ')}], true)`], 'actores');
@@ -202,8 +225,11 @@ export function programaDelAnalisis(analisis, extras = {}) {
     seccion('En qué se apoya', fuentes.map((f) => (citaQueAporta(f.cita, f.nombre) ? `Cita(${s(f.cita)}, ${s(f.nombre)})` : `Texto(${s(f.nombre)})`)), 'noticias');
   }
 
-  if (secciones.length < 2) return null;
-  const bajada = primeraOracion(analisis.narrativa || analisis.contexto);
+  // Un video visual se entiende con lo que se ve y quién aparece: basta una
+  // sección. Lo demás necesita al menos dos para que valga una vista.
+  if (secciones.length < (esVisual ? 1 : 2)) return null;
+  // Con un video visual, la narrativa salió de su texto: no va de bajada.
+  const bajada = esVisual ? '' : primeraOracion(analisis.narrativa || analisis.contexto);
   const raiz = bajada && !repite(bajada, titulo)
     ? `root = Vista(${s(titulo)}, [${secciones.join(', ')}], ${s(bajada)})`
     : `root = Vista(${s(titulo)}, [${secciones.join(', ')}])`;

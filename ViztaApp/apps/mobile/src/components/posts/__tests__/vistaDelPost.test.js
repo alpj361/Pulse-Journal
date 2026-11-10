@@ -114,6 +114,23 @@ test('un resumen cortado a la mitad no es el título, y la bajada no repite al t
   expect(p.split('\n')[0]).toBe(`root = Vista(${JSON.stringify(narrativa)}, [s1, s2, s3, s4, s5])`);
 });
 
+test('un video visual con audio prestado: lo que se ve es el título, el autor aparece y las voces del audio no', () => {
+  const p = programaDelAnalisis({
+    ...ANALISIS,
+    resumen: 'El contenido es una atribución de autoría informativa.',
+    hablantes: [{ id: 'H1', rol: 'anfitrion', nombre: null, descripcion: 'hombre', identidad_metodo: 'audio_ajeno' }],
+    menciones: [{ texto: 'Andres Johnson', tipo: 'Actor', codex: null }],
+  }, {
+    autor: 'Andres Johnson',
+    vistazo: { que_se_ve: 'Dos personas disfrazadas actúan sincronizando sus labios con un audio.', audio_propio: false, a_camara: true, personas: 2 },
+  });
+  expect(p.split('\n')[0]).toMatch(/^root = Vista\("Dos personas disfrazadas actúan sincronizando sus labios con un audio\.", \[/);
+  expect(p).not.toMatch(/atribución de autoría/);
+  expect(p).toMatch(/Persona\("Andres Johnson", "", "Actor", "autor"\), Persona\("Otra persona", "", "", "a cámara", "", "camara:2"\)/);
+  expect(p).not.toMatch(/Mencionados/); // el autor nunca es un mencionado
+  expect(p).not.toMatch(/"H1"/); // la voz del audio prestado no aparece
+});
+
 test('la bajada es la primera oración', () => {
   expect(primeraOracion('Uno. Dos.')).toBe('Uno.');
   expect(primeraOracion('')).toBe('');

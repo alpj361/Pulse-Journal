@@ -473,7 +473,7 @@ const Personas = defineComponent({
             <View key={p.texto} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 42, height: 42, borderRadius: p.tipo === 'Entidad' ? 10 : 21, borderWidth: 1.5, borderStyle: 'dashed', borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}>
                 {/* Una voz sin nombre no tiene iniciales: se marca como voz. */}
-                {p.voz && !p.tipo ? <AudioLines size={17} color={INK.meta} /> : (
+                {p.voz && !p.tipo ? (String(p.voz).startsWith('camara:') ? <UserRound size={17} color={INK.meta} /> : <AudioLines size={17} color={INK.meta} />) : (
                   <Text style={{ fontSize: 14, fontWeight: '700', color: INK.meta }}>
                     {p.texto.split(/\s+/).filter((w) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'}
                   </Text>

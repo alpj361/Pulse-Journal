@@ -283,8 +283,10 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   });
   const [hojaAparece, setHojaAparece] = useState(null); // null | { voz }
   const programa = useMemo(
-    () => (analisis && !breve ? programaDelAnalisis(analisis, { hablante: d.hablante, aparecen }) : null),
-    [analisis, breve, d.hablante, aparecen]
+    () => (analisis && !breve
+      ? programaDelAnalisis(analisis, { hablante: d.hablante, aparecen, autor: d.author_name || d.author, vistazo: d.vistazo || analisis.vistazo })
+      : null),
+    [analisis, breve, d.hablante, d.author_name, d.author, d.vistazo, aparecen]
   );
   // Con vista, se abre en ella; si la persona ya eligió solapa, se respeta.
   const eligioSolapa = useRef(false);
@@ -517,8 +519,9 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
       agregarAparece: () => { roce(); setHojaAparece({ voz: null }); },
       identificarVoz: (vozId) => {
         const v = (analisis?.hablantes || []).find((x) => x?.id === vozId);
-        if (!v) return;
         roce();
+        // Alguien a cámara sin voz propia (`camara:N`): se dice quién es como agregar.
+        if (!v) { setHojaAparece({ voz: null }); return; }
         setHojaAparece({ voz: { id: v.id, rol: v.rol, rolLegible: ROLES[v.rol] || v.rol, descripcion: v.descripcion } });
       },
       conectar,
