@@ -18,6 +18,9 @@ const MAX_HITOS = 8;
 const MAX_RELACIONES = 6;
 const MAX_FUENTES = 4;
 
+/** Lo que hace cada voz en el video, como se lee. */
+const ROLES = { anfitrion: 'conduce', invitado: 'invitado', narrador: 'narra', entrevistador: 'entrevista', entrevistado: 'entrevistado', presentador: 'presenta' };
+
 const s = (t) => JSON.stringify(String(t ?? '').replace(/\s+/g, ' ').trim());
 // Tal cual: lo que la pieza busca después en el análisis vivo (relaciones, ids).
 const exacto = (t) => JSON.stringify(String(t ?? ''));
@@ -63,9 +66,10 @@ function cifraDe(c) {
 
 /**
  * El programa OpenUI de un análisis, o `null` si no hay con qué armar una vista
- * (menos de dos secciones: ahí se queda la vista de siempre).
+ * (menos de dos secciones: ahí se queda la vista de siempre). `extras.hablante`
+ * es quien habla a cámara (`details.hablante`).
  */
-export function programaDelAnalisis(analisis) {
+export function programaDelAnalisis(analisis, extras = {}) {
   if (!analisis || typeof analisis !== 'object') return null;
   const lineas = [];
   const secciones = [];
@@ -108,22 +112,62 @@ export function programaDelAnalisis(analisis) {
     seccion('Las cifras', [`Cifras([${fila.join(', ')}])`], 'cifras');
   }
 
-  // Quién aparece: personas y entidades, estén o no en el Codex. Las que están
-  // van con su id (cara y ficha); las que no, en la ficha del post se agregan.
-  // Primero las centrales.
-  const vistos = new Set();
-  const personas = [];
+  // Quién aparece: quien está en el video (las voces y quien habla a cámara),
+  // con lo que hace. Mencionados: las personas que solo se nombran. Entidades:
+  // organizaciones. Los que están en el Codex van con su id (cara y ficha); los
+  // que no, en la ficha del post se agregan. Primero las centrales.
+  const clave = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   const menciones = [...(analisis.menciones || [])].sort((a, b) => (a?.rol === 'central' ? 0 : 1) - (b?.rol === 'central' ? 0 : 1));
-  for (const m of menciones) {
-    const tipo = m?.codex?.tipo || m?.tipo;
-    const texto = typeof m?.texto === 'string' ? m.texto : '';
-    if (!texto.trim() || !['Actor', 'Entidad'].includes(tipo)) continue;
-    const clave = m.codex?.id || texto.toLowerCase();
-    if (vistos.has(clave)) continue;
-    vistos.add(clave);
-    personas.push(m.codex?.id ? `Persona(${exacto(texto)}, ${exacto(m.codex.id)}, ${s(tipo)})` : `Persona(${exacto(texto)})`);
+  const mencionDe = (nombre) => menciones.find((m) => clave(m?.texto) === clave(nombre)) || null;
+  const persona = (texto, { id = '', tipo = '', rol = '', detalle = '' } = {}) => {
+    const args = [exacto(texto), exacto(id || ''), s(tipo), s(rol), s(detalle)];
+    while (args.length > 1 && args[args.length - 1] === '""') args.pop();
+    return `Persona(${args.join(', ')})`;
+  };
+
+  const aparecen = [];
+  const yaAparece = new Set();
+  const voces = (analisis.hablantes || []).filter((v) => v && typeof v === 'object');
+  for (const v of voces) {
+    const nombre = limpio(v.nombre) || (v.es_autor ? limpio(extras.hablante?.nombre) : '');
+    const rol = ROLES[v.rol] || limpio(v.rol);
+    if (nombre) {
+      if (yaAparece.has(clave(nombre))) continue;
+      yaAparece.add(clave(nombre));
+      const m = mencionDe(nombre);
+      aparecen.push(persona(nombre, { id: v.persona_item_id || m?.codex?.id, tipo: 'Actor', rol }));
+    } else {
+      // Sin nombre: se reconoce por cómo suena o se ve.
+      aparecen.push(persona(rol ? rol.charAt(0).toUpperCase() + rol.slice(1) : 'Voz', { detalle: limpio(v.descripcion) }));
+    }
   }
-  if (personas.length) seccion('Quién aparece', [`Personas([${personas.slice(0, MAX_ACTORES).join(', ')}])`], 'actores');
+  // Sin voces separadas, quien habla a cámara (suele ser el autor).
+  const habla = extras.hablante;
+  if (!voces.length && habla?.tipo === 'persona' && limpio(habla.nombre) && !yaAparece.has(clave(habla.nombre))) {
+    yaAparece.add(clave(habla.nombre));
+    const m = mencionDe(habla.nombre);
+    aparecen.push(persona(limpio(habla.nombre), { id: m?.codex?.id, tipo: 'Actor', rol: 'habla a cámara' }));
+  }
+  if (aparecen.length) seccion('Quién aparece', [`Personas([${aparecen.slice(0, MAX_ACTORES).join(', ')}])`], 'actores');
+
+  const porTipo = (tipo) => {
+    const vistos = new Set();
+    const lista = [];
+    for (const m of menciones) {
+      const t = m?.codex?.tipo || m?.tipo;
+      const texto = typeof m?.texto === 'string' ? m.texto : '';
+      if (t !== tipo || !texto.trim() || yaAparece.has(clave(texto))) continue;
+      const k = m.codex?.id || clave(texto);
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      lista.push(persona(texto, { id: m.codex?.id, tipo }));
+    }
+    return lista.slice(0, MAX_ACTORES);
+  };
+  const mencionados = porTipo('Actor');
+  if (mencionados.length) seccion('Mencionados', [`Personas([${mencionados.join(', ')}])`], 'actor');
+  const entidades = porTipo('Entidad');
+  if (entidades.length) seccion('Entidades', [`Personas([${entidades.join(', ')}])`], 'entidad');
 
   // Cuándo: solo hitos con fecha. Los tramos del video (segundos) no son una
   // cronología y no entran.

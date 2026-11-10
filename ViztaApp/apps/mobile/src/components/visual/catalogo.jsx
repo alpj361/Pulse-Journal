@@ -419,8 +419,15 @@ function BotonGuardar({ hecho, ocupado, onPress, etiqueta }) {
 
 const Persona = defineComponent({
   name: 'Persona',
-  props: z.object({ texto: z.string(), id: z.string().optional(), tipo: z.string().optional() }),
-  description: 'Alguien que aparece en un post: su nombre como sale en el post y, si ya está en el Codex, su id.',
+  props: z.object({
+    texto: z.string(),
+    id: z.string().optional(),
+    tipo: z.string().optional(),
+    rol: z.string().optional(),
+    detalle: z.string().optional(),
+  }),
+  description:
+    'Alguien de un post: su nombre como sale en el post y, si ya está en el Codex, su id. rol: qué hace en el video («conduce», «invitado», «habla a cámara»); detalle: cómo se le reconoce si no tiene nombre.',
   component: () => null,
 });
 
@@ -428,14 +435,14 @@ const Personas = defineComponent({
   name: 'Personas',
   props: z.object({ personas: z.array(Persona.ref) }),
   description:
-    'Quién aparece en un post. Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos.',
+    'Personas o entidades de un post (quién aparece, a quién se menciona, qué organizaciones). Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos.',
   component: ({ props }) => {
     const { post, acciones } = useContext(VisualContexto);
     const lista = (props.personas || []).map((p) => p?.props || p).filter((p) => p?.texto);
     // El estado vivo sale del post: una mención guardada recién ya trae su id.
     const conId = lista.map((p) => {
       const viva = post?.menciones?.find((m) => plano(m.texto) === plano(p.texto));
-      return { ...p, id: viva?.codex?.id || p.id || null, mencion: viva || null };
+      return { ...p, id: viva?.codex?.id || p.id || null, tipo: p.tipo || viva?.tipo || null, mencion: viva || null };
     });
     const q = useItems(conId.filter((p) => p.id).map((p) => p.id));
     const items = new Map((q.data || []).map((it) => [it.id, it]));
@@ -445,7 +452,7 @@ const Personas = defineComponent({
         {conId.map((p) => {
           const item = p.id ? items.get(p.id) : null;
           if (item) {
-            const linea = [cargoDe(item), partidoDe(item)].filter(Boolean).join(' · ');
+            const linea = [p.rol, cargoDe(item), partidoDe(item)].filter(Boolean).join(' · ');
             return (
               <Tocable key={p.texto} item={item} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <Cara item={item} size={42} />
@@ -460,14 +467,16 @@ const Personas = defineComponent({
           const ocupado = acciones?.ocupado === `material:${p.texto}`;
           return (
             <View key={p.texto} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1.5, borderStyle: 'dashed', borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 42, height: 42, borderRadius: p.tipo === 'Entidad' ? 10 : 21, borderWidth: 1.5, borderStyle: 'dashed', borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: INK.meta }}>
                   {p.texto.split(/\s+/).filter((w) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'}
                 </Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>{p.texto}</Text>
-                {p.mencion?.pista ? <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>{p.mencion.pista}</Text> : null}
+                {[p.rol, p.detalle || p.mencion?.pista].filter(Boolean).length ? (
+                  <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={2}>{[p.rol, p.detalle || p.mencion?.pista].filter(Boolean).join(' · ')}</Text>
+                ) : null}
               </View>
               {acciones?.agregarMencion && p.mencion ? (
                 <BotonGuardar hecho={false} ocupado={ocupado} onPress={() => acciones.agregarMencion(p.mencion)} etiqueta={`Agregar ${p.texto} a tu Codex`} />

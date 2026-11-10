@@ -38,8 +38,8 @@ test('arma una vista válida del catálogo, con cada sección que tiene datos', 
   expect(r.root.typeName).toBe('Vista');
   expect(p).toMatch(/Seccion\("Lo que dice"/);
   expect(p).toMatch(/Cifra\("7", "segundos", "búsqueda de vuelos"\)/);
-  // Quien está en el Codex va con su id; quien no, para agregarlo. Primero los centrales.
-  expect(p).toMatch(/Personas\(\[Persona\("Matthew Berman", "a1", "Actor"\), Persona\("Alvaro Sanchez"\)\]\)/);
+  // Nadie habla a cámara en este análisis: los nombrados son «Mencionados».
+  expect(p).toMatch(/Seccion\("Mencionados", \[Personas\(\[Persona\("Matthew Berman", "a1", "Actor"\), Persona\("Alvaro Sanchez", "", "Actor"\)\]\)\]/);
   expect(p).not.toMatch(/t1/); // un territorio no es un actor
   expect(p).not.toMatch(/LineaDeTiempo/); // los tramos del video no son una cronología
   expect(p).toMatch(/Relacion\("Jev", "es desarrollado por", "TypeSafe AI"\)/);
@@ -58,6 +58,32 @@ test('la voz «v1» no se muestra como nombre, y «según X» no es una cita', (
   });
   expect(p).toMatch(/Hecho\("h9", "Ahorra dinero en publicidad\.", "esto les ahorra miles de dólares al mes"\)/);
   expect(p).toMatch(/Texto\("Alex Volkov"\)/);
+});
+
+test('quién aparece es quien está en el video; los nombrados y las entidades van aparte', () => {
+  const p = programaDelAnalisis({
+    ...ANALISIS,
+    menciones: [
+      { texto: 'Alvaro Sanchez', tipo: 'Actor', codex: null },
+      { texto: 'TypeSafe AI', tipo: 'Entidad', codex: null },
+      { texto: 'Matthew Berman', tipo: 'Actor', codex: { id: 'a1', tipo: 'Actor' } },
+    ],
+  }, { hablante: { tipo: 'persona', nombre: 'Alvaro Sanchez' } });
+  expect(p).toMatch(/Seccion\("Quién aparece", \[Personas\(\[Persona\("Alvaro Sanchez", "", "Actor", "habla a cámara"\)\]\)\]/);
+  expect(p).toMatch(/Seccion\("Mencionados", \[Personas\(\[Persona\("Matthew Berman", "a1", "Actor"\)\]\)\]/);
+  expect(p).toMatch(/Seccion\("Entidades", \[Personas\(\[Persona\("TypeSafe AI", "", "Entidad"\)\]\)\]/);
+});
+
+test('las voces: con nombre y su rol; sin nombre, por cómo se reconocen', () => {
+  const p = programaDelAnalisis({
+    ...ANALISIS,
+    hablantes: [
+      { id: 'H1', rol: 'anfitrion', nombre: null, descripcion: 'hombre, charla con humor' },
+      { id: 'H2', rol: 'invitado', nombre: 'Ana Pérez', persona_item_id: 'p9' },
+    ],
+  });
+  expect(p).toMatch(/Persona\("Conduce", "", "", "", "hombre, charla con humor"\)/);
+  expect(p).toMatch(/Persona\("Ana Pérez", "p9", "Actor", "invitado"\)/);
 });
 
 test('sin con qué armar dos secciones, se queda la vista de siempre', () => {

@@ -487,9 +487,13 @@ La ficha de un post se arma según lo que trae (PJ, 8-nov-2026):
   «según X» se muestra como nombre, no como cita.
 - **Las piezas traen sus botones** (PJ, 10-nov-2026). Las reglas deciden qué
   piezas van; cada pieza ofrece lo que falta y marca lo que ya está:
-  - Quién aparece: el que está en el Codex, con su cara (tocarla abre su
-    ficha) y un ✓; el que no, con sus iniciales en un círculo punteado y un +
-    para agregarlo.
+  - **Quién aparece** es quien está en el video: las voces (con lo que hacen:
+    conduce, invitado, narra) y quien habla a cámara, que suele ser el autor.
+    Una voz sin nombre se muestra por su rol y cómo se reconoce. **Mencionados**
+    son las personas que solo se nombran, y **Entidades** las organizaciones
+    (en cuadrado, no en círculo); no se mezclan (PJ, 10-nov-2026). En las tres,
+    el que está en el Codex va con su cara (tocarla abre su ficha) y un ✓; el
+    que no, con sus iniciales en un contorno punteado y un + para agregarlo.
   - Cómo se relacionan: + para guardar el vínculo; ✓ si ya está.
   - Lo que dice: + para guardar el hecho; ✓ si ya está.
   La misma vista fuera de la ficha (el chat, un dashboard) va sin botones.

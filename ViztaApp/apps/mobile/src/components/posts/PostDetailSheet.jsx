@@ -271,7 +271,7 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
   // Smart UI: un análisis profundo que da para varias secciones se dibuja con
   // las piezas de Vizta (reglas fijas en `vistaDelPost.js`). Un post breve no.
-  const programa = useMemo(() => (analisis && !breve ? programaDelAnalisis(analisis) : null), [analisis, breve]);
+  const programa = useMemo(() => (analisis && !breve ? programaDelAnalisis(analisis, { hablante: d.hablante }) : null), [analisis, breve, d.hablante]);
   // Con vista, se abre en ella; si la persona ya eligió solapa, se respeta.
   const eligioSolapa = useRef(false);
   useEffect(() => {
