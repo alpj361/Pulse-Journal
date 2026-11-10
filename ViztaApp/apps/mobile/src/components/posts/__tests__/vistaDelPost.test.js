@@ -22,9 +22,9 @@ const ANALISIS = {
     { numero: null, valor: null, variable: 'nada' },
   ],
   menciones: [
-    { tipo: 'Actor', codex: { id: 'a1', tipo: 'Actor' } },
-    { tipo: 'Territorio', codex: { id: 't1', tipo: 'Territorio' } },
-    { tipo: 'Actor', codex: null },
+    { texto: 'Alvaro Sanchez', tipo: 'Actor', rol: 'de_paso', codex: null },
+    { texto: 'Matthew Berman', tipo: 'Actor', rol: 'central', codex: { id: 'a1', tipo: 'Actor' } },
+    { texto: 'zona 4', tipo: 'Territorio', codex: { id: 't1', tipo: 'Territorio' } },
   ],
   linea_tiempo: [{ desde: 0, hasta: 7, texto: 'habla a cámara' }],
   relaciones: [{ a: 'Jev', b: 'TypeSafe AI', verbo: 'es desarrollado por' }],
@@ -38,10 +38,13 @@ test('arma una vista válida del catálogo, con cada sección que tiene datos', 
   expect(r.root.typeName).toBe('Vista');
   expect(p).toMatch(/Seccion\("Lo que dice"/);
   expect(p).toMatch(/Cifra\("7", "segundos", "búsqueda de vuelos"\)/);
-  expect(p).toMatch(/Actores\(\["a1"\]/);
+  // Quien está en el Codex va con su id; quien no, para agregarlo. Primero los centrales.
+  expect(p).toMatch(/Personas\(\[Persona\("Matthew Berman", "a1", "Actor"\), Persona\("Alvaro Sanchez"\)\]\)/);
   expect(p).not.toMatch(/t1/); // un territorio no es un actor
   expect(p).not.toMatch(/LineaDeTiempo/); // los tramos del video no son una cronología
-  expect(p).toMatch(/Jev es desarrollado por TypeSafe AI/);
+  expect(p).toMatch(/Relacion\("Jev", "es desarrollado por", "TypeSafe AI"\)/);
+  // Los hechos van con su id, para guardarlos desde la vista.
+  expect(p).toMatch(/Hecho\("h1", "Analizó 724 anuncios por 9 centavos\."\)/);
   expect(p).toMatch(/Cita\("lo usó para analizar 724 anuncios de 37 marcas", "Matthew Berman"\)/);
   // Lo que repite el título no se vuelve a decir.
   expect(p).not.toMatch(/busca vuelos en unos 7 segundos/);
@@ -53,7 +56,7 @@ test('la voz «v1» no se muestra como nombre, y «según X» no es una cita', (
     hechos: [{ id: 'h9', texto: 'Ahorra dinero en publicidad.', cita: 'esto les ahorra miles de dólares al mes', hablante: 'v1' }],
     fuentes: [{ nombre: 'Alex Volkov', cita: 'según Alex Volkov.' }],
   });
-  expect(p).toMatch(/Cita\("esto les ahorra miles de dólares al mes"\)/);
+  expect(p).toMatch(/Hecho\("h9", "Ahorra dinero en publicidad\.", "esto les ahorra miles de dólares al mes"\)/);
   expect(p).toMatch(/Texto\("Alex Volkov"\)/);
 });
 

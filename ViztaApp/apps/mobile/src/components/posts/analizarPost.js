@@ -15,7 +15,7 @@ import { EXTRACTORW_URL } from '../../utils/servicios';
  * Quien llama no recibe el análisis: lo ve llegar mirando la fila. Ver
  * `useAnalisisPost`.
  */
-export default async function pedirAnalisis(post) {
+export default async function pedirAnalisis(post, { profundidad = null } = {}) {
   const texto = post?.details?.transcription || post?.description || post?.name || '';
   // Un carrusel sin texto igual se puede mirar: lo que dice está en las fotos.
   if (texto.trim().length < 10 && !post?.details?.cuadros?.length) {
@@ -29,14 +29,16 @@ export default async function pedirAnalisis(post) {
   const res = await fetch(`${EXTRACTORW_URL}/api/analisis-post`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ postId: post.id }),
+    // `profundidad: 'completa'` pide el análisis profundo aunque el post ya
+    // tenga su lectura breve: el análisis profundo solo se pide a mano.
+    body: JSON.stringify({ postId: post.id, ...(profundidad ? { profundidad } : {}) }),
   });
 
   const json = await res.json().catch(() => null);
 
   // Sin cupo o sin créditos: el motivo va en `code`, no en el texto.
   if (res.status === 402) {
-    const e = new Error(json?.message || 'No podés analizar por ahora.');
+    const e = new Error(json?.message || 'El análisis no está disponible por ahora.');
     e.code = json?.code || 'sin_cupo';
     e.creditos = json?.creditos;
     throw e;

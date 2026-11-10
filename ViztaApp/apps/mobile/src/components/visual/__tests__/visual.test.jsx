@@ -147,3 +147,67 @@ describe('VistaVizta', () => {
     expect(textos(r)).toEqual(['x']);
   });
 });
+
+describe('las piezas de un post', () => {
+  // Un Pressable aparece en varias capas del árbol: se cuenta una vez por su onPress.
+  const botones = (r, etiqueta) => {
+    const vistos = new Set();
+    return r.root.findAll((n) => n.props?.accessibilityRole === 'button' && String(n.props?.accessibilityLabel || '').includes(etiqueta) && typeof n.props.onPress === 'function')
+      .filter((n) => (vistos.has(n.props.onPress) ? false : vistos.add(n.props.onPress)));
+  };
+
+  test('ofrecen guardar lo que falta, y no lo que ya está; sin acciones, solo se leen', async () => {
+    conItems(ITEMS);
+    const programa = [
+      'root = Vista("x", [Personas([Persona("Sandra Torres", "a2", "Actor"), Persona("Juan Nadie")]), r1, r2, h1])',
+      'r1 = Relacion("Jev", "es desarrollado por", "TypeSafe AI")',
+      'r2 = Relacion("UNE", "postula a", "Sandra Torres")',
+      'h1 = Hecho("h0", "Algo pasó.")',
+    ].join('\n');
+    const post = {
+      menciones: [{ texto: 'Sandra Torres', codex: { id: 'a2' } }, { texto: 'Juan Nadie', tipo: 'Actor', codex: null }],
+      relaciones: [
+        { a: 'Jev', verbo: 'es desarrollado por', b: 'TypeSafe AI' },
+        { a: 'UNE', verbo: 'postula a', b: 'Sandra Torres', relation_id: 'rel1' },
+      ],
+      hechos: [{ id: 'h0', texto: 'Algo pasó.' }],
+    };
+    const acciones = { ocupado: null, agregarMencion: jest.fn(), conectar: jest.fn(), guardarHecho: jest.fn() };
+    const cliente = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let r;
+    await act(async () => {
+      r = TestRenderer.create(
+        <QueryClientProvider client={cliente}>
+          <VistaVizta programa={programa} post={post} acciones={acciones} enLinea />
+        </QueryClientProvider>
+      );
+    });
+    await act(async () => { await new Promise((res) => setTimeout(res, 20)); });
+
+    expect(botones(r, 'Agregar Juan Nadie')).toHaveLength(1);
+    expect(botones(r, 'Agregar Sandra Torres')).toHaveLength(0); // ya está en el Codex
+    act(() => botones(r, 'Agregar Juan Nadie')[0].props.onPress());
+    expect(acciones.agregarMencion).toHaveBeenCalledWith(post.menciones[1]);
+
+    act(() => botones(r, 'Guardar el vínculo: Jev')[0].props.onPress());
+    expect(acciones.conectar).toHaveBeenCalledWith(post.relaciones[0]);
+    // Lo ya guardado se marca y no se puede volver a guardar.
+    expect(r.root.findAll((n) => String(n.props?.accessibilityLabel || '') === 'Guardar el vínculo: UNE postula a Sandra Torres: ya está en tu Codex').length).toBeGreaterThan(0);
+    expect(botones(r, 'Guardar el vínculo: UNE')).toHaveLength(0);
+
+    act(() => botones(r, 'Guardar el hecho')[0].props.onPress());
+    expect(acciones.guardarHecho).toHaveBeenCalledWith(post.hechos[0]);
+
+    // La misma vista sin acciones (el chat, un dashboard): sin botones de guardar.
+    let solo;
+    await act(async () => {
+      solo = TestRenderer.create(
+        <QueryClientProvider client={cliente}>
+          <VistaVizta programa={programa} enLinea />
+        </QueryClientProvider>
+      );
+    });
+    expect(botones(solo, 'Agregar')).toHaveLength(0);
+    expect(botones(solo, 'Guardar')).toHaveLength(0);
+  });
+});

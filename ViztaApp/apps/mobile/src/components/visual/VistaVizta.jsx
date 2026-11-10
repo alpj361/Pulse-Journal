@@ -27,15 +27,17 @@ function Envoltura({ enLinea, bottomInset, children }) {
  * Una vista de Vizta: un programa de OpenUI Lang dibujado con el catálogo
  * propio, en nativo. Tocar a alguien abre su ficha encima.
  */
-export default function VistaVizta({ programa, entidades = null, relaciones = null, bottomInset = 0, enStreaming = false, onErrores, enLinea = false }) {
+export default function VistaVizta({ programa, entidades = null, relaciones = null, bottomInset = 0, enStreaming = false, onErrores, enLinea = false, post = null, acciones = null }) {
   const [abierto, setAbierto] = useState(null);
   const contexto = useMemo(
     () => ({
       onEntidad: (item) => setAbierto(item),
       entidades: Array.isArray(entidades) && entidades.length ? new Map(entidades.map((e) => [e.id, e])) : null,
       relaciones: relaciones && typeof relaciones === 'object' ? relaciones : null,
+      post,
+      acciones,
     }),
-    [entidades, relaciones]
+    [entidades, relaciones, post, acciones]
   );
 
   return (

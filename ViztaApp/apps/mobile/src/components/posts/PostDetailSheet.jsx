@@ -250,6 +250,8 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const narrativa = analisis?.narrativa || analisis?.contexto || analisis?.resumen || '';
   // Un disfraz o un tráiler: lo esencial y la obra arriba; el resto, plegado.
   const breve = esBreve(analisis, d);
+  // Lectura breve del servidor (STA-334): trae vistazo y materiales, no el resto.
+  const soloBreve = analisis?.profundidad === 'breve';
   const [completo, setCompleto] = useState(false);
   const loEsencial = typeof analisis?.lo_esencial === 'string' ? analisis.lo_esencial.trim() : '';
   const obra = obraDelPost(analisis, d);
@@ -275,13 +277,17 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   useEffect(() => {
     if (programa && !eligioSolapa.current) setVista('vista');
   }, [programa]);
-  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) || (vista === 'vista' && !programa) ? 'anotado' : vista;
+  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) || (vista === 'vista' && !programa) ? 'anotado'
+    // Con vista, «organizado» no existe: lo que hacía (guardar) lo hacen sus piezas.
+    : vista === 'organizado' && programa ? 'vista' : vista;
 
   const extraer = async () => {
     if (cargando) return;
     if (analisis) {
       roce();
-      setVista((v) => (v === 'anotado' ? 'organizado' : 'anotado'));
+      const otra = programa ? 'vista' : 'organizado';
+      eligioSolapa.current = true;
+      setVista((v) => (v === 'anotado' ? otra : 'anotado'));
       return;
     }
     if (soloLectura) return;
@@ -484,6 +490,43 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
     }
   };
 
+  // Lo que las piezas de «vista» necesitan para ofrecer guardar: el análisis
+  // vivo (qué ya se guardó) y las acciones de siempre.
+  const postVivo = useMemo(
+    () => ({ menciones, relaciones, hechos: analisis?.hechos || [] }),
+    [menciones, relaciones, analisis]
+  );
+  const acciones = useMemo(
+    () => (muestra || soloLectura ? null : {
+      ocupado,
+      agregarMencion: (m) => guardarRef(m, m.tipo || null),
+      conectar,
+      guardarHecho,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ocupado, muestra, soloLectura, d]
+  );
+
+  /** El análisis profundo, pedido a mano sobre un post que solo tiene su lectura breve. */
+  const pedirProfundo = async () => {
+    if (pidiendo || soloLectura || muestra) return;
+    roce();
+    setPidiendo(true);
+    setError(null);
+    try {
+      await pedirAnalisis(post, { profundidad: 'completa' });
+      toque();
+      onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando' } });
+      registrarAvisos();
+      evento(EV.POST_ANALIZADO, { con_transcripcion: !!transcripcion, profundo: true });
+    } catch (e) {
+      falla();
+      setError(e.message || 'No se pudo pedir el análisis profundo.');
+    } finally {
+      setPidiendo(false);
+    }
+  };
+
   const fecha = post?.created_at
     ? new Date(post.created_at).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
@@ -661,7 +704,7 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                 <Solapa activa={vistaReal === 'anotado'} onPress={() => { roce(); eligioSolapa.current = true; setVista('anotado'); }}>
                   anotado
                 </Solapa>
-                {analisis ? (
+                {analisis && !programa ? (
                   <Solapa activa={vistaReal === 'organizado'} onPress={() => { roce(); eligioSolapa.current = true; setVista('organizado'); }}>
                     organizado
                   </Solapa>
@@ -747,7 +790,7 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                 <View style={{ marginTop: 18 }}>
                   <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
                   <GuardadosDelPost postId={post?.id} items={otrosGuardados} />
-                  <VistaVizta programa={programa} enLinea />
+                  <VistaVizta programa={programa} enLinea post={postVivo} acciones={acciones} />
                 </View>
               ) : (
                 <View style={{ marginTop: 14 }}>
@@ -795,7 +838,11 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                         />
                       )}
                     />
-                    {breve && !completo ? (
+                    {/* Solo lectura breve: el análisis profundo se pide a mano. Un
+                        análisis viejo que sí trae todo solo se despliega. */}
+                    {soloBreve && !muestra && !soloLectura ? (
+                      <BotonAnalisisProfundo pidiendo={cargando} onPress={pedirProfundo} />
+                    ) : breve && !completo ? (
                       <Pressable
                         onPress={() => {
                           roce();
@@ -1431,5 +1478,36 @@ function DetalleMaterial({ detalle, yaDicho }) {
         </Pressable>
       ))}
     </Animated.View>
+  );
+}
+
+/**
+ * Pedir el análisis profundo. Un post llega con su lectura breve (qué es y lo
+ * que se guarda de él); el análisis completo —qué dice, cifras, quién aparece,
+ * en qué se apoya— se pide aquí.
+ */
+function BotonAnalisisProfundo({ pidiendo, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={pidiendo}
+      accessibilityRole="button"
+      accessibilityLabel="Pedir el análisis profundo"
+      style={({ pressed }) => ({
+        marginTop: 28,
+        alignSelf: 'flex-start',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 14,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: pressed ? 'rgba(75,79,166,0.16)' : 'rgba(75,79,166,0.10)',
+        opacity: pidiendo ? 0.6 : 1,
+      })}
+    >
+      {pidiendo ? <MorphingInfinity size={15} color="#4B4FA6" /> : <Eye size={16} color="#4B4FA6" />}
+      <Text style={{ fontFamily: MONO, fontSize: 12.5, color: '#4B4FA6' }}>{pidiendo ? 'analizando…' : 'análisis profundo'}</Text>
+    </Pressable>
   );
 }

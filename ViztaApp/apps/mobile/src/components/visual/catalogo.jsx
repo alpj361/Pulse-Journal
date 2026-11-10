@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { createLibrary, defineComponent } from '@openuidev/react-lang';
 import {
   ArrowRight,
+  Check,
+  Plus,
   BarChart3,
   Building2,
   CalendarDays,
@@ -38,7 +40,10 @@ import { agrupar, cargoDe, idsDe, nombreCorto, partidoDe, traerItems, traerRelac
 
 // onEntidad abre una ficha; entidades y relaciones son lo que el servidor ya
 // mandó con la vista (quien mira un dashboard compartido no ve ese Codex).
-export const VisualContexto = createContext({ onEntidad: null, entidades: null, relaciones: null });
+// `post` y `acciones` solo existen en la ficha de un post: con ellos las piezas
+// saben qué ya se guardó y ofrecen guardar lo que falta. Sin ellos (el chat, un
+// dashboard compartido) las mismas piezas se ven sin botones.
+export const VisualContexto = createContext({ onEntidad: null, entidades: null, relaciones: null, post: null, acciones: null });
 
 const ICONOS = {
   actores: Users,
@@ -398,11 +403,141 @@ const Relaciones = defineComponent({
   },
 });
 
+// ─── Piezas de un post, con sus acciones ────────────────────────────────────
+
+const plano = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+/** El botón de una pieza: + si falta guardarlo, ✓ si ya está, el infinito mientras se guarda. */
+function BotonGuardar({ hecho, ocupado, onPress, etiqueta }) {
+  return (
+    <Pressable onPress={hecho ? undefined : onPress} disabled={hecho || ocupado} hitSlop={10} accessibilityRole="button"
+      accessibilityLabel={hecho ? `${etiqueta}: ya está en tu Codex` : etiqueta} style={({ pressed }) => ({ padding: 4, opacity: pressed ? 0.5 : 1 })}>
+      {ocupado ? <MorphingInfinity size={15} color={INK.title} /> : hecho ? <Check size={16} color="#15803D" /> : <Plus size={17} color={INK.title} />}
+    </Pressable>
+  );
+}
+
+const Persona = defineComponent({
+  name: 'Persona',
+  props: z.object({ texto: z.string(), id: z.string().optional(), tipo: z.string().optional() }),
+  description: 'Alguien que aparece en un post: su nombre como sale en el post y, si ya está en el Codex, su id.',
+  component: () => null,
+});
+
+const Personas = defineComponent({
+  name: 'Personas',
+  props: z.object({ personas: z.array(Persona.ref) }),
+  description:
+    'Quién aparece en un post. Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos.',
+  component: ({ props }) => {
+    const { post, acciones } = useContext(VisualContexto);
+    const lista = (props.personas || []).map((p) => p?.props || p).filter((p) => p?.texto);
+    // El estado vivo sale del post: una mención guardada recién ya trae su id.
+    const conId = lista.map((p) => {
+      const viva = post?.menciones?.find((m) => plano(m.texto) === plano(p.texto));
+      return { ...p, id: viva?.codex?.id || p.id || null, mencion: viva || null };
+    });
+    const q = useItems(conId.filter((p) => p.id).map((p) => p.id));
+    const items = new Map((q.data || []).map((it) => [it.id, it]));
+    if (!conId.length) return null;
+    return (
+      <View style={{ gap: 10 }}>
+        {conId.map((p) => {
+          const item = p.id ? items.get(p.id) : null;
+          if (item) {
+            const linea = [cargoDe(item), partidoDe(item)].filter(Boolean).join(' · ');
+            return (
+              <Tocable key={p.texto} item={item} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Cara item={item} size={42} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>{nombreCorto(item)}</Text>
+                  {linea ? <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>{linea}</Text> : null}
+                </View>
+                <Check size={15} color="#15803D" />
+              </Tocable>
+            );
+          }
+          const ocupado = acciones?.ocupado === `material:${p.texto}`;
+          return (
+            <View key={p.texto} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1.5, borderStyle: 'dashed', borderColor: TONO.borde, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: INK.meta }}>
+                  {p.texto.split(/\s+/).filter((w) => /^[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: INK.title }} numberOfLines={1}>{p.texto}</Text>
+                {p.mencion?.pista ? <Text style={{ fontSize: 12.5, color: INK.meta }} numberOfLines={1}>{p.mencion.pista}</Text> : null}
+              </View>
+              {acciones?.agregarMencion && p.mencion ? (
+                <BotonGuardar hecho={false} ocupado={ocupado} onPress={() => acciones.agregarMencion(p.mencion)} etiqueta={`Agregar ${p.texto} a tu Codex`} />
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+    );
+  },
+});
+
+const Relacion = defineComponent({
+  name: 'Relacion',
+  props: z.object({ a: z.string(), verbo: z.string(), b: z.string() }),
+  description: 'Un vínculo que dice un post («Jev es desarrollado por TypeSafe AI»). En la ficha del post, un + lo guarda en el Codex.',
+  component: ({ props }) => {
+    const { post, acciones } = useContext(VisualContexto);
+    const viva = post?.relaciones?.find((r) => r.a === props.a && r.b === props.b && r.verbo === props.verbo) || null;
+    const guardada = !!viva?.relation_id;
+    const ocupado = acciones?.ocupado === `rel:${props.a}|${props.verbo}|${props.b}`;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Text style={{ flex: 1, fontSize: 15, lineHeight: 21, color: INK.body }}>
+          <Text style={{ fontWeight: '600', color: INK.title }}>{props.a}</Text>
+          {` ${props.verbo} `}
+          <Text style={{ fontWeight: '600', color: INK.title }}>{props.b}</Text>
+        </Text>
+        {acciones?.conectar && viva ? (
+          <BotonGuardar hecho={guardada} ocupado={ocupado} onPress={() => acciones.conectar(viva)} etiqueta={`Guardar el vínculo: ${props.a} ${props.verbo} ${props.b}`} />
+        ) : null}
+      </View>
+    );
+  },
+});
+
+const Hecho = defineComponent({
+  name: 'Hecho',
+  props: z.object({ id: z.string(), texto: z.string(), cita: z.string().optional(), quien: z.string().optional() }),
+  description: 'Algo que afirma un post, con su cita literal si la hay. En la ficha del post, se guarda como hecho del Codex.',
+  component: ({ props }) => {
+    const { post, acciones } = useContext(VisualContexto);
+    const viva = post?.hechos?.find((h) => h.id === props.id) || null;
+    const ocupado = acciones?.ocupado === `hecho:${viva?.texto || props.texto}`;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          {props.cita ? (
+            <View style={{ borderLeftWidth: 3, borderLeftColor: TONO.borde, paddingLeft: 14, paddingVertical: 2, gap: 6 }}>
+              <Text style={{ fontFamily: SERIF, fontSize: 21, lineHeight: 26, color: INK.title }}>«{props.cita}»</Text>
+              {props.quien ? <Text style={{ fontSize: 13, color: INK.meta }}>{props.quien}</Text> : null}
+            </View>
+          ) : (
+            <Text style={{ fontSize: 15, lineHeight: 21, color: INK.body }}>{props.texto}</Text>
+          )}
+        </View>
+        {acciones?.guardarHecho && viva ? (
+          <BotonGuardar hecho={!!viva.fact_id} ocupado={ocupado} onPress={() => acciones.guardarHecho(viva)} etiqueta={`Guardar el hecho: ${props.texto}`} />
+        ) : null}
+      </View>
+    );
+  },
+});
+
 // ─── Estructura ─────────────────────────────────────────────────────────────
 
 const Contenido = z.union([
   Texto.ref, Cita.ref, Aviso.ref, Cifras.ref, Barras.ref, Hemiciclo.ref,
   LineaDeTiempo.ref, Actor.ref, Actores.ref, Relaciones.ref,
+  Personas.ref, Relacion.ref, Hecho.ref,
 ]);
 
 const Seccion = defineComponent({
@@ -483,11 +618,12 @@ const Vista = defineComponent({
 
 export const catalogo = createLibrary({
   root: 'Vista',
-  components: [Vista, Seccion, Pestanas, Pestana, Texto, Cita, Aviso, Cifras, Cifra, Barras, Barra, Hemiciclo, LineaDeTiempo, Hito, Actor, Actores, Relaciones],
+  components: [Vista, Seccion, Pestanas, Pestana, Texto, Cita, Aviso, Cifras, Cifra, Barras, Barra, Hemiciclo, LineaDeTiempo, Hito, Actor, Actores, Relaciones, Personas, Persona, Relacion, Hecho],
   componentGroups: [
     { name: 'Estructura', components: ['Vista', 'Seccion', 'Pestanas', 'Pestana'] },
     { name: 'Personas y entidades del Codex', components: ['Actor', 'Actores', 'Relaciones'], notes: ['Siempre por id del Codex: nunca escribas nombres ni fotos a mano.'] },
     { name: 'Datos', components: ['Cifras', 'Cifra', 'Barras', 'Barra', 'Hemiciclo', 'LineaDeTiempo', 'Hito'] },
     { name: 'Texto', components: ['Texto', 'Cita', 'Aviso'] },
+    { name: 'Un post', components: ['Personas', 'Persona', 'Relacion', 'Hecho'], notes: ['Para la vista de un post: en su ficha ofrecen guardar en el Codex lo que falta.'] },
   ],
 });

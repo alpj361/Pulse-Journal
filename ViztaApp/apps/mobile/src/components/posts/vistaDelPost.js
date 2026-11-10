@@ -13,12 +13,14 @@
 const MAX_CIFRAS = 4;
 const MAX_CITAS = 2;
 const MAX_HECHOS = 5;
-const MAX_ACTORES = 12;
+const MAX_ACTORES = 12; // personas y entidades
 const MAX_HITOS = 8;
 const MAX_RELACIONES = 6;
 const MAX_FUENTES = 4;
 
 const s = (t) => JSON.stringify(String(t ?? '').replace(/\s+/g, ' ').trim());
+// Tal cual: lo que la pieza busca después en el análisis vivo (relaciones, ids).
+const exacto = (t) => JSON.stringify(String(t ?? ''));
 const limpio = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim() : '');
 
 const palabras = (t) => new Set(String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9]{3,}/g) || []);
@@ -83,13 +85,20 @@ export function programaDelAnalisis(analisis) {
   const hechos = (analisis.hechos || []).filter((h) => h && typeof h === 'object' && limpio(h.texto) && !repite(h.texto, titulo) && !repite(h.cita, titulo));
   const conCita = hechos.filter((h) => limpio(h.cita) && h.cita_en_texto !== false);
   const dice = [];
-  for (const h of conCita.slice(0, MAX_CITAS)) {
+  // Cada hecho va como `Hecho` con su id: en la ficha del post se guarda en el
+  // Codex desde ahí. Sin id, solo se lee.
+  const pieza = (h, conLaCita) => {
     // `hablante` puede ser el id de una voz («v1»): eso no es un nombre.
     const quien = limpio(h.hablante?.nombre || (typeof h.hablante === 'string' && !/^v\d+$/i.test(h.hablante) ? h.hablante : ''));
-    dice.push(quien ? `Cita(${s(h.cita)}, ${s(quien)})` : `Cita(${s(h.cita)})`);
-  }
+    if (!h.id) return conLaCita ? (quien ? `Cita(${s(h.cita)}, ${s(quien)})` : `Cita(${s(h.cita)})`) : `Texto(${s(h.texto)})`;
+    const args = [exacto(h.id), s(h.texto)];
+    if (conLaCita) args.push(s(h.cita));
+    if (conLaCita && quien) args.push(s(quien));
+    return `Hecho(${args.join(', ')})`;
+  };
+  for (const h of conCita.slice(0, MAX_CITAS)) dice.push(pieza(h, true));
   const yaCitados = new Set(conCita.slice(0, MAX_CITAS).map((h) => h.id));
-  for (const h of hechos.filter((x) => !yaCitados.has(x.id)).slice(0, MAX_HECHOS)) dice.push(`Texto(${s(h.texto)})`);
+  for (const h of hechos.filter((x) => !yaCitados.has(x.id)).slice(0, MAX_HECHOS)) dice.push(pieza(h, false));
   seccion('Lo que dice', dice, 'cita');
 
   // Las cifras: de 2 a 4 en una fila; una sola va igual, como cifra.
@@ -99,15 +108,22 @@ export function programaDelAnalisis(analisis) {
     seccion('Las cifras', [`Cifras([${fila.join(', ')}])`], 'cifras');
   }
 
-  // Quién aparece: solo lo que está en el Codex (las piezas van por id).
-  const ids = [];
-  for (const m of analisis.menciones || []) {
-    const id = m?.codex?.id;
-    if (id && !ids.includes(id) && ['Actor', 'Entidad'].includes(m.codex?.tipo || m.tipo)) ids.push(id);
+  // Quién aparece: personas y entidades, estén o no en el Codex. Las que están
+  // van con su id (cara y ficha); las que no, en la ficha del post se agregan.
+  // Primero las centrales.
+  const vistos = new Set();
+  const personas = [];
+  const menciones = [...(analisis.menciones || [])].sort((a, b) => (a?.rol === 'central' ? 0 : 1) - (b?.rol === 'central' ? 0 : 1));
+  for (const m of menciones) {
+    const tipo = m?.codex?.tipo || m?.tipo;
+    const texto = typeof m?.texto === 'string' ? m.texto : '';
+    if (!texto.trim() || !['Actor', 'Entidad'].includes(tipo)) continue;
+    const clave = m.codex?.id || texto.toLowerCase();
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    personas.push(m.codex?.id ? `Persona(${exacto(texto)}, ${exacto(m.codex.id)}, ${s(tipo)})` : `Persona(${exacto(texto)})`);
   }
-  if (ids.length) {
-    seccion('Quién aparece', [`Actores([${ids.slice(0, MAX_ACTORES).map(s).join(', ')}], "tipo", ${s(ids.length > 4 ? 'rejilla' : 'lista')})`], 'actores');
-  }
+  if (personas.length) seccion('Quién aparece', [`Personas([${personas.slice(0, MAX_ACTORES).join(', ')}])`], 'actores');
 
   // Cuándo: solo hitos con fecha. Los tramos del video (segundos) no son una
   // cronología y no entran.
@@ -119,7 +135,7 @@ export function programaDelAnalisis(analisis) {
 
   // Cómo se relacionan: lo que el análisis vincula, en una línea cada cosa.
   const rels = (analisis.relaciones || []).filter((r) => r && limpio(r.a) && limpio(r.b) && limpio(r.verbo)).slice(0, MAX_RELACIONES);
-  if (rels.length) seccion('Cómo se relacionan', rels.map((r) => `Texto(${s(`${limpio(r.a)} ${limpio(r.verbo)} ${limpio(r.b)}`)})`), 'relaciones');
+  if (rels.length) seccion('Cómo se relacionan', rels.map((r) => `Relacion(${exacto(r.a)}, ${exacto(r.verbo)}, ${exacto(r.b)})`), 'relaciones');
 
   // En qué se apoya: las fuentes que cita el post.
   const fuentes = (analisis.fuentes || []).filter((f) => f && limpio(f.nombre)).slice(0, MAX_FUENTES);

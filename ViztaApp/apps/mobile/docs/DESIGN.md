@@ -485,4 +485,15 @@ La ficha de un post se arma según lo que trae (PJ, 8-nov-2026):
   sin datos no aparece; con menos de dos, no hay solapa **vista**.
 - Lo que repite el título no se vuelve a decir, y una fuente cuya cita es solo
   «según X» se muestra como nombre, no como cita.
-- «anotado» y «organizado» siguen al lado, con sus acciones de guardar.
+- **Las piezas traen sus botones** (PJ, 10-nov-2026). Las reglas deciden qué
+  piezas van; cada pieza ofrece lo que falta y marca lo que ya está:
+  - Quién aparece: el que está en el Codex, con su cara (tocarla abre su
+    ficha) y un ✓; el que no, con sus iniciales en un círculo punteado y un +
+    para agregarlo.
+  - Cómo se relacionan: + para guardar el vínculo; ✓ si ya está.
+  - Lo que dice: + para guardar el hecho; ✓ si ya está.
+  La misma vista fuera de la ficha (el chat, un dashboard) va sin botones.
+- Con **vista**, «organizado» desaparece: las solapas son **vista · anotado**
+  (y «aprender» si existe). El ojo alterna entre vista y anotado.
+- Un post con solo su lectura breve muestra el botón **análisis profundo**:
+  el análisis completo se pide a mano, nunca solo.
