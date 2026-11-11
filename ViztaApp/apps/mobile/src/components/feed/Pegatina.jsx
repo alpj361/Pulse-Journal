@@ -31,6 +31,8 @@ import { normalizarTema, paletaDe, temaDe } from './temas';
  */
 // A menos de 32 puntos los stickers pierden el detalle.
 const TAMANO_STICKER = 36;
+// El de una categoría secundaria: más chico, sin bajar del mínimo que se lee.
+const TAMANO_STICKER_CHICA = 28;
 
 /**
  * `texto` y `paleta` dejan usarla fuera de los temas del feed (el Congreso
@@ -42,17 +44,15 @@ export default function Pegatina({ categoria, sticker, respaldo, texto, paleta, 
   const p = paleta || paletaDe(categoria);
 
   return (
-    <View style={[{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 }, style]}>
-      {/* La chica (una categoría más de la tarjeta) va sin sticker: el sticker
-          es de la principal. */}
-      {chica ? null : (
-        <Sticker
-          nombre={sticker || normalizarTema(tema)}
-          respaldo={respaldo}
-          size={TAMANO_STICKER}
-          style={{ marginVertical: -4, transform: [{ rotate: `${-inclinacion(`${id || tema}-stk`, 5)}deg` }] }}
-        />
-      )}
+    <View style={[{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: chica ? 5 : 7 }, style]}>
+      {/* La chica (una categoría más de la tarjeta) también lleva su sticker,
+          más chico: el ícono es lo que la deja reconocer sin leer. */}
+      <Sticker
+        nombre={sticker || normalizarTema(tema)}
+        respaldo={respaldo}
+        size={chica ? TAMANO_STICKER_CHICA : TAMANO_STICKER}
+        style={{ marginVertical: chica ? -3 : -4, transform: [{ rotate: `${-inclinacion(`${id || tema}-stk`, 5)}deg` }] }}
+      />
       <View
         style={{
           backgroundColor: p.lavado[1],

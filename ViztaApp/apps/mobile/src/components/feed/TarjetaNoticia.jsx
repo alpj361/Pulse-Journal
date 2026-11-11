@@ -69,7 +69,7 @@ export default function TarjetaNoticia({ card, onPress, onEntidad, onCongreso, s
       <Animated.View style={animado}>
         {/* La principal con su sticker; si la nota toca otros temas, sus
             etiquetas chicas al lado (hasta dos, ExtractorW). */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: seguimiento ? 9 : 13 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, rowGap: 6, marginBottom: seguimiento ? 9 : 13 }}>
           <Pegatina categoria={categoria} sticker={stickerDe(card)} id={card?.id} />
           {temasDe(card).slice(1).map((t) => (
             <Pegatina key={t} categoria={t} id={`${card?.id}-${t}`} chica />
