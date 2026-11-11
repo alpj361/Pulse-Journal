@@ -529,7 +529,7 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
   const [ley, setLey] = useState(null);
   const url = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
   // El documento del decreto es solo el oficial. Mientras no se publica, va el
-  // de su iniciativa, dicho como lo que es: el texto que se presentó.
+  // de su iniciativa, con la nota de que el oficial aún no se publica.
   const enlace = url(d.pdf_decreto);
   const deIniciativa = enlace ? null : url(d.pdf_iniciativa);
   const nIniciativa = iniciativas.length === 1 ? iniciativas[0] : null;
@@ -569,13 +569,13 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
         <FileText size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento del decreto</Text>
       </Pressable> : deIniciativa ? <Pressable accessibilityRole="button"
-        accessibilityLabel={`${nIniciativa ? `iniciativa ${nIniciativa}` : 'iniciativa'}, el texto que se presentó; el decreto oficial aún no se publica`}
+        accessibilityLabel={`${nIniciativa ? `iniciativa ${nIniciativa}` : 'iniciativa'}. El decreto oficial aún no se publica`}
         onPress={() => setLeyendo({ uri: deIniciativa, titulo: d.resumen || `Decreto ${d.numero}`, origen: nIniciativa ? `Iniciativa ${nIniciativa}` : 'Iniciativa' })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, paddingVertical: 8, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
         <FileClock size={20} color={TINTA} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600' }}>{nIniciativa ? `iniciativa ${nIniciativa}` : 'iniciativa'}</Text>
-          <Text style={{ color: INK.meta, fontSize: 12, marginTop: 1 }}>el texto que se presentó; el decreto oficial aún no se publica</Text>
+          <Text style={{ color: INK.meta, fontSize: 11, marginTop: 1 }}>El decreto oficial aún no se publica</Text>
         </View>
       </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
       <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
