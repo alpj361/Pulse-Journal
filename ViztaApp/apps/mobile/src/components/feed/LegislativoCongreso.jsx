@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText, Scale } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText, FileClock, Scale } from 'lucide-react-native';
 import { supabase } from '../../utils/supabase';
 import { INK } from '../theme';
 import { Camino, GrupoVotacion, Plegable, RAYA, Rotulo, TINTA, Titulo, cabezaDe, useDiputados, useNombresDeLeyes } from './TarjetasCongreso';
@@ -465,11 +465,17 @@ function limpiarSinNumero(t) {
 
 // ─── Leyes ───────────────────────────────────────────────────────────────────
 
+/** Los pasos y los números de las iniciativas de un decreto. */
+function deSusIniciativas(numero, registro) {
+  const { iniciativas, eventos } = delDecreto(numero, registro);
+  return { eventos, iniciativas: iniciativas.map((i) => i.numero).filter(Boolean) };
+}
+
 /** Registros completos: su contenido no depende de los días del tablero. */
 export function ListaLeyes({ onPagina }) {
   const q = useQuery({
-    queryKey: ['congreso-decretos-registro-v2'],
-    queryFn: async () => (await registroCompleto('pc_congreso_decretos_view', 'numero, fecha, resumen, pdf_url', 'numero'))
+    queryKey: ['congreso-decretos-registro-v3'],
+    queryFn: async () => (await registroCompleto('pc_congreso_decretos_view', 'numero, fecha, resumen, pdf_decreto, pdf_iniciativa', 'numero'))
       .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || String(b.numero).localeCompare(String(a.numero), undefined, { numeric: true })),
     staleTime: 30 * 60 * 1000,
   });
@@ -505,7 +511,7 @@ export function ListaLeyes({ onPagina }) {
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
       {filas.slice((actual - 1) * PAGINA, actual * PAGINA).map((d, i) => (
         <Decreto key={d.numero} decreto={d} ficha={fichas.get(String(d.numero).replace(/\s+/g, ''))} cargandoEstado={biblioteca.isLoading} guia={i === 0}
-          eventos={delDecreto(d.numero, registroIniciativas.data || []).eventos} />
+          {...deSusIniciativas(d.numero, registroIniciativas.data || [])} />
       ))}
       <CuentaRegistro pagina={actual} cantidad={filas.length} unidad="decretos" />
       <Paginado actual={actual} total={total} onCambiar={cambiar} />
@@ -518,10 +524,15 @@ export function ListaLeyes({ onPagina }) {
  * «vigente» solo por estar aprobado), las leyes que cambió con sus artículos
  * y su ficha completa en el buscador legal.
  */
-export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, eventos = [], guia = false }) {
+export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, eventos = [], iniciativas = [], guia = false }) {
   const [leyendo, setLeyendo] = useState(null);
   const [ley, setLey] = useState(null);
-  const enlace = /^https?:\/\//i.test(d.pdf_url || '') ? d.pdf_url : null;
+  const url = (u) => (/^https?:\/\//i.test(u || '') ? u : null);
+  // El documento del decreto es solo el oficial. Mientras no se publica, va el
+  // de su iniciativa, dicho como lo que es: el texto que se presentó.
+  const enlace = url(d.pdf_decreto);
+  const deIniciativa = enlace ? null : url(d.pdf_iniciativa);
+  const nIniciativa = iniciativas.length === 1 ? iniciativas[0] : null;
   const estado = ficha?.estado || null;
   const abrible = ficha?.norma?.indexado ? ficha.norma.id : null;
   return (
@@ -557,6 +568,15 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
         onPress={() => setLeyendo({ uri: enlace, titulo: d.resumen || `Decreto ${d.numero}`, origen: `Decreto ${d.numero}` })}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
         <FileText size={20} color={TINTA} /><Text style={{ color: TINTA, fontSize: 13, fontWeight: '600', flex: 1 }}>documento del decreto</Text>
+      </Pressable> : deIniciativa ? <Pressable accessibilityRole="button"
+        accessibilityLabel={`${nIniciativa ? `iniciativa ${nIniciativa}` : 'iniciativa'}, el texto que se presentó; el decreto oficial aún no se publica`}
+        onPress={() => setLeyendo({ uri: deIniciativa, titulo: d.resumen || `Decreto ${d.numero}`, origen: nIniciativa ? `Iniciativa ${nIniciativa}` : 'Iniciativa' })}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingHorizontal: 12, paddingVertical: 8, marginTop: 12, borderWidth: 1, borderColor: RAYA, borderRadius: 10 }}>
+        <FileClock size={20} color={TINTA} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: TINTA, fontSize: 13, fontWeight: '600' }}>{nIniciativa ? `iniciativa ${nIniciativa}` : 'iniciativa'}</Text>
+          <Text style={{ color: INK.meta, fontSize: 12, marginTop: 1 }}>el texto que se presentó; el decreto oficial aún no se publica</Text>
+        </View>
       </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
       <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
       {ley ? <FichaLey normaId={ley} onClose={() => setLey(null)} /> : null}

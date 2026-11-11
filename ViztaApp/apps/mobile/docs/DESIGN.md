@@ -456,6 +456,15 @@ Una noticia tiene una categoría principal y hasta dos más (`otras_categorias`,
 - **Elecciones** es tema propio (las «Elecciones Generales» del servidor): tinta
   morada y la cabina de votación. La urna sigue siendo de Política.
 
+## El documento de un decreto
+
+El botón «documento del decreto» abre solo el oficial (`pdf_decreto` de
+`pc_congreso_decretos_view`). Mientras no se publica, va el de su iniciativa
+(`pdf_iniciativa`) como lo que es: «iniciativa 6876 · el texto que se presentó;
+el decreto oficial aún no se publica» (PJ, 11-nov-2026). Nunca se presenta la
+iniciativa como si fuera el decreto. Sin ninguno de los dos: «Documento aún no
+disponible.»
+
 ## Resultado de una votación
 
 El resultado (aprobada o no aprobada) sale del registro (`votaciones.resultado`)
