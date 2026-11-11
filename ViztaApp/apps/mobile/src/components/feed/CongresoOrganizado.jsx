@@ -10,6 +10,7 @@ import { BuscadorRegistro, CARD_REGISTRO, CuentaRegistro, ListaIniciativas, List
 import { Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from './TarjetasCongreso';
 import FiltroChips from './FiltroChips';
 import PlenoDiputados, { useDiputados } from './PlenoDiputados';
+import { enElPleno } from './diputados';
 import { buscarRegistro, fechaRegistro, periodoDe } from './organizacion';
 
 const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones'], ['diputados', 'Diputados']];
@@ -33,7 +34,8 @@ export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }
     enabled: alcance === 'historial', staleTime: 10 * 60 * 1000 });
   const fuente = alcance === 'historial' ? archivo.data || [] : dias || [];
   const secciones = useMemo(() => organizar(fuente), [fuente]);
-  const cuantas = (clave) => clave === 'diputados' ? diputados.data?.length
+  // Los diputados se cuentan en el pleno: quien dejó la curul y ya tiene reemplazo no suma.
+  const cuantas = (clave) => clave === 'diputados' ? (diputados.data ? enElPleno(diputados.data).length : undefined)
     : REGISTROS.some(([c]) => c === clave) ? registro.data?.[clave] : (secciones[clave] || []).length;
   const elegir = (clave) => { setElegida(clave); setAbierto(false); onPagina?.(anclaSeccion.current); };
   const esRegistro = REGISTROS.some(([c]) => c === elegida);
