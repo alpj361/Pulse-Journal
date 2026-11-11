@@ -50,7 +50,7 @@ import BuscadorLegal from "../../components/feed/BuscadorLegal";
 import { TEMAS_DEL_FEED, fechaMedia } from "../../components/feed/fechasClaves";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
-import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
+import { categoriaDe, otrasCategoriasDe, stickerDe, temaDe } from "../../components/feed/temas";
 import { SERIF } from "../../components/theme";
 import Mundito from "../../components/mapa/Mundito";
 import MapaSheet from "../../components/mapa/MapaSheet";
@@ -466,6 +466,21 @@ function NewsCardModal({ card, onClose }) {
                 <X size={19} color={INK.faint} />
               </TouchableOpacity>
             </View>
+
+            {/* Las otras categorías de la noticia, más chicas y cada una con su
+                subcategoría: la principal manda; estas dicen qué más toca. */}
+            {otrasCategoriasDe(card).length ? (
+              <View style={{ gap: 7, marginTop: -6, marginBottom: 16 }}>
+                {otrasCategoriasDe(card).map((o) => (
+                  <View key={o.tema} style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                    <Pegatina categoria={o.tema} id={`${card.id}-${o.tema}`} chica />
+                    {o.subcategoria ? (
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: paletaDe(o.tema).tinta, opacity: 0.75, flex: 1 }}>{o.subcategoria}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             {seguimientoDe(card) ? (
               <Text style={{ fontSize: 12, fontWeight: '700', color: INK.meta, letterSpacing: 0.2, marginBottom: 6 }}>{seguimientoDe(card)}</Text>

@@ -440,6 +440,21 @@ cualquier enlace, no solo posts (PJ, 7-nov-2026):
   «No se pudo enviar. Se puede intentar de nuevo.», «La cuenta se conecta al
   abrir Vizta una vez.».
 
+## Categorías de una noticia
+
+Una noticia tiene una categoría principal y hasta dos más (`otras_categorias`,
+11-nov-2026). La principal manda: lleva el sticker y la pegatina de siempre.
+
+- Las otras van **al lado, más chicas y sin sticker**; en la ficha, debajo de la
+  principal, cada una con su subcategoría («MOVILIDAD · Cierres y tráfico»).
+  Una subcategoría «Otro» no se muestra.
+- Un filtro trae toda noticia que tenga ese tema, sea principal o no: «justicia»
+  incluye la nota de violencia que también es de tribunales. Cada chip cuenta
+  sus noticias; «tu feed» cuenta noticias, no temas (una noticia con tres
+  categorías es una).
+- **Elecciones** es tema propio (las «Elecciones Generales» del servidor): tinta
+  morada y la cabina de votación. La urna sigue siendo de Política.
+
 ## Resultado de una votación
 
 El resultado (aprobada o no aprobada) sale del registro (`votaciones.resultado`)

@@ -1,4 +1,4 @@
-import { categoriaDe, normalizarTema, temaDe } from './temas';
+import { categoriaDe, normalizarTema, temaDe, temasDe } from './temas';
 
 /**
  * El feed de cada quien: qué temas van primero, cuáles no aparecen al abrir y
@@ -29,7 +29,7 @@ export const ESTADOS = [
 ];
 
 /** Los temas del enum de `news_cards`, en el orden en que suelen pesar. */
-export const TEMAS_DEL_FEED = ['Política', 'Justicia', 'Violencia', 'Economía', 'Movilidad', 'Clima', 'Deportes', 'Otros'];
+export const TEMAS_DEL_FEED = ['Política', 'Elecciones', 'Justicia', 'Violencia', 'Economía', 'Movilidad', 'Clima', 'Deportes', 'Otros'];
 
 /**
  * Los tipos de violencia que se pueden apagar, del catálogo v2 de ExtractorW.
@@ -113,7 +113,8 @@ function vetada(card, prefs) {
  */
 export function noticiasDelFeed(cards = [], prefs = VACIAS, elegido = 'todo', diaDe = () => 0) {
   const permitidas = cards.filter((c) => !vetada(c, prefs));
-  if (elegido !== 'todo') return permitidas.filter((c) => temaDe(categoriaDe(c)) === elegido);
+  // Con un tema, toda tarjeta que lo tenga, aunque sea su segunda categoría.
+  if (elegido !== 'todo') return permitidas.filter((c) => temasDe(c).includes(elegido));
   const base = permitidas.filter((c) => estadoDe(prefs, temaDe(categoriaDe(c))) !== 'ocultar');
   const primero = (c) => (estadoDe(prefs, temaDe(categoriaDe(c))) === 'primero' ? 0 : 1);
   // Orden estable a mano: solo se adelantan las de «primero» dentro de su día.
@@ -130,16 +131,17 @@ export function noticiasDelFeed(cards = [], prefs = VACIAS, elegido = 'todo', di
  */
 export function chipsDelFeed(cards = [], prefs = VACIAS) {
   const permitidas = cards.filter((c) => !vetada(c, prefs));
+  // Una tarjeta cuenta en cada uno de sus temas (el principal y los otros).
   const cuentas = new Map();
   for (const c of permitidas) {
-    const tema = temaDe(categoriaDe(c));
-    cuentas.set(tema, (cuentas.get(tema) || 0) + 1);
+    for (const tema of temasDe(c)) cuentas.set(tema, (cuentas.get(tema) || 0) + 1);
   }
   const rango = (tema) => ({ primero: 0, normal: 1, ocultar: 2 })[estadoDe(prefs, tema)];
   const temas = [...cuentas]
     .sort((a, b) => rango(a[0]) - rango(b[0]) || b[1] - a[1])
     .map(([clave, cuenta]) => ({ clave, nombre: clave, cuenta, tenue: estadoDe(prefs, clave) === 'ocultar' }));
-  const enTuFeed = temas.filter((t) => !t.tenue).reduce((n, t) => n + t.cuenta, 0);
+  // «tu feed» cuenta tarjetas, no temas: una con dos categorías es una.
+  const enTuFeed = permitidas.filter((c) => estadoDe(prefs, temaDe(categoriaDe(c))) !== 'ocultar').length;
   return [{ clave: 'todo', nombre: personalizado(prefs) ? 'tu feed' : 'todo', cuenta: enTuFeed }, ...temas];
 }
 

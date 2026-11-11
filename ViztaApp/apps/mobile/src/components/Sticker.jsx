@@ -19,6 +19,7 @@ const STICKER = {
   observatorio: require('../../assets/stickers/cc/fiscal.png'),
   // Temas del feed
   politica: require('../../assets/stickers/politica.png'),
+  elecciones: require('../../assets/stickers/elecciones.png'),
   economia: require('../../assets/stickers/economia-costo-vida.png'),
   social: require('../../assets/stickers/social.png'),
   violencia: require('../../assets/stickers/violencia.png'),

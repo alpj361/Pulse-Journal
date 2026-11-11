@@ -37,24 +37,29 @@ const TAMANO_STICKER = 36;
  * pega las suyas: «Citación», «Aprobado»); `respaldo` es el sticker mientras
  * el propio no existe.
  */
-export default function Pegatina({ categoria, sticker, respaldo, texto, paleta, id, style }) {
+export default function Pegatina({ categoria, sticker, respaldo, texto, paleta, id, style, chica = false }) {
   const tema = texto || temaDe(categoria);
   const p = paleta || paletaDe(categoria);
 
   return (
     <View style={[{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 7 }, style]}>
-      <Sticker
-        nombre={sticker || normalizarTema(tema)}
-        respaldo={respaldo}
-        size={TAMANO_STICKER}
-        style={{ marginVertical: -4, transform: [{ rotate: `${-inclinacion(`${id || tema}-stk`, 5)}deg` }] }}
-      />
+      {/* La chica (una categoría más de la tarjeta) va sin sticker: el sticker
+          es de la principal. */}
+      {chica ? null : (
+        <Sticker
+          nombre={sticker || normalizarTema(tema)}
+          respaldo={respaldo}
+          size={TAMANO_STICKER}
+          style={{ marginVertical: -4, transform: [{ rotate: `${-inclinacion(`${id || tema}-stk`, 5)}deg` }] }}
+        />
+      )}
       <View
         style={{
           backgroundColor: p.lavado[1],
           borderRadius: 2.5,
-          paddingHorizontal: 8,
-          paddingVertical: 3.5,
+          paddingHorizontal: chica ? 6 : 8,
+          paddingVertical: chica ? 2.5 : 3.5,
+          opacity: chica ? 0.85 : 1,
           transform: [{ rotate: `${inclinacion(`${id || tema}-peg`, 2.6)}deg` }],
           shadowColor: '#1E3326',
           shadowOpacity: 0.13,
@@ -63,7 +68,7 @@ export default function Pegatina({ categoria, sticker, respaldo, texto, paleta, 
           elevation: 2,
         }}
       >
-        <Text style={{ fontSize: 9.5, fontWeight: '800', color: p.tinta, letterSpacing: 0.9 }}>
+        <Text style={{ fontSize: chica ? 8.5 : 9.5, fontWeight: '800', color: p.tinta, letterSpacing: 0.9 }}>
           {tema.toUpperCase()}
         </Text>
       </View>
