@@ -76,7 +76,7 @@ import {
   BadgeCheck,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
 import { Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
@@ -92,7 +92,6 @@ const TIPOS_MAPA = ['mapa'];
 /** El ámbar de los puntos del mapa. No es un color nuevo: es el mismo acento
  *  que ya usa la app, puesto donde hacía falta que algo no fuera tinta. */
 const TUERCA = '#B45309';
-import * as Notifications from 'expo-notifications';
 
 // El feed público se estrena con Guatemala. El filtro vive en la consulta para
 // que no lleguen al cliente registros generados para otros países.
@@ -676,7 +675,6 @@ export default function Index() {
   const [selectedCard, setSelectedCard] = useState(null);
   const [notaCongreso, setNotaCongreso] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
-  const queryClient = useQueryClient();
 
   // Si se salió con el mapa a la vista, se vuelve al mapa. La cámara —dónde
   // estaba parado y con cuánto zoom— ya la guarda `mapaStore` aparte; esto solo
@@ -691,41 +689,7 @@ export default function Index() {
     if (consumir('mapa')) setViendoMapa(true);
   }, [porRestaurar?.tipo, consumir, conMapa]);
 
-  // Realtime: notify when new news_cards are inserted
-  useEffect(() => {
-    const channel = supabase
-      .channel('feed-news-cards')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'news_cards' },
-        (payload) => {
-          if (payload.new?.pais !== FEED_COUNTRY) return;
-
-          const cards = payload.new?.cards;
-          const first = Array.isArray(cards) ? cards[0] : null;
-          if (!first) return;
-
-          // Refresh the hot topics query so the feed updates automatically
-          queryClient.invalidateQueries({ queryKey: ['pulse-hot-topics'] });
-
-          // Show local notification
-          Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Vizta',
-              body: 'Revisa las ultimas noticias actualizadas',
-              data: { type: 'news_update' },
-              sound: 'default',
-            },
-            trigger: null, // immediate
-          }).catch(() => {}); // silently ignore if permissions not granted
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
+  // Las tarjetas nuevas llegan solas: utils/datosEnVivo.js (montado en el layout).
 
   const { data: trendsData } = useQuery({
     queryKey: ['pulse-trends'],

@@ -32,6 +32,23 @@ const TABLAS = [
   'nota_documentos',
   // «Qué cambió» de lo que guarda un agente: sus filas no se ven directo.
   'colab_cambios',
+  // El feed y el Congreso (ver utils/datosEnVivo.js).
+  'news_cards',
+  'narrativa_diaria',
+  'trends',
+  'feed_data',
+  'dataset_rows',
+  'congreso_items',
+  'iniciativas',
+  'iniciativa_eventos',
+  'iniciativas_sin_numero',
+  'normas',
+  'reformas',
+  'votaciones',
+  'pc_items',
+  'sesion_acta_oficial',
+  'sesion_avisos',
+  'pc_sesion_enmiendas',
 ];
 
 const oyentes = new Set(); // { tablas: Set, fn }
