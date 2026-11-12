@@ -465,6 +465,28 @@ decreto oficial aún no se publica» (PJ, 11-nov-2026). Nunca se presenta la
 iniciativa como si fuera el decreto. Sin ninguno de los dos: «Documento aún no
 disponible.»
 
+## El análisis de una iniciativa
+
+El análisis lo hace el endpoint general con el perfil `iniciativa` (STA-337);
+la app solo lo lee (`components/feed/lecturaDelAnalisis.js`). Es para pensar
+con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
+
+- Va plegado en la tarjeta de la iniciativa como **su análisis**, al lado de
+  «su recorrido». Si la iniciativa todavía no tiene análisis, no se ofrece.
+- Arriba, **en una frase** qué propone. Debajo, una fila por sección con su
+  ícono y cuántos puntos tiene: el problema que dice resolver, qué hace, qué
+  cambia de la ley vigente, quién gana y quién asume la carga, dinero y para
+  revisar. Una sección vacía no aparece. Las **preguntas para leerla** van
+  abiertas al final: son por dónde mirar, no conclusiones.
+- Se clasifica sin calificar: «asume un costo», «gana decisión», «queda para
+  un reglamento», «sin responsable». Lo que el texto no da se dice como dato:
+  «sin fuente», «no dice de dónde sale».
+- Cada sección lleva sus citas plegadas en **en el texto**. En un artículo que
+  se reforma, el texto propuesto va a la vista y **cómo está hoy** sale de la
+  biblioteca de leyes, nunca del modelo.
+- Al pie, una línea: «Lectura automática del texto; cada punto lleva su cita»
+  (o «de un documento escaneado» si vino de OCR).
+
 ## Resultado de una votación
 
 El resultado (aprobada o no aprobada) sale del registro (`votaciones.resultado`)
