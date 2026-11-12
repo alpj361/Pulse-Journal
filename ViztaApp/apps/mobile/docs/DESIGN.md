@@ -468,11 +468,22 @@ disponible.»
 ## El análisis de una iniciativa
 
 El análisis lo hace el endpoint general con el perfil `iniciativa` (STA-337);
-la app solo lo lee (`components/feed/lecturaDelAnalisis.js`). Es para pensar
+la app lo pide y lo lee (`components/feed/lecturaDelAnalisis.js`). Es para pensar
 con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 
-- Va plegado en la tarjeta de la iniciativa como **su análisis**, al lado de
-  «su recorrido». Si la iniciativa todavía no tiene análisis, no se ofrece.
+- **Se pide a mano** (PJ, 12-nov-2026): nada se programa. La tarjeta ofrece
+  **analizar** al lado de «su recorrido», solo si la iniciativa tiene PDF
+  oficial. Que sea un botón es a propósito: la persona decide hacerlo.
+- Mientras se hace: el loader de Vizta y lo que va haciendo, en orden
+  («Leyendo la iniciativa…», «Viendo qué hace…», «Buscando a quién toca…»,
+  «Revisando lo que deja abierto…», «Armando las preguntas…»). Al terminar, el
+  análisis se abre solo y el botón pasa a **su análisis**.
+- Se corre una vez y queda en caché: quien llega después lo recibe al
+  instante, pero igual ve hacerse el análisis entre 5 y 8 segundos. El pedido
+  es suyo y queda guardado como suyo; la próxima vez su tarjeta ya dice «su
+  análisis». Sin pedirlo, el análisis no se muestra aunque exista.
+- Si falla: «No se pudo analizar. Puede intentarse de nuevo.» y el botón dice
+  **analizar de nuevo**.
 - Arriba, **en una frase** qué propone. Debajo, una fila por sección con su
   ícono y cuántos puntos tiene: el problema que dice resolver, qué hace, qué
   cambia de la ley vigente, quién gana y quién asume la carga, dinero y para

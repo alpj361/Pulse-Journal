@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, FileText, FileClock, Scale } from 'lucide-react-native';
@@ -17,7 +17,7 @@ import { coincide, enlaceDe, etapaDe, ETAPAS, paginasVisibles, paradaDe, ROTULOS
 import { articulosDichos, delDecreto, indexarBiblioteca, nombreDelEstado, traerBiblioteca } from './estadoDeLeyes';
 import CaminoDecreto, { PillEstado } from './CaminoDecreto';
 import LineaSesion from './LineaSesion';
-import AnalisisIniciativa, { useAnalisisIniciativa } from './AnalisisIniciativa';
+import AnalisisIniciativa, { Analizando, BotonAnalisis, useAbrirAlTerminar, useAnalisisIniciativa } from './AnalisisIniciativa';
 
 /**
  * Iniciativas y leyes del Congreso, de su registro y no de las noticias.
@@ -237,6 +237,9 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
   const [resumenAbierto, setResumenAbierto] = useState(false);
   const [conAnalisis, setConAnalisis] = useState(false);
   const analisis = useAnalisisIniciativa(ini.numero);
+  useAbrirAlTerminar(analisis.estado, useCallback(() => setConAnalisis(true), []));
+  // Sin PDF oficial no hay texto que analizar: la tarjeta no ofrece el botón.
+  const puedeAnalizar = analisis.disponible && (!!ini.url_pdf || analisis.estado !== 'sin_pedir');
   const vetados = useVetados();
   const parada = ini.etapa ?? etapaDe(ini, notas);
   const vetada = !!ini.decreto_resultante && vetados.has(String(ini.decreto_resultante).replace(/\s+/g, ''));
@@ -294,17 +297,14 @@ export function Iniciativa({ ini, resumen, notas = [] }) {
           <Text style={{ fontSize: 12, color: INK.meta }}>{abierta ? 'menos' : 'su recorrido'}</Text>
           <Flecha size={13} color={INK.meta} />
         </Pressable>
-        {/* Solo si ya tiene análisis: mientras no, no se ofrece. */}
-        {analisis ? (
-          <Pressable onPress={() => setConAnalisis((x) => !x)} accessibilityRole="button" accessibilityState={{ expanded: conAnalisis }}
-            accessibilityLabel={`su análisis, iniciativa ${ini.numero}`}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 }}>
-            <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{conAnalisis ? 'cerrar análisis' : 'su análisis'}</Text>
-            {conAnalisis ? <ChevronUp size={13} color={TINTA} /> : <ChevronDown size={13} color={TINTA} />}
-          </Pressable>
+        {puedeAnalizar ? (
+          <BotonAnalisis estado={analisis.estado} abierto={conAnalisis} numero={ini.numero}
+            onAbrir={() => setConAnalisis((x) => !x)} onPedir={analisis.pedir} />
         ) : null}
       </View>
-      {conAnalisis ? <AnalisisIniciativa analisis={analisis} /> : null}
+      {analisis.estado === 'en_curso' ? <Analizando /> : null}
+      {analisis.estado === 'fallido' ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.meta }}>No se pudo analizar. Puede intentarse de nuevo.</Text> : null}
+      {conAnalisis && analisis.estado === 'listo' ? <AnalisisIniciativa analisis={analisis.analisis} /> : null}
       {abierta ? (
         <View style={{ marginTop: 10, gap: 8 }}>
           {(ini.comisiones || []).length ? (

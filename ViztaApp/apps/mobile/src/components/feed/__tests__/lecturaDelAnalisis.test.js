@@ -1,5 +1,5 @@
 jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
-import { articulosDe, leerAnalisis } from '../lecturaDelAnalisis';
+import { articulosDe, esperaDeCache, leerAnalisis, leerEstado } from '../lecturaDelAnalisis';
 
 const seccion = (key, data, quotes = ['cita literal del texto']) => ({ key, title: key, kind: 'extracted', data, evidence: data === null ? [] : quotes.map((quote) => ({ quote })) });
 
@@ -59,4 +59,18 @@ describe('el análisis de una iniciativa', () => {
     expect(articulosDe(['4'])).toBe('art. 4');
     expect(articulosDe(['2', '5', '7'])).toBe('arts. 2, 5 y 7');
   });
+
+  it('el estado del servidor: listo trae el análisis leído; listo vacío cuenta como fallido', () => {
+    expect(leerEstado({ estado: 'listo', cache: true, result: resultado })).toMatchObject({ estado: 'listo', cache: true });
+    expect(leerEstado({ estado: 'listo', cache: true, result: resultado }).analisis.frase).toBe('Crea un fondo municipal para bibliotecas.');
+    expect(leerEstado({ estado: 'listo', result: { sections: [], limitations: [] } }).estado).toBe('fallido');
+    expect(leerEstado({ estado: 'en_curso' })).toEqual({ estado: 'en_curso', cache: false, analisis: null });
+    expect(leerEstado({ estado: 'otra cosa' }).estado).toBe('sin_pedir');
+  });
+
+  it('la caché también se espera, entre 5 y 8 segundos', () => {
+    expect(esperaDeCache(() => 0)).toBe(5000);
+    expect(esperaDeCache(() => 1)).toBe(8000);
+  });
 });
+

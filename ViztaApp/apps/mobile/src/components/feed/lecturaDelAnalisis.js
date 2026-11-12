@@ -4,27 +4,46 @@ import { EXTRACTORW_URL } from '../../utils/servicios';
 /**
  * El análisis de una iniciativa (STA-337/338).
  *
- * Lo hace el endpoint general de análisis con el perfil `iniciativa`; acá solo
- * se lee: `GET /api/general-analysis/objeto/iniciativa/:numero` devuelve el
- * último análisis vigente del sistema. Leer no genera ni cobra nada, y un 404
- * quiere decir que todavía no hay: la sección no aparece (lo que falta no se
- * anuncia).
+ * Lo hace el endpoint general de análisis con el perfil `iniciativa`, y lo pide
+ * cada persona con su botón (PJ, 12-nov-2026): no se programa. Se corre una vez
+ * (lo paga el sistema) y queda en caché; quien llega después lo recibe al
+ * instante, y su pedido queda registrado como suyo.
+ *
+ *  - GET  /api/general-analysis/objeto/iniciativa/:n/mio → sin_pedir | en_curso | listo | fallido
+ *  - POST /api/general-analysis/objeto/iniciativa/:n     → sirve la caché o lanza el análisis
  *
  * Contrato: ExtractorW docs/contracts/general-analysis-perfiles.md.
  */
 
-export async function traerAnalisis(numero) {
+async function pedirAlServidor(numero, method) {
   const { data } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
   if (!token || !numero) return null;
-  const res = await fetch(`${EXTRACTORW_URL}/api/general-analysis/objeto/iniciativa/${encodeURIComponent(numero)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const ruta = `${EXTRACTORW_URL}/api/general-analysis/objeto/iniciativa/${encodeURIComponent(numero)}${method === 'GET' ? '/mio' : ''}`;
+  const res = await fetch(ruta, { method, headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 404 || res.status === 401 || res.status === 403) return null;
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.success) throw new Error(json?.code || `http_${res.status}`);
-  return leerAnalisis(json.result);
+  return leerEstado(json);
 }
+
+/** Lo que la tarjeta necesita del servidor: en qué está y, si ya está, el análisis leído. */
+export function leerEstado(json) {
+  const estado = ['sin_pedir', 'en_curso', 'listo', 'fallido'].includes(json?.estado) ? json.estado : 'sin_pedir';
+  const analisis = estado === 'listo' ? leerAnalisis(json.result) : null;
+  // Listo pero sin nada que mostrar se trata como fallido: la tarjeta no ofrece algo vacío.
+  return { estado: estado === 'listo' && !analisis ? 'fallido' : estado, cache: !!json?.cache, analisis };
+}
+
+/** El estado de la iniciativa para esta persona; `null` si no hay sesión o el servicio no la reconoce. */
+export const estadoDelAnalisis = (numero) => pedirAlServidor(numero, 'GET');
+/** El botón: devuelve el estado tras pedirlo (listo de la caché, o en curso). */
+export const pedirAnalisis = (numero) => pedirAlServidor(numero, 'POST');
+
+/** Lo que se va diciendo mientras se analiza: lo que el análisis hace, en orden. */
+export const PASOS_ANALISIS = ['Leyendo la iniciativa…', 'Viendo qué hace…', 'Buscando a quién toca…', 'Revisando lo que deja abierto…', 'Armando las preguntas…'];
+/** La caché también se espera: la persona pidió un análisis y lo ve hacerse. */
+export const esperaDeCache = (azar = Math.random) => 5000 + Math.round(azar() * 3000);
 
 // Los nombres de las cosas, sin calificar: lo que el texto hace o deja, no si está bien.
 export const ACCIONES = {

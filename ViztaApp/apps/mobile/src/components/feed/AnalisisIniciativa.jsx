@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { Coins, GitCompare, ListChecks, MessageCircleQuestionMark, ScanSearch, Target, Users } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon, Coins, GitCompare, ListChecks, MessageCircleQuestionMark, ScanSearch, Sparkles, Target, Users } from 'lucide-react-native';
+import MorphingInfinity from '../MorphingInfinity';
 import { INK } from '../theme';
 import { Plegable, RAYA, TINTA } from './TarjetasCongreso';
-import { traerAnalisis, traerVigente } from './lecturaDelAnalisis';
+import { PASOS_ANALISIS, esperaDeCache, estadoDelAnalisis, pedirAnalisis, traerVigente } from './lecturaDelAnalisis';
 
 /**
  * El análisis de una iniciativa, plegado en su tarjeta como «su análisis» (STA-337).
@@ -13,8 +14,11 @@ import { traerAnalisis, traerVigente } from './lecturaDelAnalisis';
  * cosa con su cita y sin decir si está bien o mal. Arriba la frase; cada
  * sección es una fila con su ícono y cuántos puntos tiene, plegada; las
  * preguntas van abiertas al final, porque son por dónde mirar. Una sección sin
- * datos no aparece, y si la iniciativa no tiene análisis, la tarjeta no ofrece
- * «su análisis».
+ * datos no aparece.
+ *
+ * Se pide a mano (PJ, 12-nov-2026): la tarjeta ofrece «analizar» y la persona
+ * lo ve hacerse. Si alguien ya lo había pedido, sale de la caché, pero igual se
+ * espera unos segundos: el pedido es suyo y queda guardado como suyo.
  */
 
 const ICONOS = {
@@ -26,16 +30,92 @@ const ICONOS = {
   para_revisar: ScanSearch,
 };
 
-/** El análisis de una iniciativa, si ya tiene; `null` mientras no. */
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * El análisis de una iniciativa para esta persona: en qué está y cómo pedirlo.
+ * `disponible` es falso sin sesión o si el servicio no la reconoce: entonces la
+ * tarjeta no ofrece nada.
+ */
 export function useAnalisisIniciativa(numero) {
+  const cliente = useQueryClient();
+  const clave = ['analisis-iniciativa', numero];
   const q = useQuery({
-    queryKey: ['analisis-iniciativa', numero],
-    queryFn: () => traerAnalisis(numero),
+    queryKey: clave,
+    queryFn: () => estadoDelAnalisis(numero),
     enabled: !!numero,
-    staleTime: 30 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
     retry: 1,
+    // Mientras corre de verdad, se mira cada pocos segundos hasta que esté.
+    refetchInterval: (query) => (query.state.data?.estado === 'en_curso' ? 4000 : false),
   });
-  return q.data || null;
+  const [esperando, setEsperando] = useState(false);
+  const pedir = async () => {
+    if (esperando) return;
+    setEsperando(true);
+    try {
+      const inicio = Date.now();
+      const r = await pedirAnalisis(numero);
+      // De la caché llega al instante; igual se ve hacerse.
+      if (r?.estado === 'listo') await dormir(Math.max(0, esperaDeCache() - (Date.now() - inicio)));
+      cliente.setQueryData(clave, r || { estado: 'fallido', analisis: null });
+    } catch {
+      cliente.setQueryData(clave, { estado: 'fallido', analisis: null });
+    } finally {
+      setEsperando(false);
+    }
+  };
+  const estado = esperando ? 'en_curso' : q.data?.estado || 'sin_pedir';
+  return { estado, analisis: q.data?.analisis || null, pedir, disponible: q.data != null || esperando };
+}
+
+/** Mientras se analiza: el loader de Vizta y lo que va haciendo, en orden. */
+export function Analizando() {
+  const [paso, setPaso] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setPaso((p) => Math.min(p + 1, PASOS_ANALISIS.length - 1)), 1600);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}>
+      <MorphingInfinity size={22} color={TINTA} />
+      <Text style={{ fontSize: 13, color: INK.body }}>{PASOS_ANALISIS[paso]}</Text>
+    </View>
+  );
+}
+
+/**
+ * El botón de la tarjeta, al lado de «su recorrido»: «analizar» si no lo ha
+ * pedido (o «analizar de nuevo» si falló) y «su análisis» cuando está listo.
+ */
+export function BotonAnalisis({ estado, abierto, onAbrir, onPedir, numero }) {
+  if (estado === 'listo') {
+    const Flecha = abierto ? ChevronUpIcon : ChevronDownIcon;
+    return (
+      <Pressable onPress={onAbrir} accessibilityRole="button" accessibilityState={{ expanded: abierto }} accessibilityLabel={`su análisis, iniciativa ${numero}`}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 }}>
+        <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{abierto ? 'cerrar análisis' : 'su análisis'}</Text>
+        <Flecha size={13} color={TINTA} />
+      </Pressable>
+    );
+  }
+  if (estado === 'en_curso') return null;
+  return (
+    <Pressable onPress={onPedir} accessibilityRole="button" accessibilityLabel={`analizar la iniciativa ${numero}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 }}>
+      <Sparkles size={13} color={TINTA} />
+      <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{estado === 'fallido' ? 'analizar de nuevo' : 'analizar'}</Text>
+    </Pressable>
+  );
+}
+
+/** Abre el análisis solo cuando termina de hacerse delante de la persona. */
+export function useAbrirAlTerminar(estado, abrir) {
+  const antes = useRef(estado);
+  useEffect(() => {
+    if (antes.current === 'en_curso' && estado === 'listo') abrir();
+    antes.current = estado;
+  }, [estado, abrir]);
 }
 
 /** Lo que se ve al abrir «su análisis» en la tarjeta de la iniciativa. */
