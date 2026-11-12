@@ -104,7 +104,8 @@ export function leerAnalisis(result) {
     frase,
     secciones,
     preguntas,
-    escaneo: (result.limitations || []).some((l) => /OCR/.test(String(l))),
+    // Solo la línea que pone el núcleo cuando el texto vino de OCR; lo que el modelo diga del texto no cuenta.
+    escaneo: (result.limitations || []).some((l) => /^Texto obtenido por OCR/.test(String(l))),
   };
 }
 

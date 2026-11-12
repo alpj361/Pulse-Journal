@@ -43,10 +43,15 @@ describe('el análisis de una iniciativa', () => {
   it('marca la lectura de un escaneo y lleva el artículo a reformar', () => {
     const a = leerAnalisis({
       sections: [seccion('cambios_ley_vigente', [{ ley: 'Ley de Fomento del Libro', decreto: 'Decreto 30-2001', articulo: '5', operacion: 'reforma', texto_propuesto: 'Artículo 5. …' }])],
-      limitations: ['Texto obtenido por OCR; las citas reflejan la transcripción.'],
+      limitations: ['Texto obtenido por OCR; las citas reflejan la transcripción y requieren cotejo con el PDF original.'],
     });
     expect(a.escaneo).toBe(true);
     expect(a.secciones[0].items[0].ley).toEqual({ decreto: 'Decreto 30-2001', articulo: '5', nombre: 'Ley de Fomento del Libro' });
+  });
+
+  it('lo que el modelo diga del OCR no marca el análisis como escaneado', () => {
+    const a = leerAnalisis({ sections: resultado.sections, limitations: ['El contenido presenta errores de OCR en varias palabras.'] });
+    expect(a.escaneo).toBe(false);
   });
 
   it('cuenta los artículos como se leen', () => {
