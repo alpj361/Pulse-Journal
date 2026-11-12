@@ -550,6 +550,10 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
   const nIniciativa = iniciativas.length === 1 ? iniciativas[0] : null;
   const estado = ficha?.estado || null;
   const abrible = ficha?.norma?.indexado ? ficha.norma.id : null;
+  // El análisis es de la iniciativa: si el decreto salió de una sola, se ofrece aquí también.
+  const analisis = useAnalisisIniciativa(nIniciativa);
+  const [conAnalisis, setConAnalisis] = useState(false);
+  useAbrirAlTerminar(analisis.estado, useCallback(() => setConAnalisis(true), []));
   return (
     <View style={CARD_REGISTRO}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -593,6 +597,15 @@ export function Decreto({ decreto: d, ficha = null, cargandoEstado = false, even
           <Text style={{ color: INK.meta, fontSize: 11, marginTop: 1 }}>El decreto oficial aún no se publica</Text>
         </View>
       </Pressable> : <Text style={{ fontSize: 12, color: INK.meta, marginTop: 12 }}>Documento aún no disponible.</Text>}
+      {nIniciativa && analisis.disponible ? (
+        <View style={{ marginTop: 4 }}>
+          <BotonAnalisis estado={analisis.estado} abierto={conAnalisis} numero={nIniciativa} deLaIniciativa
+            onAbrir={() => setConAnalisis((x) => !x)} onPedir={analisis.pedir} />
+          {analisis.estado === 'en_curso' ? <Analizando /> : null}
+          {analisis.estado === 'fallido' ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: INK.meta }}>No se pudo analizar. Puede intentarse de nuevo.</Text> : null}
+          {conAnalisis && analisis.estado === 'listo' ? <AnalisisIniciativa analisis={analisis.analisis} /> : null}
+        </View>
+      ) : null}
       <LectorDocumento documento={leyendo} onClose={() => setLeyendo(null)} />
       {ley ? <FichaLey normaId={ley} onClose={() => setLey(null)} /> : null}
     </View>

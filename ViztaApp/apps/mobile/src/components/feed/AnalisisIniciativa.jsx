@@ -5,7 +5,7 @@ import { ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon, Coins, GitC
 import MorphingInfinity from '../MorphingInfinity';
 import { INK } from '../theme';
 import { Plegable, RAYA, TINTA } from './TarjetasCongreso';
-import { PASOS_ANALISIS, esperaDeCache, estadoDelAnalisis, pedirAnalisis, traerVigente } from './lecturaDelAnalisis';
+import { PASOS_ANALISIS, comparables, esperaDeCache, estadoDelAnalisis, pedirAnalisis, traerVigente } from './lecturaDelAnalisis';
 
 /**
  * El análisis de una iniciativa, plegado en su tarjeta como «su análisis» (STA-337).
@@ -88,12 +88,13 @@ export function Analizando() {
  * El botón de la tarjeta, al lado de «su recorrido»: «analizar» si no lo ha
  * pedido (o «analizar de nuevo» si falló) y «su análisis» cuando está listo.
  */
-export function BotonAnalisis({ estado, abierto, onAbrir, onPedir, numero }) {
+export function BotonAnalisis({ estado, abierto, onAbrir, onPedir, numero, deLaIniciativa = false }) {
   if (estado === 'listo') {
     const Flecha = abierto ? ChevronUpIcon : ChevronDownIcon;
     return (
       <Pressable onPress={onAbrir} accessibilityRole="button" accessibilityState={{ expanded: abierto }} accessibilityLabel={`su análisis, iniciativa ${numero}`}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 }}>
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 }}>
+        <Sparkles size={13} color={TINTA} />
         <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{abierto ? 'cerrar análisis' : 'su análisis'}</Text>
         <Flecha size={13} color={TINTA} />
       </Pressable>
@@ -104,7 +105,7 @@ export function BotonAnalisis({ estado, abierto, onAbrir, onPedir, numero }) {
     <Pressable onPress={onPedir} accessibilityRole="button" accessibilityLabel={`analizar la iniciativa ${numero}`}
       style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 44 }}>
       <Sparkles size={13} color={TINTA} />
-      <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{estado === 'fallido' ? 'analizar de nuevo' : 'analizar'}</Text>
+      <Text style={{ fontSize: 12, color: TINTA, fontWeight: '600' }}>{estado === 'fallido' ? 'analizar de nuevo' : deLaIniciativa ? `analizar la iniciativa ${numero}` : 'analizar'}</Text>
     </Pressable>
   );
 }
@@ -160,7 +161,8 @@ function Seccion({ seccion }) {
       </Pressable>
       {abierta ? (
         <View style={{ paddingLeft: 27, paddingBottom: 6, gap: 10 }}>
-          {seccion.items.map((it, i) => (seccion.key === 'cambios_ley_vigente' ? <Cambio key={i} item={it} /> : <Punto key={i} item={it} />))}
+          {seccion.key === 'dinero' ? <Dinero items={seccion.items} />
+            : seccion.items.map((it, i) => (seccion.key === 'cambios_ley_vigente' ? <Cambio key={i} item={it} /> : <Punto key={i} item={it} />))}
           {seccion.citas.length ? (
             <View>
               <Plegable abierto={citas} onPress={() => setCitas((v) => !v)} texto="en el texto" color={INK.meta} />
@@ -169,6 +171,131 @@ function Seccion({ seccion }) {
           ) : null}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+// ─── Dinero ────────────────────────────────────────────────────────────────────
+// La cifra primero y grande; después de dónde sale y a dónde va, como un flujo.
+// Si se reparte, una barra con sus partes; si hay varios montos en quetzales,
+// barras que los comparan. Lo que el texto no dice se dice como dato.
+
+// Solo el dinero que se gasta tiene que salir de algún lado; una exención, un impuesto o una
+// multa no, y decir «no dice de dónde sale» ahí confundiría.
+const SALE_DE_ALGUN_LADO = new Set(['gasto', 'asignacion', 'transferencia', 'fondo']);
+
+const REPARTO = [TINTA, '#7C93B8', '#B7C6DD', '#5E7A66', '#A9BFAE', '#C9B98F', '#8C7B6B', '#D8D2C4'];
+
+function Dinero({ items }) {
+  const barras = comparables(items);
+  const conCifra = items.filter((i) => i.cifra);
+  const sinCifra = items.filter((i) => !i.cifra);
+  return (
+    <View style={{ gap: 12 }}>
+      {barras.length ? <Comparacion barras={barras} /> : null}
+      {conCifra.map((it, i) => <Partida key={i} item={it} />)}
+      {sinCifra.length ? (
+        <View style={{ gap: 10 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: INK.meta }}>SIN MONTO EN EL TEXTO</Text>
+          {sinCifra.map((it, i) => <PartidaSinMonto key={i} item={it} />)}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const plana = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+/** «de la recaudación del IVA» y «sale de: recaudación del IVA» dicen lo mismo: va una vez. */
+const baseRepetida = (item) => item.base && item.de && plana(item.base).includes(plana(item.de));
+
+/**
+ * De dónde sale y a dónde va, en dos filas con su rótulo. En una exención o un
+ * impuesto no «sale» dinero: se dice sobre qué es y a favor de quién.
+ */
+function Flujo({ item }) {
+  const gasta = SALE_DE_ALGUN_LADO.has(item.tipo);
+  const filas = [
+    gasta ? ['sale de', item.de || 'no lo dice', !item.de] : item.de ? ['sobre', item.de, false] : null,
+    item.para ? [gasta ? 'va a' : 'a favor de', item.para, false] : null,
+  ].filter(Boolean);
+  if (!filas.length) return null;
+  return (
+    <View style={{ gap: 4, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: RAYA }}>
+      {filas.map(([rotulo, valor, apagado], i) => (
+        <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
+          <Text style={{ width: 62, fontSize: 11.5, color: INK.meta }}>{rotulo}</Text>
+          <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 18, color: apagado ? INK.meta : INK.title, fontStyle: apagado ? 'italic' : 'normal' }}>{valor}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function PartidaSinMonto({ item }) {
+  return (
+    <View style={{ gap: 4 }}>
+      {item.etiqueta ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
+      <Text style={{ fontSize: 13, lineHeight: 19, color: INK.body }}>{item.texto}</Text>
+      <Flujo item={item} />
+      {item.nota ? <Text style={{ fontSize: 11, color: INK.meta }}>{item.nota}</Text> : null}
+    </View>
+  );
+}
+
+/** Varios montos en quetzales, uno al lado del otro, a escala del mayor. */
+function Comparacion({ barras }) {
+  return (
+    <View style={{ gap: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.03)' }}>
+      <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: INK.meta }}>CUÁNTO VA A CADA COSA</Text>
+      {barras.map((b, i) => (
+        <View key={i} style={{ gap: 3 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: INK.body }}>{b.para || b.texto}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{b.cifra}</Text>
+          </View>
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+            <View style={{ width: `${Math.max(3, Math.round(b.proporcion * 100))}%`, height: 8, borderRadius: 4, backgroundColor: TINTA }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function Partida({ item }) {
+  return (
+    <View style={{ gap: 6, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <Text style={{ flexShrink: 1, fontSize: 24, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{item.cifra}</Text>
+        {item.etiqueta ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
+      </View>
+      {item.base && !baseRepetida(item) ? <Text style={{ fontSize: 12.5, color: INK.body, marginTop: -4 }}>{item.base}</Text> : null}
+      <Text style={{ fontSize: 13.5, lineHeight: 20, color: INK.body }}>{item.texto}</Text>
+      <Flujo item={item} />
+      {item.reparto ? <Reparto partes={item.reparto} /> : null}
+      {item.nota ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{item.nota}</Text> : null}
+    </View>
+  );
+}
+
+/** Cómo se reparte: una barra con cada parte a su tamaño y su porcentaje debajo. */
+function Reparto({ partes }) {
+  const total = partes.reduce((n, p) => n + p.porcentaje, 0) || 1;
+  return (
+    <View style={{ gap: 6, marginTop: 2 }}>
+      <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.06)' }}>
+        {partes.map((p, i) => (
+          <View key={i} style={{ width: `${(p.porcentaje / Math.max(100, total)) * 100}%`, backgroundColor: REPARTO[i % REPARTO.length] }} />
+        ))}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        {partes.map((p, i) => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: REPARTO[i % REPARTO.length] }} />
+            <Text style={{ fontSize: 12, color: INK.body }}>{p.parte} <Text style={{ fontWeight: '700', color: INK.title }}>{p.porcentaje} %</Text></Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }

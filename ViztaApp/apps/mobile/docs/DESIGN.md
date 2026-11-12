@@ -495,6 +495,16 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 - Cada sección lleva sus citas plegadas en **en el texto**. En un artículo que
   se reforma, el texto propuesto va a la vista y **cómo está hoy** sale de la
   biblioteca de leyes, nunca del modelo.
+- **Dinero** (PJ, 12-nov-2026): la cifra primero y grande («Q500 millones al
+  año», «0.03 %»), nunca el monto en letras. Debajo, de qué es, y el flujo en
+  dos filas con rótulo: «sale de» / «va a» para lo que se gasta; «sobre» / «a
+  favor de» para exenciones e impuestos. Si se gasta y no dice de dónde sale,
+  «no lo dice». Lo visual lo deciden los datos, con reglas fijas: una barra
+  con sus partes si el dinero se reparte; barras comparadas si hay dos o más
+  montos en quetzales del mismo período; lo que no tiene monto va agrupado y
+  más chico al final, bajo «sin monto en el texto».
+- El análisis es de la iniciativa, pero también se ofrece en la tarjeta del
+  decreto que salió de una sola iniciativa: «analizar la iniciativa N».
 - Al pie, una línea: «Lectura automática del texto; cada punto lleva su cita»
   (o «de un documento escaneado» si vino de OCR).
 

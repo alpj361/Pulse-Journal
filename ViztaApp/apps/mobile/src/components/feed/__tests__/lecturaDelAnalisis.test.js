@@ -1,5 +1,5 @@
 jest.mock('../../../utils/supabase', () => ({ supabase: {} }));
-import { articulosDe, esperaDeCache, leerAnalisis, leerEstado } from '../lecturaDelAnalisis';
+import { articulosDe, cifraDeTexto, comparables, esperaDeCache, formatoCifra, leerAnalisis, leerEstado } from '../lecturaDelAnalisis';
 
 const seccion = (key, data, quotes = ['cita literal del texto']) => ({ key, title: key, kind: 'extracted', data, evidence: data === null ? [] : quotes.map((quote) => ({ quote })) });
 
@@ -32,7 +32,7 @@ describe('el análisis de una iniciativa', () => {
     expect(por.problema.nota).toBe('sin fuente');
     expect(por.que_hace).toMatchObject({ etiqueta: 'crea', nota: 'Ministerio de Cultura · art. 1' });
     expect(por.quien_gana_quien_asume).toMatchObject({ titulo: 'Municipalidades', etiqueta: 'asume un costo', nota: 'arts. 2 y 3' });
-    expect(por.dinero).toMatchObject({ cifra: '1 % del aporte', nota: 'no dice de dónde sale' });
+    expect(por.dinero).toMatchObject({ cifra: '1 %', unidad: 'porcentaje', de: null });
   });
 
   it('sin nada que mostrar no hay análisis', () => {
@@ -72,5 +72,44 @@ describe('el análisis de una iniciativa', () => {
     expect(esperaDeCache(() => 0)).toBe(5000);
     expect(esperaDeCache(() => 1)).toBe(8000);
   });
-});
 
+  it('la cifra se lee como cantidad: quetzales, porcentajes y períodos', () => {
+    expect(formatoCifra(500000000, 'quetzales', 'unica')).toBe('Q500 millones');
+    expect(formatoCifra(1500000, 'quetzales', null)).toBe('Q1.5 millones');
+    expect(formatoCifra(1000, 'quetzales', 'mensual')).toBe('Q1,000 al mes');
+    expect(formatoCifra(0.03, 'porcentaje', null)).toBe('0.03 %');
+    expect(formatoCifra(10, 'salarios_minimos', 'anual')).toBe('10 salarios mínimos al año');
+    expect(formatoCifra(null, 'quetzales')).toBeNull();
+  });
+
+  it('de un monto en letras se saca la cifra (análisis de antes)', () => {
+    expect(cifraDeTexto('quinientos millones de quetzales (Q500,000,000.00)')).toEqual({ cantidad: 500000000, unidad: 'quetzales', periodo: null });
+    expect(cifraDeTexto('mil quetzales (Q1,000.00) mensuales')).toEqual({ cantidad: 1000, unidad: 'quetzales', periodo: 'mensual' });
+    expect(cifraDeTexto('cero punto cero tres porcentual (0.03%)')).toEqual({ cantidad: 0.03, unidad: 'porcentaje', periodo: null });
+    expect(cifraDeTexto('hasta un diez por ciento (10%) y al menos un noventa por ciento (90%)')).toBeNull();
+  });
+
+  it('el dinero: cifra, de dónde sale, a dónde va y reparto; sin renglones de «no hay»', () => {
+    const a = leerAnalisis({ limitations: [], sections: [{ key: 'dinero', title: 'Dinero', data: [
+      { concepto: 'Asignación al Fondo de Becas', tipo: 'asignacion', cantidad: 0.03, unidad: 'porcentaje', periodo: null, base: 'de la recaudación del IVA', de: 'recaudación del IVA', para: 'Fondo Nacional de Becas', reparto: [{ parte: 'gestión', porcentaje: 10 }, { parte: 'becas', porcentaje: 90 }], articulos: ['8'] },
+      { concepto: 'No se advierten multas en el texto', tipo: 'multa', cantidad: null, unidad: null, periodo: null, base: null, de: null, para: null, reparto: null, articulos: [] },
+      { concepto: 'Transferencia', tipo: 'otro', monto: 'mil quetzales (Q1,000.00) mensuales', fuente_declarada: 'No se indica una fuente', articulos: [] },
+    ], evidence: [{ quote: 'x' }] }] });
+    const [uno, dos] = a.secciones[0].items;
+    expect(a.secciones[0].items).toHaveLength(2);
+    expect(uno).toMatchObject({ cifra: '0.03 %', base: 'de la recaudación del IVA', de: 'recaudación del IVA', para: 'Fondo Nacional de Becas', etiqueta: 'asignación' });
+    expect(uno.reparto).toHaveLength(2);
+    expect(dos).toMatchObject({ cifra: 'Q1,000 al mes', de: null });
+  });
+
+  it('solo se comparan montos en quetzales del mismo período', () => {
+    const items = [
+      { unidad: 'quetzales', cantidad: 500000000, periodo: 'unica' },
+      { unidad: 'quetzales', cantidad: 250000000, periodo: 'unica' },
+      { unidad: 'quetzales', cantidad: 1000, periodo: 'mensual' },
+      { unidad: 'porcentaje', cantidad: 3, periodo: null },
+    ];
+    expect(comparables(items).map((i) => i.proporcion)).toEqual([1, 0.5]);
+    expect(comparables(items.slice(2))).toEqual([]);
+  });
+});

@@ -64,7 +64,7 @@ export const REVISAR = {
   choque_con_otra_norma: 'se cruza con otra norma',
 };
 export const DINERO = {
-  gasto: 'gasto', asignacion: 'asignación', fondo: 'fondo', impuesto: 'impuesto',
+  gasto: 'gasto', asignacion: 'asignación', transferencia: 'transferencia', fondo: 'fondo', impuesto: 'impuesto',
   tasa: 'tasa', exencion: 'exención', multa: 'multa', otro: 'dinero',
 };
 
@@ -108,10 +108,7 @@ export function leerAnalisis(result) {
   agregar('quien_gana_quien_asume', lista(datos('quien_gana_quien_asume')).map((d) => ({
     texto: texto(d.como), titulo: texto(d.grupo), etiqueta: EFECTOS[d.efecto] || null, efecto: d.efecto, nota: articulosDe(d.articulos),
   })).filter((d) => d.texto && d.titulo));
-  agregar('dinero', lista(datos('dinero')).map((d) => ({
-    texto: texto(d.concepto), etiqueta: DINERO[d.tipo] || null, cifra: texto(d.monto),
-    nota: texto(d.fuente_declarada) ? `sale de: ${d.fuente_declarada}` : 'no dice de dónde sale',
-  })).filter((d) => d.texto));
+  agregar('dinero', lista(datos('dinero')).map(partida).filter(Boolean));
   agregar('para_revisar', lista(datos('para_revisar')).map((d) => ({
     texto: texto(d.que), etiqueta: REVISAR[d.tipo] || null, nota: articulosDe(d.articulos),
   })).filter((d) => d.texto));
@@ -126,6 +123,72 @@ export function leerAnalisis(result) {
     // Solo la línea que pone el núcleo cuando el texto vino de OCR; lo que el modelo diga del texto no cuenta.
     escaneo: (result.limitations || []).some((l) => /^Texto obtenido por OCR/.test(String(l))),
   };
+}
+
+// ─── Dinero ────────────────────────────────────────────────────────────────────
+
+const conComas = (n) => {
+  const [ent, dec] = String(Math.round(n * 100) / 100).split('.');
+  return ent.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (dec ? `.${dec}` : '');
+};
+const corto = (n) => (n >= 1e6 ? `${conComas(Math.round((n / 1e6) * 10) / 10)} millones` : conComas(n));
+
+/** La cifra como se lee: «Q500 millones», «Q1,000 al mes», «0.03 %», «10 salarios mínimos». */
+export function formatoCifra(cantidad, unidad, periodo) {
+  if (typeof cantidad !== 'number' || !Number.isFinite(cantidad)) return null;
+  const base = unidad === 'quetzales' ? `Q${corto(cantidad)}`
+    : unidad === 'dolares' ? `US$${corto(cantidad)}`
+    : unidad === 'porcentaje' ? `${conComas(cantidad)} %`
+    : unidad === 'salarios_minimos' ? `${conComas(cantidad)} ${cantidad === 1 ? 'salario mínimo' : 'salarios mínimos'}`
+    : conComas(cantidad);
+  return base + (periodo === 'mensual' ? ' al mes' : periodo === 'anual' ? ' al año' : '');
+}
+
+/** Los análisis de antes traen el monto en texto: se saca la cifra de ahí. */
+export function cifraDeTexto(monto) {
+  const t = String(monto || '');
+  const periodo = /mensual|al mes|cada mes/i.test(t) ? 'mensual' : /anual|al año|cada año/i.test(t) ? 'anual' : null;
+  const q = t.match(/Q\s?([\d,]+(?:\.\d+)?)/);
+  if (q) return { cantidad: Number(q[1].replace(/,/g, '')), unidad: 'quetzales', periodo };
+  const usd = t.match(/(?:US\$|\$)\s?([\d,]+(?:\.\d+)?)/);
+  if (usd) return { cantidad: Number(usd[1].replace(/,/g, '')), unidad: 'dolares', periodo };
+  const pct = [...t.matchAll(/(\d+(?:\.\d+)?)\s?%/g)].map((m) => Number(m[1]));
+  if (pct.length === 1) return { cantidad: pct[0], unidad: 'porcentaje', periodo };
+  return null;
+}
+
+const vacio = (v) => !texto(v) || /^(no se|no dice|no indica|sin )/i.test(String(v).trim());
+
+/** Una partida de dinero, con la cifra lista para mostrar; las que solo dicen «no hay» no van. */
+function partida(d) {
+  const concepto = texto(d.concepto);
+  if (!concepto || /^no se (advierte|encontr|establec|indica)/i.test(concepto)) return null;
+  const cifra = typeof d.cantidad === 'number' ? { cantidad: d.cantidad, unidad: d.unidad, periodo: d.periodo } : cifraDeTexto(d.monto);
+  const reparto = lista(d.reparto).filter((r) => texto(r.parte) && typeof r.porcentaje === 'number' && r.porcentaje >= 0);
+  const de = d.de !== undefined ? d.de : d.fuente_declarada;
+  return {
+    texto: concepto,
+    tipo: d.tipo,
+    etiqueta: DINERO[d.tipo] || null,
+    cifra: cifra ? formatoCifra(cifra.cantidad, cifra.unidad, cifra.periodo) : null,
+    cantidad: cifra?.cantidad ?? null,
+    unidad: cifra?.unidad ?? null,
+    periodo: cifra?.periodo ?? null,
+    base: texto(d.base),
+    de: vacio(de) ? null : texto(de),
+    para: texto(d.para),
+    reparto: reparto.length >= 2 ? reparto : null,
+    nota: articulosDe(d.articulos),
+  };
+}
+
+/** Para comparar montos en barras: los de quetzales del mismo período que el mayor. */
+export function comparables(items) {
+  const q = items.filter((i) => i.unidad === 'quetzales' && i.cantidad > 0);
+  if (q.length < 2) return [];
+  const mayor = q.reduce((a, b) => (b.cantidad > a.cantidad ? b : a));
+  const mismos = q.filter((i) => i.periodo === mayor.periodo);
+  return mismos.length >= 2 ? mismos.map((i) => ({ ...i, proporcion: i.cantidad / mayor.cantidad })) : [];
 }
 
 /** «Decreto 40-2022» o «40-2022» → «40-2022», como en `normas.decreto`. */
