@@ -341,40 +341,39 @@ function Problema({ items }) {
   );
 }
 
+// El dinero se dibuja en «Dinero»; en los datos del problema un monto queda en su texto.
+const ES_DINERO = new Set(['quetzales', 'dolares']);
+
+/**
+ * Un dato del problema: siempre numerado, como los demás. Si es un porcentaje,
+ * debajo su medidor de 100 con la cifra; un monto no se agranda aquí.
+ */
 function Dato({ n, dato }) {
-  const c = dato.cifraDato;
+  const c = dato.cifraDato && !ES_DINERO.has(dato.cifraDato.unidad) ? dato.cifraDato : null;
   return (
-    <View style={{ padding: 12, borderRadius: RADIUS.md, backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, gap: 8 }}>
-      {c ? <Medidor cifra={c} /> : null}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {!c ? <Text style={{ fontSize: 12, fontWeight: '800', color: TINTA, marginTop: 1 }}>{n}</Text> : null}
-        <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, color: c ? INK.body : INK.title }}>{dato.texto}</Text>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-        <FileText size={12} color={INK.meta} />
-        <Text style={{ flex: 1, fontSize: 11.5, color: INK.meta }} numberOfLines={2}>{dato.fuente || 'la iniciativa no da la fuente'}</Text>
-      </View>
+    <View style={{ padding: 12, borderRadius: RADIUS.md, backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya }}>
+      <Numerado n={n}>
+        <Text style={{ fontSize: 14, lineHeight: 20, color: INK.title }}>{dato.texto}</Text>
+        {c ? <Medidor cifra={c} /> : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
+          <FileText size={12} color={INK.meta} />
+          <Text style={{ flex: 1, fontSize: 11.5, color: INK.meta }} numberOfLines={2}>{dato.fuente || 'la iniciativa no da la fuente'}</Text>
+        </View>
+      </Numerado>
     </View>
   );
 }
 
 /** La cifra con su forma: un porcentaje llena su barra de 100; otra cifra va grande con lo que cuenta. */
+/** Un porcentaje, debajo del texto del dato: su barra de 100 y la cifra al lado. Otras cifras no se dibujan. */
 function Medidor({ cifra }) {
-  const pct = cifra.unidad === 'porcentaje' && cifra.valor >= 0 && cifra.valor <= 100;
+  if (cifra.unidad !== 'porcentaje' || cifra.valor < 0 || cifra.valor > 100) return null;
   return (
-    <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <Text style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 32, color: INK.title }}>{cifraLegible(cifra)}</Text>
-        {cifra.etiqueta ? <Text style={{ flex: 1, minWidth: 120, fontSize: 13, fontWeight: '600', color: INK.title }}>{cifra.etiqueta}</Text> : null}
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 }}>
+      <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: 'rgba(28,43,34,0.07)', overflow: 'hidden' }}>
+        <View style={{ width: `${Math.max(1.5, cifra.valor)}%`, height: 8, borderRadius: 4, backgroundColor: TINTA }} />
       </View>
-      {pct ? (
-        <View style={{ gap: 3 }}>
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(28,43,34,0.07)', overflow: 'hidden' }}>
-            <View style={{ width: `${Math.max(1.5, cifra.valor)}%`, height: 8, borderRadius: 4, backgroundColor: TINTA }} />
-          </View>
-          <Text style={{ fontSize: 11, color: INK.meta }}>{deCadaCien(cifra.valor)}</Text>
-        </View>
-      ) : null}
+      <Text style={{ fontSize: 12.5, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{cifraLegible(cifra)}</Text>
     </View>
   );
 }

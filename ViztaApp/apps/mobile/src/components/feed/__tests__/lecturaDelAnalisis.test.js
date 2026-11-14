@@ -47,6 +47,17 @@ describe('el análisis de una iniciativa', () => {
     expect(sinCifra.cifraDato).toBeNull();
   });
 
+  it('un monto que ya está en «Dinero» no se repite como dato del problema', () => {
+    const a = leerAnalisis({ limitations: [], sections: [
+      seccion('problema', [
+        { tipo: 'dato', texto: 'INSIVUMEH confirmó El Niño.', fuente_declarada: 'INSIVUMEH' },
+        { tipo: 'dato', texto: 'Transferencias de Q1,000.00 mensuales.', cifra: { valor: 1000, unidad: 'quetzales', etiqueta: 'al mes' }, fuente_declarada: null },
+      ]),
+      seccion('dinero', [{ concepto: 'Transferencias', tipo: 'transferencia', cantidad: 1000, unidad: 'quetzales', periodo: 'mensual' }]),
+    ] });
+    expect(a.secciones.find((s) => s.key === 'problema').items.map((i) => i.texto)).toEqual(['INSIVUMEH confirmó El Niño.']);
+  });
+
   it('sin nada que mostrar no hay análisis', () => {
     expect(leerAnalisis(null)).toBeNull();
     expect(leerAnalisis({ sections: [seccion('en_una_frase', null)], limitations: [] })).toBeNull();

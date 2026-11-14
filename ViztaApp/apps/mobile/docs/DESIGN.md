@@ -501,9 +501,11 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
   por efecto (Reciben algo, Asumen un costo…), «Para revisar» por tipo— y
   dentro de cada grupo los puntos van numerados. Nada se lee de corrido.
 - **El problema**: arriba, en un bloque, lo que dice que resuelve; debajo,
-  «los datos que usa», cada uno en su tarjeta con su cifra grande y lo que
-  cuenta, un medidor de 100 si es porcentaje, y la fuente con su ícono (o «la
-  iniciativa no da la fuente»). Un año no se dibuja como cifra.
+  «los datos que usa», todos numerados igual, cada uno en su tarjeta con su
+  texto, un medidor de 100 si es porcentaje, y la fuente con su ícono (o «la
+  iniciativa no da la fuente»). Ahí no hay cifras grandes: el dinero se
+  dibuja solo en «Dinero», y un monto que ya está en «Dinero» no se repite
+  como dato (PJ, 13-nov-2026). Un año no se dibuja como cifra.
 - **Dinero** (PJ, 12-nov-2026): la cifra primero y grande («Q500 millones al
   año», «0.03 %»), nunca el monto en letras. Debajo, de qué es, y el flujo en
   un diagrama de arriba abajo, en su propio bloque: «sale de» → la cifra →

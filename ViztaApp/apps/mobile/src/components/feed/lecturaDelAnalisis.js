@@ -94,11 +94,16 @@ export function leerAnalisis(result) {
   const secciones = [];
   const agregar = (key, items) => { if (items.length) secciones.push({ key, titulo: por[key]?.title || key, items, citas: citas(key) }); };
 
+  // Un monto que también está en «Dinero» va solo allá: no se repite como dato del problema.
+  const montos = new Set(lista(datos('dinero')).map(partida).filter(Boolean)
+    .filter((p) => (p.unidad === 'quetzales' || p.unidad === 'dolares') && typeof p.cantidad === 'number').map((p) => p.cantidad));
   agregar('problema', lista(datos('problema')).map((d) => {
     const t = texto(d.texto);
     if (!t) return null;
     const dato = d.tipo === 'dato';
-    return { texto: t, tipo: dato ? 'dato' : 'planteamiento', cifraDato: dato ? cifraDelDato(d) : null, fuente: dato ? texto(d.fuente_declarada) : null };
+    const cifraDato = dato ? cifraDelDato(d) : null;
+    if (cifraDato && (cifraDato.unidad === 'quetzales' || cifraDato.unidad === 'dolares') && montos.has(cifraDato.valor)) return null;
+    return { texto: t, tipo: dato ? 'dato' : 'planteamiento', cifraDato, fuente: dato ? texto(d.fuente_declarada) : null };
   }).filter(Boolean));
   agregar('que_hace', lista(datos('que_hace')).map((d) => ({
     texto: texto(d.que), accion: ACCIONES[d.accion] ? d.accion : 'otro', etiqueta: ACCIONES[d.accion] || null, quien: texto(d.quien), nota: articulosDe(d.articulos),
