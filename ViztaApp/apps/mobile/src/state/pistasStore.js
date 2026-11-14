@@ -51,4 +51,7 @@ export const PISTA = {
   // Colaboradores: «pronto vas a poder colaborar también con colegas». Se va
   // con la cruz, no con una acción: no hay nada que hacer todavía.
   COLAB_COLEGAS: 'colab_colegas',
+  // El camino de un decreto: la ayuda del paso en que va se abre sola la
+  // primera vez y se va al tocar un paso o cerrarla.
+  CAMINO_DECRETO: 'camino_decreto',
 };

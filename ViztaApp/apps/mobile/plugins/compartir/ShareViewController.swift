@@ -4,19 +4,26 @@ import Security
 import UniformTypeIdentifiers
 #if canImport(UIKit)
 import UIKit
+import LinkPresentation
 #endif
 
 /**
- Mandar un post a Vizta desde «Compartir».
+ Mandar un post a Vizta, o guardar cualquier enlace en la biblioteca, desde
+ «Compartir».
 
- Esto corre dentro de Instagram o de X, no dentro de Vizta: es otro proceso, sin
- React Native y sin la sesión de la persona. Toma el enlace que le pasan, se lo
- manda al servidor con la llave de compartir que la app dejó en el llavero, y
- dice «Contenido enviado». Traer el post —bajarlo, transcribirlo— lo hace el
- servidor después, igual que cuando se pega el enlace en la app.
+ Esto corre dentro de Instagram, de X o del navegador, no dentro de Vizta: es
+ otro proceso, sin React Native y sin la sesión de la persona. Toma el enlace
+ que le pasan y se lo manda al servidor con la llave de compartir que la app
+ dejó en el llavero:
 
- Mientras tanto la hoja deja elegir lo que en la app se haría después: a qué
- carpeta va y si se analiza al llegar. Es la misma superficie de la app —el
+ - Un post de Instagram o de X va a Posts. Traerlo —bajarlo, transcribirlo— lo
+   hace el servidor después, igual que cuando se pega el enlace en la app. La
+   hoja deja elegir la carpeta, si se analiza al llegar y, si el post habla de
+   una película, un libro o un videojuego, guardarlo además en la biblioteca.
+ - Cualquier otro enlace (un artículo, un paper, una lista) se guarda en la
+   biblioteca como Bookmark (STA-299), y la hoja deja elegir su tipo.
+
+ Arriba se ve lo compartido como en Mensajes: su imagen, su título y el sitio. Es la misma superficie de la app —el
  cristal lechoso, la serif de los titulares, las etiquetas en versalitas, el
  verde del orbe—, no una hoja del sistema.
 
@@ -36,6 +43,54 @@ enum Estado: Equatable {
 struct Carpeta: Identifiable, Equatable {
   let id: String
   let nombre: String
+}
+
+/// A dónde va lo compartido: un post de Instagram o de X entra a Posts (y se
+/// puede guardar además en la biblioteca); cualquier otro enlace, a la
+/// biblioteca como Bookmark.
+enum Destino: Equatable {
+  case posts
+  case biblioteca
+}
+
+/// Lo que se compartió, como se ve: la imagen de la página, su título y el sitio.
+struct Vista {
+  var titulo: String?
+  var sitio: String
+  var imagen: Image?
+}
+
+/// Los tipos de Bookmark que se ofrecen en la hoja. `clave` es el tipo del
+/// contrato (`bookmark.kind`); «Paper» es un artículo con la etiqueta `paper`.
+struct TipoGuardado: Identifiable, Equatable {
+  let id: String
+  let nombre: String
+  let simbolo: String
+  let clave: String
+  var etiquetas: [String] = []
+
+  static let todos: [TipoGuardado] = [
+    TipoGuardado(id: "film", nombre: "Película", simbolo: "film", clave: "film"),
+    TipoGuardado(id: "series", nombre: "Serie", simbolo: "tv", clave: "series"),
+    TipoGuardado(id: "book", nombre: "Libro", simbolo: "book.closed", clave: "book"),
+    TipoGuardado(id: "article", nombre: "Artículo", simbolo: "doc.text", clave: "article"),
+    TipoGuardado(id: "paper", nombre: "Paper", simbolo: "graduationcap", clave: "article", etiquetas: ["paper"]),
+    TipoGuardado(id: "list", nombre: "Lista", simbolo: "list.bullet", clave: "list"),
+    TipoGuardado(id: "game", nombre: "Videojuego", simbolo: "gamecontroller", clave: "game"),
+    TipoGuardado(id: "video", nombre: "Video", simbolo: "play.rectangle", clave: "video"),
+    TipoGuardado(id: "podcast", nombre: "Podcast", simbolo: "mic", clave: "podcast"),
+    TipoGuardado(id: "music", nombre: "Música", simbolo: "music.note", clave: "music"),
+    TipoGuardado(id: "website", nombre: "Enlace", simbolo: "link", clave: "website"),
+  ]
+
+  /// Un enlace suele ser algo para leer: esos tipos van primero. Un post suele
+  /// hablar de una obra: película, serie, libro.
+  static func orden(_ destino: Destino) -> [TipoGuardado] {
+    guard destino == .biblioteca else { return todos }
+    let primero = ["article", "paper", "list", "website"]
+    return todos.filter { primero.contains($0.id) }.sorted { primero.firstIndex(of: $0.id)! < primero.firstIndex(of: $1.id)! }
+      + todos.filter { !primero.contains($0.id) }
+  }
 }
 
 /// Los tokens de `src/components/theme.js`, tal cual.
@@ -171,11 +226,18 @@ struct Chip: View {
   let elegido: Bool
   /// `false` en «Sin carpeta»: no hay carpeta que dibujar.
   var conCarpeta = true
+  /// Un símbolo en lugar de la carpeta (los tipos de la biblioteca).
+  var simbolo: String? = nil
   let alTocar: () -> Void
   var body: some View {
     Button(action: alTocar) {
       HStack(spacing: 7) {
-        if conCarpeta {
+        if let simbolo {
+          Image(systemName: simbolo)
+            .font(.system(size: 12.5, weight: .semibold))
+            .foregroundColor(elegido ? Tema.indigo : Tema.meta)
+            .frame(width: 17)
+        } else if conCarpeta {
           IconoCarpeta(abierta: elegido, color: elegido ? Tema.indigo : Tema.meta)
         }
         Text(texto)
@@ -184,7 +246,7 @@ struct Chip: View {
           .lineLimit(1)
           .fixedSize()
       }
-      .padding(.leading, conCarpeta ? 11 : 14)
+      .padding(.leading, conCarpeta || simbolo != nil ? 11 : 14)
       .padding(.trailing, 14)
       // Alto fijo: la hoja se asoma por encima de la carpeta sin mover la pastilla.
       .frame(height: 36)
@@ -333,14 +395,20 @@ struct Marca: View {
 
 struct Hoja: View {
   let estado: Estado
-  let detalle: String?
+  let destino: Destino
+  let vista: Vista?
   let carpetas: [Carpeta]
   let carpetaElegida: String?
   let analizar: Bool
+  /// El tipo con que quedó en la biblioteca (`TipoGuardado.id`), si quedó.
+  let tipoElegido: String?
+  /// Una línea corta cuando guardar en la biblioteca no salió.
+  let aviso: String?
   /// De 0 a 1: cuánto falta para que se cierre sola. `nil` si ya no se cierra.
   let cuenta: Double?
   let alElegirCarpeta: (String?) -> Void
   let alCambiarAnalizar: () -> Void
+  let alElegirTipo: (TipoGuardado) -> Void
   let cerrar: () -> Void
 
   @State private var arrastre: CGFloat = 0
@@ -387,18 +455,15 @@ struct Hoja: View {
       // Qué pasó, en la serif de los titulares.
       HStack(alignment: .center, spacing: 14) {
         Marca(estado: estado)
-        VStack(alignment: .leading, spacing: 3) {
-          Text(titulo)
-            .font(Tema.serif(esFallo ? 23 : 29))
-            .foregroundColor(Tema.titulo)
-            .lineSpacing(1)
-            .fixedSize(horizontal: false, vertical: true)
-          if let detalle, !detalle.isEmpty {
-            Text(detalle).font(.system(size: 12.5)).foregroundColor(Tema.meta).lineLimit(1).truncationMode(.middle)
-          }
-        }
+        Text(titulo)
+          .font(Tema.serif(esFallo ? 23 : 29))
+          .foregroundColor(Tema.titulo)
+          .lineSpacing(1)
+          .fixedSize(horizontal: false, vertical: true)
       }
       .padding(.top, 18)
+
+      if let vista { tarjetaVista(vista).padding(.top, 16) }
 
       if estado == .enviado {
         opciones.transition(.opacity.combined(with: .offset(y: 10)))
@@ -413,35 +478,83 @@ struct Hoja: View {
     .padding(.bottom, 10)
     .animation(.spring(response: 0.42, dampingFraction: 0.82), value: estado)
     .animation(.spring(response: 0.3, dampingFraction: 0.85), value: carpetaElegida)
+    .animation(.spring(response: 0.3, dampingFraction: 0.85), value: tipoElegido)
   }
 
-  /// Lo que en la app se haría después de traerlo, a un toque.
+  /// Lo compartido, como se ve: su imagen, su título y el sitio. Sin la URL cruda.
+  private func tarjetaVista(_ v: Vista) -> some View {
+    HStack(spacing: 12) {
+      ZStack {
+        RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Tema.titulo.opacity(0.06))
+        if let imagen = v.imagen {
+          imagen.resizable().scaledToFill()
+        } else {
+          Image(systemName: destino == .posts ? "play.rectangle" : "link")
+            .font(.system(size: 16, weight: .semibold)).foregroundColor(Tema.tenue)
+        }
+      }
+      .frame(width: 52, height: 52)
+      .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+      VStack(alignment: .leading, spacing: 3) {
+        if let t = v.titulo, !t.isEmpty {
+          Text(t).font(.system(size: 14, weight: .semibold)).foregroundColor(Tema.titulo).lineLimit(2)
+        }
+        Text(v.sitio).font(.system(size: 12.5)).foregroundColor(Tema.meta).lineLimit(1)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(10)
+    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(0.5)))
+    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Tema.titulo.opacity(0.06), lineWidth: 1))
+  }
+
+  private func etiqueta(_ texto: String) -> some View {
+    Text(texto).font(Tema.etiqueta).tracking(1).foregroundColor(Tema.tenue)
+      .padding(.top, 22).padding(.bottom, 10)
+  }
+
+  private func fila<C: View>(@ViewBuilder _ contenido: () -> C) -> some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 7) { contenido() }
+        .padding(.horizontal, Tema.margen)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.horizontal, -Tema.margen)
+  }
+
+  /// Lo que en la app se haría después, a un toque.
   private var opciones: some View {
     VStack(alignment: .leading, spacing: 0) {
-      if !carpetas.isEmpty {
-        Text("CARPETA").font(Tema.etiqueta).tracking(1).foregroundColor(Tema.tenue)
-          .padding(.top, 24).padding(.bottom, 10)
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 7) {
+      if destino == .posts {
+        if !carpetas.isEmpty {
+          etiqueta("CARPETA")
+          fila {
             Chip(texto: "Sin carpeta", elegido: carpetaElegida == nil, conCarpeta: false) { alElegirCarpeta(nil) }
             ForEach(carpetas) { c in
               Chip(texto: c.nombre, elegido: carpetaElegida == c.id) { alElegirCarpeta(c.id) }
             }
           }
-          .padding(.horizontal, Tema.margen)
         }
-        .padding(.horizontal, -Tema.margen)
+
+        HStack(spacing: 12) {
+          Text("Analizar al llegar").font(.system(size: 15, weight: .semibold)).foregroundColor(Tema.titulo)
+          Spacer(minLength: 8)
+          Interruptor(prendido: analizar, alTocar: alCambiarAnalizar)
+        }
+        .padding(.top, 20)
       }
 
-      HStack(spacing: 12) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Analizar al llegar").font(.system(size: 15, weight: .semibold)).foregroundColor(Tema.titulo)
-          Text("Lo encontrás ya leído cuando abras Vizta.").font(.system(size: 12.5)).foregroundColor(Tema.meta)
+      etiqueta(destino == .posts ? "GUARDAR TAMBIÉN EN LA BIBLIOTECA" : "TIPO")
+      fila {
+        ForEach(TipoGuardado.orden(destino)) { t in
+          Chip(texto: t.nombre, elegido: tipoElegido == t.id, simbolo: t.simbolo) { alElegirTipo(t) }
         }
-        Spacer(minLength: 8)
-        Interruptor(prendido: analizar, alTocar: alCambiarAnalizar)
       }
-      .padding(.top, 22)
+
+      if let aviso {
+        Text(aviso).font(.system(size: 12.5)).foregroundColor(Tema.rojo).padding(.top, 8)
+      }
     }
   }
 
@@ -456,7 +569,7 @@ struct Hoja: View {
           }
           .clipShape(Capsule())
         }
-        Text(estado == .enviando ? "Enviando…" : esFallo ? "Cerrar" : "Listo")
+        Text(estado == .enviando ? (destino == .posts ? "Enviando…" : "Guardando…") : esFallo ? "Cerrar" : "Listo")
           .font(.system(size: 16, weight: .semibold))
           .foregroundColor(esFallo ? Tema.titulo : .white)
       }
@@ -470,10 +583,12 @@ struct Hoja: View {
   private var esFallo: Bool { if case .fallo = estado { return true } else { return false } }
 
   private var titulo: String {
-    switch estado {
-    case .enviando: return "Enviando a tus posts"
-    case .enviado: return "Contenido enviado"
-    case .fallo(let motivo): return motivo
+    switch (estado, destino) {
+    case (.enviando, .posts): return "Enviando a Posts"
+    case (.enviado, .posts): return "Enviado a Posts"
+    case (.enviando, .biblioteca): return "Guardando en la biblioteca"
+    case (.enviado, .biblioteca): return "Guardado en la biblioteca"
+    case (.fallo(let motivo), _): return motivo
     }
   }
 }
@@ -515,7 +630,7 @@ func leerLlave() -> String? {
 // MARK: - El enlace
 
 /// Los mismos enlaces que acepta la app: un post o un reel de Instagram, o un
-/// tweet. Un perfil o una historia no son un post.
+/// tweet. Un perfil o una historia no son un post: van a la biblioteca.
 func esPost(_ url: URL) -> Bool {
   let s = url.absoluteString
   let patrones = [
@@ -531,15 +646,35 @@ func enlaceCompartido(_ contexto: NSExtensionContext?) async -> URL? {
   let adjuntos = (contexto?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
 
   for a in adjuntos where a.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-    if let url = try? await a.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL { return url }
+    if let url = try? await a.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL, url.scheme?.hasPrefix("http") == true { return url }
   }
   for a in adjuntos where a.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
     guard let texto = try? await a.loadItem(forTypeIdentifier: UTType.plainText.identifier) as? String,
           let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { continue }
     let rango = NSRange(texto.startIndex..., in: texto)
-    if let url = detector.matches(in: texto, range: rango).compactMap({ $0.url }).first { return url }
+    if let url = detector.matches(in: texto, range: rango).compactMap({ $0.url }).first(where: { $0.scheme?.hasPrefix("http") == true }) { return url }
   }
   return nil
+}
+
+/// El sitio, sin «www.»: «instagram.com», «nytimes.com».
+func sitioDe(_ url: URL) -> String {
+  let host = url.host ?? url.absoluteString
+  return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+}
+
+/// El título y la imagen de la página, con LinkPresentation (lo mismo que usa
+/// iOS para las vistas previas de Mensajes). Si tarda o no hay, sigue sin eso.
+func metadatos(_ url: URL) async -> (String?, UIImage?) {
+  let proveedor = LPMetadataProvider()
+  proveedor.timeout = 4
+  guard let m = try? await proveedor.startFetchingMetadata(for: url) else { return (nil, nil) }
+  let fuente = m.imageProvider ?? m.iconProvider
+  let imagen: UIImage? = await withCheckedContinuation { c in
+    guard let fuente, fuente.canLoadObject(ofClass: UIImage.self) else { return c.resume(returning: nil) }
+    fuente.loadObject(ofClass: UIImage.self) { obj, _ in c.resume(returning: obj as? UIImage) }
+  }
+  return (m.title, imagen)
 }
 
 // MARK: - El servidor
@@ -565,16 +700,20 @@ struct Servidor {
     return ((respuesta as? HTTPURLResponse)?.statusCode ?? 0, json)
   }
 
-  /// Manda el enlace. Devuelve el id del post que quedó trayéndose, o el motivo.
+  /// La frase del servidor si la trae; si no, una genérica.
+  private func falla(_ codigo: Int, _ json: [String: Any], _ generica: String) -> Falla {
+    if let mensaje = json["message"] as? String, !mensaje.isEmpty { return Falla(mensaje) }
+    return Falla(codigo == 402 ? "El plan actual no permite agregar más posts por ahora." : generica)
+  }
+
+  /// Manda el enlace a Posts. Devuelve el id del post que quedó trayéndose, o el motivo.
   func enviar(_ url: URL) async -> Result<String, Falla> {
     do {
       let (codigo, json) = try await pedir("POST", "compartido", ["url": url.absoluteString])
       if (200..<300).contains(codigo), let id = (json["post"] as? [String: Any])?["id"] as? String { return .success(id) }
-      // El servidor ya contesta con una frase para la persona; se muestra esa.
-      if let mensaje = json["message"] as? String, !mensaje.isEmpty { return .failure(Falla(mensaje)) }
-      return .failure(Falla(codigo == 402 ? "No podés agregar posts por ahora." : "No se pudo enviar. Probá de nuevo."))
+      return .failure(falla(codigo, json, "No se pudo enviar. Se puede intentar de nuevo."))
     } catch {
-      return .failure(Falla("Sin conexión. Probá de nuevo."))
+      return .failure(Falla("Sin conexión. Se puede intentar de nuevo."))
     }
   }
 
@@ -591,6 +730,30 @@ struct Servidor {
   func elegir(_ postId: String, _ cambios: [String: Any]) async {
     _ = try? await pedir("PATCH", "compartido/\(postId)", cambios)
   }
+
+  /// Un Bookmark en la biblioteca. Devuelve su id y su revisión.
+  func guardar(_ cuerpo: [String: Any]) async -> Result<(String, Int), Falla> {
+    do {
+      let (codigo, json) = try await pedir("POST", "compartido/bookmark", cuerpo)
+      if (200..<300).contains(codigo), let b = json["bookmark"] as? [String: Any], let id = b["id"] as? String {
+        return .success((id, b["revision"] as? Int ?? 1))
+      }
+      return .failure(falla(codigo, json, "No se pudo guardar en la biblioteca."))
+    } catch {
+      return .failure(Falla("Sin conexión. Se puede intentar de nuevo."))
+    }
+  }
+
+  /// Cambia el tipo de un Bookmark ya guardado. Devuelve la revisión nueva.
+  func cambiarTipo(_ id: String, _ cuerpo: [String: Any]) async -> Result<Int, Falla> {
+    do {
+      let (codigo, json) = try await pedir("PATCH", "compartido/bookmark/\(id)", cuerpo)
+      if (200..<300).contains(codigo), let b = json["bookmark"] as? [String: Any] { return .success(b["revision"] as? Int ?? 1) }
+      return .failure(falla(codigo, json, "No se pudo cambiar el tipo."))
+    } catch {
+      return .failure(Falla("Sin conexión. Se puede intentar de nuevo."))
+    }
+  }
 }
 
 struct Falla: Error {
@@ -603,39 +766,73 @@ struct Falla: Error {
 @MainActor
 final class Modelo: ObservableObject {
   @Published var estado: Estado = .enviando
-  @Published var detalle: String?
+  @Published var destino: Destino = .posts
+  @Published var vista: Vista?
   @Published var carpetas: [Carpeta] = []
   @Published var carpetaElegida: String?
   @Published var analizar = false
+  @Published var tipoElegido: String?
+  @Published var aviso: String?
   @Published var cuenta: Double? = nil
 
   private var servidor: Servidor?
+  private var url: URL?
   private var postId: String?
+  /// El Bookmark de esta hoja: su id y la revisión con que se cambia.
+  private var guardado: (id: String, revision: Int)?
+  /// Una clave por hoja: si el envío se repite, el servidor reutiliza el mismo.
+  private let clave = "compartir-\(UUID().uuidString)"
   private var reloj: Timer?
   var alTerminar: () -> Void = {}
 
   func empezar(_ contexto: NSExtensionContext?) async {
-    guard let url = await enlaceCompartido(contexto) else { return fallar("No hay ningún enlace para enviar.") }
-    // Lo que se está mandando, sin el rastreo que agrega la red al compartir.
-    detalle = (url.host ?? "") + url.path
-    guard esPost(url) else { return fallar("Ese enlace no es un post de Instagram ni de X.") }
-    guard let servidor = Servidor.deLaApp() else { return fallar("Abrí Vizta una vez para conectar tu cuenta.") }
+    guard let url = await enlaceCompartido(contexto) else { return fallar("No hay ningún enlace para guardar.") }
+    self.url = url
+    destino = esPost(url) ? .posts : .biblioteca
+    vista = Vista(titulo: nil, sitio: sitioDe(url), imagen: nil)
+    guard let servidor = Servidor.deLaApp() else { return fallar("La cuenta se conecta al abrir Vizta una vez.") }
     self.servidor = servidor
 
-    // Las opciones se piden a la par: cuando el envío confirma, ya están.
-    async let opciones = servidor.opciones()
-    switch await servidor.enviar(url) {
-    case .failure(let f):
-      fallar(f.mensaje)
-    case .success(let id):
-      postId = id
-      let (carpetas, analiza) = await opciones
-      self.carpetas = carpetas
-      self.analizar = analiza
-      estado = .enviado
-      vibrar(true)
-      contar()
+    // La vista previa llega cuando llega; no frena el envío de un post.
+    let previa = Task { () -> String? in
+      let (titulo, imagen) = await metadatos(url)
+      vista = Vista(titulo: titulo, sitio: sitioDe(url), imagen: imagen.map { Image(uiImage: $0) })
+      return titulo
     }
+
+    if destino == .posts {
+      // Las opciones se piden a la par: cuando el envío confirma, ya están.
+      async let opciones = servidor.opciones()
+      switch await servidor.enviar(url) {
+      case .failure(let f):
+        fallar(f.mensaje)
+      case .success(let id):
+        postId = id
+        let (carpetas, analiza) = await opciones
+        self.carpetas = carpetas
+        self.analizar = analiza
+        listo()
+      }
+    } else {
+      // El Bookmark lleva el título de la página como nombre: se espera a la
+      // vista previa (como mucho, lo que tarda LinkPresentation).
+      let titulo = await previa.value
+      switch await servidor.guardar(["url": url.absoluteString, "name": titulo ?? nombreDe(url), "idempotency_key": clave]) {
+      case .failure(let f):
+        fallar(f.mensaje)
+      case .success(let (id, revision)):
+        guardado = (id, revision)
+        listo()
+      }
+    }
+  }
+
+  private func nombreDe(_ url: URL) -> String { sitioDe(url) + url.path }
+
+  private func listo() {
+    estado = .enviado
+    vibrar(true)
+    contar()
   }
 
   private func fallar(_ motivo: String) { estado = .fallo(motivo) }
@@ -678,6 +875,38 @@ final class Modelo: ObservableObject {
     let valor = analizar
     Task { await servidor.elegir(postId, ["analizar": valor]) }
   }
+
+  /// Elegir un tipo: si todavía no hay Bookmark (un post), lo crea apuntando al
+  /// post; si ya hay, le cambia el tipo. Si no sale, vuelve a como estaba.
+  func elegirTipo(_ t: TipoGuardado) {
+    quedarse()
+    guard t.id != tipoElegido, let servidor, let url else { return }
+    vibrar()
+    let antes = tipoElegido
+    let eraPaper = TipoGuardado.todos.first { $0.id == antes }?.etiquetas.isEmpty == false
+    tipoElegido = t.id
+    aviso = nil
+    Task {
+      let salio: Bool
+      if let g = guardado {
+        var cuerpo: [String: Any] = ["kind": t.clave, "expected_revision": g.revision]
+        if !t.etiquetas.isEmpty || eraPaper { cuerpo["tags"] = t.etiquetas }
+        switch await servidor.cambiarTipo(g.id, cuerpo) {
+        case .success(let r): guardado = (g.id, r); salio = true
+        case .failure(let f): aviso = f.mensaje; salio = false
+        }
+      } else {
+        var cuerpo: [String: Any] = ["url": url.absoluteString, "name": vista?.titulo ?? nombreDe(url), "kind": t.clave, "idempotency_key": clave]
+        if let postId { cuerpo["post_id"] = postId }
+        if !t.etiquetas.isEmpty { cuerpo["tags"] = t.etiquetas }
+        switch await servidor.guardar(cuerpo) {
+        case .success(let (id, r)): guardado = (id, r); salio = true
+        case .failure(let f): aviso = f.mensaje; salio = false
+        }
+      }
+      if !salio { tipoElegido = antes }
+    }
+  }
 }
 
 struct Raiz: View {
@@ -687,13 +916,17 @@ struct Raiz: View {
   var body: some View {
     Hoja(
       estado: modelo.estado,
-      detalle: modelo.detalle,
+      destino: modelo.destino,
+      vista: modelo.vista,
       carpetas: modelo.carpetas,
       carpetaElegida: modelo.carpetaElegida,
       analizar: modelo.analizar,
+      tipoElegido: modelo.tipoElegido,
+      aviso: modelo.aviso,
       cuenta: modelo.cuenta,
       alElegirCarpeta: { modelo.elegirCarpeta($0) },
       alCambiarAnalizar: { modelo.cambiarAnalizar() },
+      alElegirTipo: { modelo.elegirTipo($0) },
       cerrar: { modelo.alTerminar() }
     )
     // Entra desde abajo con el resorte de las entradas de la app.

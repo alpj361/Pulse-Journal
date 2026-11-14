@@ -9,6 +9,53 @@ import { TYPE_ORDER, normalizeTipo } from '../codex/tipos';
 
 export const PERMISOS = ['leer', 'crear', 'editar', 'eliminar'];
 
+/**
+ * Qué significa cada permiso de un agente, según el contrato v4.8 de
+ * ExtractorW (STA-259, «permisos de agentes sobre la cuenta personal»). El
+ * servidor manda el mismo texto en `catalogo_permisos`; este es el respaldo.
+ *
+ * Lo central: sin «editar», el agente trabaja en su propio espacio (lo nuevo
+ * queda en su cuenta, visible en Su Codex) y solo pasar algo a la cuenta
+ * personal llega como propuesta para aprobar. Con «editar», crea y actualiza
+ * directo en la cuenta personal, y queda marcado como hecho por el agente.
+ * Los mismos interruptores valen para Colaboradores y para la conexión MCP.
+ */
+export const CATALOGO_PERMISOS = {
+  leer: {
+    titulo: 'Consultar',
+    corto: 'Consulta tus espacios, fichas y tablas',
+    texto: 'Puede consultar tus espacios, fichas del Codex y tablas de datos.',
+  },
+  crear: {
+    titulo: 'Proponer',
+    corto: 'Trabaja en su espacio y te envía propuestas',
+    texto: 'Puede trabajar en su propio espacio de agente y enviarte propuestas de cambios para que las apruebes.',
+  },
+  editar: {
+    titulo: 'Editar tu cuenta',
+    corto: 'Crea y actualiza directo en tu cuenta',
+    texto: 'Puede crear y actualizar espacios y fichas directamente en tu cuenta personal, sin pedirte aprobación cada vez.',
+  },
+  eliminar: {
+    titulo: 'Eliminar',
+    corto: 'Elimina fichas o relaciones de tu cuenta',
+    texto: 'Puede eliminar fichas o relaciones de tu cuenta personal.',
+  },
+};
+
+/** El catálogo con el texto largo del servidor cuando lo manda. */
+export function catalogoPermisos(delServidor) {
+  return Object.fromEntries(
+    PERMISOS.map((k) => [k, { ...CATALOGO_PERMISOS[k], texto: (delServidor && delServidor[k]) || CATALOGO_PERMISOS[k].texto }])
+  );
+}
+
+/** Dónde queda lo que hace el agente: en la cuenta personal o en su espacio, como propuesta. */
+export const destinoDe = (permisos) => (permisos?.editar ? 'cuenta' : 'propuesta');
+
+/** Los permisos de la conexión MCP (leer, crear, modificar, borrar) desde los de Colaboradores. */
+export const permisosMcp = (p) => ({ leer: !!p?.leer, crear: !!p?.crear, modificar: !!p?.editar, borrar: !!p?.eliminar });
+
 /** Los colaboradores que se muestran: sin los revocados y sin uno mismo. */
 export function visibles(colaboradores, miId) {
   return (colaboradores || []).filter(
@@ -30,13 +77,14 @@ export function ordenar(colaboradores) {
 }
 
 /**
- * Qué puede hacer, en palabras: «lee y crea», «lee, crea y edita», «puede todo».
+ * Qué puede hacer, en palabras: «consulta y propone», «consulta, propone y
+ * edita tu cuenta», «puede todo».
  * Sin ningún permiso, «sin acceso».
  */
 export function queHace(permisos) {
   const p = permisos || {};
   if (PERMISOS.every((k) => p[k])) return 'puede todo';
-  const verbos = { leer: 'lee', crear: 'crea', editar: 'edita', eliminar: 'borra' };
+  const verbos = { leer: 'consulta', crear: 'propone', editar: 'edita tu cuenta', eliminar: 'elimina' };
   const lista = PERMISOS.filter((k) => p[k]).map((k) => verbos[k]);
   if (!lista.length) return 'sin acceso';
   if (lista.length === 1) return lista[0];
@@ -783,3 +831,21 @@ export function adjuntoDe(item) {
 
 /** Un agente de otra persona que te compartió: solo se le escribe (PR #75). */
 export const esContacto = (c) => !!(c?.es_contacto || c?.rol === 'contacto');
+
+/**
+ * De qué Codex es algo que muestra el agente:
+ * - `para_ti`: lo creó en tu cuenta. Es tuyo, no se trae ni «se parece».
+ * - `unido`: es suyo y también está en el tuyo (lo trajiste).
+ * - `suyo`: está solo en su Codex.
+ * Un Espacio trae `cuenta`; un ítem, `cuenta_tipo` (un dashboard, `dueno_tipo`).
+ */
+export function origenDe(cosa) {
+  const cuenta = cosa?.cuenta || cosa?.cuenta_tipo || cosa?.dueno_tipo;
+  if (cuenta === 'humano') return 'para_ti';
+  if (cosa?.ya_en_mi_codex) return 'unido';
+  return 'suyo';
+}
+
+/** Un homónimo en tu Codex que no sea la misma ficha. */
+export const pareceUnoTuyo = (item) =>
+  origenDe(item) === 'suyo' && !!item?.coincidencia_humano_id && item.coincidencia_humano_id !== item.id;

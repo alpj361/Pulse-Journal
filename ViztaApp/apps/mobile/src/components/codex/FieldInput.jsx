@@ -406,12 +406,7 @@ function SoloLectura({ children }) {
   );
 }
 
-/**
- * `contexto` es de quién es el campo: `{ itemId, tipo }`, y al crear también
- * `{ pendientesRostro, onPendienteRostro }`. Casi ningún control lo necesita; la
- * foto de un actor sí, para ofrecer usarla en el reconocimiento.
- */
-export default function FieldInput({ field, value, onChange, accent = INK.title, contexto = null }) {
+export default function FieldInput({ field, value, onChange, accent = INK.title }) {
   const { type, options, poles, cols, readonly } = field;
 
   if (readonly || type === 'formula') {
@@ -637,18 +632,6 @@ export default function FieldInput({ field, value, onChange, accent = INK.title,
           onChange={onChange}
           soloImagen={type === 'imagen'}
           accent={accent}
-          // Solo en la foto de un Actor. Si ya existe, el chequecito indexa en
-          // el momento; si se está creando, anota la intención y la ficha la
-          // cumple al guardar, cuando ya hay a quién asociarle la cara.
-          reconocer={
-            type === 'imagen' && String(contexto?.tipo || '').toLowerCase() === 'actor'
-              ? contexto?.itemId
-                ? { actorId: contexto.itemId }
-                : contexto?.onPendienteRostro
-                  ? { actorId: null, pendientes: contexto.pendientesRostro, onPendiente: contexto.onPendienteRostro }
-                  : null
-              : null
-          }
         />
       );
 

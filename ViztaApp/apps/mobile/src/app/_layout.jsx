@@ -12,6 +12,7 @@ import { puedeColaborar } from '../components/colaboradores/piezas';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { useDatosEnVivo } from '@/utils/datosEnVivo';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotifications } from '@/utils/useNotifications';
@@ -62,6 +63,12 @@ const persistencia = {
     shouldDehydrateQuery: (query) => PERSISTIBLES.includes(query.queryKey?.[0]),
   },
 };
+
+/** El feed y el Congreso al día mientras la app está abierta (utils/datosEnVivo.js). */
+function DatosEnVivo() {
+  useDatosEnVivo();
+  return null;
+}
 
 /** Las solicitudes ya abiertas, por enlace o solas: cada una se abre una vez. */
 const solicitudesAbiertas = new Set();
@@ -167,6 +174,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }} initialRouteName="(tabs)">
           <Stack.Screen name="(tabs)" />
         </Stack>
+        <DatosEnVivo />
         <AbrirAutorizacion />
         <EsperarAutorizacion />
       </GestureHandlerRootView>

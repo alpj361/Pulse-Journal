@@ -14,16 +14,21 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import GlassCard from "../../components/GlassCard";
-import { INK, GLASS, chipStyle } from "../../components/theme";
+import { INK, GLASS, RADIUS, chipStyle } from "../../components/theme";
 import Grano from "../../components/feed/Grano";
 import PortadaDia from "../../components/feed/PortadaDia";
 import TarjetaNoticia from "../../components/feed/TarjetaNoticia";
 import { PinNoticiero } from "../../components/feed/FilasCongreso";
 import { ItemCongreso, VotacionesDelDia } from "../../components/feed/TarjetasCongreso";
+import { fechaYSesion } from "../../components/feed/votaciones";
+import { IniciativaDeNota } from "../../components/feed/LegislativoCongreso";
+import { claseDe } from "../../components/feed/clasesCongreso";
 import NotaCongreso from "../../components/feed/NotaCongreso";
 import CongresoOrganizado from "../../components/feed/CongresoOrganizado";
 import FiltroChips from "../../components/feed/FiltroChips";
-import { filtrarDias, opcionesCongreso, opcionesTemas } from "../../components/feed/filtros";
+import { chipsDelFeed, noticiasDelFeed } from "../../components/feed/preferencias";
+import AjustarFeed from "../../components/feed/AjustarFeed";
+import { useFeedStore } from "../../state/feedStore";
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
@@ -38,11 +43,14 @@ function EstadoFeed({ sticker, children }) {
     </View>
   );
 }
-import SelectorFeed from "../../components/feed/SelectorFeed";
-import { enYouTube, nombreDelDia, traerCongreso } from "../../components/feed/congreso";
+import SelectorFeed, { Cristal } from "../../components/feed/SelectorFeed";
+import { enYouTube, nombreDelDia, traerCongreso, traerDiaCongreso } from "../../components/feed/congreso";
+import CalendarioFeed, { FechasDelDia } from "../../components/feed/CalendarioFeed";
+import BuscadorLegal from "../../components/feed/BuscadorLegal";
+import { TEMAS_DEL_FEED, fechaMedia } from "../../components/feed/fechasClaves";
 import GaleriaNoticia from "../../components/feed/GaleriaNoticia";
 import { fotosDe } from "../../components/feed/fotos";
-import { categoriaDe, stickerDe, temaDe } from "../../components/feed/temas";
+import { categoriaDe, otrasCategoriasDe, stickerDe, temaDe } from "../../components/feed/temas";
 import { SERIF } from "../../components/theme";
 import Mundito from "../../components/mapa/Mundito";
 import MapaSheet from "../../components/mapa/MapaSheet";
@@ -68,10 +76,10 @@ import {
   BadgeCheck,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
-import { Settings as SettingsIcon, Users as UsersIcon } from 'lucide-react-native';
+import { Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
 import ColaboradoresSheet from '../../components/colaboradores/ColaboradoresSheet';
 import { alTocarAvisoDeColab } from '../../utils/notificaciones';
 import { puedeColaborar, TONO as TONO_COLAB } from '../../components/colaboradores/piezas';
@@ -84,7 +92,6 @@ const TIPOS_MAPA = ['mapa'];
 /** El ámbar de los puntos del mapa. No es un color nuevo: es el mismo acento
  *  que ya usa la app, puesto donde hacía falta que algo no fuera tinta. */
 const TUERCA = '#B45309';
-import * as Notifications from 'expo-notifications';
 
 // El feed público se estrena con Guatemala. El filtro vive en la consulta para
 // que no lleguen al cliente registros generados para otros países.
@@ -459,6 +466,21 @@ function NewsCardModal({ card, onClose }) {
               </TouchableOpacity>
             </View>
 
+            {/* Las otras categorías de la noticia, más chicas y cada una con su
+                subcategoría: la principal manda; estas dicen qué más toca. */}
+            {otrasCategoriasDe(card).length ? (
+              <View style={{ gap: 7, marginTop: -6, marginBottom: 16 }}>
+                {otrasCategoriasDe(card).map((o) => (
+                  <View key={o.tema} style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                    <Pegatina categoria={o.tema} id={`${card.id}-${o.tema}`} chica />
+                    {o.subcategoria ? (
+                      <Text numberOfLines={1} style={{ fontSize: 12, color: paletaDe(o.tema).tinta, opacity: 0.75, flex: 1 }}>{o.subcategoria}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
             {seguimientoDe(card) ? (
               <Text style={{ fontSize: 12, fontWeight: '700', color: INK.meta, letterSpacing: 0.2, marginBottom: 6 }}>{seguimientoDe(card)}</Text>
             ) : null}
@@ -653,7 +675,6 @@ export default function Index() {
   const [selectedCard, setSelectedCard] = useState(null);
   const [notaCongreso, setNotaCongreso] = useState(null);
   const [entityModal, setEntityModal] = useState(null); // string | null
-  const queryClient = useQueryClient();
 
   // Si se salió con el mapa a la vista, se vuelve al mapa. La cámara —dónde
   // estaba parado y con cuánto zoom— ya la guarda `mapaStore` aparte; esto solo
@@ -668,41 +689,7 @@ export default function Index() {
     if (consumir('mapa')) setViendoMapa(true);
   }, [porRestaurar?.tipo, consumir, conMapa]);
 
-  // Realtime: notify when new news_cards are inserted
-  useEffect(() => {
-    const channel = supabase
-      .channel('feed-news-cards')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'news_cards' },
-        (payload) => {
-          if (payload.new?.pais !== FEED_COUNTRY) return;
-
-          const cards = payload.new?.cards;
-          const first = Array.isArray(cards) ? cards[0] : null;
-          if (!first) return;
-
-          // Refresh the hot topics query so the feed updates automatically
-          queryClient.invalidateQueries({ queryKey: ['pulse-hot-topics'] });
-
-          // Show local notification
-          Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Vizta',
-              body: 'Revisa las ultimas noticias actualizadas',
-              data: { type: 'news_update' },
-              sound: 'default',
-            },
-            trigger: null, // immediate
-          }).catch(() => {}); // silently ignore if permissions not granted
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
+  // Las tarjetas nuevas llegan solas: utils/datosEnVivo.js (montado en el layout).
 
   const { data: trendsData } = useQuery({
     queryKey: ['pulse-trends'],
@@ -789,10 +776,22 @@ export default function Index() {
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
   const [feed, setFeed] = useState("pais");
-  // Dentro del Congreso: el tablero de los días, o lo mismo ordenado por tema.
-  const [vistaCongreso, setVistaCongreso] = useState("tablero");
-  const [seccionCongreso, setSeccionCongreso] = useState('todo');
   const [temaFeed, setTemaFeed] = useState('todo');
+  // El día elegido en el calendario. Por ahora el calendario está solo en el
+  // Congreso (PJ, 1-nov-2026): en los demás feeds no hay cómo quitar el
+  // filtro, así que ahí no aplica.
+  const [diaElegido, setDiaFeed] = useState(null);
+  const diaFeed = TEMAS_DEL_FEED[feed] ? diaElegido : null;
+  const hoyGT = diaGT(Date.now());
+  const diaPasado = !!diaFeed && diaFeed <= hoyGT;
+  // Cómo quiere la persona su feed: del teléfono al pintar, y de la cuenta
+  // apenas hay sesión (manda la cuenta, para que siga en otro teléfono).
+  const prefsFeed = useFeedStore((s) => s.prefs);
+  const [ajustandoFeed, setAjustandoFeed] = useState(false);
+  const idCuenta = usePulseConnectionStore((s) => s.connectedUser?.id);
+  useEffect(() => {
+    useFeedStore.getState().traerDeLaCuenta().catch(() => {});
+  }, [idCuenta]);
   const scrollFeed = useRef(null);
   const desplazamientoFeed = useRef(0);
   const irAIniciativas = useCallback((ancla) => {
@@ -808,6 +807,47 @@ export default function Index() {
     queryFn: traerCongreso,
     enabled: feed === "congreso",
     staleTime: 10 * 60 * 1000,
+  });
+  // Con un día elegido, el tablero es solo ese día; un día que no llegó no se pide.
+  const { data: diaCongreso, isLoading: cargandoDiaCongreso } = useQuery({
+    queryKey: ['congreso-dia', diaFeed],
+    queryFn: () => traerDiaCongreso(diaFeed),
+    enabled: feed === "congreso" && diaPasado,
+    staleTime: 10 * 60 * 1000,
+  });
+  const diasDelTablero = diaFeed ? (diaPasado ? diaCongreso || [] : []) : diasCongreso || [];
+  const cargandoTablero = diaFeed ? diaPasado && cargandoDiaCongreso : cargandoCongreso;
+  // Las noticias de un día: la última corrida de ese día, solo con lo que se
+  // movió ese día.
+  const { data: noticiasDelDia, isLoading: cargandoNoticiasDelDia } = useQuery({
+    queryKey: ['noticias-dia', diaFeed],
+    enabled: feed === "pais" && diaPasado,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const filas = await leerPublico(
+        supabase
+          .from('news_cards')
+          .select('cards,generated_at')
+          .eq('pais', FEED_COUNTRY)
+          .gte('generated_at', new Date(`${diaFeed}T00:00:00-06:00`).toISOString())
+          .lte('generated_at', new Date(`${diaFeed}T23:59:59.999-06:00`).toISOString())
+          .order('generated_at', { ascending: false })
+          .limit(1)
+      );
+      const fila = filas?.[0];
+      if (!fila) return [];
+      return (fila.cards || [])
+        .map((card) => {
+          const momentos = [card.primera_vez, card.ultima_actualizacion].filter(Boolean).map((t) => new Date(t).toISOString());
+          return { ...card, _desde: momentos.sort().pop() || fila.generated_at };
+        })
+        .filter((card) => diaGT(card._desde) === diaFeed)
+        .sort(
+          (a, b) =>
+            numero(b.impacto_score) - numero(a.impacto_score) ||
+            numero(b.fuentes?.independientes) - numero(a.fuentes?.independientes)
+        );
+    },
   });
 
   const { data: narrativaData } = useQuery({
@@ -846,14 +886,15 @@ export default function Index() {
   );
   const tweets = tweetsData || [];
   const hotTopics = hotTopicsData || [];
-  const temasFeed = opcionesTemas(hotTopics);
+  const tarjetasDelFeed = diaFeed ? (diaPasado ? noticiasDelDia || [] : []) : hotTopics;
+  const temasFeed = chipsDelFeed(tarjetasDelFeed, prefsFeed);
   const temaActivo = temasFeed.some((t) => t.clave === temaFeed) ? temaFeed : 'todo';
-  const noticiasVisibles = temaActivo === 'todo' ? hotTopics : hotTopics.filter((c) => temaDe(categoriaDe(c)) === temaActivo);
-  const diasVisiblesCongreso = filtrarDias(diasCongreso, seccionCongreso);
+  const noticiasVisibles = noticiasDelFeed(tarjetasDelFeed, prefsFeed, temaActivo, (c) => diaGT(c._desde || Date.now()));
   // «hoy» solo si hay algo de hoy: pasada la medianoche el título no promete
   // lo que todavía no llegó.
-  const marcadoDelFeed =
-    feed !== "pais" || !hotTopics.length || diaGT(hotTopics[0]._desde) === diaGT(Date.now())
+  const marcadoDelFeed = diaFeed
+    ? ["hoy", "ayer"].includes(nombreDelDia(diaFeed)) ? nombreDelDia(diaFeed) : `el ${fechaMedia(diaFeed)}`
+    : feed !== "pais" || !hotTopics.length || diaGT(hotTopics[0]._desde) === diaGT(Date.now())
       ? "hoy"
       : diaGT(hotTopics[0]._desde) === diaGT(Date.now() - 86400000)
         ? "de ayer"
@@ -868,6 +909,7 @@ export default function Index() {
       {/* Modal de detalle */}
       <NewsCardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
       <NotaCongreso item={notaCongreso} onClose={() => setNotaCongreso(null)} />
+      <AjustarFeed visible={ajustandoFeed} cards={hotTopics} bottomInset={insets.bottom} onClose={() => setAjustandoFeed(false)} />
       {entityModal && (
         <EntityWikiModal entityName={entityModal} onClose={() => setEntityModal(null)} />
       )}
@@ -967,7 +1009,7 @@ export default function Index() {
             {/* El título y, a su lado, de dónde viene lo que se lee: el país o
                 el Congreso. El selector va en la misma línea para que se lea
                 como parte de la frase —«lo que hay que leer hoy… de acá»—. */}
-            {/* Cómo está el día: cuatro medidas contadas, a un toque del detalle. */}
+            {/* El termómetro del día: cuatro medidas contadas, a un toque del detalle. */}
             {feed === "pais" ? <Termometro pais={FEED_COUNTRY} style={{ marginBottom: 22 }} /> : null}
             <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               {/* «Lo que hay que leer» es del feed de noticias. El Congreso y
@@ -975,41 +1017,77 @@ export default function Index() {
                   título no va. */}
               <View style={{ flex: 1 }}>
                 {feed === "pais" ? <SectionHeader title="Lo que hay que leer" marcado={marcadoDelFeed} /> : null}
-                {/* En el Congreso, el lugar del título lo ocupa el cambio de vista. */}
-                {feed === "congreso" ? <VistasCongreso valor={vistaCongreso} onCambiar={setVistaCongreso} /> : null}
               </View>
-              <SelectorFeed valor={feed} onCambiar={setFeed} />
+              {/* El ajuste del feed va al lado de «de dónde»: las dos cosas
+                  deciden qué se lee, y los chips de abajo solo filtran. */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {feed === "pais" && hotTopics.length ? (
+                  <Pressable
+                    onPress={() => setAjustandoFeed(true)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ajustar tu feed"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                  >
+                    <Cristal radio={RADIUS.pill}>
+                      <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+                        <SlidersHorizontal size={16} color={INK.meta} strokeWidth={2.2} />
+                      </View>
+                    </Cristal>
+                  </Pressable>
+                ) : null}
+                {/* El buscador legal (leyes, artículos, iniciativas) va antes
+                    del calendario. Por ahora, solo en el Congreso. */}
+                {feed === "congreso" ? <BuscadorLegal /> : null}
+                {/* El calendario va a la par: elige un día y el feed se queda
+                    con ese día. Por ahora, solo en el Congreso. */}
+                {TEMAS_DEL_FEED[feed] ? <CalendarioFeed feed={feed} dia={diaFeed} onElegir={setDiaFeed} conFecha={feed !== "pais"} /> : null}
+                <SelectorFeed valor={feed} onCambiar={setFeed} />
+              </View>
             </View>
 
-            {feed === "pais" && hotTopics.length ? <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} /> : null}
-            {feed === "congreso" && vistaCongreso === "tablero" ? (
-              <FiltroChips opciones={opcionesCongreso(diasCongreso)} valor={seccionCongreso} onCambiar={setSeccionCongreso} />
+            {feed === "pais" && tarjetasDelFeed.length ? (
+              <FiltroChips opciones={temasFeed} valor={temaActivo} onCambiar={setTemaFeed} />
             ) : null}
+            {feed === "pais" && diaFeed ? <FechasDelDia feed="pais" dia={diaFeed} style={{ marginTop: 8 }} /> : null}
             {feed === "observatorio" ? <ObservatorioCC /> : null}
 
 
             {feed === "congreso" ? (
-              vistaCongreso === "organizado" ? (
-                <CongresoOrganizado
-                  dias={diasCongreso || []}
-                  onPagina={irAIniciativas}
-                  onAbrir={(item) => {
-                    evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
-                    setNotaCongreso(item);
-                  }}
+              /* Una sola vista: «Explora el Congreso» plegado arriba y, debajo,
+                 el tablero de los días. Elegir una sección la pone en lugar
+                 del tablero. */
+              <CongresoOrganizado
+                dias={diasDelTablero}
+                onPagina={irAIniciativas}
+                onAbrir={(item) => {
+                  evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                  setNotaCongreso(item);
+                }}
+              >
+              {diaFeed ? (
+                <FechasDelDia
+                  feed="congreso"
+                  dia={diaFeed}
+                  omitir={diasDelTablero[0]?.votaciones?.[0]?.sesion ? ["sesion"] : []}
+                  style={{ marginTop: 8 }}
                 />
-              ) : cargandoCongreso ? (
+              ) : null}
+              {cargandoTablero ? (
                 <EstadoFeed sticker="cargando">Trayendo lo del Congreso…</EstadoFeed>
-              ) : !diasCongreso?.length ? (
-                <EstadoFeed sticker="vacio">El Congreso no publicó nada en estos días.</EstadoFeed>
+              ) : !diasDelTablero.length ? (
+                <EstadoFeed sticker="vacio">
+                  {!diaFeed ? "El Congreso no publicó nada en estos días." : diaPasado ? "El Congreso no publicó nada este día." : "Este día aún no llega."}
+                </EstadoFeed>
               ) : (
-                !diasVisiblesCongreso.length ? <EstadoFeed sticker="vacio">No hay publicaciones de esta sección en estos días.</EstadoFeed> : diasVisiblesCongreso.map((dia, n) => (
+                diasDelTablero.map((dia, n) => (
                   <View key={dia.fecha}>
                     {/* Cada día lleva su fecha, también el primero: lo más
                         reciente del Congreso puede ser de ayer, y sin fecha
-                        se leería como de hoy. */}
+                        se leería como de hoy. Si hubo pleno, al lado va el
+                        número de la sesión. */}
                     <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: n > 0 ? 6 : 16, marginBottom: 18 }}>
-                      {nombreDelDia(dia.fecha).toUpperCase()}
+                      {fechaYSesion(nombreDelDia(dia.fecha), dia.votaciones?.[0]?.sesion).toUpperCase()}
                     </Text>
                     {/* El noticiero es un salto a YouTube; lo demás, los
                         títulos de lo que se vio ese día, sin enlace. */}
@@ -1032,32 +1110,46 @@ export default function Index() {
                     <View style={{ marginBottom: 22 }}>
                       {dia.items
                         .filter((item) => item.tipo !== "noticiero")
-                        .map((item, i, lista) => (
-                          <ItemCongreso
-                            key={item.id}
-                            item={item}
-                            ultimo={i === lista.length - 1}
-                            onPress={() => {
-                              evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
-                              setNotaCongreso(item);
-                            }}
-                          />
-                        ))}
+                        .map((item, i, lista) => {
+                          const abrir = () => {
+                            evento(EV.FEED_NOTICIA_ABIERTA, { tema: "congreso" });
+                            setNotaCongreso(item);
+                          };
+                          // Las iniciativas van con la misma tarjeta que en su registro.
+                          return claseDe(item) === "iniciativa" ? (
+                            <IniciativaDeNota key={item.id} item={item} onAbrir={abrir} onEntidad={(e) => setEntityModal(e)} />
+                          ) : (
+                            <ItemCongreso
+                              key={item.id}
+                              item={item}
+                              ultimo={i === lista.length - 1}
+                              onPress={abrir}
+                              onEntidad={(e) => setEntityModal(e)}
+                            />
+                          );
+                        })}
                     </View>
                   </View>
                 ))
-              )
-            ) : feed === "observatorio" ? null : hotTopics.length === 0 && cargandoNoticias ? (
+              )}
+              </CongresoOrganizado>
+            ) : feed === "observatorio" ? null : diaFeed && diaPasado && cargandoNoticiasDelDia ? (
+              <EstadoFeed sticker="cargando">Trayendo las noticias de ese día…</EstadoFeed>
+            ) : diaFeed && !tarjetasDelFeed.length ? (
+              <EstadoFeed sticker="vacio">{diaPasado ? "No hay noticias guardadas de este día." : "Este día aún no llega."}</EstadoFeed>
+            ) : hotTopics.length === 0 && cargandoNoticias ? (
               <EstadoFeed sticker="cargando">Trayendo las noticias…</EstadoFeed>
             ) : hotTopics.length === 0 ? (
               <EstadoFeed sticker="vacio">Sin noticias en las últimas 48 horas.</EstadoFeed>
+            ) : !noticiasVisibles.length ? (
+              <EstadoFeed sticker="vacio">Nada de tus temas en estos días.</EstadoFeed>
             ) : (
               porDiaGT(noticiasVisibles).map((grupo, g) => (
                 <View key={grupo.dia}>
                   {/* El día se nombra siempre que no sea hoy, y también hoy si
                       abajo viene otro: así nunca se confunde lo de ayer con lo
-                      de hoy. */}
-                  {grupo.dia !== diaGT(Date.now()) || g > 0 ? (
+                      de hoy. Con un día elegido ya lo dice el título. */}
+                  {!diaFeed && (grupo.dia !== diaGT(Date.now()) || g > 0) ? (
                     <Text style={{ fontSize: 10, fontWeight: "800", color: INK.faint, letterSpacing: 1.2, marginTop: g ? 8 : 4, marginBottom: 16 }}>
                       {nombreDelDia(grupo.dia).toUpperCase()}
                     </Text>
@@ -1089,8 +1181,8 @@ export default function Index() {
             )}
           </View>
 
-          {/* Trending Ahora */}
-          {(trendingTopics.length > 0 || topKeywords.length > 0) && (
+          {/* Trending Ahora. Lo de ahora no va cuando se mira otro día. */}
+          {!diaFeed && (trendingTopics.length > 0 || topKeywords.length > 0) && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
               <SectionHeader title="Trending ahora" />
 
@@ -1165,7 +1257,7 @@ export default function Index() {
           )}
 
           {/* Últimas Noticias */}
-          {tweets.length > 0 && (
+          {!diaFeed && tweets.length > 0 && (
             <View style={{ paddingHorizontal: 24, marginBottom: 32 }}>
               <SectionHeader title="Últimas noticias" />
 
@@ -1297,53 +1389,6 @@ function SectionHeader({ title, marcado }) {
   );
 }
 
-
-/**
- * Tablero u organizado: las dos formas de ver lo del Congreso.
- *
- * El tablero son los días tal como pasaron —el noticiero, las votaciones, las
- * notas—; organizado es lo mismo de la semana juntado por tema, para encontrar
- * una iniciativa o una comisión sin recorrer día por día.
- */
-function VistasCongreso({ valor, onCambiar }) {
-  const opciones = [
-    ["tablero", "Tablero"],
-    ["organizado", "Organizado"],
-  ];
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignSelf: "flex-start",
-        marginTop: 2,
-        marginBottom: 6,
-        padding: 3,
-        borderRadius: 12,
-        backgroundColor: "rgba(28,43,34,0.06)",
-      }}
-    >
-      {opciones.map(([clave, nombre]) => {
-        const activo = valor === clave;
-        return (
-          <Pressable
-            key={clave}
-            onPress={() => onCambiar(clave)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activo }}
-            style={{
-              paddingVertical: 6,
-              paddingHorizontal: 14,
-              borderRadius: 9,
-              backgroundColor: activo ? "#FFFFFF" : "transparent",
-            }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: activo ? "700" : "500", color: activo ? INK.title : INK.meta }}>{nombre}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 /** Una tarjeta del país que habla del Congreso: también se ve desde allá. */
 const DEL_CONGRESO = /\bcongreso\b|\bdiputad[oa]s?\b|\bbancadas?\b|\bpleno del\b|\blegislativo\b/i;

@@ -60,16 +60,16 @@ function presentar(p) {
  *
  * Dos renglones grises con un borde apenas visible se leen como una lista de
  * ajustes, no como algo que se elige: el color es lo que distingue a la
- * suscripción del paquete antes de leer una sola palabra. Índigo es el acento
- * de la app (el mismo del botón del portal); el ámbar queda para lo que se
+ * suscripción del paquete antes de leer una sola palabra. El verde es el de
+ * la app (el del orbe y el botón del portal); el ámbar queda para lo que se
  * cuenta en monedas.
  */
 const PALETA = {
   suscripcion: {
-    suave: 'rgba(99,102,241,0.12)',
-    borde: 'rgba(99,102,241,0.40)',
-    fuerte: '#5B5BD6',
-    lavado: ['rgba(99,102,241,0.18)', 'rgba(139,92,246,0.09)'],
+    suave: 'rgba(62,107,76,0.12)',
+    borde: 'rgba(62,107,76,0.40)',
+    fuerte: '#3E6B4C',
+    lavado: ['rgba(62,107,76,0.16)', 'rgba(62,107,76,0.06)'],
   },
   creditos: {
     suave: 'rgba(245,158,11,0.14)',
@@ -238,8 +238,8 @@ export default function SeccionPlan() {
                   <View style={{ flex: 1 }} />
                 )}
                 {enPrueba ? (
-                  <View style={{ ...chipStyle('rgba(255,255,255,0.75)', 'rgba(99,102,241,0.30)'), paddingHorizontal: 9 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: ACCENT.indigo.ink }}>Prueba</Text>
+                  <View style={{ ...chipStyle('rgba(255,255,255,0.75)', 'rgba(62,107,76,0.30)'), paddingHorizontal: 9 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#3E6B4C' }}>Prueba</Text>
                   </View>
                 ) : null}
               </View>
@@ -350,7 +350,7 @@ export default function SeccionPlan() {
                   >
                     <LinearGradient
                       colors={
-                        esSuscripcion(seleccion) ? ['#6366F1', '#4338CA'] : ['#F59E0B', '#D97706']
+                        esSuscripcion(seleccion) ? ['#4A7A59', '#2F5640'] : ['#F59E0B', '#D97706']
                       }
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 1 }}

@@ -547,9 +547,9 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
             </Text>
           ) : null}
 
-          {/* El filtro solo aparece si hay algo por qué filtrar: sin posts
-              analizados, o sin nada que se repita, sería un botón que abre un
-              panel vacío. */}
+          {/* El filtro solo aparece si hay algo por qué filtrar; con la cuenta,
+              basta un post traído. Sin posts sería un botón que abre un panel
+              vacío. */}
           {facetas.length || filtrando ? (
             <Pressable
               onPress={alternarFiltro}
@@ -557,7 +557,7 @@ export default function PostsSheet({ onClose, abrirId = null, topInset = 0, bott
               style={{ padding: 6 }}
               accessibilityRole="button"
               accessibilityState={{ expanded: filtrando }}
-              accessibilityLabel={filtrando ? 'Cerrar el filtro' : 'Filtrar por lo que hablan los posts'}
+              accessibilityLabel={filtrando ? 'Cerrar el filtro' : 'Filtrar por cuenta o por lo que hablan los posts'}
             >
               <ListFilter size={18} color={filtrando ? INK.title : INK.faint} />
             </Pressable>

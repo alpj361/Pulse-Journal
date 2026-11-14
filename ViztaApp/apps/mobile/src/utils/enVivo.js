@@ -32,6 +32,23 @@ const TABLAS = [
   'nota_documentos',
   // «Qué cambió» de lo que guarda un agente: sus filas no se ven directo.
   'colab_cambios',
+  // El feed y el Congreso (ver utils/datosEnVivo.js).
+  'news_cards',
+  'narrativa_diaria',
+  'trends',
+  'feed_data',
+  'dataset_rows',
+  'congreso_items',
+  'iniciativas',
+  'iniciativa_eventos',
+  'iniciativas_sin_numero',
+  'normas',
+  'reformas',
+  'votaciones',
+  'pc_items',
+  'sesion_acta_oficial',
+  'sesion_avisos',
+  'pc_sesion_enmiendas',
 ];
 
 const oyentes = new Set(); // { tablas: Set, fn }
@@ -44,6 +61,9 @@ function repartir(tabla, payload) {
     tabla,
     tipo: payload.eventType,
     id: payload.new?.id ?? payload.old?.id ?? null,
+    // La fila tal como llegó. Puede venir sin las columnas largas (ver arriba):
+    // sirve para saber de quién es, no para copiarla a una lista.
+    fila: payload.new && Object.keys(payload.new).length ? payload.new : payload.old || null,
   };
   for (const o of oyentes) {
     if (o.tablas.has(tabla)) o.fn(ev);

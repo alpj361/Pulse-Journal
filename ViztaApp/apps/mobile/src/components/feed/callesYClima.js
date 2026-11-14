@@ -1,5 +1,5 @@
 /**
- * Las calles y el clima del día, para «Cómo está el día».
+ * Las calles y el clima del día, para el termómetro del día.
  *
  * Calles: los eventos que NewsCron saca de las noticias de Movilidad
  * (`feed_data`, categoría Movilidad): bloqueos, accidentes, obras, cierres.
@@ -58,14 +58,15 @@ export function eventosActivos(fila) {
 }
 
 /**
- * Cómo están las calles: por los eventos activos, sin modelo.
- * Pesado: 2 o más de impacto alto, o 5 o más activos. Cargado: 2 o más activos.
+ * La incidencia en las calles: por los eventos activos, sin modelo.
+ * Alta: 2 o más de impacto alto, o 5 o más activos. Moderada: 2 o más activos.
+ * Las claves (pesado, cargado, tranquilo) se quedan: nombran los stickers.
  */
 export function nivelCalles(eventos) {
   const altos = eventos.filter((e) => e.alto).length;
-  if (altos >= 2 || eventos.length >= 5) return { clave: 'pesado', nombre: 'Pesado', color: '#C0453B' };
-  if (eventos.length >= 2) return { clave: 'cargado', nombre: 'Cargado', color: '#D98A3D' };
-  return { clave: 'tranquilo', nombre: 'Tranquilo', color: '#4C9A6A' };
+  if (altos >= 2 || eventos.length >= 5) return { clave: 'pesado', nombre: 'Alta', color: '#C0453B' };
+  if (eventos.length >= 2) return { clave: 'cargado', nombre: 'Moderada', color: '#D98A3D' };
+  return { clave: 'tranquilo', nombre: 'Baja', color: '#4C9A6A' };
 }
 
 // ─── Pronóstico ──────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ export const FEEDS = [
 
 const ANCHO_MENU = 190;
 
-function Cristal({ radio, children, style }) {
+export function Cristal({ radio, children, style }) {
   return (
     <View style={[CARD_SHADOW, { borderRadius: radio }, style]}>
       <View style={{ borderRadius: radio, borderWidth: 1, borderColor: GLASS.rim, overflow: 'hidden' }}>

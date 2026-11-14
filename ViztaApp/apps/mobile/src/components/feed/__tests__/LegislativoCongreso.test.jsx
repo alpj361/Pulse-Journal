@@ -5,10 +5,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from '../../../utils/supabase';
 import { ListaIniciativas, ListaLeyes, ListaVotaciones, Iniciativa, registroCompleto, resumenDe } from '../LegislativoCongreso';
 
+// El lector se reemplaza por un texto con lo que recibió, para ver qué abre.
+jest.mock('../../LectorDocumento', () => {
+  const { Text } = require('react-native');
+  return ({ documento }) => (documento ? <Text>{`lector:${documento.uri}`}</Text> : null);
+});
 jest.mock('../../../utils/supabase', () => ({ supabase: { from: jest.fn() } }));
 jest.mock('../TarjetasCongreso', () => {
   const { Text } = require('react-native');
-  return { VotacionCongreso: ({ votacion }) => <Text>{votacion.asunto}</Text>, Camino: ({ etapa }) => <Text>{etapa}</Text>, Titulo: Text, Rotulo: Text, RAYA: '#ddd', TINTA: '#234' };
+  return { GrupoVotacion: ({ grupo }) => <Text>{(grupo.principal || grupo.pasos[0]).asunto}</Text>, useNombresDeLeyes: () => ({ data: {} }),
+    Camino: ({ etapa }) => <Text>{etapa}</Text>, Titulo: Text, Rotulo: Text, RAYA: '#ddd', TINTA: '#234' };
 });
 
 const registro = Array.from({ length: 45 }, (_, i) => ({
@@ -16,7 +22,9 @@ const registro = Array.from({ length: 45 }, (_, i) => ({
   url_pdf: `https://congreso.gob.gt/${i}.pdf`, eventos_timeline: [],
 }));
 const decretos = Array.from({ length: 83 }, (_, i) => ({ numero: `${83 - i}-${i < 23 ? 2026 : i < 53 ? 2025 : 2024}`, fecha: `${i < 23 ? 2026 : i < 53 ? 2025 : 2024}-09-01`, resumen: `Ley de prueba ${i}`, pdf_url: i < 3 ? null : `https://congreso.gob.gt/${i}.pdf` }));
-const votaciones = Array.from({ length: 82 }, (_, i) => ({ id: String(i).padStart(3, '0'), fecha: i < 2 ? '2026-10-22' : '2026-09-08', asunto: `Votación sobre asunto ${i}`, resultado: i < 54 ? 'aprobada' : 'no_aprobada' }));
+const votaciones = [...Array.from({ length: 82 }, (_, i) => ({ id: String(i).padStart(3, '0'), fecha: i < 2 ? '2026-10-22' : '2026-09-08', asunto: `Votación sobre asunto ${i}`, resultado: i < 54 ? 'aprobada' : 'no_aprobada' })),
+  // El trámite de una sesión no tiene votación principal: la lista no debe depender de ella.
+  { id: 'tra', fecha: '2026-09-08', asunto: 'Aprobación del Orden del Día', resultado: 'no_aprobada' }];
 const notas = [{ id: 'n', iniciativa_numero: 6960, stage: 'dictamen', digest_date: '2026-10-24', summary: 'Resumen que explica los cambios de prueba de la propuesta.', url: 'https://congreso.gob.gt/nota' }];
 let renderer, cliente;
 const texto = () => JSON.stringify(renderer.toJSON());
@@ -25,9 +33,10 @@ async function esperar() { await act(async () => { await new Promise((r) => setT
 
 beforeEach(() => {
   supabase.from.mockImplementation((tabla) => {
-    const rows = tabla === 'iniciativas_app_view' ? registro : tabla === 'congreso_items_app_view' ? notas : tabla === 'pc_congreso_decretos_view' ? decretos : tabla === 'votaciones' ? votaciones : [{ id: 's', titulo: 'Una propuesta anunciada', estado: 'anunciada', fuentes: [] }];
+    const rows = tabla === 'normas' ? [{ decreto: 'Decreto 10-2026' }] : tabla === 'iniciativas_app_view' ? registro : tabla === 'congreso_items_app_view' ? notas : tabla === 'pc_congreso_decretos_view' ? decretos : tabla === 'votaciones' ? votaciones : [{ id: 's', titulo: 'Una propuesta anunciada', estado: 'anunciada', fuentes: [] }];
     const query = {
       select: () => query, order: () => query, not: () => query, is: () => query,
+      eq: () => Promise.resolve({ data: rows, error: null }),
       range: jest.fn((a, b) => Promise.resolve({ data: rows.slice(a, b + 1), error: null })),
       limit: () => Promise.resolve({ data: rows, error: null }),
     };
@@ -69,14 +78,14 @@ test('filtra por la etapa documentada en una nota y pliega las sin número', asy
   expect(texto()).toContain('Resumen que explica');
 });
 
-test('el PDF abre desde la card cerrada y muestra el error si falla', async () => {
-  jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('falló'));
-  act(() => { renderer = TestRenderer.create(<Iniciativa ini={registro[0]} />); });
+test('el PDF se lee en Vizta desde la card cerrada, sin salir al navegador', async () => {
+  jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+  act(() => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={registro[0]} /></QueryClientProvider>); });
   const link = boton('documento de la iniciativa, iniciativa 7000');
   expect(link).toBeDefined();
   await act(async () => { link.props.onPress(); });
-  expect(Linking.openURL).toHaveBeenCalledWith(registro[0].url_pdf);
-  expect(texto()).toContain('No se pudo abrir. Probá de nuevo.');
+  expect(Linking.openURL).not.toHaveBeenCalled();
+  expect(texto()).toContain(`lector:${registro[0].url_pdf}`);
 });
 
 test('un resumen útil de la nota reemplaza al objetivo que repite el título', () => {
@@ -124,7 +133,7 @@ test('omite el resumen semanal y elige la noticia del río Pinula', () => {
 
 test('abre el resumen completo sin abrir el recorrido', () => {
   const resumen = 'La propuesta cambia las obligaciones municipales y protege las fuentes de agua. '.repeat(8);
-  act(() => { renderer = TestRenderer.create(<Iniciativa ini={registro[0]} resumen={resumen} />); });
+  act(() => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={registro[0]} resumen={resumen} /></QueryClientProvider>); });
   const expansion = boton('leer resumen completo, iniciativa 7000');
   expect(expansion.props.accessibilityState.expanded).toBe(false);
   act(() => expansion.props.onPress());
@@ -154,7 +163,10 @@ test('leyes: busca todo el registro, filtra por año y cambia de página', async
 
 test('votaciones: consulta el historial independiente de los días del tablero', async () => {
   await montarRegistro(ListaVotaciones);
-  expect(boton('todas, 82')).toBeDefined();
+  expect(boton('importantes, 82')).toBeUndefined();
+  expect(boton('todas, 83')).toBeDefined();
+  expect(boton('acuerdos y resoluciones, 82')).toBeDefined();
+  expect(boton('trámite de la sesión, 1')).toBeDefined();
   expect(boton('página 5')).toBeDefined();
   act(() => boton('página 5').props.onPress());
   expect(texto()).toContain('Votación sobre asunto 3');
@@ -163,4 +175,15 @@ test('votaciones: consulta el historial independiente de los días del tablero',
   act(() => boton('aprobadas, 54').props.onPress());
   expect(boton('página 3')).toBeDefined();
   expect(boton('página 5')).toBeUndefined();
+  act(() => renderer.root.findByType(TextInput).props.onChangeText('orden del día'));
+  act(() => boton('cualquier resultado, 1').props.onPress());
+  expect(texto()).toContain('Aprobación del Orden del Día');
+});
+
+test('una iniciativa cuyo decreto fue vetado dice «vetada», no «aprobada»', async () => {
+  const vetada = { ...registro[0], numero: 6355, decreto_resultante: '10-2026' };
+  await act(async () => { renderer = TestRenderer.create(<QueryClientProvider client={cliente}><Iniciativa ini={vetada} /></QueryClientProvider>); });
+  await esperar();
+  expect(texto()).toContain('vetada');
+  expect(texto()).not.toContain('APROBADA');
 });

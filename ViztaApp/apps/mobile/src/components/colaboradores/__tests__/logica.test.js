@@ -56,10 +56,18 @@ describe('la lista', () => {
   });
 
   it('dice qué puede hacer en palabras', () => {
-    expect(queHace(investigador.permisos)).toBe('lee y crea');
-    expect(queHace({ leer: true, crear: true, editar: true })).toBe('lee, crea y edita');
+    expect(queHace(investigador.permisos)).toBe('consulta y propone');
+    expect(queHace({ leer: true, crear: true, editar: true })).toBe('consulta, propone y edita tu cuenta');
     expect(queHace({ leer: true, crear: true, editar: true, eliminar: true })).toBe('puede todo');
     expect(queHace({})).toBe('sin acceso');
+  });
+  it('permisos v4.8: sin editar, lo suyo llega como propuesta', () => {
+    const { destinoDe, permisosMcp, catalogoPermisos } = require('../logica');
+    expect(destinoDe({ leer: true, crear: true })).toBe('propuesta');
+    expect(destinoDe({ editar: true })).toBe('cuenta');
+    expect(permisosMcp({ leer: true, crear: true, editar: true, eliminar: false })).toEqual({ leer: true, crear: true, modificar: true, borrar: false });
+    expect(catalogoPermisos({ leer: 'del servidor' }).leer.texto).toBe('del servidor');
+    expect(catalogoPermisos(null).editar.titulo).toBe('Editar tu cuenta');
   });
 
   it('cuenta lo que espera aprobación solo si hay algo', () => {

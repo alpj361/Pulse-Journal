@@ -9,58 +9,69 @@ import { organizar, traerArchivoCongreso } from './congreso';
 import { BuscadorRegistro, CARD_REGISTRO, CuentaRegistro, ListaIniciativas, ListaLeyes, ListaVotaciones, Paginado, useConteosLegislativos } from './LegislativoCongreso';
 import { Origen, RAYA, Rotulo, TINTA, Titulo, cabezaDe, rotuloDe } from './TarjetasCongreso';
 import FiltroChips from './FiltroChips';
+import PlenoDiputados, { useDiputados } from './PlenoDiputados';
+import { enElPleno } from './diputados';
 import { buscarRegistro, fechaRegistro, periodoDe } from './organizacion';
 
-const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones']];
+const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones'], ['diputados', 'Diputados']];
 const ACTIVIDAD = [['comisiones', 'Comisiones y citaciones'], ['pleno', 'Pleno y sesiones'], ['fiscalizacion', 'Fiscalización y actividad']];
 const NOMBRES = Object.fromEntries([...REGISTROS, ...ACTIVIDAD]);
 
-/** Distingue los registros disponibles de la cobertura de noticias por período. */
-export default function CongresoOrganizado({ dias, onAbrir, onPagina }) {
+/**
+ * El Congreso en una sola vista: arriba «Explora el Congreso», plegado, y abajo
+ * el tablero de los días (`children`). Al elegir una sección —un registro o un
+ * tipo de actividad— esa sección ocupa el lugar del tablero; «ver el tablero»
+ * vuelve a los días.
+ */
+export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }) {
   const [elegida, setElegida] = useState(null);
-  const [abierto, setAbierto] = useState(true);
+  const [abierto, setAbierto] = useState(false);
   const [alcance, setAlcance] = useState('reciente');
   const anclaSeccion = useRef(null);
   const registro = useConteosLegislativos();
+  const diputados = useDiputados({ enabled: abierto || elegida === 'diputados' });
   const archivo = useQuery({ queryKey: ['congreso-archivo-noticias'], queryFn: traerArchivoCongreso,
     enabled: alcance === 'historial', staleTime: 10 * 60 * 1000 });
   const fuente = alcance === 'historial' ? archivo.data || [] : dias || [];
   const secciones = useMemo(() => organizar(fuente), [fuente]);
-  const cuantas = (clave) => REGISTROS.some(([c]) => c === clave) ? registro.data?.[clave] : (secciones[clave] || []).length;
+  // Los diputados se cuentan en el pleno: quien dejó la curul y ya tiene reemplazo no suma.
+  const cuantas = (clave) => clave === 'diputados' ? (diputados.data ? enElPleno(diputados.data).length : undefined)
+    : REGISTROS.some(([c]) => c === clave) ? registro.data?.[clave] : (secciones[clave] || []).length;
   const elegir = (clave) => { setElegida(clave); setAbierto(false); onPagina?.(anclaSeccion.current); };
   const esRegistro = REGISTROS.some(([c]) => c === elegida);
   const periodo = periodoDe(fuente, 'fecha');
   return (
     <View ref={anclaSeccion} collapsable={false} style={{ marginTop: 14 }}>
       <Pressable onPress={() => setAbierto((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierto }}
-        accessibilityLabel={abierto ? 'plegar secciones del Congreso' : 'cambiar sección del Congreso'}
+        accessibilityLabel={abierto ? 'plegar secciones del Congreso' : elegida ? 'cambiar sección del Congreso' : 'explorar el Congreso'}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginBottom: 8 }}>
         {elegida ? <Sticker nombre={elegida} size={30} /> : null}
-        <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{elegida ? NOMBRES[elegida] : 'Explorá el Congreso'}</Text>
-          {!abierto ? <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>cambiar sección</Text> : null}</View>
+        <View style={{ flex: 1 }}><Text style={{ fontSize: 15, fontWeight: '700', color: INK.title }}>{elegida ? NOMBRES[elegida] : 'Explora el Congreso'}</Text>
+          {!abierto ? <Text style={{ fontSize: 11, color: INK.meta, marginTop: 2 }}>{elegida ? 'cambiar sección' : 'iniciativas, leyes, votaciones, diputados y actividad'}</Text> : null}</View>
         {abierto ? <ChevronUp size={17} color={INK.meta} /> : <ChevronDown size={17} color={INK.meta} />}
       </Pressable>
+      {elegida ? <Pressable onPress={() => { setElegida(null); setAbierto(false); }} accessibilityRole="button" accessibilityLabel="ver el tablero de los días"
+        style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', marginTop: -6, marginBottom: 4 }}>
+        <Text style={{ fontSize: 13, color: TINTA }}>‹ ver el tablero</Text>
+      </Pressable> : null}
       {abierto ? <View style={{ marginBottom: 16 }}>
         <GrupoSecciones titulo="REGISTROS DISPONIBLES" secciones={REGISTROS} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
-        {registro.isError ? <Text style={{ color: INK.meta, fontSize: 12 }}>Los conteos aún no están disponibles. Podés abrir cada registro.</Text> : null}
+        {registro.isError ? <Text style={{ color: INK.meta, fontSize: 12 }}>Los conteos aún no están disponibles. Puedes abrir cada registro.</Text> : null}
         <GrupoSecciones titulo="NOTICIAS Y ACTIVIDAD" secciones={ACTIVIDAD} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
       </View> : null}
       {elegida === 'iniciativas' ? <ListaIniciativas onPagina={onPagina} /> : null}
       {elegida === 'leyes' ? <ListaLeyes onPagina={onPagina} /> : null}
       {elegida === 'votaciones' ? <ListaVotaciones onPagina={onPagina} /> : null}
-      {!esRegistro ? <>
+      {elegida === 'diputados' ? <PlenoDiputados /> : null}
+      {!elegida ? children : null}
+      {elegida && !esRegistro ? <>
         <FiltroChips valor={alcance} onCambiar={setAlcance} opciones={[
           { clave: 'reciente', nombre: 'últimos días' }, { clave: 'historial', nombre: 'historial disponible' },
         ]} />
         {periodo ? <Text style={{ fontSize: 12, lineHeight: 18, color: INK.meta, marginBottom: 12 }}>{periodo}</Text> : null}
         {alcance === 'historial' && archivo.isLoading ? <Text style={{ color: INK.meta, paddingVertical: 16 }}>Trayendo las noticias anteriores…</Text>
           : alcance === 'historial' && archivo.isError ? <Pressable onPress={() => archivo.refetch()} accessibilityRole="button" style={{ minHeight: 44 }}><Text style={{ color: TINTA }}>No se pudo traer el historial. Volver a intentar.</Text></Pressable>
-          : elegida ? <ActividadLista key={`${elegida}-${alcance}`} lista={secciones[elegida] || []} clave={elegida} onAbrir={onAbrir} onPagina={onPagina} />
-          : ACTIVIDAD.map(([clave, nombre]) => <View key={clave} style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: INK.title, marginBottom: 6 }}>{nombre} · {(secciones[clave] || []).length}</Text>
-              {(secciones[clave] || []).slice(0, 2).map((item) => <Entrada key={item.id} item={item} onAbrir={onAbrir} />)}
-              <Pressable onPress={() => elegir(clave)} accessibilityRole="button" style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: TINTA, fontSize: 13 }}>ver esta sección ›</Text></Pressable>
-            </View>)}
+          : <ActividadLista key={`${elegida}-${alcance}`} lista={secciones[elegida] || []} clave={elegida} onAbrir={onAbrir} onPagina={onPagina} />}
       </> : null}
     </View>
   );

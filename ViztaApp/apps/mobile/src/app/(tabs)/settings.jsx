@@ -4,7 +4,6 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
   Modal,
   Pressable,
@@ -21,6 +20,8 @@ import { useRouter } from 'expo-router';
 import appConfig from '../../../app.json';
 import GlassCard from '../../components/GlassCard';
 import { INK, ACCENT, chipStyle } from '../../components/theme';
+import { PAPEL } from '../../components/codex/Papel';
+import MorphingInfinity from '../../components/MorphingInfinity';
 import {
   ArrowLeft,
   Eye,
@@ -46,8 +47,8 @@ import SeccionPlan from '../../components/ajustes/SeccionPlan';
 import SeccionPerfil from '../../components/ajustes/SeccionPerfil';
 import { puedeColaborar } from '../../components/colaboradores/piezas';
 import SeccionUso from '../../components/ajustes/SeccionUso';
-import SeccionReconocimiento from '../../components/ajustes/SeccionReconocimiento';
 import SeccionAnalisisAutomatico from '../../components/ajustes/SeccionAnalisisAutomatico';
+import SeccionEtiquetasAutomaticas from '../../components/ajustes/SeccionEtiquetasAutomaticas';
 import SeccionChangelog from '../../components/ajustes/SeccionChangelog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -62,11 +63,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * Leyéndola de `Constants.expoConfig`, hay un solo lugar que declara la
  * versión y todos los demás la reflejan.
  */
-// `0.0.9` se muestra V.009; `0.0.9.1`, V.0091. El cuarto número es de los
-// archivos y no llega al build: iOS no acepta cuatro números en la versión, así
-// que el build nativo sale de `ios.version` y `android.version` en `app.json`.
-const [, , menor = '0', parche = ''] = appConfig.expo.version.split('.');
-const APP_VERSION = `V.${menor.padStart(3, '0')}${parche}`;
+// `0.0.9` se muestra V.009; `0.0.9.1`, V.0091; `0.0.9.9.1`, V.0099.1. Del cuarto
+// número en adelante es de los archivos y no llega al build: iOS no acepta más de
+// tres números en la versión, así que el build nativo sale de `ios.version` y
+// `android.version` en `app.json`.
+const [, , menor = '0', parche = '', ...resto] = appConfig.expo.version.split('.');
+const APP_VERSION = `V.${menor.padStart(3, '0')}${parche}${resto.map((n) => `.${n}`).join('')}`;
 
 function formatDate(isoString) {
   if (!isoString) return '';
@@ -112,30 +114,30 @@ function LoginModal({ visible, onClose, onSuccess }) {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(28,43,34,0.28)', justifyContent: 'flex-end' }}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
 
           <View style={{
-            backgroundColor: '#0b0d22',
+            backgroundColor: PAPEL,
             borderTopLeftRadius: 28,
             borderTopRightRadius: 28,
             borderTopWidth: 1,
-            borderColor: 'rgba(99,102,241,0.2)',
+            borderColor: 'rgba(28,43,34,0.08)',
             paddingBottom: insets.bottom + 24,
           }}>
             {/* Handle + close */}
             <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 8 }}>
-              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.15)' }} />
             </View>
 
             <View style={{ paddingHorizontal: 24, paddingTop: 8 }}>
               {/* Header */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                 <View>
-                  <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+                  <Text style={{ fontSize: 20, fontWeight: '800', color: INK.title }}>
                     Iniciar sesión
                   </Text>
-                  <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>
+                  <Text style={{ fontSize: 13, color: INK.meta, marginTop: 3 }}>
                     Portal Web · Vizta
                   </Text>
                 </View>
@@ -143,55 +145,55 @@ function LoginModal({ visible, onClose, onSuccess }) {
                   onPress={handleClose}
                   style={{
                     width: 34, height: 34, borderRadius: 17,
-                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    backgroundColor: 'rgba(28,43,34,0.05)',
                     alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <X size={17} color="rgba(255,255,255,0.6)" />
+                  <X size={17} color={INK.meta} />
                 </TouchableOpacity>
               </View>
 
               {/* Email */}
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: INK.meta, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>
                   CORREO ELECTRÓNICO
                 </Text>
                 <View style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  backgroundColor: 'rgba(255,255,255,0.85)',
                   borderRadius: 13,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.1)',
+                  borderColor: 'rgba(28,43,34,0.12)',
                   paddingHorizontal: 14,
                   height: 50,
                 }}>
-                  <User size={16} color="rgba(255,255,255,0.35)" />
+                  <User size={16} color={INK.faint} />
                   <TextInput
                     value={email}
                     onChangeText={setEmail}
                     placeholder="tu@correo.com"
-                    placeholderTextColor="rgba(255,255,255,0.22)"
+                    placeholderTextColor={INK.faint}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    style={{ flex: 1, color: '#fff', fontSize: 15, marginLeft: 10 }}
+                    style={{ flex: 1, color: INK.title, fontSize: 15, marginLeft: 10 }}
                   />
                 </View>
               </View>
 
               {/* Password */}
               <View style={{ marginBottom: 20 }}>
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: INK.meta, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 }}>
                   CONTRASEÑA
                 </Text>
                 <View style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
+                  backgroundColor: 'rgba(255,255,255,0.85)',
                   borderRadius: 13,
                   borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.1)',
+                  borderColor: 'rgba(28,43,34,0.12)',
                   paddingHorizontal: 14,
                   height: 50,
                 }}>
@@ -199,16 +201,16 @@ function LoginModal({ visible, onClose, onSuccess }) {
                     value={password}
                     onChangeText={setPassword}
                     placeholder="••••••••"
-                    placeholderTextColor="rgba(255,255,255,0.22)"
+                    placeholderTextColor={INK.faint}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    style={{ flex: 1, color: '#fff', fontSize: 15 }}
+                    style={{ flex: 1, color: INK.title, fontSize: 15 }}
                   />
                   <TouchableOpacity onPress={() => setShowPassword((v) => !v)} style={{ padding: 4 }}>
                     {showPassword
-                      ? <EyeOff size={18} color="rgba(255,255,255,0.35)" />
-                      : <Eye size={18} color="rgba(255,255,255,0.35)" />
+                      ? <EyeOff size={18} color={INK.faint} />
+                      : <Eye size={18} color={INK.faint} />
                     }
                   </TouchableOpacity>
                 </View>
@@ -224,7 +226,7 @@ function LoginModal({ visible, onClose, onSuccess }) {
                   borderWidth: 1,
                   borderColor: 'rgba(239,68,68,0.2)',
                 }}>
-                  <Text style={{ fontSize: 13, color: '#f87171', lineHeight: 18 }}>{error}</Text>
+                  <Text style={{ fontSize: 13, color: ACCENT.red.ink, lineHeight: 18 }}>{error}</Text>
                 </View>
               ) : null}
 
@@ -235,8 +237,8 @@ function LoginModal({ visible, onClose, onSuccess }) {
                 style={{
                   backgroundColor:
                     isConnecting || !email.trim() || !password.trim()
-                      ? 'rgba(99,102,241,0.3)'
-                      : '#6366f1',
+                      ? 'rgba(28,43,34,0.25)'
+                      : INK.title,
                   borderRadius: 14,
                   paddingVertical: 16,
                   alignItems: 'center',
@@ -245,13 +247,13 @@ function LoginModal({ visible, onClose, onSuccess }) {
               >
                 {isConnecting ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <ActivityIndicator size="small" color="#fff" />
-                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff', marginLeft: 10 }}>
+                    <MorphingInfinity size={18} color="#FFFFFF" />
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF', marginLeft: 10 }}>
                       Conectando...
                     </Text>
                   </View>
                 ) : (
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
                     Conectar
                   </Text>
                 )}
@@ -333,20 +335,20 @@ function TermsModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(28,43,34,0.28)', justifyContent: 'flex-end' }}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={{
-          backgroundColor: '#0b0d22',
+          backgroundColor: PAPEL,
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,
           borderTopWidth: 1,
-          borderColor: 'rgba(99,102,241,0.2)',
+          borderColor: 'rgba(28,43,34,0.08)',
           maxHeight: '90%',
           paddingBottom: insets.bottom + 16,
         }}>
           {/* Handle */}
           <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 4 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.15)' }} />
           </View>
 
           {/* Header */}
@@ -358,13 +360,13 @@ function TermsModal({ visible, onClose }) {
             paddingTop: 12,
             paddingBottom: 16,
             borderBottomWidth: 1,
-            borderColor: 'rgba(255,255,255,0.07)',
+            borderColor: 'rgba(28,43,34,0.08)',
           }}>
             <View>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: INK.title }}>
                 Términos y Condiciones
               </Text>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+              <Text style={{ fontSize: 12, color: INK.faint, marginTop: 3 }}>
                 Vizta · StandAtPD
               </Text>
             </View>
@@ -372,11 +374,11 @@ function TermsModal({ visible, onClose }) {
               onPress={onClose}
               style={{
                 width: 34, height: 34, borderRadius: 17,
-                backgroundColor: 'rgba(255,255,255,0.08)',
+                backgroundColor: 'rgba(28,43,34,0.05)',
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <X size={17} color="rgba(255,255,255,0.6)" />
+              <X size={17} color={INK.meta} />
             </TouchableOpacity>
           </View>
 
@@ -385,32 +387,32 @@ function TermsModal({ visible, onClose }) {
             contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32 }}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 20, lineHeight: 18 }}>
+            <Text style={{ fontSize: 12, color: INK.meta, marginBottom: 20, lineHeight: 18 }}>
               Última actualización: abril 2026 · Versión Alpha
             </Text>
 
             {sections.map((section, i) => (
               <View key={i} style={{ marginBottom: 20 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc', marginBottom: 6 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title, marginBottom: 6 }}>
                   {section.title}
                 </Text>
-                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22 }}>
+                <Text style={{ fontSize: 14, color: INK.meta, lineHeight: 22 }}>
                   {section.content}
                 </Text>
               </View>
             ))}
 
             <View style={{
-              backgroundColor: 'rgba(99,102,241,0.08)',
+              backgroundColor: ACCENT.neutral.tint,
               borderRadius: 12,
               padding: 14,
               borderWidth: 1,
-              borderColor: 'rgba(99,102,241,0.2)',
+              borderColor: 'rgba(28,43,34,0.08)',
               marginTop: 4,
             }}>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 18, textAlign: 'center' }}>
+              <Text style={{ fontSize: 12, color: INK.meta, lineHeight: 18, textAlign: 'center' }}>
                 Al usar Vizta aceptas estos términos.{'\n'}
-                <Text style={{ color: '#a5b4fc' }}>contacto@standatpd.com</Text>
+                <Text style={{ color: INK.title }}>contacto@standatpd.com</Text>
               </Text>
             </View>
           </ScrollView>
@@ -479,10 +481,10 @@ function PrivacyModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(28,43,34,0.28)', justifyContent: 'flex-end' }}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={{
-          backgroundColor: '#0b0d22',
+          backgroundColor: PAPEL,
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,
           borderTopWidth: 1,
@@ -492,7 +494,7 @@ function PrivacyModal({ visible, onClose }) {
         }}>
           {/* Handle */}
           <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 4 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.15)' }} />
           </View>
 
           {/* Header */}
@@ -504,13 +506,13 @@ function PrivacyModal({ visible, onClose }) {
             paddingTop: 12,
             paddingBottom: 16,
             borderBottomWidth: 1,
-            borderColor: 'rgba(255,255,255,0.07)',
+            borderColor: 'rgba(28,43,34,0.08)',
           }}>
             <View>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: INK.title }}>
                 Política de Privacidad
               </Text>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+              <Text style={{ fontSize: 12, color: INK.faint, marginTop: 3 }}>
                 Vizta · StandAtPD
               </Text>
             </View>
@@ -518,11 +520,11 @@ function PrivacyModal({ visible, onClose }) {
               onPress={onClose}
               style={{
                 width: 34, height: 34, borderRadius: 17,
-                backgroundColor: 'rgba(255,255,255,0.08)',
+                backgroundColor: 'rgba(28,43,34,0.05)',
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <X size={17} color="rgba(255,255,255,0.6)" />
+              <X size={17} color={INK.meta} />
             </TouchableOpacity>
           </View>
 
@@ -531,7 +533,7 @@ function PrivacyModal({ visible, onClose }) {
             contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 32 }}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 20, lineHeight: 18 }}>
+            <Text style={{ fontSize: 12, color: INK.meta, marginBottom: 20, lineHeight: 18 }}>
               Última actualización: abril 2026 · Versión Alpha
             </Text>
 
@@ -555,10 +557,10 @@ function PrivacyModal({ visible, onClose }) {
 
             {sections.map((section, i) => (
               <View key={i} style={{ marginBottom: 20 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#6ee7b7', marginBottom: 6 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: ACCENT.green.ink, marginBottom: 6 }}>
                   {section.title}
                 </Text>
-                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 22 }}>
+                <Text style={{ fontSize: 14, color: INK.meta, lineHeight: 22 }}>
                   {section.content}
                 </Text>
               </View>
@@ -572,9 +574,9 @@ function PrivacyModal({ visible, onClose }) {
               borderColor: 'rgba(16,185,129,0.15)',
               marginTop: 4,
             }}>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 18, textAlign: 'center' }}>
+              <Text style={{ fontSize: 12, color: INK.meta, lineHeight: 18, textAlign: 'center' }}>
                 ¿Tienes preguntas sobre tu privacidad?{'\n'}
-                <Text style={{ color: '#6ee7b7' }}>contacto@standatpd.com</Text>
+                <Text style={{ color: ACCENT.green.ink }}>contacto@standatpd.com</Text>
               </Text>
             </View>
           </ScrollView>
@@ -590,10 +592,10 @@ function SupportModal({ visible, onClose }) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(28,43,34,0.28)', justifyContent: 'flex-end' }}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={{
-          backgroundColor: '#0b0d22',
+          backgroundColor: PAPEL,
           borderTopLeftRadius: 28,
           borderTopRightRadius: 28,
           borderTopWidth: 1,
@@ -603,7 +605,7 @@ function SupportModal({ visible, onClose }) {
         }}>
           {/* Handle */}
           <View style={{ alignItems: 'center', paddingTop: 12, marginBottom: 4 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(28,43,34,0.15)' }} />
           </View>
 
           {/* Header */}
@@ -615,13 +617,13 @@ function SupportModal({ visible, onClose }) {
             paddingTop: 12,
             paddingBottom: 16,
             borderBottomWidth: 1,
-            borderColor: 'rgba(255,255,255,0.07)',
+            borderColor: 'rgba(28,43,34,0.08)',
           }}>
             <View>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: INK.title }}>
                 Apoyo
               </Text>
-              <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 3 }}>
+              <Text style={{ fontSize: 12, color: INK.faint, marginTop: 3 }}>
                 Únete a la misión
               </Text>
             </View>
@@ -629,11 +631,11 @@ function SupportModal({ visible, onClose }) {
               onPress={onClose}
               style={{
                 width: 34, height: 34, borderRadius: 17,
-                backgroundColor: 'rgba(255,255,255,0.08)',
+                backgroundColor: 'rgba(28,43,34,0.05)',
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <X size={17} color="rgba(255,255,255,0.6)" />
+              <X size={17} color={INK.meta} />
             </TouchableOpacity>
           </View>
 
@@ -654,27 +656,27 @@ function SupportModal({ visible, onClose }) {
               justifyContent: 'center',
               marginBottom: 20,
             }}>
-              <Heart size={24} color="#f472b6" />
+              <Heart size={24} color={ACCENT.pink.ink} />
             </View>
 
-            <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.7)', lineHeight: 26, marginBottom: 28 }}>
+            <Text style={{ fontSize: 15, color: INK.body, lineHeight: 26, marginBottom: 28 }}>
               Siempre estamos buscando personas que nos apoyen a lograr la misión de diversificar los puntos de vista y poder tener una amplia variedad de noticias.{'\n\n'}
               Si deseas colaborar, no dudes en escribirnos con tus datos y razón de interés.
             </Text>
 
             {/* Account info */}
             <View style={{
-              backgroundColor: 'rgba(99,102,241,0.08)',
+              backgroundColor: ACCENT.neutral.tint,
               borderRadius: 14,
               padding: 16,
               marginBottom: 24,
               borderWidth: 1,
-              borderColor: 'rgba(99,102,241,0.2)',
+              borderColor: 'rgba(28,43,34,0.08)',
             }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#a5b4fc', letterSpacing: 0.5, marginBottom: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: INK.title, letterSpacing: 0.5, marginBottom: 8 }}>
                 ¿CÓMO PUEDO CREAR UNA CUENTA?
               </Text>
-              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 20 }}>
+              <Text style={{ fontSize: 13, color: INK.body, lineHeight: 20 }}>
                 Vizta es gratuita y no requiere cuenta. El Portal Web funciona por invitación, pero cualquier usuario puede registrarse y solicitar acceso en:
               </Text>
               <TouchableOpacity
@@ -686,8 +688,8 @@ function SupportModal({ visible, onClose }) {
                   gap: 6,
                 }}
               >
-                <Globe size={13} color="#a5b4fc" />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#a5b4fc' }}>
+                <Globe size={13} color={INK.title} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>
                   jornal.standatpd.com
                 </Text>
               </TouchableOpacity>
@@ -701,9 +703,9 @@ function SupportModal({ visible, onClose }) {
               marginTop: 4,
             }}>
               <Mail size={14} color="rgba(244,114,182,0.6)" />
-              <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 20 }}>
+              <Text style={{ fontSize: 13, color: INK.body, lineHeight: 20 }}>
                 Escríbenos a{' '}
-                <Text style={{ color: '#f472b6', fontWeight: '700' }}>contacto@standatpd.com</Text>
+                <Text style={{ color: ACCENT.pink.ink, fontWeight: '700' }}>contacto@standatpd.com</Text>
               </Text>
             </View>
           </ScrollView>
@@ -830,7 +832,8 @@ export default function SettingsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: insets.top + 20,
-          paddingBottom: insets.bottom + 72,
+          // Lo último sube por encima del orbe, que flota sobre la página.
+          paddingBottom: insets.bottom + 140,
           paddingHorizontal: 24,
         }}
         showsVerticalScrollIndicator={false}
@@ -873,13 +876,13 @@ export default function SettingsScreen() {
             </Text>
           </View>
           <View style={{
-            ...chipStyle(ACCENT.indigo.tint, 'rgba(99,102,241,0.22)'),
+            ...chipStyle(ACCENT.neutral.tint, 'rgba(28,43,34,0.12)'),
             borderRadius: 10,
             paddingHorizontal: 12,
             paddingVertical: 6,
             marginTop: 6,
           }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: ACCENT.indigo.ink, letterSpacing: 0.5 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: INK.title, letterSpacing: 0.5 }}>
               {APP_VERSION}
             </Text>
           </View>
@@ -887,7 +890,7 @@ export default function SettingsScreen() {
 
         {/* ── Visión ── */}
         <View style={{ marginBottom: 24 }}>
-          <GlassCard radius={20} accent={ACCENT.indigo.ink} wash="rgba(99,102,241,0.05)">
+          <GlassCard radius={20} accent={INK.body} wash="rgba(28,43,34,0.025)">
             <View style={{ padding: 22 }}>
               <Text style={{
                 fontSize: 13,
@@ -927,7 +930,7 @@ export default function SettingsScreen() {
                     <View style={{
                       position: 'absolute', bottom: -2, right: -2,
                       width: 18, height: 18, borderRadius: 9,
-                      backgroundColor: '#6366f1',
+                      backgroundColor: INK.title,
                       alignItems: 'center', justifyContent: 'center',
                       borderWidth: 1.5, borderColor: '#FFFFFF',
                     }}>
@@ -939,7 +942,7 @@ export default function SettingsScreen() {
                       {connectedUser?.email}
                     </Text>
                     {connectedUser?.role === 'admin' && (
-                      <Text style={{ fontSize: 12, color: ACCENT.indigo.ink, marginTop: 2 }}>
+                      <Text style={{ fontSize: 12, color: INK.title, marginTop: 2 }}>
                         Administrador
                       </Text>
                     )}
@@ -972,12 +975,12 @@ export default function SettingsScreen() {
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 7 }}>
                     <CheckCircle size={14} color={ACCENT.green.ink} />
-                    <BookOpen size={13} color={ACCENT.indigo.ink} style={{ marginLeft: 8 }} />
+                    <BookOpen size={13} color={INK.title} style={{ marginLeft: 8 }} />
                     <Text style={{ fontSize: 13, color: INK.body, marginLeft: 6 }}>Wiki personal</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <CheckCircle size={14} color={ACCENT.green.ink} />
-                    <FileText size={13} color={ACCENT.indigo.ink} style={{ marginLeft: 8 }} />
+                    <FileText size={13} color={INK.title} style={{ marginLeft: 8 }} />
                     <Text style={{ fontSize: 13, color: INK.body, marginLeft: 6 }}>Codex de documentos</Text>
                   </View>
                 </View>
@@ -1033,7 +1036,7 @@ export default function SettingsScreen() {
               style={{
                 borderRadius: 18,
                 overflow: 'hidden',
-                shadowColor: '#4338CA',
+                shadowColor: '#1E3326',
                 shadowOpacity: 0.28,
                 shadowRadius: 16,
                 shadowOffset: { width: 0, height: 8 },
@@ -1041,7 +1044,7 @@ export default function SettingsScreen() {
               }}
             >
               <LinearGradient
-                colors={['#6366F1', '#4338CA']}
+                colors={['#4A7A59', '#2F5640']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 10 }}
@@ -1066,10 +1069,10 @@ export default function SettingsScreen() {
         {isConnected && puedeColaborar(connectedUser) ? <SeccionPerfil /> : null}
         {isConnected && /^beta$/i.test(connectedUser?.user_type || '') ? <SeccionPlan /> : null}
         <SeccionUso />
-        {/* Solo aparece si la cuenta tiene el flag; para el resto no existe. */}
-        <SeccionReconocimiento />
         {/* Lo mismo que tocar el ojo en cada post, sin tocarlo. */}
         <SeccionAnalisisAutomatico />
+        {/* Qué etiqueta el servidor solo; sin detectores para la cuenta, no aparece. */}
+        <SeccionEtiquetasAutomaticas />
         {/* Qué cambió en cada versión. Vacío hasta que haya entradas. */}
         <SeccionChangelog />
 
@@ -1092,17 +1095,17 @@ export default function SettingsScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 marginTop: 16,
-                backgroundColor: ACCENT.indigo.tint,
+                backgroundColor: ACCENT.neutral.tint,
                 borderRadius: 10,
                 paddingHorizontal: 14,
                 paddingVertical: 10,
                 borderWidth: 1,
-                borderColor: 'rgba(99,102,241,0.22)',
+                borderColor: 'rgba(28,43,34,0.12)',
                 alignSelf: 'flex-start',
               }}
             >
-              <Mail size={14} color={ACCENT.indigo.ink} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: ACCENT.indigo.ink, marginLeft: 7 }}>
+              <Mail size={14} color={INK.title} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title, marginLeft: 7 }}>
                 contacto@standatpd.com
               </Text>
             </TouchableOpacity>
@@ -1122,17 +1125,17 @@ export default function SettingsScreen() {
                   flexDirection: 'row',
                   alignItems: 'center',
                   marginTop: 16,
-                  backgroundColor: ACCENT.indigo.tint,
+                  backgroundColor: ACCENT.neutral.tint,
                   borderRadius: 10,
                   paddingHorizontal: 14,
                   paddingVertical: 10,
                   borderWidth: 1,
-                  borderColor: 'rgba(99,102,241,0.22)',
+                  borderColor: 'rgba(28,43,34,0.12)',
                   alignSelf: 'flex-start',
                 }}
               >
-                <Globe size={14} color={ACCENT.indigo.ink} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: ACCENT.indigo.ink, marginLeft: 7 }}>
+                <Globe size={14} color={INK.title} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title, marginLeft: 7 }}>
                   jornal.standatpd.com
                 </Text>
               </TouchableOpacity>

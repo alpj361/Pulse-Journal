@@ -14,6 +14,12 @@ let fin = fuente.range(of: "// MARK: - Fin del diseño")!.lowerBound
 let cabeza = "import SwiftUI\nimport CoreText\nimport AppKit\n\n"
 let cola = """
 
+struct SinDeslizar<C: View>: View {
+  let c: C
+  init(@ViewBuilder _ c: () -> C) { self.c = c() }
+  var body: some View { Color.clear.frame(height: 36).overlay(c.fixedSize(), alignment: .leading).clipped() }
+}
+
 struct Fondo: View {
   var body: some View {
     ZStack {
@@ -35,24 +41,27 @@ struct Fondo: View {
 @MainActor func todo() {
   Fuentes.cargar(URL(fileURLWithPath: "assets/fonts/InstrumentSerif-Regular.ttf"))
   Movimiento.activo = false
-  let enlace = "www.instagram.com/reel/DeKLXC-jO5W/"
   let carpetas = [Carpeta(id: "1", nombre: "Muni Guate"), Carpeta(id: "2", nombre: "OJ Sistema"), Carpeta(id: "3", nombre: "Contexto Int")]
-  func hoja(_ e: Estado, _ d: String? = enlace, c: [Carpeta] = [], elegida: String? = nil, analizar: Bool = false, cuenta: Double? = nil) -> Hoja {
-    Hoja(estado: e, detalle: d, carpetas: c, carpetaElegida: elegida, analizar: analizar, cuenta: cuenta, alElegirCarpeta: { _ in }, alCambiarAnalizar: {}, cerrar: {})
+  let reel = Vista(titulo: "Oppenheimer: lo que la película no cuenta del Proyecto Manhattan", sitio: "instagram.com", imagen: nil)
+  let articulo = Vista(titulo: "La reforma a la Ley de Contrataciones, artículo por artículo", sitio: "prensalibre.com", imagen: nil)
+  func hoja(_ e: Estado, _ d: Destino = .posts, v: Vista? = reel, c: [Carpeta] = [], elegida: String? = nil, analizar: Bool = false, tipo: String? = nil, aviso: String? = nil, cuenta: Double? = nil) -> Hoja {
+    Hoja(estado: e, destino: d, vista: v, carpetas: c, carpetaElegida: elegida, analizar: analizar, tipoElegido: tipo, aviso: aviso, cuenta: cuenta,
+         alElegirCarpeta: { _ in }, alCambiarAnalizar: {}, alElegirTipo: { _ in }, cerrar: {})
   }
   guardar("1-enviando", hoja(.enviando))
   guardar("2-enviado", hoja(.enviado, c: carpetas, cuenta: 0.35))
-  guardar("3-eligiendo", hoja(.enviado, c: carpetas, elegida: "1", analizar: true))
-  guardar("4-sin-carpetas", hoja(.enviado, cuenta: 0.6))
-  guardar("5-no-es-post", hoja(.fallo("Ese enlace no es un post de Instagram ni de X."), "www.instagram.com/noficciongt/"))
-  guardar("6-sin-cuenta", hoja(.fallo("Abrí Vizta una vez para conectar tu cuenta.")))
+  guardar("3-eligiendo", hoja(.enviado, c: carpetas, elegida: "1", analizar: true, tipo: "film"))
+  guardar("4-enlace", hoja(.enviado, .biblioteca, v: articulo, cuenta: 0.6))
+  guardar("5-enlace-tipo", hoja(.enviado, .biblioteca, v: articulo, tipo: "article"))
+  guardar("6-sin-cuenta", hoja(.fallo("La cuenta se conecta al abrir Vizta una vez."), v: nil))
 }
 MainActor.assumeIsolated { todo() }
 """
 let salida = FileManager.default.temporaryDirectory.appendingPathComponent("vizta_hoja.swift")
 // Al dibujar a una imagen, lo que va dentro de un ScrollView sale en blanco:
-// acá la fila de carpetas se dibuja sin deslizar.
-let diseno = String(fuente[ini..<fin]).replacingOccurrences(of: "ScrollView(.horizontal, showsIndicators: false) {", with: "VStack(alignment: .leading) {")
+// acá las filas de chips se dibujan quietas, recortadas al ancho de la hoja
+// (sin recortar, la fila estira la hoja entera y sale corrida).
+let diseno = String(fuente[ini..<fin]).replacingOccurrences(of: "ScrollView(.horizontal, showsIndicators: false) {", with: "SinDeslizar {")
 try! (cabeza + diseno + cola).write(to: salida, atomically: true, encoding: .utf8)
 let p = Process()
 p.executableURL = URL(fileURLWithPath: "/usr/bin/swift")

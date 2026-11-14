@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { X, Eye, ExternalLink, Play, Plus, Check } from 'lucide-react-native';
+import { X, Eye, ExternalLink, Play, Plus, Check, Fingerprint } from 'lucide-react-native';
 import { INK, MOTION, RADIUS } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
@@ -27,17 +27,27 @@ import MorphingInfinity from '../MorphingInfinity';
 import pedirAnalisis from './analizarPost';
 import { SoloLecturaPost, useSoloLecturaPost } from './lectura';
 import useAnalisisPost from './useAnalisisPost';
+import OpinionAnalisis from './OpinionAnalisis';
 import CarruselPost from './CarruselPost';
-import SugerenciaHablante from './SugerenciaHablante';
 import { anotarTexto } from './anotar';
-import { agregarConexion, guardarFact, guardarMaterial, mencionesDe } from './capaPost';
+import { agregarConexion, guardarFact, guardarMaterial, guardarObra, mencionesDe, obraEnElCodex } from './capaPost';
 import pedirDetalle from './detalleMaterial';
 import IconoMaterial from '../codex/IconoMaterial';
 import { MATERIAL, ORDEN_MATERIALES, materialDe } from '../codex/materiales';
-import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
+import { Apoyo, Aprender, Bloque, Cifras, GuardarHecho, Listas, LoDice, LoQueSeVe, ObraDelPost, Postura, QuienAparece, Recetas, partirHechos } from './SeccionesAnalisis';
+import { esBreve, esInformativo, esLaObra, obraDelPost } from './profundidad';
+import GuardadosDelPost, { useGuardadosDelPost } from './GuardadosDelPost';
+import { ROLES, programaDelAnalisis } from './vistaDelPost';
+import HojaQuienAparece from './QuienAparece';
+import { apareceEnPost, personaPorNombre, quienesAparecen } from './capaPost';
+import { revisarVoz } from '../huella/api';
+import VistaVizta from '../visual/VistaVizta';
+import { guardadoDeLaObra } from './bookmarks';
 import { armarPiezas, norm } from './piezas';
 import { Pieza, Refs, Saltos } from './Saltos';
 import { supabase } from '../../utils/supabase';
+import { useQuery } from '@tanstack/react-query';
+import HuellaAutor from '../huella/HuellaAutor';
 import { registrarAvisos } from '../../utils/notificaciones';
 import { roce, toque, agarre, falla } from '../../utils/haptics';
 import { EV, evento } from '../../utils/analitica';
@@ -134,8 +144,6 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
     analisis: analisisRemoto,
     estado,
     error: errorRemoto,
-    hablante: hablanteRemoto,
-    reconocimiento: reconocimientoRemoto,
   } = useAnalisisPost(muestra ? null : post?.id, post?.details);
 
   /**
@@ -148,11 +156,6 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
    */
   const [parche, setParche] = useState(null);
 
-  // Quién habla: lo recién confirmado o descartado desde acá manda mientras la
-  // fila en vivo no lo trae. Sin esto, tocar «Sí, es» dejaba la tarjeta puesta
-  // hasta que Realtime devolviera la fila.
-  const hablante = parche?.hablante ?? hablanteRemoto;
-  const reconocimiento = parche?.reconocimiento ?? reconocimientoRemoto;
   const analisis = useMemo(() => {
     const p = parche?.analysis;
     if (!p) return analisisRemoto;
@@ -174,6 +177,19 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const [ocupado, setOcupado] = useState(null); // la acción en curso
   const [errorAccion, setErrorAccion] = useState(null);
   const [itemAbierto, setItemAbierto] = useState(null);
+
+  // Quién publicó, como autor social (no quien guardó el post): su huella.
+  // Un post que te compartieron es de otra cuenta y su autor no es tuyo.
+  const [viendoHuella, setViendoHuella] = useState(false);
+  const { data: autorId = null } = useQuery({
+    queryKey: ['post-autor', post?.id],
+    enabled: !!post?.id && !muestra && !soloLectura,
+    staleTime: 1000 * 60 * 10,
+    queryFn: async () => {
+      const { data } = await supabase.from('post_analisis').select('autor_id').eq('post_id', post.id).maybeSingle();
+      return data?.autor_id || null;
+    },
+  });
   // Lo que se pidió sosteniendo un material, mientras llega por la fila en vivo:
   // { [texto]: { cargando } | { datos } | { error } }.
   const [detalles, setDetalles] = useState({});
@@ -235,14 +251,63 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
   const relaciones = analisis?.relaciones || [];
   const temas = (analisis?.temas || []).filter((t) => typeof t === 'string');
   const narrativa = analisis?.narrativa || analisis?.contexto || analisis?.resumen || '';
+  // Un disfraz o un tráiler: lo esencial y la obra arriba; el resto, plegado.
+  const breve = esBreve(analisis, d);
+  // Lectura breve del servidor (STA-334): trae vistazo y materiales, no el resto.
+  const soloBreve = analisis?.profundidad === 'breve';
+  const [completo, setCompleto] = useState(false);
+  const loEsencial = typeof analisis?.lo_esencial === 'string' ? analisis.lo_esencial.trim() : '';
+  const obra = obraDelPost(analisis, d);
+  // La obra ya está arriba con su botón de guardar: en «materiales» no se repite.
+  const refsSinObra = useMemo(() => refs.filter((m) => !esLaObra(m, obra)), [refs, obra]);
+  const { data: obraGuardada = null, refetch: releerObra } = useQuery({
+    queryKey: ['post-obra-en-codex', obra?.titulo || null],
+    queryFn: () => obraEnElCodex(obra),
+    enabled: !!obra?.titulo && !muestra && !soloLectura,
+    staleTime: 1000 * 60,
+  });
+  // Lo guardado en la biblioteca desde este post. La obra ya va arriba con su
+  // marca; aquí abajo, el resto (un libro, una lista que menciona).
+  const { data: guardadosPost = [] } = useGuardadosDelPost(post?.id, !muestra && !soloLectura);
+  const guardadoObra = guardadoDeLaObra(guardadosPost, obra);
+  const otrosGuardados = guardadosPost.filter((g) => g !== guardadoObra);
   const mencionElegida = elegida ? menciones.find((m) => m.texto === elegida) || null : null;
-  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) ? 'anotado' : vista;
+  // Smart UI: un análisis profundo que da para varias secciones se dibuja con
+  // las piezas de Vizta (reglas fijas en `vistaDelPost.js`). Un post breve no.
+  // Quién aparece dicho a mano (relaciones «aparece en» del Codex).
+  const { data: aparecen = [], refetch: releerAparecen } = useQuery({
+    queryKey: ['post-aparecen', post?.id],
+    queryFn: () => quienesAparecen(post.id),
+    enabled: !!post?.id && !muestra,
+    staleTime: 30 * 1000,
+  });
+  const [hojaAparece, setHojaAparece] = useState(null); // null | { voz }
+  const programa = useMemo(
+    () => (analisis && !breve
+      ? programaDelAnalisis(analisis, { hablante: d.hablante, aparecen, autor: d.author_name || d.author, vistazo: d.vistazo || analisis.vistazo })
+      : null),
+    [analisis, breve, d.hablante, d.author_name, d.author, d.vistazo, aparecen]
+  );
+  // Con vista, se abre en ella; si la persona ya eligió solapa, se respeta.
+  const eligioSolapa = useRef(false);
+  useEffect(() => {
+    if (eligioSolapa.current) return;
+    if (programa) setVista('vista');
+    // Un post con solo su lectura breve abre en lo que se guardó de él y el
+    // botón del análisis profundo, no en su texto (PJ, 10-nov-2026).
+    else if (analisis && (soloBreve || breve)) setVista('organizado');
+  }, [programa, analisis, soloBreve, breve]);
+  const vistaReal = !analisis || (vista === 'aprender' && !analisis.aprender) || (vista === 'vista' && !programa) ? 'anotado'
+    // Con vista, «organizado» no existe: lo que hacía (guardar) lo hacen sus piezas.
+    : vista === 'organizado' && programa ? 'vista' : vista;
 
   const extraer = async () => {
     if (cargando) return;
     if (analisis) {
       roce();
-      setVista((v) => (v === 'anotado' ? 'organizado' : 'anotado'));
+      const otra = programa ? 'vista' : 'organizado';
+      eligioSolapa.current = true;
+      setVista((v) => (v === 'anotado' ? otra : 'anotado'));
       return;
     }
     if (soloLectura) return;
@@ -393,6 +458,22 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
     }
   };
 
+  const guardarLaObra = async () => {
+    if (ocupado || muestra || soloLectura || !obra) return;
+    setOcupado('obra');
+    setErrorAccion(null);
+    try {
+      await guardarObra({ obra });
+      toque();
+      await releerObra();
+    } catch (e) {
+      falla();
+      setErrorAccion(e.message || 'No se pudo guardar.');
+    } finally {
+      setOcupado(null);
+    }
+  };
+
   const guardarHecho = async (hecho) => {
     if (ocupado || muestra || soloLectura) return;
     if (hecho.fact_id) {
@@ -426,6 +507,87 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
       setErrorAccion(e.message || 'No se pudo agregar la conexión.');
     } finally {
       setOcupado(null);
+    }
+  };
+
+  // Lo que las piezas de «vista» necesitan para ofrecer guardar: el análisis
+  // vivo (qué ya se guardó) y las acciones de siempre.
+  const postVivo = useMemo(
+    () => ({ menciones, relaciones, hechos: analisis?.hechos || [] }),
+    [menciones, relaciones, analisis]
+  );
+  const acciones = useMemo(
+    () => (muestra || soloLectura ? null : {
+      ocupado,
+      agregarMencion: (m) => guardarRef(m, m.tipo || null),
+      agregarAparece: () => { roce(); setHojaAparece({ voz: null }); },
+      identificarVoz: (vozId) => {
+        const v = (analisis?.hablantes || []).find((x) => x?.id === vozId);
+        roce();
+        // Alguien a cámara sin voz propia (`camara:N`): se dice quién es como agregar.
+        if (!v) { setHojaAparece({ voz: null }); return; }
+        setHojaAparece({ voz: { id: v.id, rol: v.rol, rolLegible: ROLES[v.rol] || v.rol, descripcion: v.descripcion } });
+      },
+      conectar,
+      guardarHecho,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ocupado, muestra, soloLectura, d, analisis]
+  );
+
+  // Las personas del mismo post, para elegir sin escribir: quien habla a cámara
+  // y los mencionados (con su ficha si ya la tienen).
+  const sugeridosAparece = useMemo(() => {
+    const vistos = new Set((aparecen || []).map((x) => (x.name || '').toLowerCase()));
+    const lista = [];
+    const sumar = (name, id = null) => {
+      const k = String(name || '').trim().toLowerCase();
+      if (!k || vistos.has(k)) return;
+      vistos.add(k);
+      lista.push({ name: String(name).trim(), id });
+    };
+    if (d.hablante?.tipo === 'persona') sumar(d.hablante.nombre);
+    for (const m of menciones) if ((m.codex?.tipo || m.tipo) === 'Actor') sumar(m.texto, m.codex?.id || null);
+    return lista.slice(0, 8);
+  }, [aparecen, d.hablante, menciones]);
+
+  /**
+   * Guardar quién aparece: la persona (elegida o nueva) con su relación «aparece
+   * en» y, si nombra una voz, la revisión de esa voz en la huella del autor.
+   */
+  const guardarAparece = async ({ persona, nombreNuevo, motivo }) => {
+    const voz = hojaAparece?.voz || null;
+    const p = persona || (await personaPorNombre(nombreNuevo));
+    await apareceEnPost({ post: { ...post, details: d }, persona: p, voz });
+    if (voz && autorId) {
+      try {
+        await revisarVoz(autorId, 'voz', { post_id: post.id, voz: voz.id, rol: voz.rol || 'invitado', relacion: 'tercero', persona_item_id: p.id, motivo });
+      } catch (e) {
+        // La relación ya quedó en el Codex; la huella se puede revisar después.
+        console.warn('[post] la voz no se registró en la huella:', e?.message);
+      }
+    }
+    toque();
+    await releerAparecen();
+  };
+
+  /** El análisis profundo, pedido a mano sobre un post que solo tiene su lectura breve. */
+  const pedirProfundo = async () => {
+    if (pidiendo || soloLectura || muestra) return;
+    roce();
+    setPidiendo(true);
+    setError(null);
+    try {
+      await pedirAnalisis(post, { profundidad: 'completa' });
+      toque();
+      onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando' } });
+      registrarAvisos();
+      evento(EV.POST_ANALIZADO, { con_transcripcion: !!transcripcion, profundo: true });
+    } catch (e) {
+      falla();
+      setError(e.message || 'No se pudo pedir el análisis profundo.');
+    } finally {
+      setPidiendo(false);
     }
   };
 
@@ -540,24 +702,27 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 }}>
-            {autor ? (
+            {autor && autorId ? (
+              <Pressable
+                onPress={() => {
+                  roce();
+                  setViendoHuella(true);
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Huella de autor de ${autor}`}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, opacity: pressed ? 0.5 : 1 })}
+              >
+                <Fingerprint size={14} color={INK.title} strokeWidth={1.8} />
+                <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, textDecorationLine: 'underline' }}>{autor}</Text>
+              </Pressable>
+            ) : autor ? (
               <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title }}>{autor}</Text>
             ) : null}
             {fecha ? (
               <Text style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.3)' }}>· {fecha}</Text>
             ) : null}
           </View>
-
-          {/* Quién está a cámara, cuando la cuenta es de un grupo. Debajo del
-              autor porque es la misma clase de dato: quién publicó y quién
-              habla. Solo se dibuja con el flag del reconocimiento prendido. */}
-          <SugerenciaHablante
-            post={post}
-            hablante={hablante}
-            reconocimiento={reconocimiento}
-            onAbrirActor={(id) => abrirEnCodex({ id })}
-            onActualizado={(details) => details && aplicar(details)}
-          />
 
           {/* Sin transcripción, el texto que se anota ES la descripción: mostrarla
               también acá sería decirla dos veces. */}
@@ -595,11 +760,16 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
           {textoBase || analisis || d.vistazo ? (
             <Animated.View layout={LinearTransition.springify().damping(22)} entering={FadeIn.duration(260)}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 28, marginBottom: 4 }}>
-                <Solapa activa={vistaReal === 'anotado'} onPress={() => { roce(); setVista('anotado'); }}>
+                {programa ? (
+                  <Solapa activa={vistaReal === 'vista'} onPress={() => { roce(); eligioSolapa.current = true; setVista('vista'); }}>
+                    vista
+                  </Solapa>
+                ) : null}
+                <Solapa activa={vistaReal === 'anotado'} onPress={() => { roce(); eligioSolapa.current = true; setVista('anotado'); }}>
                   anotado
                 </Solapa>
-                {analisis ? (
-                  <Solapa activa={vistaReal === 'organizado'} onPress={() => { roce(); setVista('organizado'); }}>
+                {analisis && !programa ? (
+                  <Solapa activa={vistaReal === 'organizado'} onPress={() => { roce(); eligioSolapa.current = true; setVista('organizado'); }}>
                     organizado
                   </Solapa>
                 ) : null}
@@ -680,17 +850,39 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                 </View>
               ) : vistaReal === 'aprender' ? (
                 <Aprender aprender={analisis.aprender} piezas={piezas} />
+              ) : vistaReal === 'vista' ? (
+                <View style={{ marginTop: 18 }}>
+                  <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+                  <GuardadosDelPost postId={post?.id} miniatura={d.thumbnail_url || post?.thumbnail_url || null} items={otrosGuardados} />
+                  <VistaVizta programa={programa} enLinea post={postVivo} acciones={acciones} />
+                </View>
               ) : (
                 <View style={{ marginTop: 14 }}>
-                  {narrativa ? (
-                    <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21, marginBottom: 22 }}>
+                  {/* Lo esencial primero: qué es el post en una línea y la obra
+                      que muestra o evoca, para guardarla. */}
+                  {loEsencial ? (
+                    <Text style={{ fontFamily: MONO, fontSize: 14, color: INK.title, lineHeight: 22, marginBottom: obra ? 12 : 22 }}>{loEsencial}</Text>
+                  ) : null}
+                  {/* Un post breve se arma alrededor de lo que presenta: su
+                      guardado principal va grande y en lugar de la obra. */}
+                  {breve && guardadosPost.length ? (
+                    <GuardadosDelPost postId={post?.id} miniatura={d.thumbnail_url || post?.thumbnail_url || null} items={guardadosPost} destacar />
+                  ) : (
+                    <>
+                      <ObraDelPost obra={obra} guardada={!!obraGuardada || !!guardadoObra} ocupado={ocupado === 'obra'} onGuardar={guardarLaObra} />
+                      <GuardadosDelPost postId={post?.id} miniatura={d.thumbnail_url || post?.thumbnail_url || null} items={otrosGuardados} />
+                    </>
+                  )}
+
+                  {narrativa && (!breve || completo) && narrativa !== loEsencial ? (
+                    <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 21, marginTop: obra ? 16 : 0, marginBottom: 22 }}>
                       {narrativa}
                     </Text>
                   ) : null}
 
                   {/* Cada sección se dibuja solo si el post la trae. El orden va
                       de quién y desde dónde, a qué dice, a en qué se apoya. */}
-                  <View style={{ marginTop: narrativa ? -28 : 0 }}>
+                  <View style={{ marginTop: narrativa && (!breve || completo) ? -28 : 0 }}>
                     <LoQueSeVe vistazo={d.vistazo} />
                     <QuienAparece
                       quienes={piezas.quienes}
@@ -710,6 +902,24 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                         />
                       )}
                     />
+                    {/* Solo lectura breve: el análisis profundo se pide a mano. Un
+                        análisis viejo que sí trae todo solo se despliega. */}
+                    {soloBreve && !muestra && !soloLectura ? (
+                      <BotonAnalisisProfundo pidiendo={cargando} onPress={pedirProfundo} />
+                    ) : breve && !completo ? (
+                      <Pressable
+                        onPress={() => {
+                          roce();
+                          setCompleto(true);
+                        }}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        style={{ marginTop: 28, alignSelf: 'flex-start' }}
+                      >
+                        <Text style={{ fontFamily: MONO, fontSize: 12, color: TENUE }}>+ análisis completo</Text>
+                      </Pressable>
+                    ) : null}
+                    {!breve || completo ? (<>
                     <Postura ejes={analisis?.ejes} hablantes={analisis?.hablantes} quienDe={piezas.quienDe} quienDeVoz={piezas.quienDeVoz} resolver={piezas.resolver} />
                     <Cifras cifras={piezas.cifras} hablantes={analisis?.hablantes} quienDeVoz={piezas.quienDeVoz} ocupado={ocupado} onGuardar={guardarHecho} />
 
@@ -732,8 +942,13 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                     )}
 
                     {/* Solo en análisis que ya traen fuentes: en uno anterior, «sin
-                        citar» sería decir algo que no se midió. */}
-                    {Array.isArray(analisis?.fuentes) ? <Apoyo fuentes={piezas.fuentes} afirma={afirmaComprobable} /> : null}
+                        citar» sería decir algo que no se midió. Y «afirma sin
+                        citar» solo dice algo en un post que informa: en un
+                        tráiler o un chiste es relleno. */}
+                    {Array.isArray(analisis?.fuentes) && (piezas.fuentes.length || esInformativo(d)) ? (
+                      <Apoyo fuentes={piezas.fuentes} afirma={afirmaComprobable} />
+                    ) : null}
+                    </>) : null}
 
                     <Listas listas={analisis?.listas} menciones={menciones} colorDe={colorDe} onElegir={elegir} />
                     <Recetas recetas={analisis?.recetas} />
@@ -762,11 +977,11 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                     </View>
                   ))}
 
-                  {refs.length ? (
+                  {refsSinObra.length ? (
                     <View style={{ marginTop: 28 }}>
                       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: TENUE, marginBottom: 9 }}>materiales</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                        {refs.map((m) => (
+                        {refsSinObra.map((m) => (
                           <ChipMencion
                             key={m.texto}
                             mencion={m}
@@ -815,8 +1030,21 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
                       </View>
                     </Bloque>
                   ) : null}
+
                 </View>
               )}
+
+              {/* Al pie de las tres vistas: lo que se opina es del análisis entero. */}
+              {analisis && !soloLectura && !muestra ? (
+                <OpinionAnalisis
+                  post={post}
+                  bottomInset={bottomInset}
+                  onCorrigiendo={() => {
+                    registrarAvisos();
+                    onActualizado?.({ ...post, details: { ...d, analysis_estado: 'procesando', analysis_desde: new Date().toISOString(), analysis_error: null } });
+                  }}
+                />
+              ) : null}
             </Animated.View>
           ) : null}
           </View>
@@ -826,6 +1054,13 @@ function HojaPost({ post, onClose, onActualizado, topInset = 0, bottomInset = 0,
 
       {/* La ficha del Codex cuelga de esta hoja y no se abre al lado: iOS
           presenta un Modal a la vez, y como hermana no aparecería. */}
+      {hojaAparece ? (
+        <HojaQuienAparece voz={hojaAparece.voz} sugeridos={sugeridosAparece} onElegir={guardarAparece} onClose={() => setHojaAparece(null)} topInset={topInset} bottomInset={bottomInset} />
+      ) : null}
+
+      {viendoHuella && autorId ? (
+        <HuellaAutor autorId={autorId} nombre={autor} topInset={topInset} bottomInset={bottomInset} onClose={() => setViendoHuella(false)} />
+      ) : null}
       {itemAbierto ? (
         <ItemDetailSheet
           item={itemAbierto}
@@ -1311,5 +1546,36 @@ function DetalleMaterial({ detalle, yaDicho }) {
         </Pressable>
       ))}
     </Animated.View>
+  );
+}
+
+/**
+ * Pedir el análisis profundo. Un post llega con su lectura breve (qué es y lo
+ * que se guarda de él); el análisis completo —qué dice, cifras, quién aparece,
+ * en qué se apoya— se pide aquí.
+ */
+function BotonAnalisisProfundo({ pidiendo, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={pidiendo}
+      accessibilityRole="button"
+      accessibilityLabel="Pedir el análisis profundo"
+      style={({ pressed }) => ({
+        marginTop: 28,
+        alignSelf: 'flex-start',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 14,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: pressed ? 'rgba(75,79,166,0.16)' : 'rgba(75,79,166,0.10)',
+        opacity: pidiendo ? 0.6 : 1,
+      })}
+    >
+      {pidiendo ? <MorphingInfinity size={15} color="#4B4FA6" /> : <Eye size={16} color="#4B4FA6" />}
+      <Text style={{ fontFamily: MONO, fontSize: 12.5, color: '#4B4FA6' }}>{pidiendo ? 'analizando…' : 'análisis profundo'}</Text>
+    </Pressable>
   );
 }

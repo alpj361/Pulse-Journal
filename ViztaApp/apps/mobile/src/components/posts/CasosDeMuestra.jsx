@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { X } from 'lucide-react-native';
+import { Fingerprint, X } from 'lucide-react-native';
 import { INK } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { MONO } from '../codex/mono';
 import PostDetailSheet from './PostDetailSheet';
-import { CASOS } from './casosDeMuestra';
-import { roce } from '../../utils/haptics';
+import { CASOS, POSTS_DE_PRUEBA } from './casosDeMuestra';
+import { falla, roce } from '../../utils/haptics';
+import { supabase } from '../../utils/supabase';
+
+const CAMPOS_POST = 'id, name, tipo, description, tags, thumbnail_url, details, aliases, created_at, folder_id';
 
 /**
  * La galería de casos de muestra: una fila por clase de post.
@@ -14,9 +17,26 @@ import { roce } from '../../utils/haptics';
  * Tocar una abre la ficha de verdad —la misma `PostDetailSheet`— con un post
  * inventado. Sirve para aprobar el diseño caso por caso sin traer ni analizar
  * nada. Solo existe en desarrollo.
+ *
+ * Arriba van los posts reales de prueba: esos se leen de la base y se abren
+ * como en Posts, con su análisis y la huella del autor.
  */
 export default function CasosDeMuestra({ onClose, topInset = 0, bottomInset = 0 }) {
   const [abierto, setAbierto] = useState(null);
+  const [trayendo, setTrayendo] = useState(null);
+  const [faltan, setFaltan] = useState({});
+
+  const abrirReal = async (p) => {
+    roce();
+    setTrayendo(p.id);
+    const { data } = await supabase.from('codex_universe_items').select(CAMPOS_POST).eq('id', p.id).maybeSingle();
+    setTrayendo(null);
+    if (data) setAbierto(data);
+    else {
+      falla();
+      setFaltan((f) => ({ ...f, [p.id]: true }));
+    }
+  };
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
@@ -29,6 +49,34 @@ export default function CasosDeMuestra({ onClose, topInset = 0, bottomInset = 0 
         </View>
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 30, paddingTop: 18, paddingBottom: bottomInset + 40 }}>
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.4)', marginBottom: 4 }}>posts reales</Text>
+          {POSTS_DE_PRUEBA.map((p) => (
+            <Pressable
+              key={p.id}
+              onPress={() => abrirReal(p)}
+              disabled={trayendo === p.id}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                gap: 12,
+                paddingVertical: 13,
+                borderBottomWidth: 1,
+                borderBottomColor: 'rgba(28,43,34,0.07)',
+                opacity: pressed || trayendo === p.id ? 0.5 : 1,
+              })}
+            >
+              <View style={{ width: 22, alignItems: 'flex-end', paddingTop: 2 }}>
+                <Fingerprint size={14} color="rgba(28,43,34,0.45)" />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ fontFamily: MONO, fontSize: 13, color: INK.title, lineHeight: 19 }}>{p.titulo}</Text>
+                {faltan[p.id] ? (
+                  <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.45)' }}>esta cuenta no tiene acceso a ese post</Text>
+                ) : null}
+              </View>
+            </Pressable>
+          ))}
+
+          <Text style={{ fontFamily: MONO, fontSize: 11.5, color: 'rgba(28,43,34,0.4)', marginTop: 24, marginBottom: 4 }}>inventados</Text>
           {CASOS.map((c) => (
             <Pressable
               key={c.id}

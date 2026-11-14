@@ -3,6 +3,9 @@ import { Pressable, RefreshControl, Text, View } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
 import { TEMAS } from '../feed/temas';
+import Animated from 'react-native-reanimated';
+import Diamante from '../Diamante';
+import { entraDiamante, saleDiamante } from './movimiento';
 import MorphingInfinity from '../MorphingInfinity';
 
 export const TONO = {
@@ -77,7 +80,7 @@ export function Avatar({ tipo, nombre, size = 50 }) {
 export const nombreDe = (c) => c?.nombre || (c?.cuenta_tipo === 'humano' ? 'Colega' : 'Agente');
 
 /** Volver, avatar, nombre y una acción a la derecha. */
-export function Cabecera({ colaborador, subtitulo, onVolver, volverLabel = 'Volver', derecha, onTocar, topInset = 0 }) {
+export function Cabecera({ colaborador, subtitulo, onVolver, volverLabel = 'Volver', derecha, onTocar, topInset = 0, trabajando = false }) {
   return (
     <View style={{ paddingTop: topInset + 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <Pressable
@@ -103,6 +106,12 @@ export function Cabecera({ colaborador, subtitulo, onVolver, volverLabel = 'Volv
             <Text style={{ fontSize: 17, fontWeight: '700', color: INK.title, flexShrink: 1 }} numberOfLines={1}>
               {nombreDe(colaborador)}
             </Text>
+            {/* Un agente trabajando lleva el diamante al lado del nombre. */}
+            {trabajando ? (
+              <Animated.View entering={entraDiamante} exiting={saleDiamante} style={{ marginLeft: 6 }}>
+                <Diamante size={12} color={TONO.verde} />
+              </Animated.View>
+            ) : null}
             {onTocar ? <ChevronRight size={16} color={INK.meta} strokeWidth={2} /> : null}
           </View>
           {subtitulo ? (
