@@ -3,7 +3,7 @@ import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Ban, BookOpen, ChevronDown, ChevronLeft, ChevronUp, CircleCheck, Clock, FilePlus, FileText, PencilLine, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
+import { Ban, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleCheck, Clock, FilePlus, FileText, MessageCircleQuestionMark, PencilLine, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
 import { INK, RADIUS, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { ROTULO } from '../colaboradores/piezas';
@@ -21,7 +21,7 @@ import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
 import {
   buscarLegal, descripcionDe, iniciativasDeLey, nombreDecreto, nombreEstado, notaVisible, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
-  seBusca, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
+  esPregunta, partesDeRespuesta, preguntarALaLey, seBusca, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
 } from './buscadorLegal';
 
 const ICONO = { ley: Scale, articulo: Pilcrow, iniciativa: ScrollText };
@@ -214,10 +214,17 @@ function Panel({ onClose, inicio = null }) {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: insets.bottom + 32 }}
-              ListHeaderComponent={busqueda.data?.amplia && resultados.length && buscado.length >= 2 ? (
-                <Text style={{ fontSize: 12.5, color: INK.meta, lineHeight: 18, marginBottom: 6 }}>
-                  Ningún texto tiene todas las palabras. Estos tienen alguna.
-                </Text>
+              ListHeaderComponent={buscado.length >= 2 ? (
+                <View>
+                  {esPregunta(buscado) ? (
+                    <PreguntaALaLey key={buscado} pregunta={buscado} onArticulo={(f) => ir({ tipo: 'norma', id: f.normaId, foco: f.articuloId })} />
+                  ) : null}
+                  {busqueda.data?.amplia && resultados.length ? (
+                    <Text style={{ fontSize: 12.5, color: INK.meta, lineHeight: 18, marginBottom: 6 }}>
+                      Ningún texto tiene todas las palabras. Estos tienen alguna.
+                    </Text>
+                  ) : null}
+                </View>
               ) : null}
               ListEmptyComponent={
                 buscado.length < 2 ? (
@@ -861,5 +868,92 @@ function IniciativaAbierta({ numero, abajo, registro, onLey }) {
         </View>
       )}
     />
+  );
+}
+
+/**
+ * Preguntar a la ley: cuando lo escrito es una pregunta, arriba de los
+ * resultados va «responder con la ley». Se pide a mano (cada respuesta es una
+ * consulta al modelo) y responde solo con artículos indexados: cada afirmación
+ * lleva su número, y cada número abre su artículo.
+ */
+function PreguntaALaLey({ pregunta, onArticulo }) {
+  const [pedida, setPedida] = useState(null);
+  const respuesta = useQuery({
+    queryKey: ['pregunta-legal', pregunta],
+    queryFn: () => preguntarALaLey(pregunta),
+    enabled: pedida === pregunta,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const pedir = () => { roce(); setPedida(pregunta); if (respuesta.isError) respuesta.refetch(); };
+
+  if (pedida !== pregunta && !respuesta.data) {
+    return (
+      <Pressable onPress={pedir} accessibilityRole="button" accessibilityLabel="Responder la pregunta con los artículos de la ley"
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, marginTop: 4, marginBottom: 4, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(47,74,122,0.07)', opacity: pressed ? 0.6 : 1 })}>
+        <MessageCircleQuestionMark size={17} color={TINTA} strokeWidth={2.2} />
+        <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: TINTA }}>responder con la ley</Text>
+        <ChevronRight size={16} color={TINTA} />
+      </Pressable>
+    );
+  }
+  if (respuesta.isLoading || respuesta.isFetching) {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, marginTop: 4, paddingHorizontal: 14 }}>
+        <MorphingInfinity size={18} color={TINTA} />
+        <Text style={{ fontSize: 13.5, color: INK.meta }}>Leyendo los artículos que aplican…</Text>
+      </View>
+    );
+  }
+  if (respuesta.isError || !respuesta.data) {
+    return (
+      <Pressable onPress={pedir} accessibilityRole="button" style={{ paddingVertical: 14 }}>
+        <Text style={{ fontSize: 13.5, color: INK.meta, lineHeight: 20 }}>No se pudo responder. Tocar para intentar de nuevo.</Text>
+      </Pressable>
+    );
+  }
+  const { estado, texto, fuentes } = respuesta.data;
+  if (estado === 'sin_base' || estado === 'fuera_de_tema' || !fuentes.length) {
+    return (
+      <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 12, marginTop: 4 }}>
+        <MessageCircleQuestionMark size={15} color={INK.faint} strokeWidth={2.2} style={{ marginTop: 2 }} />
+        <Text style={{ flex: 1, fontSize: 13.5, color: INK.meta, lineHeight: 20 }}>{texto}</Text>
+      </View>
+    );
+  }
+  const abrir = (n) => { const f = fuentes[n - 1]; if (f?.normaId) onArticulo(f); };
+  return (
+    <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 6, marginBottom: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: RAYA, backgroundColor: 'rgba(255,255,255,0.75)' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Scale size={12} color={TINTA} strokeWidth={2.4} />
+        <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>LO QUE DICE LA LEY</Text>
+        {estado === 'parcial' ? <Pastilla>en parte</Pastilla> : null}
+      </View>
+      <Text style={{ fontSize: 14.5, lineHeight: 22, color: INK.title, marginTop: 8 }}>
+        {partesDeRespuesta(texto).map((p, i) => (p.citas
+          ? p.citas.map((n) => (
+            <Text key={`${i}-${n}`} onPress={() => abrir(n)} accessibilityRole="link" accessibilityLabel={`artículo ${fuentes[n - 1]?.numero || n}`}
+              style={{ fontSize: 11, fontWeight: '800', color: TINTA }}>{` ${n}`}</Text>
+          ))
+          : <Text key={i}>{p.texto}</Text>))}
+      </Text>
+      <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: RAYA }}>
+        {fuentes.map((f, i) => (
+          <Pressable key={f.articuloId} onPress={() => abrir(i + 1)} disabled={!f.normaId} accessibilityRole="button"
+            accessibilityLabel={`abrir el artículo ${f.numero} de ${f.ley}`}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, borderBottomWidth: i < fuentes.length - 1 ? 1 : 0, borderBottomColor: RAYA, opacity: pressed ? 0.6 : 1 })}>
+            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(47,74,122,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: TINTA }}>{i + 1}</Text>
+            </View>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: INK.body }}>
+              <Text style={{ fontWeight: '700', color: INK.title }}>{`Art. ${f.numero}`}</Text>
+              {f.ley ? ` · ${f.ley}` : ''}
+            </Text>
+            <ChevronRight size={14} color={INK.faint} />
+          </Pressable>
+        ))}
+      </View>
+    </Animated.View>
   );
 }

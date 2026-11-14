@@ -682,3 +682,75 @@ export async function traerLeyesDeBase() {
 
 /** El documento oficial, si la ley lo tiene en línea. */
 export const enlaceDeNorma = (norma) => (/^https?:\/\//i.test(norma?.storage_path || '') ? norma.storage_path : null);
+
+// ── Preguntar a la ley ─────────────────────────────────────────────────────
+// Una pregunta concreta («¿está prohibido…?», «¿qué pasa si…?») se responde
+// en el servidor con los artículos que encuentra la búsqueda legal, y solo con
+// ellos: es el modo `legal` de Vizta. Cuesta una consulta al modelo, así que
+// se pide a mano, no con cada búsqueda.
+
+const INTERROGATIVAS = /^(¿|qué|que|cómo|como|cuál|cual|cuáles|cuales|cuándo|cuando|cuánto|cuanto|cuántos|cuantos|cuántas|cuantas|dónde|donde|quién|quien|quiénes|quienes|por qué|puedo|puede|pueden|se puede|es legal|es ilegal|está|están|hay|me pueden|tengo|tiene|debe|deben|si )/i;
+
+/** Si el texto se lee como una pregunta y no como palabras sueltas o un artículo. */
+export function esPregunta(texto) {
+  const q = String(texto || '').replace(/\s+/g, ' ').trim();
+  if (q.length < 8 || q.length > 600) return false;
+  if (/\?$/.test(q) || q.startsWith('¿')) return true;
+  return INTERROGATIVAS.test(q) && q.split(' ').length >= 3;
+}
+
+export const ESTADOS_RESPUESTA = ['respondida', 'parcial', 'sin_base', 'fuera_de_tema'];
+
+/**
+ * La respuesta en partes para dibujarla: el texto cortado en trozos y citas
+ * (las citas son números de la lista de fuentes, desde 1).
+ */
+export function partesDeRespuesta(texto) {
+  const partes = [];
+  const re = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
+  let desde = 0;
+  let m;
+  while ((m = re.exec(texto || ''))) {
+    if (m.index > desde) partes.push({ texto: texto.slice(desde, m.index) });
+    partes.push({ citas: m[1].split(',').map((n) => Number(n.trim())) });
+    desde = m.index + m[0].length;
+  }
+  if (desde < String(texto || '').length) partes.push({ texto: texto.slice(desde) });
+  return partes;
+}
+
+/** Lo que devolvió el servidor, listo para la app; null si no se entiende. */
+export function leerRespuestaLegal(json) {
+  if (!json?.success || !ESTADOS_RESPUESTA.includes(json.estado)) return null;
+  const fuentes = (Array.isArray(json.fuentes) ? json.fuentes : [])
+    .filter((f) => f?.articulo_id)
+    .map((f) => ({
+      articuloId: f.articulo_id,
+      normaId: f.norma_id || null,
+      numero: String(f.articulo || '').replace(/^art\.?\s*/i, '') || null,
+      ley: f.norma || null,
+      decreto: f.decreto || null,
+    }));
+  return { estado: json.estado, texto: String(json.respuesta || '').trim(), fuentes };
+}
+
+export async function preguntarALaLey(pregunta) {
+  const { data: sesion } = await supabase.auth.getSession();
+  const token = sesion?.session?.access_token;
+  if (!token) throw new Error('sin_sesion');
+  const control = new AbortController();
+  const espera = setTimeout(() => control.abort(), 60000);
+  try {
+    const res = await fetch(`${EXTRACTORW_URL}/api/vizta-chat/query`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'legal', message: pregunta }),
+      signal: control.signal,
+    });
+    const respuesta = leerRespuestaLegal(await res.json().catch(() => null));
+    if (!res.ok || !respuesta) throw new Error('sin_respuesta');
+    return respuesta;
+  } finally {
+    clearTimeout(espera);
+  }
+}
