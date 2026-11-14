@@ -29,7 +29,10 @@ async function pedirAlServidor(numero, method) {
 
 /** Lo que la tarjeta necesita del servidor: en qué está y, si ya está, el análisis leído. */
 export function leerEstado(json) {
-  const estado = ['sin_pedir', 'en_curso', 'listo', 'fallido'].includes(json?.estado) ? json.estado : 'sin_pedir';
+  let estado = ['sin_pedir', 'en_curso', 'listo', 'fallido'].includes(json?.estado) ? json.estado : 'sin_pedir';
+  // Un pedido de una versión anterior del análisis llega como «fallido» sin código de error:
+  // no falló, quedó viejo. Se ofrece «analizar» de nuevo, no «no se pudo analizar».
+  if (estado === 'fallido' && !json?.error_code) estado = 'sin_pedir';
   const analisis = estado === 'listo' ? leerAnalisis(json.result) : null;
   // Listo pero sin nada que mostrar se trata como fallido: la tarjeta no ofrece algo vacío.
   return { estado: estado === 'listo' && !analisis ? 'fallido' : estado, cache: !!json?.cache, analisis };
@@ -91,12 +94,14 @@ export function leerAnalisis(result) {
   const secciones = [];
   const agregar = (key, items) => { if (items.length) secciones.push({ key, titulo: por[key]?.title || key, items, citas: citas(key) }); };
 
-  agregar('problema', lista(datos('problema')).map((d) => ({
-    texto: texto(d.texto), etiqueta: d.tipo === 'dato' ? 'dato' : null,
-    nota: d.tipo === 'dato' ? (texto(d.fuente_declarada) ? `fuente: ${d.fuente_declarada}` : 'sin fuente') : null,
-  })).filter((d) => d.texto));
+  agregar('problema', lista(datos('problema')).map((d) => {
+    const t = texto(d.texto);
+    if (!t) return null;
+    const dato = d.tipo === 'dato';
+    return { texto: t, tipo: dato ? 'dato' : 'planteamiento', cifraDato: dato ? cifraDelDato(d) : null, fuente: dato ? texto(d.fuente_declarada) : null };
+  }).filter(Boolean));
   agregar('que_hace', lista(datos('que_hace')).map((d) => ({
-    texto: texto(d.que), etiqueta: ACCIONES[d.accion] || null, nota: [texto(d.quien), articulosDe(d.articulos)].filter(Boolean).join(' · ') || null,
+    texto: texto(d.que), accion: ACCIONES[d.accion] ? d.accion : 'otro', etiqueta: ACCIONES[d.accion] || null, quien: texto(d.quien), nota: articulosDe(d.articulos),
   })).filter((d) => d.texto));
   agregar('cambios_ley_vigente', lista(datos('cambios_ley_vigente')).map((d) => ({
     texto: `${OPERACIONES[d.operacion] || 'toca'} el artículo ${d.articulo} de ${texto(d.ley) || 'una ley'}`,
@@ -110,7 +115,7 @@ export function leerAnalisis(result) {
   })).filter((d) => d.texto && d.titulo));
   agregar('dinero', lista(datos('dinero')).map(partida).filter(Boolean));
   agregar('para_revisar', lista(datos('para_revisar')).map((d) => ({
-    texto: texto(d.que), etiqueta: REVISAR[d.tipo] || null, nota: articulosDe(d.articulos),
+    texto: texto(d.que), tipo: REVISAR[d.tipo] ? d.tipo : 'otro', etiqueta: REVISAR[d.tipo] || null, nota: articulosDe(d.articulos),
   })).filter((d) => d.texto));
 
   const preguntas = lista(datos('preguntas')).map((d) => texto(d.pregunta)).filter(Boolean).slice(0, 3);
@@ -180,6 +185,37 @@ function partida(d) {
     reparto: reparto.length >= 2 ? reparto : null,
     nota: articulosDe(d.articulos),
   };
+}
+
+/**
+ * La cifra principal de un dato del problema. Los análisis nuevos la traen
+ * aparte; los de antes, dentro del texto: se toma el primer porcentaje o monto.
+ */
+export function cifraDelDato(d) {
+  const c = d?.cifra;
+  // Un año no es una cifra que se dibuje: «2026» no se mide ni se compara.
+  const esAnio = (v, u) => (!u || u === 'otra') && Number.isInteger(v) && v >= 1900 && v <= 2100;
+  if (c && typeof c.valor === 'number' && Number.isFinite(c.valor)) return esAnio(c.valor, c.unidad) ? null : { valor: c.valor, unidad: c.unidad || 'otra', etiqueta: texto(c.etiqueta) };
+  const t = String(d?.texto || '');
+  const pct = t.match(/(\d+(?:[.,]\d+)?)\s?%/);
+  if (pct) return { valor: Number(pct[1].replace(',', '.')), unidad: 'porcentaje', etiqueta: null };
+  const q = t.match(/Q\s?([\d,]+(?:\.\d+)?)/);
+  if (q) return { valor: Number(q[1].replace(/,/g, '')), unidad: 'quetzales', etiqueta: null };
+  return null;
+}
+
+/** El número como se lee en un dato: «68 %», «Q2.5 millones», «1,200». */
+export function cifraLegible({ valor, unidad }) {
+  if (unidad === 'porcentaje') return `${conComas(valor)} %`;
+  if (unidad === 'quetzales') return `Q${corto(valor)}`;
+  if (unidad === 'dolares') return `US$${corto(valor)}`;
+  return corto(valor);
+}
+
+/** Un porcentaje dicho en cosas: «0.03 de cada 100». */
+export function deCadaCien(valor) {
+  if (typeof valor !== 'number' || valor < 0 || valor > 100) return null;
+  return `${conComas(valor)} de cada 100`;
 }
 
 /** Para comparar montos en barras: los de quetzales del mismo período que el mayor. */

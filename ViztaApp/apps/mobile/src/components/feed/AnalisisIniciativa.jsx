@@ -1,25 +1,48 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon, Coins, GitCompare, ListChecks, MessageCircleQuestionMark, ScanSearch, Sparkles, Target, Users } from 'lucide-react-native';
+import {
+  ArrowDown, Ban, ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon, CircleQuestionMark, CircleSlash, ClipboardCheck, Coins,
+  Eraser, FileClock, FileText, Gavel, GitCompare, KeyRound, Landmark, ListChecks, Merge, MessageCircleQuestionMark, PenLine, Plus,
+  ScanSearch, Sparkles, Split, Target, TrendingDown, TrendingUp, UserX, Users,
+} from 'lucide-react-native';
 import MorphingInfinity from '../MorphingInfinity';
-import { INK } from '../theme';
+import { INK, RADIUS, SERIF } from '../theme';
+import { TEMAS } from './temas';
 import { Plegable, RAYA, TINTA } from './TarjetasCongreso';
-import { PASOS_ANALISIS, comparables, esperaDeCache, estadoDelAnalisis, pedirAnalisis, traerVigente } from './lecturaDelAnalisis';
+import {
+  PASOS_ANALISIS, cifraLegible, comparables, deCadaCien, esperaDeCache, estadoDelAnalisis, pedirAnalisis, traerVigente,
+} from './lecturaDelAnalisis';
 
 /**
  * El análisis de una iniciativa, plegado en su tarjeta como «su análisis» (STA-337).
  *
  * Pensar con quien lee: qué propone, a quién toca y qué conviene revisar, cada
- * cosa con su cita y sin decir si está bien o mal. Arriba la frase; cada
- * sección es una fila con su ícono y cuántos puntos tiene, plegada; las
- * preguntas van abiertas al final, porque son por dónde mirar. Una sección sin
- * datos no aparece.
+ * cosa con su cita y sin decir si está bien o mal.
+ *
+ * Cómo se lee (PJ, 13-nov-2026): la estructura la pone la vista, con reglas
+ * fijas y las piezas de Vizta (cifras, barras, tonos del catálogo), no el modelo.
+ * Cada sección agrupa sus puntos —por acción, por efecto, por tipo— con un
+ * rótulo y un ícono, y dentro de cada grupo los puntos van numerados. Una cifra
+ * nunca va sola: un porcentaje lleva su medidor, el dinero su diagrama de dónde
+ * sale y a dónde va. Lo que falta no se anuncia.
  *
  * Se pide a mano (PJ, 12-nov-2026): la tarjeta ofrece «analizar» y la persona
  * lo ve hacerse. Si alguien ya lo había pedido, sale de la caché, pero igual se
  * espera unos segundos: el pedido es suyo y queda guardado como suyo.
  */
+
+// Los tonos y el rótulo de las piezas de Vizta (colaboradores/piezas, catálogo visual).
+const TONO = {
+  verde: TEMAS.Social.tinta,
+  verdeLavado: TEMAS.Social.lavado[0],
+  ladrilloTinta: TEMAS.Violencia.tinta,
+  arenaLavado: TEMAS.Economía.lavado[0],
+  raya: 'rgba(28,43,34,0.07)',
+  borde: 'rgba(28,43,34,0.12)',
+  tarjeta: 'rgba(255,255,255,0.86)',
+};
+const ROTULO = { fontSize: 10.5, fontWeight: '800', letterSpacing: 1.1, color: INK.faint };
 
 const ICONOS = {
   problema: Target,
@@ -29,6 +52,22 @@ const ICONOS = {
   dinero: Coins,
   para_revisar: ScanSearch,
 };
+
+// Los grupos de cada sección, en orden fijo, con su rótulo e ícono.
+const GRUPOS_ACCION = [
+  ['crea', 'Crea', Plus], ['obliga', 'Obliga', ClipboardCheck], ['prohibe', 'Prohíbe', Ban], ['faculta', 'Da facultades', KeyRound],
+  ['sanciona', 'Sanciona', Gavel], ['modifica', 'Modifica', PenLine], ['deroga', 'Deroga', Eraser], ['otro', 'Además', ListChecks],
+];
+const GRUPOS_EFECTO = [
+  ['beneficio', 'Reciben algo', TrendingUp, TONO.verde], ['poder', 'Ganan decisión', Landmark, TINTA],
+  ['obligacion', 'Quedan obligados', ClipboardCheck, INK.title], ['carga', 'Asumen un costo', TrendingDown, TONO.ladrilloTinta],
+  ['restriccion', 'Dejan de poder', Ban, TONO.ladrilloTinta],
+];
+const GRUPOS_REVISAR = [
+  ['contradiccion_interna', 'Contradicciones internas', Split], ['termino_sin_definir', 'Términos sin definir', CircleQuestionMark],
+  ['remite_a_reglamento', 'Queda para un reglamento', FileClock], ['sin_responsable', 'Sin responsable', UserX],
+  ['sin_consecuencia', 'Sin consecuencia', CircleSlash], ['choque_con_otra_norma', 'Se cruza con otra norma', Merge], ['otro', 'Además', ScanSearch],
+];
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -119,27 +158,34 @@ export function useAbrirAlTerminar(estado, abrir) {
   }, [estado, abrir]);
 }
 
+// ─── El análisis ───────────────────────────────────────────────────────────────
+
 /** Lo que se ve al abrir «su análisis» en la tarjeta de la iniciativa. */
 export default function AnalisisIniciativa({ analisis: a }) {
   if (!a) return null;
   return (
-    <View style={{ marginTop: 4 }}>
-      {a.frase ? <Text style={{ fontSize: 15, lineHeight: 22, color: INK.title }}>{a.frase}</Text> : null}
-      <View style={{ marginTop: 8 }}>
+    <View style={{ marginTop: 6, gap: 4 }}>
+      {a.frase ? (
+        <View style={{ padding: 14, borderRadius: RADIUS.md, backgroundColor: TONO.verdeLavado, gap: 4 }}>
+          <Text style={ROTULO}>EN UNA FRASE</Text>
+          <Text style={{ fontFamily: SERIF, fontSize: 21, lineHeight: 26, color: INK.title }}>{a.frase}</Text>
+        </View>
+      ) : null}
+      <View style={{ marginTop: 6 }}>
         {a.secciones.map((s) => <Seccion key={s.key} seccion={s} />)}
       </View>
       {a.preguntas.length ? (
-        <View style={{ marginTop: 12, gap: 8 }}>
+        <View style={{ marginTop: 10, padding: 14, borderRadius: RADIUS.md, borderWidth: 1, borderColor: TONO.borde, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <MessageCircleQuestionMark size={17} color={TINTA} />
-            <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>Preguntas para leerla</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: INK.title }}>Preguntas para leerla</Text>
           </View>
           {a.preguntas.map((p, i) => (
-            <Text key={i} style={{ fontSize: 13.5, lineHeight: 20, color: INK.body, paddingLeft: 25 }}>{p}</Text>
+            <Numerado key={i} n={i + 1}><Text style={{ fontSize: 14, lineHeight: 20, color: INK.title }}>{p}</Text></Numerado>
           ))}
         </View>
       ) : null}
-      <Text style={{ fontSize: 11, color: INK.faint, marginTop: 12 }}>
+      <Text style={{ fontSize: 11, color: INK.faint, marginTop: 10 }}>
         {a.escaneo ? 'Lectura automática de un documento escaneado; cada punto lleva su cita.' : 'Lectura automática del texto; cada punto lleva su cita.'}
       </Text>
     </View>
@@ -154,15 +200,15 @@ function Seccion({ seccion }) {
     <View style={{ borderTopWidth: 1, borderTopColor: RAYA }}>
       <Pressable onPress={() => setAbierta((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: abierta }}
         accessibilityLabel={`${seccion.titulo}, ${seccion.items.length}`}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
-        <Icono size={17} color={TINTA} />
-        <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: INK.title }}>{seccion.titulo}</Text>
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50 }}>
+        <Icono size={18} color={TINTA} />
+        <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '700', color: INK.title }}>{seccion.titulo}</Text>
         <Text style={{ fontSize: 13, color: INK.meta, fontVariant: ['tabular-nums'] }}>{seccion.items.length}</Text>
+        {abierta ? <ChevronUpIcon size={15} color={INK.meta} /> : <ChevronDownIcon size={15} color={INK.meta} />}
       </Pressable>
       {abierta ? (
-        <View style={{ paddingLeft: 27, paddingBottom: 6, gap: 10 }}>
-          {seccion.key === 'dinero' ? <Dinero items={seccion.items} />
-            : seccion.items.map((it, i) => (seccion.key === 'cambios_ley_vigente' ? <Cambio key={i} item={it} /> : <Punto key={i} item={it} />))}
+        <View style={{ paddingBottom: 14, gap: 16 }}>
+          <Contenido seccion={seccion} />
           {seccion.citas.length ? (
             <View>
               <Plegable abierto={citas} onPress={() => setCitas((v) => !v)} texto="en el texto" color={INK.meta} />
@@ -175,128 +221,86 @@ function Seccion({ seccion }) {
   );
 }
 
-// ─── Dinero ────────────────────────────────────────────────────────────────────
-// La cifra primero y grande; después de dónde sale y a dónde va, como un flujo.
-// Si se reparte, una barra con sus partes; si hay varios montos en quetzales,
-// barras que los comparan. Lo que el texto no dice se dice como dato.
+function Contenido({ seccion: s }) {
+  if (s.key === 'problema') return <Problema items={s.items} />;
+  if (s.key === 'que_hace') return <Agrupado items={s.items} grupos={GRUPOS_ACCION} por="accion" Item={PuntoQueHace} />;
+  if (s.key === 'quien_gana_quien_asume') return <Agrupado items={s.items} grupos={GRUPOS_EFECTO} por="efecto" Item={PuntoQuien} />;
+  if (s.key === 'para_revisar') return <Agrupado items={s.items} grupos={GRUPOS_REVISAR} por="tipo" Item={PuntoSimple} />;
+  if (s.key === 'dinero') return <Dinero items={s.items} />;
+  if (s.key === 'cambios_ley_vigente') return <View style={{ gap: 14 }}>{s.items.map((it, i) => <Numerado key={i} n={i + 1}><Cambio item={it} /></Numerado>)}</View>;
+  return <View style={{ gap: 10 }}>{s.items.map((it, i) => <Numerado key={i} n={i + 1}><PuntoSimple item={it} /></Numerado>)}</View>;
+}
 
-// Solo el dinero que se gasta tiene que salir de algún lado; una exención, un impuesto o una
-// multa no, y decir «no dice de dónde sale» ahí confundiría.
-const SALE_DE_ALGUN_LADO = new Set(['gasto', 'asignacion', 'transferencia', 'fondo']);
+// ─── Piezas comunes ────────────────────────────────────────────────────────────
 
-const REPARTO = [TINTA, '#7C93B8', '#B7C6DD', '#5E7A66', '#A9BFAE', '#C9B98F', '#8C7B6B', '#D8D2C4'];
-
-function Dinero({ items }) {
-  const barras = comparables(items);
-  const conCifra = items.filter((i) => i.cifra);
-  const sinCifra = items.filter((i) => !i.cifra);
+/** Un punto con su número a la izquierda: se sabe dónde empieza cada uno. */
+function Numerado({ n, children }) {
   return (
-    <View style={{ gap: 12 }}>
-      {barras.length ? <Comparacion barras={barras} /> : null}
-      {conCifra.map((it, i) => <Partida key={i} item={it} />)}
-      {sinCifra.length ? (
-        <View style={{ gap: 10 }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: INK.meta }}>SIN MONTO EN EL TEXTO</Text>
-          {sinCifra.map((it, i) => <PartidaSinMonto key={i} item={it} />)}
-        </View>
-      ) : null}
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(47,74,122,0.10)', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+        <Text style={{ fontSize: 11.5, fontWeight: '800', color: TINTA, fontVariant: ['tabular-nums'] }}>{n}</Text>
+      </View>
+      <View style={{ flex: 1, gap: 3 }}>{children}</View>
     </View>
   );
 }
 
-const plana = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-/** «de la recaudación del IVA» y «sale de: recaudación del IVA» dicen lo mismo: va una vez. */
-const baseRepetida = (item) => item.base && item.de && plana(item.base).includes(plana(item.de));
-
-/**
- * De dónde sale y a dónde va, en dos filas con su rótulo. En una exención o un
- * impuesto no «sale» dinero: se dice sobre qué es y a favor de quién.
- */
-function Flujo({ item }) {
-  const gasta = SALE_DE_ALGUN_LADO.has(item.tipo);
-  const filas = [
-    gasta ? ['sale de', item.de || 'no lo dice', !item.de] : item.de ? ['sobre', item.de, false] : null,
-    item.para ? [gasta ? 'va a' : 'a favor de', item.para, false] : null,
-  ].filter(Boolean);
-  if (!filas.length) return null;
+/** Los puntos de una sección, agrupados en orden fijo: rótulo con ícono y cuántos, y debajo, numerados. */
+function Agrupado({ items, grupos, por, Item }) {
+  const visibles = grupos.map(([clave, nombre, Icono, color]) => [nombre, Icono, color, items.filter((i) => (i[por] || 'otro') === clave)])
+    .filter(([, , , lista]) => lista.length);
+  const sueltos = items.filter((i) => !grupos.some(([clave]) => clave === (i[por] || 'otro')));
   return (
-    <View style={{ gap: 4, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: RAYA }}>
-      {filas.map(([rotulo, valor, apagado], i) => (
-        <View key={i} style={{ flexDirection: 'row', gap: 8 }}>
-          <Text style={{ width: 62, fontSize: 11.5, color: INK.meta }}>{rotulo}</Text>
-          <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 18, color: apagado ? INK.meta : INK.title, fontStyle: apagado ? 'italic' : 'normal' }}>{valor}</Text>
+    <View style={{ gap: 16 }}>
+      {visibles.map(([nombre, Icono, color, lista]) => (
+        <View key={nombre} style={{ gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+            <Icono size={15} color={color || INK.title} />
+            <Text style={[ROTULO, { color: color || INK.meta }]}>{nombre.toUpperCase()} · {lista.length}</Text>
+          </View>
+          {lista.map((it, i) => <Numerado key={i} n={i + 1}><Item item={it} /></Numerado>)}
         </View>
       ))}
+      {sueltos.map((it, i) => <Numerado key={`s${i}`} n={i + 1}><Item item={it} /></Numerado>)}
     </View>
   );
 }
 
-function PartidaSinMonto({ item }) {
+const Nota = ({ children }) => (children ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{children}</Text> : null);
+
+function PuntoSimple({ item }) {
   return (
-    <View style={{ gap: 4 }}>
-      {item.etiqueta ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
-      <Text style={{ fontSize: 13, lineHeight: 19, color: INK.body }}>{item.texto}</Text>
-      <Flujo item={item} />
-      {item.nota ? <Text style={{ fontSize: 11, color: INK.meta }}>{item.nota}</Text> : null}
-    </View>
+    <>
+      <Text style={{ fontSize: 14, lineHeight: 20, color: INK.title }}>{item.texto}</Text>
+      <Nota>{item.nota}</Nota>
+    </>
   );
 }
 
-/** Varios montos en quetzales, uno al lado del otro, a escala del mayor. */
-function Comparacion({ barras }) {
+function PuntoQueHace({ item }) {
   return (
-    <View style={{ gap: 8, padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.03)' }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: INK.meta }}>CUÁNTO VA A CADA COSA</Text>
-      {barras.map((b, i) => (
-        <View key={i} style={{ gap: 3 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: INK.body }}>{b.para || b.texto}</Text>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{b.cifra}</Text>
-          </View>
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-            <View style={{ width: `${Math.max(3, Math.round(b.proporcion * 100))}%`, height: 8, borderRadius: 4, backgroundColor: TINTA }} />
-          </View>
-        </View>
-      ))}
-    </View>
+    <>
+      <Text style={{ fontSize: 14, lineHeight: 20, color: INK.title }}>{item.texto}</Text>
+      <Nota>{[item.quien, item.nota].filter(Boolean).join(' · ')}</Nota>
+    </>
   );
 }
 
-function Partida({ item }) {
+function PuntoQuien({ item }) {
   return (
-    <View style={{ gap: 6, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <Text style={{ flexShrink: 1, fontSize: 24, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{item.cifra}</Text>
-        {item.etiqueta ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
-      </View>
-      {item.base && !baseRepetida(item) ? <Text style={{ fontSize: 12.5, color: INK.body, marginTop: -4 }}>{item.base}</Text> : null}
-      <Text style={{ fontSize: 13.5, lineHeight: 20, color: INK.body }}>{item.texto}</Text>
-      <Flujo item={item} />
-      {item.reparto ? <Reparto partes={item.reparto} /> : null}
-      {item.nota ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{item.nota}</Text> : null}
-    </View>
+    <>
+      <Text style={{ fontSize: 14, fontWeight: '700', color: INK.title }}>{item.titulo}</Text>
+      <Text style={{ fontSize: 13.5, lineHeight: 19, color: INK.body }}>{item.texto}</Text>
+      <Nota>{item.nota}</Nota>
+    </>
   );
 }
 
-/** Cómo se reparte: una barra con cada parte a su tamaño y su porcentaje debajo. */
-function Reparto({ partes }) {
-  const total = partes.reduce((n, p) => n + p.porcentaje, 0) || 1;
+function Cita({ children, apagada = false }) {
   return (
-    <View style={{ gap: 6, marginTop: 2 }}>
-      <View style={{ flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.06)' }}>
-        {partes.map((p, i) => (
-          <View key={i} style={{ width: `${(p.porcentaje / Math.max(100, total)) * 100}%`, backgroundColor: REPARTO[i % REPARTO.length] }} />
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        {partes.map((p, i) => (
-          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: REPARTO[i % REPARTO.length] }} />
-            <Text style={{ fontSize: 12, color: INK.body }}>{p.parte} <Text style={{ fontWeight: '700', color: INK.title }}>{p.porcentaje} %</Text></Text>
-          </View>
-        ))}
-      </View>
-    </View>
+    <Text style={{ fontSize: 12.5, lineHeight: 19, color: apagada ? INK.meta : INK.body, fontStyle: 'italic', borderLeftWidth: 2, borderLeftColor: RAYA, paddingLeft: 9, marginTop: 4 }}>
+      {children}
+    </Text>
   );
 }
 
@@ -308,21 +312,204 @@ function Etiqueta({ children }) {
   );
 }
 
-function Punto({ item }) {
+// ─── El problema ───────────────────────────────────────────────────────────────
+// Arriba lo que dice que resuelve; debajo, los datos que usa, cada uno con su
+// cifra dibujada: un porcentaje con su medidor de 100, otra cifra en su tarjeta.
+
+function Problema({ items }) {
+  const planteamientos = items.filter((i) => i.tipo !== 'dato');
+  const datos = items.filter((i) => i.tipo === 'dato');
   return (
-    <View style={{ gap: 3 }}>
-      {item.titulo || item.etiqueta || item.cifra ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-          {item.titulo ? <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title }}>{item.titulo}</Text> : null}
-          {item.etiqueta ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
-          {item.cifra ? <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{item.cifra}</Text> : null}
+    <View style={{ gap: 18 }}>
+      {planteamientos.length ? (
+        <View style={{ padding: 14, borderRadius: RADIUS.md, backgroundColor: 'rgba(47,74,122,0.06)', gap: 10 }}>
+          <Text style={ROTULO}>LO QUE DICE QUE RESUELVE</Text>
+          {planteamientos.map((p, i) => (
+            planteamientos.length > 1
+              ? <Numerado key={i} n={i + 1}><Text style={{ fontSize: 14.5, lineHeight: 21, color: INK.title }}>{p.texto}</Text></Numerado>
+              : <Text key={i} style={{ fontSize: 15, lineHeight: 22, color: INK.title }}>{p.texto}</Text>
+          ))}
         </View>
       ) : null}
-      <Text style={{ fontSize: 13.5, lineHeight: 20, color: INK.body }}>{item.texto}</Text>
-      {item.nota ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{item.nota}</Text> : null}
+      {datos.length ? (
+        <View style={{ gap: 12 }}>
+          <Text style={ROTULO}>LOS DATOS QUE USA · {datos.length}</Text>
+          {datos.map((d, i) => <Dato key={i} n={i + 1} dato={d} />)}
+        </View>
+      ) : null}
     </View>
   );
 }
+
+function Dato({ n, dato }) {
+  const c = dato.cifraDato;
+  return (
+    <View style={{ padding: 12, borderRadius: RADIUS.md, backgroundColor: TONO.tarjeta, borderWidth: 1, borderColor: TONO.raya, gap: 8 }}>
+      {c ? <Medidor cifra={c} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {!c ? <Text style={{ fontSize: 12, fontWeight: '800', color: TINTA, marginTop: 1 }}>{n}</Text> : null}
+        <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, color: c ? INK.body : INK.title }}>{dato.texto}</Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <FileText size={12} color={INK.meta} />
+        <Text style={{ flex: 1, fontSize: 11.5, color: INK.meta }} numberOfLines={2}>{dato.fuente || 'la iniciativa no da la fuente'}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** La cifra con su forma: un porcentaje llena su barra de 100; otra cifra va grande con lo que cuenta. */
+function Medidor({ cifra }) {
+  const pct = cifra.unidad === 'porcentaje' && cifra.valor >= 0 && cifra.valor <= 100;
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <Text style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 32, color: INK.title }}>{cifraLegible(cifra)}</Text>
+        {cifra.etiqueta ? <Text style={{ flex: 1, minWidth: 120, fontSize: 13, fontWeight: '600', color: INK.title }}>{cifra.etiqueta}</Text> : null}
+      </View>
+      {pct ? (
+        <View style={{ gap: 3 }}>
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(28,43,34,0.07)', overflow: 'hidden' }}>
+            <View style={{ width: `${Math.max(1.5, cifra.valor)}%`, height: 8, borderRadius: 4, backgroundColor: TINTA }} />
+          </View>
+          <Text style={{ fontSize: 11, color: INK.meta }}>{deCadaCien(cifra.valor)}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ─── Dinero ────────────────────────────────────────────────────────────────────
+// Cada partida es un diagrama de arriba abajo: de dónde sale, la cifra, a dónde
+// va. Un porcentaje se dice también «de cada 100»; si se reparte, una barra con
+// sus partes; si hay varios montos en quetzales, barras que los comparan.
+
+// Solo el dinero que se gasta sale de algún lado; en una exención o un impuesto
+// se dice sobre qué es y a favor de quién.
+const SALE_DE_ALGUN_LADO = new Set(['gasto', 'asignacion', 'transferencia', 'fondo']);
+const REPARTO = [TINTA, '#7C93B8', '#B7C6DD', '#5E7A66', '#A9BFAE', '#C9B98F', '#8C7B6B', '#D8D2C4'];
+
+const plana = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const baseRepetida = (item) => item.base && item.de && plana(item.base).includes(plana(item.de));
+
+function Dinero({ items }) {
+  const barras = comparables(items);
+  const conCifra = items.filter((i) => i.cifra);
+  const sinCifra = items.filter((i) => !i.cifra);
+  return (
+    <View style={{ gap: 16 }}>
+      {barras.length ? <Comparacion barras={barras} /> : null}
+      {conCifra.map((it, i) => <Diagrama key={i} item={it} />)}
+      {sinCifra.length ? (
+        <View style={{ gap: 10 }}>
+          <Text style={ROTULO}>SIN MONTO EN EL TEXTO · {sinCifra.length}</Text>
+          {sinCifra.map((it, i) => (
+            <Numerado key={i} n={i + 1}>
+              <Text style={{ fontSize: 14, lineHeight: 20, color: INK.title }}>{it.texto}</Text>
+              <Ruta item={it} />
+              <Nota>{[it.etiqueta, it.nota].filter(Boolean).join(' · ')}</Nota>
+            </Numerado>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const rotulosDe = (item) => (SALE_DE_ALGUN_LADO.has(item.tipo) ? ['SALE DE', 'VA A'] : ['SOBRE', 'A FAVOR DE']);
+
+/** De dónde sale → cifra → a dónde va, en cajas unidas por flechas. */
+function Diagrama({ item }) {
+  const [rDe, rPara] = rotulosDe(item);
+  const de = item.de || (SALE_DE_ALGUN_LADO.has(item.tipo) ? null : undefined);
+  const pctExplicado = item.unidad === 'porcentaje' ? deCadaCien(item.cantidad) : null;
+  return (
+    <View style={{ gap: 6, padding: 10, borderRadius: RADIUS.lg, backgroundColor: 'rgba(28,43,34,0.035)' }}>
+      {de !== undefined ? <Caja rotulo={rDe} texto={de || 'la iniciativa no lo dice'} apagada={!de} /> : null}
+      {de !== undefined ? <Flecha /> : null}
+      <View style={{ padding: 14, borderRadius: RADIUS.md, backgroundColor: TONO.arenaLavado, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <Text style={{ flexShrink: 1, fontFamily: SERIF, fontSize: 30, lineHeight: 32, color: INK.title }}>{item.cifra}</Text>
+          {item.etiqueta && item.tipo !== 'otro' ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
+        </View>
+        {pctExplicado ? (
+          <Text style={{ fontSize: 13, color: INK.title }}>
+            {pctExplicado}{item.base && !baseRepetida(item) ? ` ${item.base}` : item.de ? ` de ${item.de}` : ''}
+          </Text>
+        ) : item.base ? <Text style={{ fontSize: 13, color: INK.title }}>{item.base}</Text> : null}
+        <Text style={{ fontSize: 13, lineHeight: 19, color: INK.body }}>{item.texto}</Text>
+      </View>
+      {item.para ? <Flecha /> : null}
+      {item.para ? <Caja rotulo={rPara} texto={item.para} /> : null}
+      {item.reparto ? <Reparto partes={item.reparto} /> : null}
+      <Nota>{item.nota}</Nota>
+    </View>
+  );
+}
+
+function Caja({ rotulo, texto, apagada = false }) {
+  return (
+    <View style={{ paddingHorizontal: 12, paddingVertical: 9, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: apagada ? TONO.raya : TONO.borde, borderStyle: apagada ? 'dashed' : 'solid', backgroundColor: TONO.tarjeta, gap: 2 }}>
+      <Text style={ROTULO}>{rotulo}</Text>
+      <Text style={{ fontSize: 13.5, lineHeight: 19, color: apagada ? INK.meta : INK.title, fontStyle: apagada ? 'italic' : 'normal' }}>{texto}</Text>
+    </View>
+  );
+}
+
+const Flecha = () => (
+  <View style={{ alignItems: 'center' }}><ArrowDown size={16} color={INK.meta} /></View>
+);
+
+/** Para lo que no tiene monto: el mismo recorrido, en una línea. */
+function Ruta({ item }) {
+  const [rDe, rPara] = rotulosDe(item);
+  const partes = [item.de ? `${rDe.toLowerCase()} ${item.de}` : null, item.para ? `${rPara.toLowerCase()} ${item.para}` : null].filter(Boolean);
+  return partes.length ? <Text style={{ fontSize: 12.5, lineHeight: 18, color: INK.body }}>{partes.join(' → ')}</Text> : null;
+}
+
+/** Varios montos en quetzales, a escala del mayor. */
+function Comparacion({ barras }) {
+  return (
+    <View style={{ gap: 9, padding: 14, borderRadius: RADIUS.md, backgroundColor: 'rgba(28,43,34,0.04)' }}>
+      <Text style={ROTULO}>CUÁNTO VA A CADA COSA</Text>
+      {barras.map((b, i) => (
+        <View key={i} style={{ gap: 4 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+            <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: INK.title }}>{b.para || b.texto}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{b.cifra}</Text>
+          </View>
+          <View style={{ height: 8, borderRadius: 4, backgroundColor: 'rgba(28,43,34,0.07)', overflow: 'hidden' }}>
+            <View style={{ width: `${Math.max(3, Math.round(b.proporcion * 100))}%`, height: 8, borderRadius: 4, backgroundColor: TONO.verde }} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Cómo se reparte: una barra con cada parte a su tamaño y, debajo, cada parte con su porcentaje. */
+function Reparto({ partes }) {
+  const total = partes.reduce((n, p) => n + p.porcentaje, 0) || 1;
+  return (
+    <View style={{ gap: 8, marginTop: 6, padding: 12, borderRadius: RADIUS.md, backgroundColor: 'rgba(28,43,34,0.04)' }}>
+      <Text style={ROTULO}>CÓMO SE REPARTE</Text>
+      <View style={{ flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.06)' }}>
+        {partes.map((p, i) => (
+          <View key={i} style={{ width: `${(p.porcentaje / Math.max(100, total)) * 100}%`, backgroundColor: REPARTO[i % REPARTO.length] }} />
+        ))}
+      </View>
+      {partes.map((p, i) => (
+        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: REPARTO[i % REPARTO.length] }} />
+          <Text style={{ flex: 1, fontSize: 13, color: INK.body }}>{p.parte}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: INK.title, fontVariant: ['tabular-nums'] }}>{p.porcentaje} %</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ─── Qué cambia de la ley vigente ──────────────────────────────────────────────
 
 /** Un artículo que se toca: el propuesto, y al abrir, el de hoy desde la base de leyes. */
 function Cambio({ item }) {
@@ -335,25 +522,21 @@ function Cambio({ item }) {
   });
   const puedeComparar = !!item.ley.decreto && item.etiqueta !== 'adiciona';
   return (
-    <View style={{ gap: 4 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+    <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {item.etiqueta ? <Etiqueta>{item.etiqueta}</Etiqueta> : null}
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: INK.title }}>
-          art. {item.ley.articulo} · {item.ley.nombre || item.nota}
-        </Text>
+        <Text style={{ flexShrink: 1, fontSize: 14, fontWeight: '700', color: INK.title }}>art. {item.ley.articulo}</Text>
+        <Text style={{ flexShrink: 1, fontSize: 12.5, color: INK.body }}>{item.ley.nombre || item.nota}</Text>
       </View>
-      {item.propuesto ? <Cita>{item.propuesto}</Cita> : null}
+      {item.propuesto ? (
+        <View style={{ gap: 3 }}>
+          <Text style={ROTULO}>CÓMO QUEDARÍA</Text>
+          <Cita>{item.propuesto}</Cita>
+        </View>
+      ) : null}
       {puedeComparar ? <Plegable abierto={antes} onPress={() => setAntes((v) => !v)} texto="cómo está hoy" color={INK.meta} /> : null}
       {antes && vigente.data ? <Cita apagada>{vigente.data.texto}</Cita> : null}
       {antes && vigente.isSuccess && !vigente.data ? <Text style={{ fontSize: 12, color: INK.meta }}>Ese artículo no está en la biblioteca de leyes.</Text> : null}
     </View>
-  );
-}
-
-function Cita({ children, apagada = false }) {
-  return (
-    <Text style={{ fontSize: 12.5, lineHeight: 19, color: apagada ? INK.meta : INK.body, fontStyle: 'italic', borderLeftWidth: 2, borderLeftColor: RAYA, paddingLeft: 9, marginTop: 4 }}>
-      {children}
-    </Text>
   );
 }

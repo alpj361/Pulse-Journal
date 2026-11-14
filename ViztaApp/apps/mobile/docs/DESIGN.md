@@ -495,10 +495,20 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 - Cada sección lleva sus citas plegadas en **en el texto**. En un artículo que
   se reforma, el texto propuesto va a la vista y **cómo está hoy** sale de la
   biblioteca de leyes, nunca del modelo.
+- **Cómo se lee** (PJ, 13-nov-2026): la estructura la pone la vista, no el
+  modelo. Cada sección agrupa sus puntos en orden fijo con rótulo, ícono y
+  cuántos son —«Qué hace» por acción (Crea, Obliga, Prohíbe…), «Quién gana»
+  por efecto (Reciben algo, Asumen un costo…), «Para revisar» por tipo— y
+  dentro de cada grupo los puntos van numerados. Nada se lee de corrido.
+- **El problema**: arriba, en un bloque, lo que dice que resuelve; debajo,
+  «los datos que usa», cada uno en su tarjeta con su cifra grande y lo que
+  cuenta, un medidor de 100 si es porcentaje, y la fuente con su ícono (o «la
+  iniciativa no da la fuente»). Un año no se dibuja como cifra.
 - **Dinero** (PJ, 12-nov-2026): la cifra primero y grande («Q500 millones al
   año», «0.03 %»), nunca el monto en letras. Debajo, de qué es, y el flujo en
-  dos filas con rótulo: «sale de» / «va a» para lo que se gasta; «sobre» / «a
-  favor de» para exenciones e impuestos. Si se gasta y no dice de dónde sale,
+  un diagrama de arriba abajo, en su propio bloque: «sale de» → la cifra →
+  «va a» para lo que se gasta; «sobre» / «a favor de» para exenciones e
+  impuestos. Un porcentaje se dice también «de cada 100». Si se gasta y no dice de dónde sale,
   «no lo dice». Lo visual lo deciden los datos, con reglas fijas: una barra
   con sus partes si el dinero se reparte; barras comparadas si hay dos o más
   montos en quetzales del mismo período; lo que no tiene monto va agrupado y

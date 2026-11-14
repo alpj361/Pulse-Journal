@@ -29,10 +29,22 @@ describe('el análisis de una iniciativa', () => {
   it('nombra las cosas sin calificar y dice lo que el texto no da', () => {
     const a = leerAnalisis(resultado);
     const por = Object.fromEntries(a.secciones.map((s) => [s.key, s.items[0]]));
-    expect(por.problema.nota).toBe('sin fuente');
-    expect(por.que_hace).toMatchObject({ etiqueta: 'crea', nota: 'Ministerio de Cultura · art. 1' });
+    expect(por.problema).toMatchObject({ tipo: 'dato', fuente: null, cifraDato: { valor: 40, unidad: 'porcentaje', etiqueta: null } });
+    expect(por.que_hace).toMatchObject({ accion: 'crea', etiqueta: 'crea', quien: 'Ministerio de Cultura', nota: 'art. 1' });
     expect(por.quien_gana_quien_asume).toMatchObject({ titulo: 'Municipalidades', etiqueta: 'asume un costo', nota: 'arts. 2 y 3' });
     expect(por.dinero).toMatchObject({ cifra: '1 %', unidad: 'porcentaje', de: null });
+  });
+
+  it('cada dato del problema trae su cifra para dibujarla, y los planteamientos van aparte', () => {
+    const a = leerAnalisis({ limitations: [], sections: [seccion('problema', [
+      { tipo: 'planteamiento', texto: 'Las condiciones económicas limitan el acceso a estudios.', cifra: null, fuente_declarada: null },
+      { tipo: 'dato', texto: 'El 68 % de las personas sin estudios vive en pobreza.', cifra: { valor: 68, unidad: 'porcentaje', etiqueta: 'de las personas sin estudios vive en pobreza' }, fuente_declarada: 'ENCOVI 2023' },
+      { tipo: 'dato', texto: 'Uno de cada cuatro jóvenes no estudia.', fuente_declarada: 'Ministerio de Educación' },
+    ])] });
+    const [plan, conCifra, sinCifra] = a.secciones[0].items;
+    expect(plan).toMatchObject({ tipo: 'planteamiento', cifraDato: null });
+    expect(conCifra).toMatchObject({ cifraDato: { valor: 68, unidad: 'porcentaje' }, fuente: 'ENCOVI 2023' });
+    expect(sinCifra.cifraDato).toBeNull();
   });
 
   it('sin nada que mostrar no hay análisis', () => {
@@ -66,6 +78,8 @@ describe('el análisis de una iniciativa', () => {
     expect(leerEstado({ estado: 'listo', result: { sections: [], limitations: [] } }).estado).toBe('fallido');
     expect(leerEstado({ estado: 'en_curso' })).toEqual({ estado: 'en_curso', cache: false, analisis: null });
     expect(leerEstado({ estado: 'otra cosa' }).estado).toBe('sin_pedir');
+    expect(leerEstado({ estado: 'fallido', error_code: null }).estado).toBe('sin_pedir');
+    expect(leerEstado({ estado: 'fallido', error_code: 'analysis_provider_failed' }).estado).toBe('fallido');
   });
 
   it('la caché también se espera, entre 5 y 8 segundos', () => {
