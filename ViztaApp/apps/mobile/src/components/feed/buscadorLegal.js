@@ -691,12 +691,17 @@ export const enlaceDeNorma = (norma) => (/^https?:\/\//i.test(norma?.storage_pat
 
 const INTERROGATIVAS = /^(¿|qué|que|cómo|como|cuál|cual|cuáles|cuales|cuándo|cuando|cuánto|cuanto|cuántos|cuantos|cuántas|cuantas|dónde|donde|quién|quien|quiénes|quienes|por qué|puedo|puede|pueden|se puede|es legal|es ilegal|está|están|hay|me pueden|tengo|tiene|debe|deben|si )/i;
 
+const PISTAS_LEGALES = /\b(permitid[oa]s?|prohibid[oa]s?|legal|ilegal|pena|penas|carcel|prision|multa|multas|sancion|sanciones|delito|castig[oa]|obligad[oa]|obligatorio|derecho a)\b/;
+
 /** Si el texto se lee como una pregunta y no como palabras sueltas o un artículo. */
 export function esPregunta(texto) {
   const q = String(texto || '').replace(/\s+/g, ' ').trim();
   if (q.length < 8 || q.length > 600) return false;
-  if (/\?$/.test(q) || q.startsWith('¿')) return true;
-  return INTERROGATIVAS.test(q) && q.split(' ').length >= 2;
+  if (/[?¿]/.test(q)) return true;
+  const palabras = q.split(' ').length;
+  if (INTERROGATIVAS.test(q) && palabras >= 2) return true;
+  // Sin signos ni palabra interrogativa: lo que se pregunta de una ley.
+  return palabras >= 3 && PISTAS_LEGALES.test(normalizar(q));
 }
 
 export const ESTADOS_RESPUESTA = ['respondida', 'parcial', 'sin_base', 'fuera_de_tema'];

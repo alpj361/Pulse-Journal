@@ -7,6 +7,9 @@ describe('preguntar a la ley', () => {
     expect(esPregunta('qué pasa si no pago la pensión')).toBe(true);
     expect(esPregunta('es legal cobrar por estacionar')).toBe(true);
     expect(esPregunta('puedo fumar')).toBe(true);
+    expect(esPregunta('esta permitido la zoofilia? tiene pena de carcel')).toBe(true);
+    expect(esPregunta('esta permitido portar armas')).toBe(true);
+    expect(esPregunta('manejar ebrio tiene multa')).toBe(true);
     expect(esPregunta('despido embarazada')).toBe(false);
     expect(esPregunta('art 102 constitución')).toBe(false);
     expect(esPregunta('código de trabajo')).toBe(false);
