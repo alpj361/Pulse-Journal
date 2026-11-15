@@ -524,7 +524,8 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 
 - Cuando lo escrito se lee como pregunta, el buscador lo detecta solo, como un buscador web: no hay modo «pregunta» que elegir ni que confirmar.
 - La invitación es una pastilla chica de una línea («responder con la ley»), no un bloque: los resultados de siempre siguen siendo lo principal.
-- Mientras responde, una línea del mismo tamaño. La respuesta sí va en su tarjeta, con cada afirmación numerada y cada número abre su artículo.
+- Mientras responde, una línea del mismo tamaño. La respuesta sí va en su tarjeta, con cada afirmación numerada.
+- Un artículo citado (su fila o su número en el texto) se despliega ahí mismo con su texto. La ley completa se abre con el ícono del libro, en la misma hoja, no en otra: «volver» regresa a la pregunta para seguir viendo los demás artículos.
 
 ## Resultado de una votación
 

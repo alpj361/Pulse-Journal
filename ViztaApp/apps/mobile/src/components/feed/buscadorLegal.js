@@ -759,3 +759,14 @@ export async function preguntarALaLey(pregunta) {
     clearTimeout(espera);
   }
 }
+
+/** Un artículo por su id, para leerlo dentro de la respuesta a una pregunta. */
+export async function traerArticulo(id) {
+  const { data, error } = await supabase
+    .from('articulos')
+    .select('id, numero_articulo, texto, norma_id')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return data;
+}

@@ -21,7 +21,7 @@ import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
 import {
   buscarLegal, descripcionDe, iniciativasDeLey, nombreDecreto, nombreEstado, notaVisible, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
-  esPregunta, partesDeRespuesta, preguntarALaLey, seBusca, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
+  esPregunta, partesDeRespuesta, preguntarALaLey, seBusca, traerArticulo, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
 } from './buscadorLegal';
 
 const ICONO = { ley: Scale, articulo: Pilcrow, iniciativa: ScrollText };
@@ -879,6 +879,7 @@ function IniciativaAbierta({ numero, abajo, registro, onLey }) {
  */
 function PreguntaALaLey({ pregunta, onArticulo }) {
   const [pedida, setPedida] = useState(null);
+  const [abiertaFuente, setAbiertaFuente] = useState(null); // el artículo desplegado dentro de la respuesta
   const respuesta = useQuery({
     queryKey: ['pregunta-legal', pregunta],
     queryFn: () => preguntarALaLey(pregunta),
@@ -930,7 +931,7 @@ function PreguntaALaLey({ pregunta, onArticulo }) {
       </Pressable>
     );
   }
-  const abrir = (n) => { const f = fuentes[n - 1]; if (f?.normaId) onArticulo(f); };
+  const abrir = (n) => { const f = fuentes[n - 1]; if (f) { roce(); setAbiertaFuente(f.articuloId); } };
   return (
     <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 6, marginBottom: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: RAYA, backgroundColor: 'rgba(255,255,255,0.75)' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -948,20 +949,59 @@ function PreguntaALaLey({ pregunta, onArticulo }) {
       </Text>
       <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: RAYA }}>
         {fuentes.map((f, i) => (
-          <Pressable key={f.articuloId} onPress={() => abrir(i + 1)} disabled={!f.normaId} accessibilityRole="button"
-            accessibilityLabel={`abrir el artículo ${f.numero} de ${f.ley}`}
-            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, borderBottomWidth: i < fuentes.length - 1 ? 1 : 0, borderBottomColor: RAYA, opacity: pressed ? 0.6 : 1 })}>
-            <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(47,74,122,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: TINTA }}>{i + 1}</Text>
-            </View>
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: INK.body }}>
-              <Text style={{ fontWeight: '700', color: INK.title }}>{`Art. ${f.numero}`}</Text>
-              {f.ley ? ` · ${f.ley}` : ''}
-            </Text>
-            <ChevronRight size={14} color={INK.faint} />
-          </Pressable>
+          <FuenteDeRespuesta key={f.articuloId} f={f} n={i + 1} ultima={i === fuentes.length - 1}
+            abierta={abiertaFuente === f.articuloId}
+            onAlternar={() => { roce(); setAbiertaFuente((a) => (a === f.articuloId ? null : f.articuloId)); }}
+            onLey={() => onArticulo(f)} />
         ))}
       </View>
     </Animated.View>
+  );
+}
+
+/**
+ * Un artículo citado en la respuesta. Tocarlo lo despliega ahí mismo con su
+ * texto; el libro abre la ley completa en la misma hoja, parada en él, y
+ * «volver» regresa a la pregunta.
+ */
+function FuenteDeRespuesta({ f, n, ultima, abierta, onAlternar, onLey }) {
+  const articulo = useQuery({ queryKey: ['articulo-legal', f.articuloId], queryFn: () => traerArticulo(f.articuloId), enabled: abierta, staleTime: 60 * 60 * 1000 });
+  const Flecha = abierta ? ChevronUp : ChevronDown;
+  return (
+    <View style={{ borderBottomWidth: ultima ? 0 : 1, borderBottomColor: RAYA }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 }}>
+        <Pressable onPress={onAlternar} accessibilityRole="button" accessibilityState={{ expanded: abierta }}
+          accessibilityLabel={`${abierta ? 'ocultar' : 'leer'} el artículo ${f.numero} de ${f.ley}`}
+          style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, opacity: pressed ? 0.6 : 1 })}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(47,74,122,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: TINTA }}>{n}</Text>
+          </View>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 13, color: INK.body }}>
+            <Text style={{ fontWeight: '700', color: INK.title }}>{`Art. ${f.numero}`}</Text>
+            {f.ley ? ` · ${f.ley}` : ''}
+          </Text>
+          <Flecha size={14} color={INK.faint} />
+        </Pressable>
+        {f.normaId ? (
+          <Pressable onPress={onLey} hitSlop={8} accessibilityRole="button" accessibilityLabel={`abrir ${f.ley || 'la ley'} completa`}
+            style={({ pressed }) => ({ padding: 6, opacity: pressed ? 0.6 : 1 })}>
+            <BookOpen size={15} color={TINTA} strokeWidth={2.2} />
+          </Pressable>
+        ) : null}
+      </View>
+      {abierta ? (
+        <Animated.View entering={FadeIn.duration(160)} style={{ paddingLeft: 30, paddingBottom: 12 }}>
+          {articulo.isLoading ? (
+            <MorphingInfinity size={16} color={INK.meta} />
+          ) : articulo.data?.texto ? (
+            <Text selectable style={{ fontSize: 13.5, lineHeight: 20, color: INK.body }}>
+              {textoLegible(articulo.data.texto, { numero: articulo.data.numero_articulo, titulo: f.ley })}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 13, color: INK.meta }}>No se pudo cargar el artículo.</Text>
+          )}
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
