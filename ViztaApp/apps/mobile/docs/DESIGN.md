@@ -525,7 +525,8 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 - Cuando lo escrito se lee como pregunta, el buscador lo detecta solo, como un buscador web: no hay modo «pregunta» que elegir ni que confirmar.
 - La invitación es una pastilla chica de una línea («responder con la ley»), no un bloque: los resultados de siempre siguen siendo lo principal.
 - Va justo debajo del buscador, antes de los filtros «todo / leyes / artículos / iniciativas»: es una función, no una categoría de resultados.
-- Todo lo que trae se pliega y se despliega: la respuesta (su encabezado; plegada queda una línea y cuántas fuentes), cada pregunta del hilo y «preguntas que siguen». El usuario decide qué tener abierto.
+- Todo lo que trae se pliega y se despliega: la respuesta (su encabezado; plegada queda una línea y cuántas fuentes), cada pregunta del hilo (plegada queda solo la pregunta, sin fragmento) y «preguntas que siguen». El usuario decide qué tener abierto.
+- Cuando se preguntó, los resultados de siempre van bajo «COINCIDENCIAS POR PALABRA»: son lo que encontró la búsqueda por palabras, no parte de la respuesta.
 - Movimiento corto y con sentido: lo nuevo entra deslizando un poco hacia abajo, lo que se cierra se desvanece y lo de abajo se reacomoda sin saltos (~200 ms). Nada se anima en bucle.
 - Mientras responde, una línea del mismo tamaño. La respuesta sí va en su tarjeta, con cada afirmación numerada.
 - Debajo de cada respuesta, hasta 3 preguntas que siguen, como pastillas chicas. Tocar una la responde debajo (la anterior queda arriba, se vuelve con scroll). Las de iniciativas (ícono de pergamino) responden con lo que se propone en el Congreso, citando número y etapa; su lupa busca en las iniciativas sin el modelo.

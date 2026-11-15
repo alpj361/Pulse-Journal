@@ -239,6 +239,11 @@ function Panel({ onClose, inicio = null }) {
                         .filter((o) => o.clave === 'todo' || o.cuenta)} />
                     </Animated.View>
                   ) : null}
+                  {esPregunta(buscado) && resultados.length ? (
+                    <Animated.View layout={LinearTransition.duration(220)}>
+                      <Parte Icono={Search}>COINCIDENCIAS POR PALABRA</Parte>
+                    </Animated.View>
+                  ) : null}
                   {busqueda.data?.amplia && resultados.length ? (
                     <Text style={{ fontSize: 12.5, color: INK.meta, lineHeight: 18, marginBottom: 6 }}>
                       Ningún texto tiene todas las palabras. Estos tienen alguna.
@@ -953,6 +958,8 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
   const siguientes = seguimiento.length && !plegada ? (
     <Seguimientos lista={seguimiento} onPreguntar={onSeguimiento} onBuscarIniciativas={onBuscarIniciativas} />
   ) : null;
+  // En el hilo, plegar deja solo la pregunta: ni tarjeta ni fragmento.
+  if (mostrarPregunta && plegada) return <View>{encabezado}</View>;
   if (estado === 'sin_base' || estado === 'fuera_de_tema' || !fuentes.length) {
     const reintentar = estado === 'sin_base' ? () => { roce(); respuesta.refetch(); } : undefined;
     return (
