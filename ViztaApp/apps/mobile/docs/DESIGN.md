@@ -544,6 +544,14 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 - Debajo de cada respuesta, hasta 3 preguntas que siguen, como pastillas chicas. Tocar una la responde debajo (la anterior queda arriba, se vuelve con scroll). Las de iniciativas (ícono de pergamino) responden con lo que se propone en el Congreso, citando número y etapa; su lupa busca en las iniciativas sin el modelo.
 - Un artículo citado (su fila o su número en el texto) se despliega ahí mismo con su texto. La ley completa se abre con el ícono del libro, en la misma hoja, no en otra: «volver» regresa a la pregunta para seguir viendo los demás artículos.
 
+## Analizar un caso (buscador legal)
+
+- Con la barra vacía, bajo el buscador va «Analizar un caso», plegable. No se escribe el caso ahí: se elige una nota reciente, un documento PDF o Word de la biblioteca, o «Nueva nota con el caso», que abre el editor de notas con su transición de siempre; al cerrarlo, la nota guardada queda elegida.
+- Un documento entra enlazado a una nota («Caso · <documento>»): todo análisis legal vive en una nota.
+- Se pide a mano («analizar con el buscador legal»). Mientras corre, tres pasos: leer el caso, buscar las leyes e iniciativas, armar la matriz. Es una guía por tiempo, no un reloj.
+- La matriz va en una tarjeta: resumen y secciones plegables (las dos primeras abiertas). Cada artículo o iniciativa citada es una pastilla que abre su ley o su ficha en la misma hoja; «volver» regresa al análisis. Las preguntas del final se hacen al buscador.
+- Es privado y lo paga quien lo pide. Queda en la nota: reabrirla trae el análisis sin pedirlo de nuevo; si la nota se editó después, la tarjeta ofrece «nota editada» para rehacerlo.
+
 ## Resultado de una votación
 
 El resultado (aprobada o no aprobada) sale del registro (`votaciones.resultado`)

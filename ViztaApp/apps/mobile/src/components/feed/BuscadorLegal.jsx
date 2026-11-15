@@ -8,6 +8,7 @@ import { INK, RADIUS, SERIF } from '../theme';
 import { PAPEL } from '../codex/Papel';
 import { ROTULO } from '../colaboradores/piezas';
 import MorphingInfinity from '../MorphingInfinity';
+import AnalizarCaso from './AnalizarCaso';
 import LectorDocumento from '../LectorDocumento';
 import CaminoDecreto, { PillEstado } from './CaminoDecreto';
 import { delDecreto } from './estadoDeLeyes';
@@ -113,6 +114,9 @@ function Panel({ onClose, inicio = null }) {
   const [barra, setBarra] = useState(0); // cambia para reescribir el campo desde afuera
   // Las preguntas de seguimiento que se fueron abriendo debajo de la primera respuesta.
   const [hilo, setHilo] = useState([]);
+  // «Analizar un caso»: el caso elegido y su análisis, aquí para que abrir un artículo y volver no los pierda.
+  const [casoLegal, setCasoLegal] = useState(null);
+  const preguntar = (q) => { roce(); setTexto(q); setBarra((b) => b + 1); };
   const [buscado, setBuscado] = useState('');
   const [filtro, setFiltro] = useState('todo');
   const [abiertas, setAbiertas] = useState({}); // las partes desplegadas en «todo»
@@ -221,7 +225,11 @@ function Panel({ onClose, inicio = null }) {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: insets.bottom + 32 }}
-              ListHeaderComponent={buscado.length >= 2 ? (
+              ListHeaderComponent={buscado.length < 2 ? (
+                <AnalizarCaso estado={casoLegal} onEstado={setCasoLegal}
+                  onArticulo={(r) => ir({ tipo: 'norma', id: r.normaId, foco: r.articuloId })}
+                  onIniciativa={abrirIniciativa} onPreguntar={preguntar} />
+              ) : buscado.length >= 2 ? (
                 <View style={{ paddingTop: 6 }}>
                   {/* La pregunta va primero, antes de los filtros: es una función, no una categoría de resultados. */}
                   {esPregunta(buscado) ? (
