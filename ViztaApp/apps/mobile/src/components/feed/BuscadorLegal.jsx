@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Ban, BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleCheck, Clock, FilePlus, FileText, MessageCircleQuestionMark, PencilLine, Pilcrow, Scale, ScrollText, Search, X } from 'lucide-react-native';
 import { INK, RADIUS, SERIF } from '../theme';
@@ -210,11 +210,6 @@ function Panel({ onClose, inicio = null }) {
           <View style={{ flex: 1 }}>
             <View style={{ paddingHorizontal: 18, paddingTop: 8 }}>
               <Barra key={barra} valor={texto} onCambiar={setTexto} cargando={busqueda.isFetching} autoFocus={!texto} />
-              {tiposConResultados > 1 ? (
-                <FiltroChips valor={activo} onCambiar={(v) => { roce(); setFiltro(v); }} opciones={FILTROS
-                  .map(([clave, nombre]) => ({ clave, nombre, cuenta: clave === 'todo' ? resultados.length : cuenta(clave) }))
-                  .filter((o) => o.clave === 'todo' || o.cuenta)} />
-              ) : null}
             </View>
             <FlatList
               data={buscado.length >= 2 ? filas : []}
@@ -223,9 +218,10 @@ function Panel({ onClose, inicio = null }) {
               keyboardDismissMode="on-drag"
               contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: insets.bottom + 32 }}
               ListHeaderComponent={buscado.length >= 2 ? (
-                <View>
+                <View style={{ paddingTop: 6 }}>
+                  {/* La pregunta va primero, antes de los filtros: es una función, no una categoría de resultados. */}
                   {esPregunta(buscado) ? (
-                    <View>
+                    <Animated.View layout={LinearTransition.duration(220)}>
                       {[{ pregunta: buscado, ambito: 'ley' }, ...hilo].map((paso, i) => (
                         <PreguntaALaLey key={`${i}-${paso.ambito}-${paso.pregunta}`} pregunta={paso.pregunta} ambito={paso.ambito}
                           auto={i > 0} mostrarPregunta={i > 0}
@@ -234,7 +230,14 @@ function Panel({ onClose, inicio = null }) {
                           onSeguimiento={(s) => { roce(); setHilo((h) => [...h.slice(0, i), s]); }}
                           onBuscarIniciativas={buscarIniciativas} />
                       ))}
-                    </View>
+                    </Animated.View>
+                  ) : null}
+                  {tiposConResultados > 1 ? (
+                    <Animated.View layout={LinearTransition.duration(220)}>
+                      <FiltroChips valor={activo} onCambiar={(v) => { roce(); setFiltro(v); }} opciones={FILTROS
+                        .map(([clave, nombre]) => ({ clave, nombre, cuenta: clave === 'todo' ? resultados.length : cuenta(clave) }))
+                        .filter((o) => o.clave === 'todo' || o.cuenta)} />
+                    </Animated.View>
                   ) : null}
                   {busqueda.data?.amplia && resultados.length ? (
                     <Text style={{ fontSize: 12.5, color: INK.meta, lineHeight: 18, marginBottom: 6 }}>
@@ -898,6 +901,8 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
   const [pedida, setPedida] = useState(null);
   const deIniciativas = ambito === 'iniciativas';
   const [abiertaFuente, setAbiertaFuente] = useState(null); // el artículo desplegado dentro de la respuesta
+  const [plegada, setPlegada] = useState(false); // la respuesta, reducida a su encabezado
+  const alternar = () => { roce(); setPlegada((v) => !v); };
   const respuesta = useQuery({
     queryKey: ['pregunta-legal', ambito, pregunta],
     queryFn: () => preguntarALaLey(pregunta, ambito),
@@ -913,22 +918,24 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
     return (
       <Pressable onPress={pedir} accessibilityRole="button" accessibilityLabel="Responder la pregunta con los artículos de la ley"
         hitSlop={8}
-        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, minHeight: 30, marginTop: 2, marginBottom: 2, paddingHorizontal: 10, borderRadius: 15, backgroundColor: 'rgba(47,74,122,0.07)', opacity: pressed ? 0.6 : 1 })}>
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, minHeight: 30, marginTop: 2, marginBottom: 6, paddingHorizontal: 10, borderRadius: 15, backgroundColor: 'rgba(47,74,122,0.07)', opacity: pressed ? 0.6 : 1 })}>
         <MessageCircleQuestionMark size={13} color={TINTA} strokeWidth={2.2} />
         <Text style={{ fontSize: 12.5, fontWeight: '600', color: TINTA }}>responder con la ley</Text>
         <ChevronRight size={12} color={TINTA} />
       </Pressable>
     );
   }
-  const encabezado = mostrarPregunta ? <PreguntaDelHilo pregunta={pregunta} deIniciativas={deIniciativas} /> : null;
+  const encabezado = mostrarPregunta ? (
+    <PreguntaDelHilo pregunta={pregunta} deIniciativas={deIniciativas} plegada={plegada} onPress={respuesta.data ? alternar : undefined} />
+  ) : null;
   if (respuesta.isLoading || respuesta.isFetching) {
     return (
       <View>
         {encabezado}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 30, marginTop: 2, paddingHorizontal: 2 }}>
+        <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 30, marginTop: 2, paddingHorizontal: 2 }}>
           <MorphingInfinity size={14} color={TINTA} />
           <Text style={{ fontSize: 12.5, color: INK.meta }}>{deIniciativas ? 'Buscando iniciativas en el Congreso…' : 'Leyendo los artículos que aplican…'}</Text>
-        </View>
+        </Animated.View>
       </View>
     );
   }
@@ -943,7 +950,7 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
     );
   }
   const { estado, texto, fuentes, seguimiento = [] } = respuesta.data;
-  const siguientes = seguimiento.length ? (
+  const siguientes = seguimiento.length && !plegada ? (
     <Seguimientos lista={seguimiento} onPreguntar={onSeguimiento} onBuscarIniciativas={onBuscarIniciativas} />
   ) : null;
   if (estado === 'sin_base' || estado === 'fuera_de_tema' || !fuentes.length) {
@@ -968,12 +975,23 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
   return (
     <View>
     {encabezado}
-    <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 6, marginBottom: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: RAYA, backgroundColor: 'rgba(255,255,255,0.75)' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+    <Animated.View entering={FadeInDown.duration(240)} layout={LinearTransition.duration(220)} style={{ marginTop: 6, marginBottom: 6, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: RAYA, backgroundColor: 'rgba(255,255,255,0.75)', overflow: 'hidden' }}>
+      <Pressable onPress={alternar} hitSlop={6} accessibilityRole="button" accessibilityState={{ expanded: !plegada }}
+        accessibilityLabel={plegada ? 'desplegar la respuesta' : 'plegar la respuesta'}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.6 : 1 })}>
         <IconoRotulo size={12} color={TINTA} strokeWidth={2.4} />
         <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>{deIniciativas ? 'LO QUE SE PROPONE EN EL CONGRESO' : 'LO QUE DICE LA LEY'}</Text>
         {estado === 'parcial' ? <Pastilla>en parte</Pastilla> : null}
-      </View>
+        <View style={{ flex: 1 }} />
+        {plegada ? <Text style={{ fontSize: 11.5, color: INK.meta }}>{`${fuentes.length} ${fuentes.length === 1 ? 'fuente' : 'fuentes'}`}</Text> : null}
+        <Flecha abierta={!plegada} />
+      </Pressable>
+      {plegada ? (
+        <Animated.Text entering={FadeIn.duration(160)} numberOfLines={1} style={{ fontSize: 13, color: INK.meta, marginTop: 6 }}>
+          {texto.replace(/\s*\[[\d,\s]+\]/g, '')}
+        </Animated.Text>
+      ) : (
+      <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(120)}>
       <Text style={{ fontSize: 14.5, lineHeight: 22, color: INK.title, marginTop: 8 }}>
         {partesDeRespuesta(texto).map((p, i) => (p.citas
           ? p.citas.map((n) => (
@@ -994,6 +1012,8 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
             : <FuenteDeRespuesta key={f.clave} {...comun} onLey={() => onArticulo(f)} />;
         })}
       </View>
+      </Animated.View>
+      )}
     </Animated.View>
     {siguientes}
     </View>
@@ -1001,13 +1021,26 @@ function PreguntaALaLey({ pregunta, ambito = 'ley', auto = false, mostrarPregunt
 }
 
 /** La pregunta de seguimiento que se abrió, encima de su respuesta. */
-function PreguntaDelHilo({ pregunta, deIniciativas }) {
+function PreguntaDelHilo({ pregunta, deIniciativas, plegada, onPress }) {
   const Icono = deIniciativas ? ScrollText : MessageCircleQuestionMark;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 14 }}>
-      <Icono size={13} color={INK.meta} strokeWidth={2.2} style={{ marginTop: 2 }} />
-      <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, fontWeight: '600', color: INK.title }}>{pregunta}</Text>
-    </View>
+    <Animated.View entering={FadeInDown.duration(220)}>
+      <Pressable onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : 'text'} accessibilityState={onPress ? { expanded: !plegada } : undefined}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 14, opacity: pressed ? 0.6 : 1 })}>
+        <Icono size={13} color={INK.meta} strokeWidth={2.2} style={{ marginTop: 2 }} />
+        <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, fontWeight: '600', color: INK.title }}>{pregunta}</Text>
+        {onPress ? <Flecha abierta={!plegada} /> : null}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/** La flecha de lo que se pliega: gira al abrir y cerrar. */
+function Flecha({ abierta }) {
+  return (
+    <Animated.View key={abierta ? 'a' : 'c'} entering={FadeIn.duration(140)} style={{ marginTop: 1 }}>
+      {abierta ? <ChevronUp size={14} color={INK.faint} /> : <ChevronDown size={14} color={INK.faint} />}
+    </Animated.View>
   );
 }
 
@@ -1017,13 +1050,20 @@ function PreguntaDelHilo({ pregunta, deIniciativas }) {
  * iniciativas del Congreso sin pasar por el modelo.
  */
 function Seguimientos({ lista, onPreguntar, onBuscarIniciativas }) {
+  const [abiertos, setAbiertos] = useState(true);
   return (
-    <View style={{ gap: 6, marginTop: 2, marginBottom: 4 }}>
-      {lista.map((s) => {
+    <Animated.View layout={LinearTransition.duration(220)} entering={FadeIn.duration(200)} style={{ gap: 6, marginTop: 2, marginBottom: 4 }}>
+      <Pressable onPress={() => { roce(); setAbiertos((v) => !v); }} hitSlop={6} accessibilityRole="button" accessibilityState={{ expanded: abiertos }}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 26, alignSelf: 'flex-start', opacity: pressed ? 0.6 : 1 })}>
+        <Text style={ROTULO}>{`PREGUNTAS QUE SIGUEN · ${lista.length}`}</Text>
+        <Flecha abierta={abiertos} />
+      </Pressable>
+      {abiertos ? lista.map((s, i) => {
         const deIniciativas = s.ambito === 'iniciativas';
         const Icono = deIniciativas ? ScrollText : MessageCircleQuestionMark;
         return (
-          <View key={`${s.ambito}-${s.pregunta}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Animated.View key={`${s.ambito}-${s.pregunta}`} entering={FadeInDown.duration(200).delay(i * 50)} exiting={FadeOut.duration(100)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Pressable onPress={() => onPreguntar?.(s)} hitSlop={4} accessibilityRole="button" accessibilityLabel={`preguntar: ${s.pregunta}`}
               style={({ pressed }) => ({ flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 30, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15, backgroundColor: 'rgba(47,74,122,0.07)', opacity: pressed ? 0.6 : 1 })}>
               <Icono size={13} color={TINTA} strokeWidth={2.2} />
@@ -1035,10 +1075,10 @@ function Seguimientos({ lista, onPreguntar, onBuscarIniciativas }) {
                 <Search size={13} color={TINTA} strokeWidth={2.2} />
               </Pressable>
             ) : null}
-          </View>
+          </Animated.View>
         );
-      })}
-    </View>
+      }) : null}
+    </Animated.View>
   );
 }
 
