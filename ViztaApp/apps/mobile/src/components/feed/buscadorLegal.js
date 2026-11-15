@@ -778,3 +778,36 @@ export async function traerArticulo(id) {
   if (error) throw error;
   return data;
 }
+
+// Una iniciativa que ya es ley en vigor se muestra como la ley, no como la
+// propuesta; mientras no esté vigente (pendiente de sanción, vigencia
+// diferida, vetada) sigue siendo iniciativa.
+const EN_VIGOR = ['vigente', 'reformada'];
+
+/**
+ * Los resultados en el orden en que se leen: leyes y artículos primero, las
+ * iniciativas después. Una iniciativa cuyo decreto ya está en vigor pasa a ser
+ * ese decreto (una sola vez, aunque la ley ya estuviera entre los resultados).
+ * `iniciativas` es un Map numero → iniciativa; `normas`, el índice de leyes.
+ */
+export function leyesPrimero(resultados, iniciativas, normas) {
+  const yaEstan = new Set(resultados.filter((r) => r.tipo !== 'iniciativa').map((r) => r.normaId));
+  const salida = [];
+  for (const r of resultados) {
+    if (r.tipo !== 'iniciativa') { salida.push(r); continue; }
+    const ini = iniciativas?.get?.(r.numero);
+    const ley = ini?.decreto_resultante ? relacionDe(ini, normas || []).resultante : null;
+    if (ley?.id && EN_VIGOR.includes(ley.estado)) {
+      if (!yaEstan.has(ley.id)) {
+        yaEstan.add(ley.id);
+        salida.push({
+          tipo: 'ley', clave: `ley-${ley.id}`, id: ley.id, normaId: ley.id, titulo: ley.titulo, decreto: ley.decreto,
+          estado: ley.estado, deIniciativa: r.numero, partes: r.partes || [],
+        });
+      }
+      continue;
+    }
+    salida.push(r);
+  }
+  return [...salida.filter((r) => r.tipo !== 'iniciativa'), ...salida.filter((r) => r.tipo === 'iniciativa')];
+}

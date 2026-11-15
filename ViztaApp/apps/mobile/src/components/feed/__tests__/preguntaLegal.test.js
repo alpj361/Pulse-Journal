@@ -46,3 +46,29 @@ describe('preguntar a la ley', () => {
     expect(leerRespuestaLegal({ success: true, estado: 'otra' })).toBeNull();
   });
 });
+
+import { leyesPrimero } from '../buscadorLegal';
+
+describe('resultados del buscador: leyes primero', () => {
+  const normas = [
+    { id: 'n18', titulo: 'Protocolo con Corea', decreto: 'Decreto 18-2025', tipo: 'decreto', estado: 'vigente' },
+    { id: 'n20', titulo: 'Ley pendiente', decreto: 'Decreto 20-2025', tipo: 'decreto', estado: 'pendiente_sancion' },
+  ];
+  const iniciativas = new Map([
+    [6491, { numero: 6491, titulo: 'Protocolo con Corea', estado: 'aprobado', decreto_resultante: '18-2025' }],
+    [6500, { numero: 6500, titulo: 'Ley pendiente', estado: 'aprobado', decreto_resultante: '20-2025' }],
+    [6600, { numero: 6600, titulo: 'Propuesta', estado: 'en_comision', decreto_resultante: null }],
+  ]);
+  const ini = (numero) => ({ tipo: 'iniciativa', clave: `iniciativa-${numero}`, numero, partes: [] });
+
+  it('una iniciativa que ya es ley en vigor aparece como la ley; si no está vigente, sigue como iniciativa', () => {
+    const r = leyesPrimero([ini(6491), ini(6500), ini(6600)], iniciativas, normas);
+    expect(r.map((x) => `${x.tipo}:${x.normaId || x.numero}`)).toEqual(['ley:n18', 'iniciativa:6500', 'iniciativa:6600']);
+    expect(r[0]).toMatchObject({ decreto: 'Decreto 18-2025', deIniciativa: 6491 });
+  });
+
+  it('las leyes y artículos van antes que las iniciativas, y la ley no se repite', () => {
+    const r = leyesPrimero([ini(6600), { tipo: 'articulo', clave: 'a1', normaId: 'n9' }, ini(6491), { tipo: 'ley', clave: 'ley-n18', normaId: 'n18' }], iniciativas, normas);
+    expect(r.map((x) => x.clave)).toEqual(['a1', 'ley-n18', 'iniciativa-6600']);
+  });
+});

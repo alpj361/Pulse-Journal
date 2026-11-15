@@ -21,7 +21,7 @@ import { supabase } from '../../utils/supabase';
 import { roce } from '../../utils/haptics';
 import {
   buscarLegal, descripcionDe, iniciativasDeLey, nombreDecreto, nombreEstado, notaVisible, recorteAlrededor, relacionDe, rotuloDeNorma, separarEncabezado, textoLegible,
-  esPregunta, partesDeRespuesta, preguntarALaLey, seBusca, traerArticulo, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
+  esPregunta, leyesPrimero, partesDeRespuesta, preguntarALaLey, seBusca, traerArticulo, traerIndiceNormas, traerLeyesDeBase, traerNorma, traerVersionAnterior, urlDeDocumento,
 } from './buscadorLegal';
 
 const ICONO = { ley: Scale, articulo: Pilcrow, iniciativa: ScrollText };
@@ -144,7 +144,11 @@ function Panel({ onClose, inicio = null }) {
   });
   const base = useQuery({ queryKey: ['leyes-de-base'], queryFn: traerLeyesDeBase, staleTime: 60 * 60 * 1000 });
 
-  const resultados = buscado.length >= 2 ? busqueda.data?.resultados || [] : [];
+  // Leyes y artículos primero; una iniciativa que ya es ley en vigor aparece como esa ley.
+  const resultados = useMemo(
+    () => (buscado.length >= 2 ? leyesPrimero(busqueda.data?.resultados || [], registro.porNumero, registro.normas) : []),
+    [buscado, busqueda.data, registro.porNumero, registro.normas],
+  );
   const cuenta = (t) => resultados.filter((r) => r.tipo === t).length;
   const tiposConResultados = new Set(resultados.map((r) => r.tipo)).size;
   // Con un solo tipo de resultado no hay nada que filtrar; y un filtro que
