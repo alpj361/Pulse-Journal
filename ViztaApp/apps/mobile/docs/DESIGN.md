@@ -525,6 +525,7 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 - Cuando lo escrito se lee como pregunta, el buscador lo detecta solo, como un buscador web: no hay modo «pregunta» que elegir ni que confirmar.
 - La invitación es una pastilla chica de una línea («responder con la ley»), no un bloque: los resultados de siempre siguen siendo lo principal.
 - Mientras responde, una línea del mismo tamaño. La respuesta sí va en su tarjeta, con cada afirmación numerada.
+- Debajo de cada respuesta, hasta 3 preguntas que siguen, como pastillas chicas. Tocar una la responde debajo (la anterior queda arriba, se vuelve con scroll). Las de iniciativas (ícono de pergamino) responden con lo que se propone en el Congreso, citando número y etapa; su lupa busca en las iniciativas sin el modelo.
 - Un artículo citado (su fila o su número en el texto) se despliega ahí mismo con su texto. La ley completa se abre con el ícono del libro, en la misma hoja, no en otra: «volver» regresa a la pregunta para seguir viendo los demás artículos.
 
 ## Resultado de una votación

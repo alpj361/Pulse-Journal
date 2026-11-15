@@ -728,18 +728,26 @@ export function partesDeRespuesta(texto) {
 export function leerRespuestaLegal(json) {
   if (!json?.success || !ESTADOS_RESPUESTA.includes(json.estado)) return null;
   const fuentes = (Array.isArray(json.fuentes) ? json.fuentes : [])
-    .filter((f) => f?.articulo_id)
-    .map((f) => ({
-      articuloId: f.articulo_id,
-      normaId: f.norma_id || null,
-      numero: String(f.articulo || '').replace(/^art\.?\s*/i, '') || null,
-      ley: f.norma || null,
-      decreto: f.decreto || null,
-    }));
-  return { estado: json.estado, texto: String(json.respuesta || '').trim(), fuentes };
+    .map((f) => (f?.tipo === 'iniciativa'
+      ? (Number.isInteger(f.numero) ? { tipo: 'iniciativa', clave: `ini-${f.numero}`, numero: f.numero, titulo: f.titulo || null, etapa: f.etapa || null } : null)
+      : (f?.articulo_id ? {
+        tipo: 'articulo',
+        clave: f.articulo_id,
+        articuloId: f.articulo_id,
+        normaId: f.norma_id || null,
+        numero: String(f.articulo || '').replace(/^art\.?\s*/i, '') || null,
+        ley: f.norma || null,
+        decreto: f.decreto || null,
+      } : null)))
+    .filter(Boolean);
+  const seguimiento = (Array.isArray(json.seguimiento) ? json.seguimiento : [])
+    .filter((x) => typeof x?.pregunta === 'string' && x.pregunta.trim())
+    .map((x) => ({ pregunta: x.pregunta.trim(), ambito: x.tipo === 'iniciativas' ? 'iniciativas' : 'ley' }))
+    .slice(0, 3);
+  return { estado: json.estado, ambito: json.ambito === 'iniciativas' ? 'iniciativas' : 'ley', texto: String(json.respuesta || '').trim(), fuentes, seguimiento };
 }
 
-export async function preguntarALaLey(pregunta) {
+export async function preguntarALaLey(pregunta, ambito = 'ley') {
   const { data: sesion } = await supabase.auth.getSession();
   const token = sesion?.session?.access_token;
   if (!token) throw new Error('sin_sesion');
@@ -749,7 +757,7 @@ export async function preguntarALaLey(pregunta) {
     const res = await fetch(`${EXTRACTORW_URL}/api/vizta-chat/query`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'legal', message: pregunta }),
+      body: JSON.stringify({ mode: 'legal', message: pregunta, ambito }),
       signal: control.signal,
     });
     const respuesta = leerRespuestaLegal(await res.json().catch(() => null));

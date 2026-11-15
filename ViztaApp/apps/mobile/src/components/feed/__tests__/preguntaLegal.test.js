@@ -29,8 +29,17 @@ describe('preguntar a la ley', () => {
       success: true, mode: 'legal', estado: 'respondida', respuesta: 'Lo dice el artículo 130 [1].',
       fuentes: [{ articulo_id: 'a130', norma_id: 'n1', articulo: 'Art. 130', norma: 'Código de Trabajo', decreto: 'Decreto 1441' }, { norma: 'sin id' }],
     })).toEqual({
-      estado: 'respondida', texto: 'Lo dice el artículo 130 [1].',
-      fuentes: [{ articuloId: 'a130', normaId: 'n1', numero: '130', ley: 'Código de Trabajo', decreto: 'Decreto 1441' }],
+      estado: 'respondida', ambito: 'ley', texto: 'Lo dice el artículo 130 [1].', seguimiento: [],
+      fuentes: [{ tipo: 'articulo', clave: 'a130', articuloId: 'a130', normaId: 'n1', numero: '130', ley: 'Código de Trabajo', decreto: 'Decreto 1441' }],
+    });
+    expect(leerRespuestaLegal({
+      success: true, estado: 'respondida', ambito: 'iniciativas', respuesta: 'La iniciativa 6187 propone [1].',
+      fuentes: [{ tipo: 'iniciativa', numero: 6187, titulo: 'Ley contra la crueldad animal', etapa: 'en comision' }],
+      seguimiento: [{ pregunta: '¿Qué sanciona la ley vigente?', tipo: 'ley' }, { pregunta: '¿Hay otras iniciativas?', tipo: 'iniciativas' }, { pregunta: '' }],
+    })).toEqual({
+      estado: 'respondida', ambito: 'iniciativas', texto: 'La iniciativa 6187 propone [1].',
+      fuentes: [{ tipo: 'iniciativa', clave: 'ini-6187', numero: 6187, titulo: 'Ley contra la crueldad animal', etapa: 'en comision' }],
+      seguimiento: [{ pregunta: '¿Qué sanciona la ley vigente?', ambito: 'ley' }, { pregunta: '¿Hay otras iniciativas?', ambito: 'iniciativas' }],
     });
     expect(leerRespuestaLegal({ success: true, estado: 'fuera_de_tema', respuesta: 'Solo leyes.', fuentes: [] })).toMatchObject({ estado: 'fuera_de_tema', fuentes: [] });
     expect(leerRespuestaLegal({ success: false, code: 'legal_unavailable' })).toBeNull();
