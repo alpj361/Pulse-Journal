@@ -520,6 +520,12 @@ con quien lee, no para decirle qué pensar (PJ, 12-nov-2026):
 - Al pie, una línea: «Lectura automática del texto; cada punto lleva su cita»
   (o «de un documento escaneado» si vino de OCR).
 
+## Preguntar a la ley (buscador legal)
+
+- Cuando lo escrito se lee como pregunta, el buscador lo detecta solo, como un buscador web: no hay modo «pregunta» que elegir ni que confirmar.
+- La invitación es una pastilla chica de una línea («responder con la ley»), no un bloque: los resultados de siempre siguen siendo lo principal.
+- Mientras responde, una línea del mismo tamaño. La respuesta sí va en su tarjeta, con cada afirmación numerada y cada número abre su artículo.
+
 ## Resultado de una votación
 
 El resultado (aprobada o no aprobada) sale del registro (`votaciones.resultado`)

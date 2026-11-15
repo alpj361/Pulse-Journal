@@ -696,7 +696,7 @@ export function esPregunta(texto) {
   const q = String(texto || '').replace(/\s+/g, ' ').trim();
   if (q.length < 8 || q.length > 600) return false;
   if (/\?$/.test(q) || q.startsWith('¿')) return true;
-  return INTERROGATIVAS.test(q) && q.split(' ').length >= 3;
+  return INTERROGATIVAS.test(q) && q.split(' ').length >= 2;
 }
 
 export const ESTADOS_RESPUESTA = ['respondida', 'parcial', 'sin_base', 'fuera_de_tema'];

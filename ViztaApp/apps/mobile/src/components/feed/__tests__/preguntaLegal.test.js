@@ -6,6 +6,7 @@ describe('preguntar a la ley', () => {
     expect(esPregunta('¿Me pueden despedir si estoy embarazada?')).toBe(true);
     expect(esPregunta('qué pasa si no pago la pensión')).toBe(true);
     expect(esPregunta('es legal cobrar por estacionar')).toBe(true);
+    expect(esPregunta('puedo fumar')).toBe(true);
     expect(esPregunta('despido embarazada')).toBe(false);
     expect(esPregunta('art 102 constitución')).toBe(false);
     expect(esPregunta('código de trabajo')).toBe(false);

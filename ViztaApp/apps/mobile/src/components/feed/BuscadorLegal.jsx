@@ -891,18 +891,19 @@ function PreguntaALaLey({ pregunta, onArticulo }) {
   if (pedida !== pregunta && !respuesta.data) {
     return (
       <Pressable onPress={pedir} accessibilityRole="button" accessibilityLabel="Responder la pregunta con los artículos de la ley"
-        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, marginTop: 4, marginBottom: 4, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(47,74,122,0.07)', opacity: pressed ? 0.6 : 1 })}>
-        <MessageCircleQuestionMark size={17} color={TINTA} strokeWidth={2.2} />
-        <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: TINTA }}>responder con la ley</Text>
-        <ChevronRight size={16} color={TINTA} />
+        hitSlop={8}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, minHeight: 30, marginTop: 2, marginBottom: 2, paddingHorizontal: 10, borderRadius: 15, backgroundColor: 'rgba(47,74,122,0.07)', opacity: pressed ? 0.6 : 1 })}>
+        <MessageCircleQuestionMark size={13} color={TINTA} strokeWidth={2.2} />
+        <Text style={{ fontSize: 12.5, fontWeight: '600', color: TINTA }}>responder con la ley</Text>
+        <ChevronRight size={12} color={TINTA} />
       </Pressable>
     );
   }
   if (respuesta.isLoading || respuesta.isFetching) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, marginTop: 4, paddingHorizontal: 14 }}>
-        <MorphingInfinity size={18} color={TINTA} />
-        <Text style={{ fontSize: 13.5, color: INK.meta }}>Leyendo los artículos que aplican…</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 30, marginTop: 2, paddingHorizontal: 2 }}>
+        <MorphingInfinity size={14} color={TINTA} />
+        <Text style={{ fontSize: 12.5, color: INK.meta }}>Leyendo los artículos que aplican…</Text>
       </View>
     );
   }
