@@ -29,6 +29,7 @@ import FiltroChips from "../../components/feed/FiltroChips";
 import { chipsDelFeed, noticiasDelFeed } from "../../components/feed/preferencias";
 import AjustarFeed from "../../components/feed/AjustarFeed";
 import { useFeedStore } from "../../state/feedStore";
+import { useVistaStore, feedValido } from "../../state/vistaStore";
 import ObservatorioCC from "../../components/observatorio/ObservatorioCC";
 import Sticker from "../../components/Sticker";
 import LogoVizta from "../../components/LogoVizta";
@@ -43,7 +44,7 @@ function EstadoFeed({ sticker, children }) {
     </View>
   );
 }
-import SelectorFeed, { Cristal } from "../../components/feed/SelectorFeed";
+import SelectorFeed, { Cristal, FEEDS } from "../../components/feed/SelectorFeed";
 import { enYouTube, nombreDelDia, traerCongreso, traerDiaCongreso } from "../../components/feed/congreso";
 import CalendarioFeed, { FechasDelDia } from "../../components/feed/CalendarioFeed";
 import BuscadorLegal from "../../components/feed/BuscadorLegal";
@@ -775,8 +776,11 @@ export default function Index() {
   });
 
   // De dónde viene «lo que hay que leer»: el país (lo de siempre) o el Congreso.
-  const [feed, setFeed] = useState("pais");
-  const [temaFeed, setTemaFeed] = useState('todo');
+  // Se recuerda en el teléfono: al refrescar o volver a abrir, sigue en lo que tenía.
+  const feed = feedValido(useVistaStore((s) => s.feed), FEEDS.map((f) => f.clave));
+  const setFeed = useVistaStore((s) => s.setFeed);
+  const temaFeed = useVistaStore((s) => s.temaFeed);
+  const setTemaFeed = useVistaStore((s) => s.setTemaFeed);
   // El día elegido en el calendario. Por ahora el calendario está solo en el
   // Congreso (PJ, 1-nov-2026): en los demás feeds no hay cómo quitar el
   // filtro, así que ahí no aplica.

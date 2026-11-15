@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronUp, LayoutDashboard } from 'lucide-react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Sticker from '../Sticker';
 import { INK } from '../theme';
@@ -12,6 +12,7 @@ import FiltroChips from './FiltroChips';
 import PlenoDiputados, { useDiputados } from './PlenoDiputados';
 import { enElPleno } from './diputados';
 import { buscarRegistro, fechaRegistro, periodoDe } from './organizacion';
+import { useVistaStore, seccionValida } from '../../state/vistaStore';
 
 const REGISTROS = [['iniciativas', 'Iniciativas'], ['leyes', 'Leyes y decretos'], ['votaciones', 'Votaciones'], ['diputados', 'Diputados']];
 const ACTIVIDAD = [['comisiones', 'Comisiones y citaciones'], ['pleno', 'Pleno y sesiones'], ['fiscalizacion', 'Fiscalización y actividad']];
@@ -24,7 +25,9 @@ const NOMBRES = Object.fromEntries([...REGISTROS, ...ACTIVIDAD]);
  * vuelve a los días.
  */
 export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }) {
-  const [elegida, setElegida] = useState(null);
+  // La sección elegida se recuerda: al refrescar, sigue abierta la misma.
+  const elegida = seccionValida(useVistaStore((s) => s.seccionCongreso), Object.keys(NOMBRES));
+  const setElegida = useVistaStore((s) => s.setSeccionCongreso);
   const [abierto, setAbierto] = useState(false);
   const [alcance, setAlcance] = useState('reciente');
   const anclaSeccion = useRef(null);
@@ -55,6 +58,14 @@ export default function CongresoOrganizado({ dias, onAbrir, onPagina, children }
         <Text style={{ fontSize: 13, color: TINTA }}>‹ ver el tablero</Text>
       </Pressable> : null}
       {abierto ? <View style={{ marginBottom: 16 }}>
+        <Pressable onPress={() => { setElegida(null); setAbierto(false); onPagina?.(anclaSeccion.current); }} accessibilityRole="button"
+          accessibilityState={{ selected: !elegida }} accessibilityLabel="volver al tablero de los días"
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, marginBottom: 10, borderRadius: 12,
+            backgroundColor: !elegida ? 'rgba(47,74,122,0.08)' : 'rgba(28,43,34,0.04)', opacity: pressed ? 0.6 : 1 })}>
+          <LayoutDashboard size={16} color={TINTA} strokeWidth={2.2} />
+          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: TINTA }}>Tablero de los días</Text>
+          {!elegida ? <Text style={{ fontSize: 11.5, color: INK.meta }}>abierto</Text> : <ChevronRight size={15} color={TINTA} />}
+        </Pressable>
         <GrupoSecciones titulo="REGISTROS DISPONIBLES" secciones={REGISTROS} cuantas={cuantas} elegida={elegida} onElegir={elegir} />
         {registro.isError ? <Text style={{ color: INK.meta, fontSize: 12 }}>Los conteos aún no están disponibles. Puedes abrir cada registro.</Text> : null}
         <GrupoSecciones titulo="NOTICIAS Y ACTIVIDAD" secciones={ACTIVIDAD} cuantas={cuantas} elegida={elegida} onElegir={elegir} />

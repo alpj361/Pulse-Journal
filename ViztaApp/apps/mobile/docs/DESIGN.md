@@ -415,6 +415,11 @@ primera vez y después con el «?» de arriba. Ejemplo: `huella/GuiaHuella.jsx`.
   publicaciones», no «1 de 4»; «No se sabe quién lo dijo», no «Falta saber
   quién lo dice».
 
+## Dónde se quedó
+
+- El inicio recuerda en el teléfono lo que la persona tenía elegido: el feed (Guatemala, Congreso, Observatorio), el tema del feed y la sección del Congreso (iniciativas, leyes, votaciones…). Refrescar o volver a abrir la app no la regresa al feed del país.
+- En «Explora el Congreso» abierto, la primera opción es «Tablero de los días»: siempre hay una salida de vuelta al tablero, además del «‹ ver el tablero» de cada sección.
+
 ## Estados vacíos y errores
 
 Un cero es una respuesta legítima, no una falla: «nada de lo escrito nombra un
