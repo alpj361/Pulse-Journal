@@ -883,7 +883,9 @@ function PreguntaALaLey({ pregunta, onArticulo }) {
     queryKey: ['pregunta-legal', pregunta],
     queryFn: () => preguntarALaLey(pregunta),
     enabled: pedida === pregunta,
-    staleTime: Infinity,
+    // Una respuesta con artículos se guarda; un «no se encontró» no, para poder volver a preguntar.
+    staleTime: (q) => (q.state.data?.estado === 'sin_base' ? 0 : Infinity),
+    gcTime: 30 * 60 * 1000,
     retry: false,
   });
   const pedir = () => { roce(); setPedida(pregunta); if (respuesta.isError) respuesta.refetch(); };
@@ -916,11 +918,16 @@ function PreguntaALaLey({ pregunta, onArticulo }) {
   }
   const { estado, texto, fuentes } = respuesta.data;
   if (estado === 'sin_base' || estado === 'fuera_de_tema' || !fuentes.length) {
+    const reintentar = estado === 'sin_base' ? () => { roce(); respuesta.refetch(); } : undefined;
     return (
-      <View style={{ flexDirection: 'row', gap: 8, paddingVertical: 12, marginTop: 4 }}>
+      <Pressable onPress={reintentar} disabled={!reintentar} accessibilityRole={reintentar ? 'button' : 'text'}
+        style={{ flexDirection: 'row', gap: 8, paddingVertical: 12, marginTop: 4 }}>
         <MessageCircleQuestionMark size={15} color={INK.faint} strokeWidth={2.2} style={{ marginTop: 2 }} />
-        <Text style={{ flex: 1, fontSize: 13.5, color: INK.meta, lineHeight: 20 }}>{texto}</Text>
-      </View>
+        <Text style={{ flex: 1, fontSize: 13.5, color: INK.meta, lineHeight: 20 }}>
+          {texto}
+          {reintentar ? <Text style={{ color: TINTA, fontWeight: '600' }}> Volver a intentar</Text> : null}
+        </Text>
+      </Pressable>
     );
   }
   const abrir = (n) => { const f = fuentes[n - 1]; if (f?.normaId) onArticulo(f); };
