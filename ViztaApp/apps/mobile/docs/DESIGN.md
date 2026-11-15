@@ -420,6 +420,12 @@ primera vez y después con el «?» de arriba. Ejemplo: `huella/GuiaHuella.jsx`.
 - El inicio recuerda en el teléfono lo que la persona tenía elegido: el feed (Guatemala, Congreso, Observatorio), el tema del feed y la sección del Congreso (iniciativas, leyes, votaciones…). Refrescar o volver a abrir la app no la regresa al feed del país.
 - En «Explora el Congreso» abierto, la primera opción es «Tablero de los días»: siempre hay una salida de vuelta al tablero, además del «‹ ver el tablero» de cada sección.
 
+## El orbe
+
+- En reposo muestra un «+»: tocarlo crea una nota (el «+» gira un cuarto de vuelta y sale el halo).
+- Encima, dos flechas ⌃⌃ tenues avisan que también sube. Se mueven una vez al abrir la app y otra tras 45 s sin tocar el orbe; nunca en bucle.
+- Al empujarlo hacia arriba todo sigue al dedo: el «+» gira y se va, entra el ícono de posts, las flechas se funden con la etiqueta «posts». Al cruzar el umbral la etiqueta se afirma, el ícono da un salto y hay un háptico. Al soltar ahí, el orbe sale disparado hacia arriba y vuelve con posts abierto; antes del umbral, todo regresa con resorte.
+
 ## Estados vacíos y errores
 
 Un cero es una respuesta legítima, no una falla: «nada de lo escrito nombra un
