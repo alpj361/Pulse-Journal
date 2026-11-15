@@ -423,7 +423,7 @@ primera vez y después con el «?» de arriba. Ejemplo: `huella/GuiaHuella.jsx`.
 ## El orbe
 
 - En reposo muestra un «+»: tocarlo crea una nota (el «+» gira un cuarto de vuelta y sale el halo).
-- Encima, dos flechas ⌃⌃ tenues avisan que también sube. Se mueven una vez al abrir la app y otra tras 45 s sin tocar el orbe; nunca en bucle.
+- Las flechas ⌃⌃ que avisan que también sube están apagadas por ahora (en revisión; sirven mientras se aprende el gesto). Si vuelven: tenues, una vez al abrir y otra tras 45 s quieto, nunca en bucle.
 - Al empujarlo hacia arriba todo sigue al dedo: el «+» gira y se va, entra el ícono de posts, las flechas se funden con la etiqueta «posts». Al cruzar el umbral la etiqueta se afirma, el ícono da un salto y hay un háptico. Al soltar ahí, el orbe sale disparado hacia arriba y vuelve con posts abierto; antes del umbral, todo regresa con resorte.
 
 ## Estados vacíos y errores

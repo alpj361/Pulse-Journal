@@ -34,6 +34,9 @@ const TINTA_ORBE = '#F7F6EF';
 // Las flechas enseñan el gesto una vez al abrir y otra tras un rato sin tocar
 // el orbe. Nunca en bucle.
 const PISTA_AL_ABRIR = 1200;
+// Apagadas por ahora (PJ, 15-nov): sirven mientras se aprende el gesto y se
+// están revisando. Volver a `true` las trae con su pista.
+const CON_FLECHAS = false;
 const PISTA_TRAS_QUIETUD = 45000;
 
 /**
@@ -97,10 +100,10 @@ export default function NavOrb({
   }, [pista]);
   const reiniciarQuietud = useCallback(() => {
     clearTimeout(reloj.current);
-    if (onArriba) reloj.current = setTimeout(mostrarPista, PISTA_TRAS_QUIETUD);
+    if (onArriba && CON_FLECHAS) reloj.current = setTimeout(mostrarPista, PISTA_TRAS_QUIETUD);
   }, [onArriba, mostrarPista]);
   useEffect(() => {
-    if (!onArriba) return undefined;
+    if (!onArriba || !CON_FLECHAS) return undefined;
     const t = setTimeout(mostrarPista, PISTA_AL_ABRIR);
     reiniciarQuietud();
     return () => { clearTimeout(t); clearTimeout(reloj.current); };
@@ -252,7 +255,7 @@ export default function NavOrb({
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       {/* Las flechas: el aviso de que el orbe también sube. */}
-      {onArriba ? (
+      {onArriba && CON_FLECHAS ? (
         <AV pointerEvents="none" style={[{ position: 'absolute', bottom: size + 2, alignItems: 'center' }, flechas]}>
           <ChevronsUp size={18} color={CUERPO} strokeWidth={2.4} />
         </AV>
