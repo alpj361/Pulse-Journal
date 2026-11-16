@@ -59,7 +59,7 @@ export default function SeccionAnalisisAutomatico() {
               value={activo}
               onValueChange={cambiar}
               disabled={!listo || guardando}
-              trackColor={{ false: 'rgba(28,43,34,0.14)', true: ACCENT.indigo.ink }}
+              trackColor={{ false: 'rgba(28,43,34,0.14)', true: '#3E6B4C' }}
               thumbColor="#FFFFFF"
               accessibilityLabel="Posts analizados al llegar"
             />

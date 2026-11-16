@@ -266,7 +266,11 @@ export default function TabsLayout() {
         <Tabs.Screen name="index" options={{ title: 'Feed' }} />
         <Tabs.Screen name="orbit" options={{ title: 'Orbit', sceneStyle: { backgroundColor: 'transparent', ...reservado } }} />
         <Tabs.Screen name="codex" options={{ title: 'Codex', sceneStyle: { backgroundColor: 'transparent', ...reservado } }} />
-        <Tabs.Screen name="settings" options={{ title: 'Ajustes', sceneStyle: { backgroundColor: 'transparent', ...reservado } }} />
+        {/* Ajustes corre por debajo del orbe, como el feed: con el espacio
+            reservado la página terminaba en seco a la altura del orbe y lo
+            que seguía quedaba cortado. Su propio margen de abajo deja subir
+            lo último por encima. */}
+        <Tabs.Screen name="settings" options={{ title: 'Ajustes' }} />
       </Tabs>
     </View>
   );

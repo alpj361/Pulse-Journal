@@ -75,7 +75,7 @@ function Fila({ area, deLaSemana }) {
               width: area.porcentaje > 0 ? `${Math.max(2, area.porcentaje)}%` : 0,
               height: '100%',
               borderRadius: 3,
-              backgroundColor: area.porcentaje >= 90 ? ACCENT.red.ink : ACCENT.indigo.ink,
+              backgroundColor: area.porcentaje >= 90 ? ACCENT.red.ink : '#3E6B4C',
             }}
           />
         </View>

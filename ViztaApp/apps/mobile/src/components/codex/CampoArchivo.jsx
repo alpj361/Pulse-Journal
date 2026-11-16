@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Camera, Check, FileUp, Link2, ScanFace, X } from 'lucide-react-native';
+import { Camera, FileUp, Link2, X } from 'lucide-react-native';
 import { INK, RADIUS } from '../theme';
 import { MONO } from './mono';
 import { PAPEL } from './Papel';
@@ -10,13 +10,7 @@ import BandejaFotos from './BandejaFotos';
 import { subirImagen, firmarMedio } from '../../utils/subirMedio';
 import { elegirYSubirDocumento } from '../../utils/subirDocumento';
 import { supabase } from '../../utils/supabase';
-import { roce, toque, falla } from '../../utils/haptics';
-import {
-  fotoIndexada,
-  indexarFoto,
-  quitarFoto,
-  useReconocimientoDisponible,
-} from '../../utils/reconocimientoRostros';
+import { roce } from '../../utils/haptics';
 
 /**
  * Una imagen se sube; no se pega su dirección.
@@ -35,7 +29,7 @@ import {
  * Y se ve: una miniatura en vez de una ruta. Un campo de imagen que no muestra
  * la imagen obliga a abrir el archivo para saber si es el correcto.
  */
-export default function CampoArchivo({ value, onChange, soloImagen = true, accent = INK.title, reconocer = null }) {
+export default function CampoArchivo({ value, onChange, soloImagen = true, accent = INK.title }) {
   const [bandeja, setBandeja] = useState(false);
   const [pegando, setPegando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -137,18 +131,6 @@ export default function CampoArchivo({ value, onChange, soloImagen = true, accen
       {vista?.url ? (
         <View style={{ borderRadius: RADIUS.sm, overflow: 'hidden', backgroundColor: 'rgba(28,43,34,0.05)' }}>
           <Image source={{ uri: vista.url }} style={{ width: '100%', height: 150 }} contentFit="cover" />
-          {/* Solo sobre una foto subida —con `{ id }`— de un actor, y con la Beta.
-              Un enlace pegado no se puede indexar: no es un archivo nuestro. */}
-          {reconocer && id && vista?.ruta ? (
-            <UsarParaReconocer
-              actorId={reconocer.actorId}
-              archivoId={id}
-              ruta={vista.ruta}
-              pendiente={reconocer.pendientes?.has(id) || false}
-              onPendiente={reconocer.onPendiente}
-              onError={setError}
-            />
-          ) : null}
           <Pressable
             onPress={() => {
               roce();
@@ -254,112 +236,6 @@ function Boton({ Icono, texto, onPress, accent, cargando }) {
     >
       <Icono size={14} color={accent} />
       <Text style={{ fontFamily: MONO, fontSize: 11.5, color: INK.body }}>{texto}</Text>
-    </Pressable>
-  );
-}
-
-/**
- * El chequecito de la cara, sobre la esquina de la foto.
- *
- * Solo un casillero y un ícono de cara: el ícono dice de qué se trata sin una
- * frase al lado, y la frase completa queda para el lector de pantalla.
- *
- * **Dos modos, según si el actor ya existe:**
- *   · En vivo —el actor tiene id—: marcar indexa la cara ya, desmarcar la
- *     quita. El estado sale de la base, no de un recuerdo local.
- *   · Pendiente —se está creando—: marcar solo anota la intención, porque
- *     todavía no hay actor al que asociarle la cara. La ficha la cumple al
- *     tocar «Crear», cuando el actor ya existe.
- *
- * Si algo falla, vuelve a como estaba y el motivo aparece debajo de la foto.
- */
-function UsarParaReconocer({ actorId, archivoId, ruta, pendiente, onPendiente, onError }) {
-  const disponible = useReconocimientoDisponible();
-  const diferido = !actorId;
-  const [marcado, setMarcado] = useState(false);
-  const [listo, setListo] = useState(diferido);
-  const [trabajando, setTrabajando] = useState(false);
-
-  useEffect(() => {
-    if (!disponible || diferido) return undefined;
-    let vivo = true;
-    fotoIndexada(actorId, ruta)
-      .then((v) => vivo && setMarcado(v))
-      .catch(() => {})
-      .finally(() => vivo && setListo(true));
-    return () => {
-      vivo = false;
-    };
-  }, [disponible, diferido, actorId, ruta]);
-
-  if (!disponible) return null;
-  // Creando sin quién lo anote, no hay dónde guardar la intención.
-  if (diferido && !onPendiente) return null;
-
-  const activo = diferido ? pendiente : marcado;
-
-  const alternar = async () => {
-    if (!listo || trabajando) return;
-    const quiere = !activo;
-    roce();
-    onError?.(null);
-
-    if (diferido) {
-      onPendiente(archivoId, quiere);
-      return;
-    }
-
-    setTrabajando(true);
-    try {
-      if (quiere) await indexarFoto(actorId, archivoId);
-      else await quitarFoto(actorId, archivoId);
-      setMarcado(quiere);
-      toque();
-    } catch (e) {
-      falla();
-      onError?.(e.message);
-    } finally {
-      setTrabajando(false);
-    }
-  };
-
-  return (
-    <Pressable
-      onPress={alternar}
-      disabled={!listo || trabajando}
-      hitSlop={8}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: activo, busy: trabajando }}
-      accessibilityLabel="Reconocer a esta persona en posts"
-      style={({ pressed }) => ({
-        position: 'absolute',
-        left: 8,
-        bottom: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: 7,
-        paddingVertical: 5,
-        borderRadius: 999,
-        backgroundColor: activo ? 'rgba(75,79,166,0.92)' : 'rgba(255,255,255,0.88)',
-        opacity: !listo ? 0.5 : pressed ? 0.75 : 1,
-      })}
-    >
-      <View
-        style={{
-          width: 16,
-          height: 16,
-          borderRadius: 5,
-          borderWidth: 1.5,
-          borderColor: activo ? '#FFFFFF' : 'rgba(28,43,34,0.4)',
-          backgroundColor: activo ? '#FFFFFF' : 'transparent',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {activo ? <Check size={11} color="#4B4FA6" strokeWidth={3.2} /> : null}
-      </View>
-      <ScanFace size={16} color={activo ? '#FFFFFF' : 'rgba(28,43,34,0.7)'} strokeWidth={trabajando ? 1.4 : 2} />
     </Pressable>
   );
 }

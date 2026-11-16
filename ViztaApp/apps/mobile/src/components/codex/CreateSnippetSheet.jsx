@@ -33,8 +33,6 @@ import {
   X,
   Plus,
   Search,
-  Send,
-  ChevronDown,
   LocateFixed,
   MapPin,
   Type,
@@ -55,14 +53,9 @@ import Espacios from './Espacios';
 import CreateSpaceSheet from './CreateSpaceSheet';
 import SegmentedSlider from '../SegmentedSlider';
 import AutocompletarCodex from './AutocompletarCodex';
-import HiloVizta from './HiloVizta';
-import SelectorModelo from './SelectorModelo';
-import { consultar, nuevoHilo } from '../../services/viztaRapido';
-import { useModeloStore } from '../../state/modeloStore';
 import { completar, mencionEn } from './buscarCodex';
 import GlassButton from '../GlassButton';
 import PanelSnippet from './PanelSnippet';
-import PromptSistema from './PromptSistema';
 import BandejaFotos from './BandejaFotos';
 import { conFormato, estiloDePieza } from './formato';
 import Adjuntas, { VisorFoto } from './Adjuntas';
@@ -88,7 +81,6 @@ import { comienzoDe, contiene, entradaDeSeccion, leerArbol } from './historiaArb
 import DocumentosNota from './DocumentosNota';
 import { borrarDocumentoNota, firmarDocumentoNota, subirDocumentoNota } from '../../utils/subirDocumento';
 import { useEspacioElegidoStore } from '../../state/espacioElegidoStore';
-import { usePulseConnectionStore } from '../../state/pulseConnectionStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView, KeyboardProvider } from 'react-native-keyboard-controller';
 import useEditorDeNota from './bloques/useEditorDeNota';
@@ -192,19 +184,6 @@ function fotosDe(nota) {
 }
 
 /**
- * El nombre del modelo sin el proveedor.
- *
- * OpenRouter los nombra «MoonshotAI: Kimi K2 0905», y en la barra eso se corta
- * justo donde importa —queda «MoonshotAI: Kimi K2 0…»— gastando la mitad del
- * ancho en un dato que ya se elige en el selector, donde el proveedor aparece
- * en su propia línea. Acá lo que hace falta saber es cuál modelo, no de quién.
- */
-function sinProveedor(nombre) {
-  const corte = String(nombre || '').indexOf(': ');
-  return corte > 0 ? nombre.slice(corte + 2) : nombre;
-}
-
-/**
  * Escribir un fragmento.
  *
  * Un Snippet no se llena: se escribe. Así que esto no es una hoja con campos, es
@@ -214,10 +193,7 @@ function sinProveedor(nombre) {
  * Alrededor de esa hoja hay dos páginas más, a un deslizamiento:
  *
  *  · **izquierda, el historial** — qué escribiste antes.
- *  · **derecha, el panel** — a quién nombraste, y los datos de la nota. En modo
- *    chat los nombrados siguen siendo los nombrados —ahora los de la
- *    conversación— y lo que cambia es la mitad de abajo: los detalles del
- *    snippet dejan lugar a las instrucciones con las que Vizta contesta.
+ *  · **derecha, el panel** — a quién nombraste, y los datos de la nota.
  *
  * Las tres viven en un ScrollView horizontal con `pagingEnabled` y no en una
  * librería de pestañas. Con tres páginas fijas, una librería solo agregaría una
@@ -365,29 +341,20 @@ export default function CreateSnippetSheet({
   const [espaciosParaGuardar, setEspaciosParaGuardar] = useState(null);
   const [buscandoLugar, setBuscandoLugar] = useState(false);
 
-  // Declarado acá y no más abajo, con el resto del bloque de Vizta: el
-  // marcador de la hoja lo lee unas líneas más adelante, y un `const` usado
-  // antes de su declaración es un error en tiempo de ejecución, no un aviso.
-  const [preguntando, setPreguntando] = useState(false);
-
   /**
    * Qué dice la hoja cuando está en blanco.
    *
-   * El mismo campo hace tres cosas —se escribe una nota, se busca en el Codex,
-   * se le pregunta a Vizta— y el marcador es lo único que lo dice. Con un
-   * «escribí lo que quieras…» fijo, encender la búsqueda o el chat no cambiaba
+   * El mismo campo hace dos cosas —se escribe una nota o se busca en el
+   * Codex— y el marcador es lo único que lo dice. Con un
+   * «escribí lo que quieras…» fijo, encender la búsqueda no cambiaba
    * nada en pantalla salvo un botón teñido: el campo seguía invitando a
    * escribir una nota.
    *
    * Solo se ve con la hoja vacía, que es cuando un marcador se ve: apenas hay
-   * texto, el modo se lee en lo que está pasando —las sugerencias flotando, el
-   * hilo arriba— y no hace falta anunciarlo.
+   * texto, el modo se lee en lo que está pasando —las sugerencias flotando— y
+   * no hace falta anunciarlo.
    */
-  const marcador = preguntando
-    ? 'preguntale a Vizta…'
-    : buscando
-      ? 'buscá un elemento…'
-      : 'escribí lo que quieras…';
+  const marcador = buscando ? 'buscá un elemento…' : 'escribí lo que quieras…';
 
   /**
    * El foco va **después** de que el campo sea editable.
@@ -404,11 +371,11 @@ export default function CreateSnippetSheet({
     return () => clearTimeout(t);
   }, [escribiendo, marcarPista]);
 
-  // Al cambiar de página o entrar al chat, se vuelve a leer: el teclado abierto
-  // en una página donde no se escribe es un teclado que sobra.
+  // Al cambiar de página se vuelve a leer: el teclado abierto en una página
+  // donde no se escribe es un teclado que sobra.
   useEffect(() => {
-    if (pagina !== NOTA || preguntando) setEscribiendo(false);
-  }, [pagina, preguntando]);
+    if (pagina !== NOTA) setEscribiendo(false);
+  }, [pagina]);
 
   /**
    * El switch de Notas/Espacios se encoge al escribir; no desaparece.
@@ -495,52 +462,6 @@ export default function CreateSnippetSheet({
     for (const d of lista || []) if (!d.id && d.storage_path) borrarDocumentoNota(d.storage_path);
     docsQuitados.current = [];
   }, []);
-
-  /**
-   * Modo Vizta: lo que se escribe es una pregunta, no una nota.
-   *
-   * Reusa la superficie de escritura entera —el mismo papel, la misma medida—
-   * porque escribir una pregunta y escribir una nota es el mismo gesto. Lo
-   * único que cambia es qué pasa al terminar: en vez de «guardar» dice
-   * «enviar», y en vez de quedarse, la respuesta aparece debajo.
-   *
-   * El texto de la pregunta no se pierde al salir del modo: sigue en `cuerpo`,
-   * así que una pregunta que resultó valer la pena se puede guardar como nota.
-   */
-  const [pensando, setPensando] = useState(false);
-  const [errorVizta, setErrorVizta] = useState(null);
-  const [eligiendoModelo, setEligiendoModelo] = useState(false);
-
-  /**
-   * La conversación: `{ rol: 'yo' | 'vizta', texto }` en orden.
-   *
-   * Acá vive solo lo que se muestra. El contexto que ve el modelo —con los
-   * resultados de las herramientas— lo guarda el servidor contra `hiloId`, para
-   * no traerle a la app el formato crudo del proveedor.
-   */
-  const [turnos, setTurnos] = useState([]);
-  const [hiloId, setHiloId] = useState(null);
-
-  /**
-   * Empuja la vista al final del hilo.
-   *
-   * Es un contador y no un booleano: hay que desplazar en cada turno, y con un
-   * booleano el segundo no dispararía nada porque el valor no cambió.
-   */
-  const [desplazar, setDesplazar] = useState(0);
-
-  /**
-   * Preguntarle a Vizta es solo para admins, igual que los posts.
-   *
-   * El rol se lee acá y no llega por prop: la hoja se abre desde el orbe y
-   * desde el Codex, y con un prop habría que acordarse de pasarlo en cada
-   * lugar nuevo — olvidarse una vez abriría el chat a cualquiera. Es el mismo
-   * dato del perfil que ya guarda la sesión, así que no cuesta un viaje.
-   */
-  const puedePreguntar = usePulseConnectionStore((e) => e.connectedUser?.role) === 'admin';
-
-  const modelo = useModeloStore((s) => s.modelo);
-  const nombreModelo = useModeloStore((s) => s.nombre);
 
   // Cuál nota del historial se está editando. `null` = nota nueva.
   // De esto depende que guardar actualice en vez de crear un duplicado.
@@ -652,7 +573,7 @@ export default function CreateSnippetSheet({
    * es la pregunta que se va a mandar, no la nota, y sigue siendo el simple.
    * La hoja sigue leyendo `cuerpo`; el editor lo mantiene al día.
    */
-  const bloquesActivo = !preguntando;
+  const bloquesActivo = true;
   const edicion = useEditorDeNota({
     activo: bloquesActivo,
     cuerpo,
@@ -833,33 +754,15 @@ export default function CreateSnippetSheet({
    */
   const tramosPintados = useMemo(() => conFormato(tramos), [tramos]);
 
-  /**
-   * Los items del Codex nombrados **en la conversación**.
-   *
-   * En modo chat la pregunta que se está escribiendo se vacía al enviar, así
-   * que mirar solo `cuerpo` —como se hacía— dejaba el panel en blanco apenas
-   * mandabas: los actores de los que venías hablando desaparecían del panel en
-   * el momento exacto en que Vizta contestaba sobre ellos.
-   *
-   * Se segmenta aparte de `tramos` y no sobre el texto todo junto: `tramos`
-   * cambia con cada tecla, y volver a recorrer una conversación larga en cada
-   * pulsación sería trabajo repetido que crece con el hilo. Los turnos solo
-   * cambian al enviar y al recibir.
-   */
-  const tramosDelHilo = useMemo(() => {
-    if (!turnos.length) return [];
-    return segmentar(turnos.map((t) => t.texto).join('\n\n'), indice);
-  }, [turnos, indice]);
-
   // Sin repetir: nombrar a alguien tres veces no son tres chips.
   const mencionadosCrudos = useMemo(() => {
     const vistos = new Map();
-    for (const t of [...tramosDelHilo, ...tramos]) {
+    for (const t of tramos) {
       // Lo dudoso no es un mencionado hasta que se confirme.
       if (t.item && t.estado !== 'dudosa' && !vistos.has(t.item.id)) vistos.set(t.item.id, t.item);
     }
     return [...vistos.values()];
-  }, [tramosDelHilo, tramos]);
+  }, [tramos]);
 
   /**
    * Qué items hay que traer completos: los mencionados **y el que esté abierto**.
@@ -1040,12 +943,8 @@ export default function CreateSnippetSheet({
    * Si hay algo que hacer con lo escrito.
    *
    * Guardar pide texto y título —una nota sin nombre no se encuentra después—.
-   * Preguntar pide solo la pregunta: el título se deduce del cuerpo, y exigirlo
-   * para poder enviar sería pedirle a alguien que titule su duda.
    */
-  const accionVisible = preguntando
-    ? cuerpo.trim().length > 0 && !pensando
-    : puedeGuardar;
+  const accionVisible = puedeGuardar;
 
   /**
    * Un resto del arreglo anterior.
@@ -1100,7 +999,7 @@ export default function CreateSnippetSheet({
     [anchoAccion]
   );
 
-  const separacionAccion = puedePreguntar ? 8 : 0;
+  const separacionAccion = 0;
   const estiloAccion = useAnimatedStyle(() => ({
     width: interpolate(accionAbierta.value, [0, 1], [0, anchoAccion.value], Extrapolation.CLAMP),
     marginLeft: interpolate(accionAbierta.value, [0, 1], [0, separacionAccion], Extrapolation.CLAMP),
@@ -1411,84 +1310,6 @@ export default function CreateSnippetSheet({
     // cargar la nota encima de lo que se está escribiendo sería borrarlo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurarId]);
-
-  /**
-   * Entrar y salir del modo Vizta.
-   *
-   * Al salir se limpia la respuesta pero **no la pregunta**: el texto es de la
-   * persona, no del modo, y borrarlo al apagar el botón perdería lo escrito por
-   * tocar algo que parecía un interruptor de vista.
-   */
-  const alternarVizta = useCallback(() => {
-    setPreguntando((p) => {
-      if (p) {
-        // Al salir, la conversación se pliega al cuerpo de la nota. Es el pago
-        // de que el hilo sea un documento y no un chat: una sesión de
-        // investigación con Vizta se puede guardar como Snippet del Codex, con
-        // sus menciones ya resaltadas. Si se borrara, el trabajo se perdería
-        // por apagar un botón.
-        setTurnos((previos) => {
-          if (previos.length) {
-            const texto = previos
-              .map((t) => (t.rol === 'yo' ? t.texto : t.texto.replace(/^/gm, '> ')))
-              .join('\n\n');
-            setCuerpo((c) => (c.trim() ? `${texto}\n\n${c}` : texto));
-          }
-          return [];
-        });
-        setHiloId(null);
-        setErrorVizta(null);
-      } else {
-        // Hilo nuevo por cada vez que se enciende: encender y apagar es cómo se
-        // empieza una conversación de cero.
-        setHiloId(nuevoHilo());
-      }
-      return !p;
-    });
-    // Los dos modos se pelean por la misma superficie: el autocompletado y la
-    // bandeja de fotos flotan justo donde va la respuesta.
-    setBuscando(false);
-    setMostrandoFotos(false);
-  }, []);
-
-  const preguntar = useCallback(async () => {
-    const pregunta = cuerpo.trim();
-    if (!pregunta || pensando) return;
-
-    setPensando(true);
-    setErrorVizta(null);
-
-    // La pregunta pasa al hilo y el campo queda limpio, listo para la
-    // siguiente. Eso es lo que hace que continuar sea seguir escribiendo: no
-    // hay que borrar lo anterior a mano.
-    setTurnos((t) => [...t, { rol: 'yo', texto: pregunta }]);
-    setCuerpo('');
-    setDesplazar((n) => n + 1);
-
-    try {
-      const r = await consultar(pregunta, modelo, hiloId);
-      toque();
-
-      // Una respuesta vacía es un modelo que no contestó, no un acierto: se
-      // dice, en vez de dejar la pantalla en blanco pareciendo que se colgó.
-      if (r.text.trim()) {
-        // `nueva` marca cuál se escribe a máquina. Sin la marca, cualquier
-        // render volvería a animar la última y reaparecería sola.
-        setTurnos((t) => [
-          ...t.map((x) => (x.nueva ? { ...x, nueva: false } : x)),
-          { rol: 'vizta', texto: r.text, nueva: true, herramientas: r.herramientas },
-        ]);
-      } else {
-        setErrorVizta('El modelo no devolvió nada. Probá con otro.');
-      }
-    } catch (e) {
-      falla();
-      setErrorVizta(e.message || 'No se pudo preguntar');
-    } finally {
-      setPensando(false);
-      setDesplazar((n) => n + 1);
-    }
-  }, [cuerpo, modelo, pensando, hiloId]);
 
   /**
    * Adjuntar una foto.
@@ -2025,12 +1846,11 @@ export default function CreateSnippetSheet({
               la vuelve una barra en vez de unos íconos flotando. Antes el texto
               pasaba **por detrás** de los controles al desplazar: con la «X»
               sola se toleraba —es un glifo, se lee como una capa encima— pero
-              con el hilo la hoja se vuelve larga enseguida y ahí los renglones
-              se enredaban con la etiqueta del modelo hasta no poder leer
-              ninguna de las dos.
+              con una nota larga los renglones se enredaban con los controles
+              hasta no poder leer ninguna de las dos cosas.
               
               Con el papel detrás, el contenido se desvanece antes de llegar y
-              la barra viaja limpia sobre el hilo. Sigue estando encima de la
+              la barra viaja limpia sobre el texto. Sigue estando encima de la
               hoja, que es lo que mantiene la sensación de una sola superficie:
               no es una cabecera separada con su costura. */}
           <View
@@ -2068,11 +1888,8 @@ export default function CreateSnippetSheet({
               
                   Va a la izquierda porque es contexto —qué estoy mirando— y no
                   una acción, y en esta barra la izquierda siempre fue el
-                  contexto. En modo Vizta desaparece: ahí ese lugar lo ocupa el
-                  modelo, y entre cambiar de pantalla a mitad de una pregunta y
-                  ver con qué se está preguntando, lo segundo es lo que hace falta
-                  en ese momento. */}
-              {!preguntando && !soloLectura ? (
+                  contexto. */}
+              {!soloLectura ? (
                 <Animated.View
                   style={[{ overflow: 'hidden', borderRadius: 999, marginLeft: 4 }, estiloSwitch]}
                 >
@@ -2124,38 +1941,6 @@ export default function CreateSnippetSheet({
                 </Animated.View>
               ) : null}
 
-              {/* El modelo, al lado de la X. Es contexto de lo que se está
-                  haciendo —con qué se va a preguntar— y el contexto vive a la
-                  izquierda; la derecha son las acciones. */}
-              {pagina === NOTA && preguntando ? (
-                <Animated.View entering={FadeIn.duration(220)} style={{ flexShrink: 1, minWidth: 0 }}>
-                  <Pressable
-                    onPress={() => {
-                      roce();
-                      setEligiendoModelo(true);
-                    }}
-                    hitSlop={8}
-                    style={({ pressed }) => ({
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 5,
-                      paddingHorizontal: 8,
-                      paddingVertical: 5,
-                      opacity: pressed ? 0.5 : 1,
-                    })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Modelo: ${nombreModelo}. Tocá para cambiarlo`}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={{ fontFamily: MONO, fontSize: 11, color: 'rgba(28,43,34,0.42)', maxWidth: 140 }}
-                    >
-                      {sinProveedor(nombreModelo)}
-                    </Text>
-                    <ChevronDown size={12} color="rgba(28,43,34,0.34)" />
-                  </Pressable>
-                </Animated.View>
-              ) : null}
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0, opacity: soloLectura ? 0 : 1 }} pointerEvents={soloLectura ? 'none' : 'auto'}>
@@ -2198,17 +1983,6 @@ export default function CreateSnippetSheet({
                 />
               ) : null}
 
-              {/* Preguntarle a Vizta. Es el mismo espacio de escritura: lo que se
-                  escribe deja de ser una nota y pasa a ser una pregunta, y por eso
-                  es un modo y no otra pantalla. */}
-              {enNotas && pagina === NOTA && puedePreguntar ? (
-                <GlifoBarra
-                  Icono={Send}
-                  activo={preguntando}
-                  onPress={alternarVizta}
-                />
-              ) : null}
-
             {/* Guardar entra y sale con resorte, no de golpe.
 
                 Antes aparecía con un fundido pero ocupaba su ancho entero en el
@@ -2246,14 +2020,14 @@ export default function CreateSnippetSheet({
                 >
                   <Pressable
                     onLayout={(e) => medirAccion(e.nativeEvent.layout.width)}
-                    onPress={preguntando ? preguntar : guardar}
-                    disabled={guardando || (!preguntando && subiendoAlgo)}
+                    onPress={guardar}
+                    disabled={guardando || subiendoAlgo}
                     hitSlop={12}
                     style={{ paddingVertical: 6, paddingHorizontal: 4 }}
                   >
                     {guardando ? (
                       <MorphingInfinity size={18} color={INK.title} />
-                    ) : guardadoOk && !preguntando ? (
+                    ) : guardadoOk ? (
                       <Animated.View
                         entering={ZoomIn.springify().damping(12).stiffness(260)}
                         accessibilityLabel="Guardado"
@@ -2271,10 +2045,10 @@ export default function CreateSnippetSheet({
                           // Apagado mientras una foto sube. Sigue diciendo
                           // «guardar» y no «esperá»: el estado es momentáneo y
                           // cambiarle el texto al botón haría creer que es otro.
-                          opacity: !preguntando && subiendoAlgo ? 0.32 : 1,
+                          opacity: subiendoAlgo ? 0.32 : 1,
                         }}
                       >
-                        {preguntando ? 'enviar' : 'guardar'}
+                        guardar
                       </Text>
                     )}
                   </Pressable>
@@ -2430,16 +2204,6 @@ export default function CreateSnippetSheet({
                 topInset={topInset}
                 bottomInset={bottomInset}
                 error={error}
-                // El hilo va **arriba** del campo, no abajo: la hoja se lee de
-                // arriba a abajo como cualquier documento, y lo que se está
-                // escribiendo es lo último. Al revés habría que leer para
-                // atrás.
-                hilo={
-                  preguntando ? (
-                    <HiloVizta turnos={turnos} pensando={pensando} error={errorVizta} />
-                  ) : null
-                }
-                desplazar={desplazar}
                 fotos={enElTexto.size ? fotos.filter((f) => fuera(f.storage_path, f.id)) : fotos}
                 onQuitarFoto={soloLectura ? undefined : quitar}
                 onVerFoto={setFotoAbierta}
@@ -2485,11 +2249,7 @@ export default function CreateSnippetSheet({
               />
             </View>
 
-            {/* La página de la derecha cambia de oficio con el modo, igual que
-                la del medio: en nota lleva los datos del snippet; en chat, las
-                instrucciones con las que Vizta contesta. Es la misma idea que
-                hace que el centro deje de ser nota y pase a ser conversación —
-                mismo gesto, contenido según lo que se esté haciendo. */}
+            {/* La página de la derecha: los mencionados y los datos del snippet. */}
             <View style={{ width: W }}>
               <PanelSnippet
                 items={mencionados}
@@ -2516,14 +2276,10 @@ export default function CreateSnippetSheet({
                 onTags={setTags}
                 fecha={fecha}
                 onFecha={setFecha}
-                // En chat, la mitad de abajo son las instrucciones de Vizta en
-                // lugar de los detalles del snippet. Los mencionados de arriba
-                // se quedan en los dos modos.
-                detalles={preguntando ? <PromptSistema /> : null}
                 fotos={fotos}
                 onVerFoto={setFotoAbierta}
                 arriba={
-                  esHistoriaDs && !preguntando ? (
+                  esHistoriaDs ? (
                     <View style={{ marginBottom: 34 }}>
                       <TablaDeDataset
                         id={historiaDs.dataset_id}
@@ -2702,7 +2458,7 @@ export default function CreateSnippetSheet({
               Con texto escrito sí, porque ahí hace falta un doble toque y un
               toque suelto no hace nada — eso no lo adivina nadie. Se marca hecha
               al entrar a escribir y no vuelve más. */}
-          {pagina === NOTA && cuerpo.trim() && !escribiendo && !preguntando && !mostrandoFotos && !grabando ? (
+          {pagina === NOTA && cuerpo.trim() && !escribiendo && !mostrandoFotos && !grabando ? (
             <Animated.View
               pointerEvents="none"
               style={[
@@ -2747,7 +2503,7 @@ export default function CreateSnippetSheet({
           {/* Aparece al entrar a escribir y se va al salir. Con la transición
               de disposición de la cápsula, los vecinos se corren en el mismo
               movimiento en vez de saltar de lugar. */}
-          {enNotas && pagina === NOTA && !preguntando && escribiendo ? (
+          {enNotas && pagina === NOTA && escribiendo ? (
             <Glifo
               entrando
               Icono={Type}
@@ -2768,7 +2524,7 @@ export default function CreateSnippetSheet({
               dibujo, separadores, foto, audio, documento—. Con el editor de
               bloques reemplaza a la cámara, el documento y el micrófono, que
               pasan a estar adentro con su nombre. */}
-          {enNotas && pagina === NOTA && !preguntando && bloquesActivo ? (
+          {enNotas && pagina === NOTA && bloquesActivo ? (
             <Glifo
               Icono={Plus}
               activo={insertando}
@@ -2785,7 +2541,7 @@ export default function CreateSnippetSheet({
 
           {/* Lo que quedó a mano (ver `bloques/aMano.js`): mientras se
               escribe, al lado de Aa y `+`, actúa sin bajar el teclado. */}
-          {enNotas && pagina === NOTA && !preguntando && bloquesActivo && escribiendo && !panelAbierto
+          {enNotas && pagina === NOTA && bloquesActivo && escribiendo && !panelAbierto
             ? aManoLista.map((a) => {
                 const def = ACCIONES_A_MANO[a];
                 return def ? (
@@ -2801,7 +2557,7 @@ export default function CreateSnippetSheet({
             * el punto o buscar otro se hace desde la estampa del mapa, abajo
             * de la nota — ahí ya se está mirando el lugar, que es cuando se
             * decide si está bien. */}
-          {enNotas && pagina === NOTA && !preguntando ? (
+          {enNotas && pagina === NOTA ? (
             <Glifo
               Icono={MapPin}
               activo={Boolean(ubicacion)}
@@ -2823,7 +2579,7 @@ export default function CreateSnippetSheet({
           {/* Dónde se guarda: en un espacio, y si va como una de sus
               historias. Abierta una historia, la casilla viene marcada:
               desmarcarla la deja como una nota normal del espacio. */}
-          {enNotas && pagina === NOTA && !preguntando ? (
+          {enNotas && pagina === NOTA ? (
             <Glifo
               Icono={Layers}
               activo={Boolean(principalDe || (espacioDestino && (!editandoId || espacioDestino.marcar)))}
@@ -2888,16 +2644,6 @@ export default function CreateSnippetSheet({
 
       {/* Ficha del Codex encima de la hoja: una nota del historial, un
           mencionado, o uno nuevo salido de la selección. */}
-      {/* Elegir modelo. Va antes que la ficha porque iOS presenta un Modal a la
-          vez, y desde el selector no se abre ninguna ficha. */}
-      {eligiendoModelo ? (
-        <SelectorModelo
-          onCerrar={() => setEligiendoModelo(false)}
-          topInset={topInset}
-          bottomInset={bottomInset}
-        />
-      ) : null}
-
       <ElegirEspacio
         visible={eligiendoEspacio}
         espacios={espaciosParaGuardar}
@@ -3021,8 +2767,6 @@ function Nota({
   topInset,
   bottomInset,
   error,
-  hilo,
-  desplazar,
   fotos,
   onQuitarFoto,
   onVerFoto,
@@ -3168,23 +2912,6 @@ function Nota({
     }
   }, [onEscribir, vacio]);
 
-  /**
-   * Seguir el hilo hacia abajo.
-   *
-   * Sin esto, el tercer o cuarto turno deja el campo por debajo del borde de la
-   * pantalla y cada pregunta empieza con un desplazamiento a mano. Se dispara
-   * al mandar y al recibir, que son los dos momentos en que la hoja crece.
-   *
-   * El retraso es por el orden de las cosas: el efecto corre cuando React ya
-   * aplicó el cambio de estado, pero el `ScrollView` todavía no midió el
-   * contenido nuevo, así que desplazarse en ese instante llega al final
-   * *anterior*. Un cuadro después ya hay a dónde ir.
-   */
-  useEffect(() => {
-    if (!desplazar) return;
-    const t = setTimeout(() => hoja.current?.scrollToEnd({ animated: true }), 60);
-    return () => clearTimeout(t);
-  }, [desplazar]);
 
   // Con bloques, cada Enter crea un campo nuevo más abajo, y ese campo tiene
   // que quedar a la vista por encima del teclado y de lo que flota sobre él.
@@ -3207,7 +2934,6 @@ function Nota({
             escribible, no solo el renglón donde está el cursor. Leyendo una nota
             existente, el mismo toque es el que pasa a escribir — igual que en
             las notas de iOS, donde tocar el texto pone el cursor. */}
-        {hilo}
 
         {destino ? (
           <Text
@@ -3303,7 +3029,7 @@ function Nota({
               lineHeight: 27,
               color: INK.title,
               // El campo se achica a lo que se está escribiendo en cuanto hay
-              // algo debajo suyo — el hilo de Vizta, o fotos adjuntas.
+              // algo debajo suyo — fotos adjuntas.
               //
               // Los 260 de reserva son para la hoja en blanco: dan sensación de
               // papel y de que hay lugar para escribir. Pero con una foto
@@ -3311,7 +3037,7 @@ function Nota({
               // a media pantalla, lejos del renglón del que habla. Sin ella, la
               // foto se apoya en la última línea escrita y baja sola a medida
               // que el texto crece, como una imagen en un documento.
-              minHeight: hilo || fotos?.length || audios?.length || lugar ? 64 : 260,
+              minHeight: fotos?.length || audios?.length || lugar ? 64 : 260,
               textAlignVertical: 'top',
               padding: 0,
             }}

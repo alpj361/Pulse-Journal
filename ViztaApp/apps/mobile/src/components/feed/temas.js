@@ -60,6 +60,11 @@ const ALIAS = {
   entretenimiento: 'Entretenimiento',
   tecnologia: 'Tecnología',
   otros: 'Otros',
+  // Categoría propia del generador desde el 10-nov (ExtractorW): las notas de
+  // la elección general 2027 ya no se pierden dentro de Política.
+  elecciones: 'Elecciones',
+  'elecciones generales': 'Elecciones',
+  electoral: 'Elecciones',
 };
 
 /**
@@ -71,6 +76,7 @@ const ALIAS = {
  */
 export const TEMAS = {
   Política:        { lavado: ['#E9ECF3', '#DCE3EF'], tinta: '#39476B', marca: '#4B5C87' },
+  Elecciones:      { lavado: ['#EEE9F3', '#E3DAEE'], tinta: '#523F6E', marca: '#6E5690' },
   Economía:        { lavado: ['#F3EEE4', '#EAE1D0'], tinta: '#6A5433', marca: '#8A6F44' },
   Social:          { lavado: ['#E8EFE9', '#DAE7DC'], tinta: '#3D5F46', marca: '#537A5D' },
   Violencia:       { lavado: ['#F3E9E7', '#EBDBD7'], tinta: '#783D34', marca: '#9A5347' },
@@ -114,6 +120,40 @@ export const TEMAS = {
  */
 export function categoriaDe(card) {
   return card?.categoria_principal || card?.categoria || null;
+}
+
+/**
+ * Todos los temas de una tarjeta: el principal primero y después los de
+ * `otras_categorias` (hasta dos, del mismo catálogo; ExtractorW, 10-nov). Sin
+ * repetir: una tarjeta de Política con «Política · Congreso» como otra no tiene
+ * dos temas.
+ */
+export function temasDe(card) {
+  const lista = [temaDe(categoriaDe(card))];
+  for (const o of Array.isArray(card?.otras_categorias) ? card.otras_categorias : []) {
+    const t = temaDe(typeof o === 'string' ? o : o?.categoria);
+    if (t && t !== 'Otros' && !lista.includes(t)) lista.push(t);
+  }
+  return lista;
+}
+
+/**
+ * Las categorías secundarias con su subcategoría, para la ficha: «Justicia ·
+ * Tribunales y audiencias». Sin la principal, sin «Otros», sin repetir; una
+ * subcategoría «Otro» no se muestra.
+ */
+export function otrasCategoriasDe(card) {
+  const principal = temaDe(categoriaDe(card));
+  const vistas = new Set([principal]);
+  const out = [];
+  for (const o of Array.isArray(card?.otras_categorias) ? card.otras_categorias : []) {
+    const tema = temaDe(typeof o === 'string' ? o : o?.categoria);
+    if (!tema || tema === 'Otros' || vistas.has(tema)) continue;
+    vistas.add(tema);
+    const sub = typeof o === 'object' ? String(o?.subcategoria || '').trim() : '';
+    out.push({ tema, subcategoria: sub && !/^otros?$/i.test(sub) ? sub : null });
+  }
+  return out;
 }
 
 export function temaDe(valor) {

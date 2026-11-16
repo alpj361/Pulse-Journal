@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   Image,
@@ -29,7 +28,6 @@ import { INK, ACCENT, GLASS, CARD_SHADOW, RADIUS } from '../theme';
 import MorphingInfinity from '../MorphingInfinity';
 import { roce, toque } from '../../utils/haptics';
 import { collectFields, canonicalTipo, presetFor, FIELD_TYPES } from '../../utils/codexSchema';
-import { indexarFoto } from '../../utils/reconocimientoRostros';
 import { useSchemaDelUsuario } from '../../utils/useSchemaDelUsuario';
 import { componenteDe } from './campos/registro';
 import { esSintetico, esCampoSintetico } from './sintetico';
@@ -46,6 +44,11 @@ import PortadaEspacio from './PortadaEspacio';
 import usePortada from '../../utils/portada';
 import { formaValida, avisoDeForma } from '../../utils/formaCampo';
 import { supabase } from '../../utils/supabase';
+import { useQuery } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Fingerprint } from 'lucide-react-native';
+import { autoresDeFicha } from '../huella/api';
+import HuellaAutor from '../huella/HuellaAutor';
 
 /**
  * Ficha de item.
@@ -506,21 +509,6 @@ export default function ItemDetailSheet({
   // reescriba la geometría. Ver `useCamposEditables.guardar`.
   const [geoEd, setGeoEd] = useState(undefined);
 
-  /**
-   * Fotos marcadas para reconocer mientras el actor todavía no existe.
-   *
-   * No se pueden indexar antes de «Crear»: la cara se asocia a un actor, y
-   * recién al guardar hay uno. Se anotan acá y se cumplen al crear.
-   */
-  const [pendientesRostro, setPendientesRostro] = useState(() => new Set());
-  const marcarRostroPendiente = useCallback((archivoId, quiere) => {
-    setPendientesRostro((previo) => {
-      const siguiente = new Set(previo);
-      if (quiere) siguiente.add(archivoId);
-      else siguiente.delete(archivoId);
-      return siguiente;
-    });
-  }, []);
   const [aliasEd, setAliasEd] = useState(
     (Array.isArray(item?.aliases) ? item.aliases.filter(Boolean) : []).join(', ')
   );
@@ -631,6 +619,19 @@ export default function ItemDetailSheet({
   ];
 
   const ALTO_PORTADA = 208;
+
+  // Las cuentas que publican como esta ficha (solo Actor o Entidad tuyos): su
+  // huella de autor. Sin cuentas vinculadas no se muestra nada.
+  const insets = useSafeAreaInsets();
+  const [huellaDe, setHuellaDe] = useState(null);
+  const conHuella = !creando && !soloLectura && ['Actor', 'Entidad'].includes(tipo) && /^[0-9a-f-]{36}$/i.test(String(dbId || ''));
+  const { data: autoresVinculados = [] } = useQuery({
+    queryKey: ['huella-autores-ficha', dbId],
+    enabled: conHuella,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+    queryFn: async () => (await autoresDeFicha(dbId)).autores || [],
+  });
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -900,6 +901,28 @@ export default function ItemDetailSheet({
                     );
                   })}
                 </Animated.View>
+              ) : null}
+
+              {tab === 'detalle' && autoresVinculados.length ? (
+                <View style={{ marginTop: 14, gap: 4 }}>
+                  {autoresVinculados.map((a) => (
+                    <Pressable
+                      key={a.id}
+                      onPress={() => {
+                        roce();
+                        setHuellaDe(a);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Huella de autor de ${a.usuario || a.nombre || 'la cuenta'}`}
+                      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, opacity: pressed ? 0.5 : 1 })}
+                    >
+                      <Fingerprint size={15} color={INK.title} strokeWidth={1.8} />
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: INK.title }}>
+                        {[a.usuario ? `@${a.usuario}` : a.nombre, a.plataforma].filter(Boolean).join(' · ')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               ) : null}
 
               {/* ── Detalle ── */}
@@ -1184,11 +1207,6 @@ export default function ItemDetailSheet({
                               value={ed.values[claveDeCampo(f)]}
                               onChange={(v) => ed.setField(claveDeCampo(f), v)}
                               accent={accent}
-                              contexto={
-                                creando
-                                  ? { tipo, pendientesRostro, onPendienteRostro: marcarRostroPendiente }
-                                  : { itemId: dbId, tipo }
-                              }
                             />
                           </View>
                         ))}
@@ -1560,30 +1578,6 @@ export default function ItemDetailSheet({
                   if (!guardado) return;
 
                   if (creando) {
-                    // Las fotos marcadas para reconocer, ahora que el actor
-                    // existe. Solo las que siguen en el campo: una foto que se
-                    // marcó y después se reemplazó no se indexa.
-                    const enCampos = new Set(
-                      Object.values(ed.values)
-                        .map((v) => (v && typeof v === 'object' ? v.id : null))
-                        .filter(Boolean)
-                    );
-                    const aIndexar = [...pendientesRostro].filter((a) => enCampos.has(a));
-                    if (guardado.id && aIndexar.length) {
-                      const fallos = [];
-                      for (const archivoId of aIndexar) {
-                        try {
-                          await indexarFoto(guardado.id, archivoId);
-                        } catch (e) {
-                          fallos.push(e.message);
-                        }
-                      }
-                      // El actor ya quedó creado: lo que falló se dice, pero no
-                      // deshace nada. Se puede volver a marcar desde la ficha.
-                      if (fallos.length) {
-                        Alert.alert('No se pudo usar la foto para reconocer', fallos[0]);
-                      }
-                    }
                     setCreado(true);
                     setEditando(false);
                     setTipoAbierto(null);
@@ -1667,6 +1661,9 @@ export default function ItemDetailSheet({
           ) : null}
         </View>
       </View>
+      {huellaDe ? (
+        <HuellaAutor autorId={huellaDe.id} nombre={huellaDe.nombre} topInset={insets.top} bottomInset={insets.bottom} onClose={() => setHuellaDe(null)} />
+      ) : null}
     </Modal>
   );
 }

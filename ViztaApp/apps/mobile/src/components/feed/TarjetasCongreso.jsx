@@ -4,10 +4,18 @@ import { useMemo, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronUp, CircleCheck, CircleDashed, CircleX, FileText, Landmark, UserRound } from 'lucide-react-native';
 import { INK, SERIF } from '../theme';
-import { resultadoVotacion } from './organizacion';
-import { origenDe, titular, traerVotos } from './congreso';
+import { supabase } from '../../utils/supabase';
+import { normalizar, resultadoVotacion } from './organizacion';
+import { origenDe, titular } from './congreso';
+import { COLOR_VOTO, curulesDelHemiciclo, traerDiputados } from './diputados';
+import { VotosDelPleno } from './PlenoDiputados';
+import { CLASES, claseDe, mayoriaDe, repartirActores } from './clasesCongreso';
+import Pegatina from './Pegatina';
+import { TIPOS_VOTACION, agruparVotaciones, legible, nombreDeLey, nombrePasos, pasoCorto } from './votaciones';
+import { esEnmienda, traerFichas } from './enmiendas';
+import FichaEnmienda from './FichaEnmienda';
 
 /**
  * Lo del Congreso, cada cosa con la forma que le toca.
@@ -24,7 +32,7 @@ import { origenDe, titular, traerVotos } from './congreso';
 // El color del Congreso en el feed, y los de un voto.
 export const TINTA = '#2F4A7A';
 export const RAYA = 'rgba(28,43,34,0.09)';
-const VOTO = { favor: '#15803D', contra: '#B91C1C', ausente: 'rgba(28,43,34,0.28)', licencia: 'rgba(28,43,34,0.12)' };
+const VOTO = COLOR_VOTO;
 
 const TOTAL = 160;
 const MAYORIA = 81; // mayoría absoluta
@@ -122,22 +130,8 @@ export function Camino({ etapa }) {
  * favor, licencia, ausentes, en contra— para que el tamaño de cada grupo se vea
  * de un golpe. No dice dónde se sienta nadie.
  */
-function Hemiciclo({ favor = 0, contra = 0, ausentes = 0, licencia = 0, ancho = 300 }) {
-  const curules = useMemo(() => {
-    const FILAS = [16, 18, 20, 22, 26, 28, 30]; // de adentro hacia afuera; suma 160
-    const puntos = [];
-    const R0 = 0.42;
-    const paso = (1 - R0) / (FILAS.length - 1);
-    FILAS.forEach((cuantas, f) => {
-      const r = R0 + paso * f;
-      for (let i = 0; i < cuantas; i += 1) {
-        const a = Math.PI - (Math.PI * (i + 0.5)) / cuantas;
-        puntos.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, a });
-      }
-    });
-    // De izquierda a derecha, y dentro de cada ángulo de adentro hacia afuera.
-    return puntos.sort((p, q) => q.a - p.a);
-  }, []);
+export function Hemiciclo({ favor = 0, contra = 0, ausentes = 0, licencia = 0, ancho = 300 }) {
+  const curules = useMemo(() => curulesDelHemiciclo(), []);
 
   const alto = ancho / 2 + 6;
   const R = ancho / 2 - 5;
@@ -165,126 +159,6 @@ function Conteo({ color, cuantos, nombre }) {
   );
 }
 
-// ─── Cómo votó cada bloque ───────────────────────────────────────────────────
-
-const CLAVE_VOTO = { 'A FAVOR': 'favor', 'EN CONTRA': 'contra', AUSENTE: 'ausente', LICENCIA: 'licencia' };
-const ORDEN_VOTO = ['favor', 'contra', 'ausente', 'licencia'];
-
-/** Los 160 votos, juntados por bloque, del bloque más grande al más chico. */
-function porBloque(votos) {
-  const bloques = new Map();
-  for (const v of votos) {
-    const nombre = v.bloque || 'Sin bloque';
-    const b = bloques.get(nombre) || { nombre, total: 0, favor: 0, contra: 0, ausente: 0, licencia: 0 };
-    const clave = CLAVE_VOTO[String(v.voto || '').toUpperCase()];
-    if (clave) b[clave] += 1;
-    b.total += 1;
-    bloques.set(nombre, b);
-  }
-  return [...bloques.values()].sort((x, y) => y.total - x.total || x.nombre.localeCompare(y.nombre));
-}
-
-/** «VAMOS» → «Vamos»; las siglas cortas (UNE, PU, VOS) se quedan como están. */
-const nombreDeBloque = (n) => (n.length <= 3 ? n : n.charAt(0) + n.slice(1).toLowerCase());
-
-/**
- * Cada bloque, con cómo votaron los suyos.
- *
- * El largo de la barra es el tamaño del bloque y sus colores, el voto de cada
- * diputado: así se ve de un golpe quién votó junto y quién se partió. Sale de
- * los votos nominales, no de un resumen.
- */
-function Bloques({ votacionId }) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['congreso-votos', votacionId],
-    queryFn: () => traerVotos(votacionId),
-    staleTime: 60 * 60 * 1000,
-  });
-  const bloques = useMemo(() => porBloque(data || []), [data]);
-
-  if (isLoading) return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Trayendo los votos…</Text>;
-  if (isError || !bloques.length) {
-    return <Text style={{ fontSize: 12, color: INK.faint, marginTop: 12 }}>Los votos de cada diputado no están por ahora.</Text>;
-  }
-  const mayor = bloques[0].total;
-
-  return (
-    <View style={{ marginTop: 12, gap: 7 }}>
-      {bloques.map((b) => (
-        <View key={b.nombre} style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text numberOfLines={1} style={{ width: 104, fontSize: 12, color: INK.title }}>
-            {nombreDeBloque(b.nombre)}
-          </Text>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', width: `${Math.max(4, (b.total / mayor) * 100)}%` }}>
-              {ORDEN_VOTO.map((clave) => (b[clave] ? <View key={clave} style={{ flex: b[clave], backgroundColor: VOTO[clave] }} /> : null))}
-            </View>
-          </View>
-          <Text style={{ width: 26, textAlign: 'right', fontSize: 11.5, color: INK.faint }}>{b.total}</Text>
-        </View>
-      ))}
-      <PorPersona votos={data} />
-    </View>
-  );
-}
-
-const NOMBRE_VOTO = { favor: 'A favor', contra: 'En contra', ausente: 'Ausentes', licencia: 'Con licencia' };
-
-/**
- * Quién votó qué, por nombre: un renglón por voto, plegado, con cuántos son.
- * Abierto, los diputados de ese voto ordenados por bloque, para que se vea
- * quién de cada bancada se fue por su lado.
- */
-function PorPersona({ votos }) {
-  const grupos = useMemo(() => {
-    const g = { favor: [], contra: [], ausente: [], licencia: [] };
-    for (const v of votos || []) {
-      const clave = CLAVE_VOTO[String(v.voto || '').toUpperCase()];
-      if (clave) g[clave].push(v);
-    }
-    for (const k of Object.keys(g)) {
-      g[k].sort((a, b) => String(a.bloque).localeCompare(String(b.bloque)) || String(a.diputado).localeCompare(String(b.diputado)));
-    }
-    return g;
-  }, [votos]);
-
-  return (
-    <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: RAYA }}>
-      {ORDEN_VOTO.map((clave) => (grupos[clave].length ? <GrupoVoto key={clave} clave={clave} personas={grupos[clave]} /> : null))}
-    </View>
-  );
-}
-
-function GrupoVoto({ clave, personas }) {
-  const [abierto, setAbierto] = useState(false);
-  const Flecha = abierto ? ChevronUp : ChevronDown;
-  return (
-    <View style={{ borderBottomWidth: 1, borderBottomColor: RAYA }}>
-      <Pressable
-        onPress={() => setAbierto((x) => !x)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: abierto }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
-      >
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: VOTO[clave] }} />
-        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: INK.title }}>{NOMBRE_VOTO[clave]}</Text>
-        <Text style={{ fontSize: 12.5, color: INK.faint }}>{personas.length}</Text>
-        <Flecha size={15} color={INK.faint} />
-      </Pressable>
-      {abierto ? (
-        <View style={{ paddingBottom: 10, paddingLeft: 16 }}>
-          {personas.map((p, i) => (
-            <View key={`${p.diputado}-${i}`} style={{ flexDirection: 'row', gap: 8, paddingVertical: 3 }}>
-              <Text style={{ flex: 1, fontSize: 13, color: INK.title }}>{p.diputado}</Text>
-              <Text style={{ fontSize: 11.5, color: INK.faint }}>{p.bloque ? nombreDeBloque(p.bloque) : ''}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 /**
  * Una votación del pleno, con sus 160 votos.
  *
@@ -293,13 +167,16 @@ function GrupoVoto({ clave, personas }) {
  * cada bloque. `compacta` es la misma sin el hemiciclo, para cuando van muchas
  * seguidas.
  */
-export function VotacionCongreso({ votacion: v, compacta = false }) {
+export function VotacionCongreso({ votacion: v, compacta = false, ley = null, tipo = null, sinFicha = false }) {
   // El feed lleva 24 de margen a cada lado.
   const { width } = useWindowDimensions();
   const ancho = width - 48;
   const [abierta, setAbierta] = useState(false);
+  const [ficha, setFicha] = useState(false);
   const resultado = resultadoVotacion(v);
   const aprobada = resultado === 'aprobada';
+  // Una enmienda no se entiende por sus votos: lleva su ficha.
+  const enmienda = !sinFicha && esEnmienda(v.asunto);
   const Flecha = abierta ? ChevronUp : ChevronDown;
   return (
     <Pressable
@@ -308,9 +185,46 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
       accessibilityState={{ expanded: abierta }}
       style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: RAYA }}
     >
-      <Rotulo color={aprobada ? VOTO.favor : VOTO.contra}>{aprobada ? 'VOTACIÓN · APROBADA' : resultado === 'no_aprobada' ? 'VOTACIÓN · NO APROBADA' : 'VOTACIÓN · RESULTADO SIN CONFIRMAR'}</Rotulo>
-      <Titulo>{v.asunto}</Titulo>
-      {compacta && v.sesion ? <Text style={{ fontSize: 12, color: INK.meta, marginTop: 5 }}>{v.sesion}</Text> : null}
+      {compacta ? null : (
+        <Pegatina texto="Votación" paleta={(aprobada ? CLASES.aprobacion : resultado === 'no_aprobada' ? CLASES.interpelacion : CLASES.noticia).paleta} sticker="congreso-votacion" respaldo="votaciones" id={v.id} style={{ marginBottom: 8 }} />
+      )}
+      {/* El resultado lo dice el ícono; el rótulo queda para qué se votó. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+        <IconoResultado resultado={resultado} />
+        <Text style={{ flex: 1, fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: TINTA }}>
+          {(ley ? [pasoCorto(v.asunto).toUpperCase(), `INICIATIVA ${ley.numero}`] : [TIPOS_VOTACION[tipo]?.rotulo]).filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      {/* De una ley se lee su nombre; el paso que se votó ya va en el rótulo. */}
+      <Titulo>{ley ? ley.nombre || legible(v.asunto) : v.asunto}</Titulo>
+      {enmienda ? (
+        <Pressable onPress={() => setFicha(true)} accessibilityRole="button" accessibilityLabel={`ficha de la enmienda: qué cambia, quién la propuso y a qué pertenece, ${v.asunto}`}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginTop: 8, alignSelf: 'flex-start', opacity: pressed ? 0.5 : 1 })}>
+          <FileText size={16} color={TINTA} />
+          <Text style={{ fontSize: 13, color: TINTA, fontWeight: '600' }}>ficha de la enmienda</Text>
+          <ChevronRight size={14} color={TINTA} />
+        </Pressable>
+      ) : null}
+      {/* Cerrada, el hemiciclo de conteos. Abierta, el de cada diputado lo
+          reemplaza (se tocan sus curules y sus votos); el de conteos queda
+          solo mientras llegan esos votos o si no están. */}
+      {abierta ? (
+        <VotosDelPleno votacionId={v.id} resumen={<ConteoDelPleno v={v} compacta={compacta} ancho={ancho} />} />
+      ) : (
+        <ConteoDelPleno v={v} compacta={compacta} ancho={ancho} />
+      )}
+      <View style={{ alignItems: compacta ? 'flex-start' : 'center', marginTop: 6 }}>
+        <Flecha size={15} color={INK.faint} />
+      </View>
+      {ficha ? <FichaEnmienda votacion={v} apoyo={<VotacionCongreso votacion={v} tipo={tipo} ley={ley} sinFicha />} onClose={() => setFicha(false)} /> : null}
+    </Pressable>
+  );
+}
+
+/** El hemiciclo de conteos y sus cifras: cuántos a favor, en contra, ausentes y con licencia. */
+function ConteoDelPleno({ v, compacta, ancho }) {
+  return (
+    <>
       {compacta ? null : (
         <View style={{ alignItems: 'center', marginTop: 14 }}>
           <Hemiciclo favor={v.a_favor} contra={v.en_contra} ausentes={v.ausentes} licencia={v.licencia} ancho={Math.min(ancho, 320)} />
@@ -331,37 +245,158 @@ export function VotacionCongreso({ votacion: v, compacta = false }) {
         <Conteo color={VOTO.contra} cuantos={v.en_contra} nombre="en contra" />
         <Conteo color={VOTO.ausente} cuantos={v.ausentes} nombre="ausentes" />
         <Conteo color={VOTO.licencia} cuantos={v.licencia} nombre="con licencia" />
-        <Flecha size={15} color={INK.faint} />
       </View>
-      {abierta ? <Bloques votacionId={v.id} /> : null}
-      {v.sesion && !compacta ? <Text style={{ fontSize: 11.5, color: INK.faint, textAlign: 'center', marginTop: 9 }}>{v.sesion}</Text> : null}
+    </>
+  );
+}
+
+/** Los nombres de las leyes que se votaron, del registro de iniciativas. */
+export function useNombresDeLeyes(numeros = []) {
+  const lista = [...new Set(numeros.filter(Boolean))].sort();
+  return useQuery({
+    queryKey: ['congreso-nombres-de-leyes', lista.join(',')],
+    enabled: lista.length > 0,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('iniciativas_app_view').select('numero, titulo').in('numero', lista);
+      if (error) throw error;
+      return Object.fromEntries((data || []).map((i) => [Number(i.numero), nombreDeLey(i.titulo)]));
+    },
+  });
+}
+
+/** Aprobada, no aprobada o sin confirmar: un ícono, sin palabras. */
+export function IconoResultado({ resultado, size = 15 }) {
+  if (resultado === 'aprobada') return <CircleCheck size={size} color={VOTO.favor} accessibilityLabel="aprobada" />;
+  if (resultado === 'no_aprobada') return <CircleX size={size} color={VOTO.contra} accessibilityLabel="no aprobada" />;
+  return <CircleDashed size={size} color={INK.meta} accessibilityLabel="resultado sin confirmar" />;
+}
+
+/**
+ * Los votos de un paso, a favor y en contra, siempre los dos. El resultado lo
+ * dice el ícono, y sale del registro (`resultado`): de las cifras no se deduce
+ * si se aprobó. 33 a favor y 25 en contra puede ser aprobada con quórum
+ * reducido, y 63 contra 49 una moción rechazada.
+ */
+function CifrasDe({ v }) {
+  if (v.a_favor == null && v.en_contra == null) return <View style={{ minWidth: 74 }} />;
+  return (
+    <View style={{ minWidth: 74 }}>
+      <Text style={{ fontSize: 11.5, color: INK.meta }}><Text style={{ color: VOTO.favor, fontWeight: '700' }}>{v.a_favor ?? 0}</Text> a favor</Text>
+      <Text style={{ fontSize: 11.5, color: INK.meta }}><Text style={{ color: VOTO.contra, fontWeight: '700' }}>{v.en_contra ?? 0}</Text> en contra</Text>
+    </View>
+  );
+}
+
+/** Desplegar y plegar: el texto con su flecha. */
+export function Plegable({ abierto, onPress, texto, color = TINTA }) {
+  const Flecha = abierto ? ChevronUp : ChevronDown;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ expanded: abierto }} accessibilityLabel={abierto ? `ocultar, ${texto}` : texto}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
+      <Flecha size={15} color={color} />
+      <Text style={{ fontSize: 12.5, fontWeight: '600', color }}>{abierto ? 'ocultar' : texto}</Text>
     </Pressable>
   );
 }
 
 /**
- * Las votaciones de un día.
+ * Una votación con las que van con ella.
  *
- * Van dos con su hemiciclo: un día puede traer veinte, y veinte hemiciclos
- * seguidos tapan todo lo demás. El resto se abre de un toque, en renglones sin
- * dibujo.
+ * De una ley se ve la votación que la decide, con el nombre de la ley; los
+ * artículos, enmiendas y la redacción final quedan plegados debajo. De una
+ * elección, quien ganó, y los demás candidatos plegados. El trámite de un día
+ * es solo su rótulo y lo plegado.
  */
-export function VotacionesDelDia({ votaciones = [] }) {
-  const [todas, setTodas] = useState(false);
-  const resto = votaciones.slice(2);
+export function GrupoVotacion({ grupo, nombres = {}, compacta = false }) {
+  const [abierto, setAbierto] = useState(false);
+  const ley = grupo.tipo === 'ley' && grupo.iniciativa ? { numero: grupo.iniciativa, nombre: nombres[grupo.iniciativa] || null } : null;
+  const pasos = nombrePasos(grupo);
+  // Al abrir los pasos, las fichas de sus enmiendas: su nombre en sencillo.
+  const idsEnmienda = abierto ? grupo.pasos.filter((v) => esEnmienda(v.asunto)).map((v) => v.id) : [];
+  const fichas = useQuery({ queryKey: ['fichas-enmienda', idsEnmienda], queryFn: () => traerFichas(idsEnmienda), enabled: idsEnmienda.length > 0, staleTime: 30 * 60 * 1000 });
+  return (
+    <View style={grupo.principal ? null : { paddingTop: 12 }}>
+      {grupo.principal ? <VotacionCongreso votacion={grupo.principal} compacta={compacta} ley={ley} tipo={grupo.tipo} />
+        : <Rotulo color={INK.meta}>{TIPOS_VOTACION[grupo.tipo].rotulo}</Rotulo>}
+      {pasos ? <Plegable abierto={abierto} onPress={() => setAbierto((x) => !x)} texto={pasos} color={grupo.principal ? TINTA : INK.meta} /> : null}
+      {abierto ? grupo.pasos.map((v) => <Paso key={v.id} votacion={v} tipo={grupo.tipo} ficha={fichas.data?.get(v.id)} conFlecha={idsEnmienda.length > 0} corto={grupo.tipo !== 'eleccion' && grupo.tipo !== 'acuerdo'} />) : null}
+    </View>
+  );
+}
+
+/**
+ * Un paso plegado: qué se votó, y el ícono del resultado con su número. Una
+ * enmienda se toca y abre su ficha; con ficha, va su nombre en sencillo
+ * («Artículo 31: en cuánto tiempo se avisa un ataque») sobre el del acta.
+ */
+function Paso({ votacion: v, corto, tipo = null, ficha = null, conFlecha = false }) {
+  const [abierta, setAbierta] = useState(false);
+  const [votos, setVotos] = useState(false);
+  const resultado = resultadoVotacion(v);
+  const enmienda = esEnmienda(v.asunto);
+  const titulo = ficha?.titulo || (corto ? pasoCorto(v.asunto) : v.asunto);
+  const fila = (
+    <>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: INK.title }}>{titulo}</Text>
+        {ficha?.titulo ? <Text style={{ fontSize: 11.5, lineHeight: 16, color: INK.meta, marginTop: 2 }}>{pasoCorto(v.asunto)}</Text> : null}
+      </View>
+      <IconoResultado resultado={resultado} size={14} />
+      {/* Las cifras y la flecha guardan su lugar aunque falten, para que los votos queden en columna. */}
+      <CifrasDe v={v} />
+      {enmienda ? <ChevronRight size={14} color={INK.faint} />
+        : votos ? <ChevronUp size={14} color={INK.faint} /> : <ChevronDown size={14} color={INK.faint} />}
+    </>
+  );
+  const estilo = { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, minHeight: 44, borderTopWidth: 1, borderTopColor: RAYA };
+  // Una enmienda abre su ficha (que trae sus votos); los demás pasos abren
+  // aquí mismo cómo votó cada diputado.
+  if (!enmienda) {
+    return (
+      <View>
+        <Pressable onPress={() => setVotos((x) => !x)} accessibilityRole="button" accessibilityState={{ expanded: votos }}
+          accessibilityLabel={`${titulo}, ${v.a_favor ?? 0} a favor, ${v.en_contra ?? 0} en contra, votos por diputado`}
+          style={({ pressed }) => ({ ...estilo, opacity: pressed ? 0.6 : 1 })}>
+          {fila}
+        </Pressable>
+        {votos ? <View style={{ paddingBottom: 12 }}><VotosDelPleno votacionId={v.id} /></View> : null}
+      </View>
+    );
+  }
   return (
     <>
-      {votaciones.slice(0, 2).map((v) => (
-        <VotacionCongreso key={v.id} votacion={v} />
-      ))}
-      {todas ? resto.map((v) => <VotacionCongreso key={v.id} votacion={v} compacta />) : null}
-      {resto.length ? (
-        <Pressable onPress={() => setTodas((x) => !x)} accessibilityRole="button" style={{ paddingVertical: 12 }}>
-          <Text style={{ fontSize: 12.5, fontWeight: '600', color: TINTA }}>
-            {todas ? 'Menos votaciones' : resto.length === 1 ? 'Una votación más ese día' : `${resto.length} votaciones más ese día`}
-          </Text>
-        </Pressable>
-      ) : null}
+      <Pressable onPress={() => setAbierta(true)} accessibilityRole="button" accessibilityLabel={`ficha de la enmienda, ${ficha?.titulo || v.asunto}`}
+        style={({ pressed }) => ({ ...estilo, opacity: pressed ? 0.6 : 1 })}>
+        {fila}
+      </Pressable>
+      {abierta ? <FichaEnmienda votacion={v} apoyo={<VotacionCongreso votacion={v} tipo={tipo} sinFicha />} onClose={() => setAbierta(false)} /> : null}
+    </>
+  );
+}
+
+/**
+ * Las votaciones de un día, juntas por lo que decidieron.
+ *
+ * Una ley aprobada son quince votaciones: va una, la que la decide, y el resto
+ * plegado bajo ella. Van dos con su hemiciclo: veinte medias lunas seguidas
+ * tapan todo lo demás. El trámite del día (orden del día, actas, mociones)
+ * nunca va con dibujo: es un renglón plegado al final.
+ */
+export function VotacionesDelDia({ votaciones = [] }) {
+  const [mas, setMas] = useState(false);
+  const grupos = useMemo(() => agruparVotaciones(votaciones), [votaciones]);
+  const nombres = useNombresDeLeyes(grupos.map((g) => g.iniciativa)).data || {};
+  const decisivos = grupos.filter((g) => g.tipo !== 'tramite');
+  const tramite = grupos.find((g) => g.tipo === 'tramite');
+  const resto = decisivos.slice(2);
+  return (
+    <>
+      {decisivos.slice(0, 2).map((g) => <GrupoVotacion key={g.clave} grupo={g} nombres={nombres} />)}
+      {mas ? resto.map((g) => <GrupoVotacion key={g.clave} grupo={g} nombres={nombres} compacta />) : null}
+      {resto.length ? <Plegable abierto={mas} onPress={() => setMas((x) => !x)}
+        texto={resto.length === 1 ? 'una votación más ese día' : `${resto.length} votaciones más ese día`} /> : null}
+      {tramite ? <GrupoVotacion grupo={tramite} /> : null}
     </>
   );
 }
@@ -454,61 +489,181 @@ export function rotuloDe(item) {
   return [ETAPA[item.stage] || null, numero ? `INICIATIVA ${numero}` : null].filter(Boolean).join(' · ');
 }
 
-export function ItemCongreso({ item, ultimo = false, onPress }) {
+export function ItemCongreso({ item, ultimo = false, onPress, onEntidad }) {
   const d = item.card_data || {};
   const numero = item.iniciativa_numero || d.iniciativa_numero || null;
-  const rotulo = rotuloDe(item);
+  const clase = claseDe(item);
+  const c = CLASES[clase];
   const tipo = item.card_type;
   const cabeza = cabezaDe(item);
+  const diputados = useDiputados();
+  const reparto = useMemo(() => repartirActores(item.actors, diputados), [item.actors, diputados]);
   // La persona y la cifra tienen su propio titular: ahí el resumen va entero.
   const propia = (tipo === 'ficha' && d.name) || (tipo === 'cifra' && monto(d.amount, d.unit));
   const resumen = propia ? /\btuit\b/i.test(item.summary || '') ? null : item.summary : cabeza.resumen;
+  // La etiqueta ya dice la clase: el rótulo queda para lo que agrega (la
+  // etapa si es otra, el número de iniciativa).
+  const extra = rotuloDe(item)
+    .split(' · ')
+    .filter((r) => r && !normalizar(r).includes(normalizar(c.nombre)))
+    .join(' · ');
+  const conCitados = clase === 'citacion' || clase === 'interpelacion';
 
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       style={({ pressed }) => ({
-        paddingVertical: 16,
+        paddingVertical: 18,
         borderBottomWidth: ultimo ? 0 : 1,
         borderBottomColor: RAYA,
         opacity: pressed ? 0.6 : 1,
       })}
     >
-      {rotulo ? <Rotulo>{rotulo}</Rotulo> : null}
+      <Pegatina texto={c.nombre} paleta={c.paleta} sticker={c.sticker} respaldo={c.respaldo} id={item.id} style={{ marginBottom: extra ? 8 : 11 }} />
+      {extra ? <Rotulo color={c.paleta.tinta}>{extra}</Rotulo> : null}
 
       {tipo === 'ficha' && d.name ? (
         /* Alguien fue elegido o nombrado: la persona es la noticia. */
         <>
           <Titulo>{d.name}</Titulo>
-          <Text style={{ fontSize: 13.5, color: INK.body, marginTop: 4 }}>
-            {[d.role, d.result].filter(Boolean).join(' · ')}
-          </Text>
-          <AFavor cuantos={item.votes?.favor} />
-          <Resumen>{resumen}</Resumen>
-        </>
-      ) : tipo === 'cifra' && monto(d.amount, d.unit) ? (
-        /* El titular dice de qué es; el monto va como etiqueta, no como
-           titular: un número de 30 puntos pesaba más que la noticia. */
-        <>
-          <Titulo>{d.subject || cabeza.titulo}</Titulo>
-          <View style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, marginTop: 6 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: TINTA }}>{monto(d.amount, d.unit)}</Text>
-          </View>
-          <Resumen>{resumen}</Resumen>
+          <Text style={{ fontSize: 13.5, color: INK.body, marginTop: 4 }}>{[d.role, d.result].filter(Boolean).join(' · ')}</Text>
         </>
       ) : (
-        <>
-          <Titulo>{cabeza.titulo}</Titulo>
-          {tipo === 'hemiciclo' ? <AFavor cuantos={item.votes?.favor} /> : null}
-          {/* El camino es el de una ley. Aprobar una agenda o citar a un
-              ministro también tiene «etapa», pero no recorre ese camino. */}
-          {tipo === 'timeline' && numero ? <Camino etapa={item.stage} /> : null}
-          <Resumen>{resumen}</Resumen>
-        </>
+        <Titulo>{tipo === 'cifra' && monto(d.amount, d.unit) ? d.subject || cabeza.titulo : cabeza.titulo}</Titulo>
       )}
+
+      {/* El monto va como etiqueta, no como titular: un número de 30 puntos
+          pesaba más que la noticia. */}
+      {tipo === 'cifra' && monto(d.amount, d.unit) ? (
+        <View style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(28,43,34,0.06)', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 4, marginTop: 7 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: TINTA }}>{monto(d.amount, d.unit)}</Text>
+        </View>
+      ) : null}
+
+      {Number(item.votes?.favor) > 0 && (clase === 'aprobacion' || clase === 'eleccion') ? <Aprobacion favor={item.votes.favor} /> : null}
+      {conCitados ? <Citados clase={clase} reparto={reparto} paleta={c.paleta} onEntidad={onEntidad} /> : null}
+      {/* El camino es el de una ley. Aprobar una agenda o citar a un ministro
+          también tiene «etapa», pero no recorre ese camino. */}
+      {tipo === 'timeline' && numero && clase !== 'aprobacion' ? <Camino etapa={item.stage} /> : null}
+
+      <Resumen>{resumen}</Resumen>
+      {conCitados ? null : <QuienFue reparto={reparto} tinta={c.paleta.tinta} onEntidad={onEntidad} />}
       <Origen item={item} />
     </Pressable>
+  );
+}
+
+/**
+ * Los 160 diputados con su bloque, para saber quién de los nombrados es uno.
+ * Salen del dataset «Congreso de Guatemala», la misma lista del hemiciclo.
+ */
+export function useDiputados() {
+  const { data } = useQuery({ queryKey: ['congreso-diputados'], queryFn: traerDiputados, staleTime: 6 * 60 * 60 * 1000 });
+  return useMemo(() => (data ? data.map((d) => ({ nombre: d.nombre, bloque: d.sigla === 'IND' ? 'INDEPENDIENTE' : d.sigla })) : SIN_DIPUTADOS), [data]);
+}
+const SIN_DIPUTADOS = [];
+
+/**
+ * Lo aprobado, con su hemiciclo.
+ *
+ * La nota casi nunca trae más que los votos a favor: esos se pintan en verde y
+ * el resto de las curules queda en gris claro, sin inventar en contra ni
+ * ausentes que nadie contó. Sin votos no se llega acá: es una nota.
+ */
+export function Aprobacion({ favor }) {
+  const { width } = useWindowDimensions();
+  const n = Number(favor);
+  const alcance = mayoriaDe(n);
+  return (
+    <View style={{ alignItems: 'center', marginTop: 14 }}>
+      <Hemiciclo favor={n} ancho={Math.min(width - 48, 250)} />
+      <Text style={{ fontSize: 12.5, color: INK.body, marginTop: 8, textAlign: 'center' }}>
+        <Text style={{ fontWeight: '700', color: VOTO.favor }}>{n}</Text> a favor, de {TOTAL}
+        {alcance ? ` · ${alcance}` : ''}
+      </Text>
+    </View>
+  );
+}
+
+/** Un nombre que se puede tocar para ver su ficha, como en las noticias. */
+function Nombre({ nombre, extra, tinta, onEntidad, fuerte = false }) {
+  return (
+    <Pressable
+      onPress={(ev) => {
+        // Sin esto, tocar el nombre abre su ficha y también la nota de atrás.
+        ev.stopPropagation();
+        onEntidad?.(nombre);
+      }}
+      hitSlop={{ top: 6, bottom: 6 }}
+      accessibilityRole="link"
+      style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+    >
+      <Text style={{ fontSize: fuerte ? 14 : 12.5, fontWeight: fuerte ? '600' : '400', color: tinta, textDecorationLine: 'underline', textDecorationColor: `${tinta}55` }}>
+        {nombre}
+        {extra ? <Text style={{ textDecorationLine: 'none', color: INK.faint, fontWeight: '400' }}>{` · ${extra}`}</Text> : null}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Quién fue, al pie: los diputados con su bloque primero, después las
+ * instituciones y las personas. Como en las noticias del país, subrayados.
+ */
+function QuienFue({ reparto, tinta, onEntidad }) {
+  const todos = [
+    ...reparto.diputados.map((p) => ({ ...p, extra: p.bloque })),
+    ...reparto.instituciones,
+    ...reparto.personas,
+  ];
+  if (!todos.length) return null;
+  const visibles = todos.slice(0, 4);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 6, marginTop: 12 }}>
+      {visibles.map((p) => (
+        <Nombre key={p.nombre} nombre={p.nombre} extra={p.extra} tinta={tinta} onEntidad={onEntidad} />
+      ))}
+      {todos.length > visibles.length ? <Text style={{ fontSize: 12, color: INK.faint }}>+{todos.length - visibles.length}</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * A quién citan (o interpelan) y quién lo pidió. En una citación lo que
+ * importa es quién tuvo que ir a rendir cuentas: va primero y más grande; el
+ * diputado que citó, abajo.
+ */
+function Citados({ clase, reparto, paleta, onEntidad }) {
+  const citados = [...reparto.instituciones.map((p) => ({ ...p, Icono: Landmark })), ...reparto.personas.map((p) => ({ ...p, Icono: UserRound }))];
+  const quien = reparto.diputados;
+  if (!citados.length && !quien.length) return null;
+  const visibles = citados.slice(0, 4);
+  return (
+    <View style={{ marginTop: 12, borderRadius: 12, backgroundColor: paleta.lavado[0], paddingHorizontal: 12, paddingVertical: 11, gap: 8 }}>
+      {visibles.length ? (
+        <>
+          <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.9, color: paleta.tinta }}>{clase === 'interpelacion' ? 'INTERPELADOS' : 'CITADOS'}</Text>
+          {visibles.map(({ nombre, Icono }) => (
+            <View key={nombre} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Icono size={15} color={paleta.tinta} strokeWidth={2} />
+              <View style={{ flex: 1 }}>
+                <Nombre nombre={nombre} tinta={INK.title} onEntidad={onEntidad} fuerte />
+              </View>
+            </View>
+          ))}
+          {citados.length > visibles.length ? <Text style={{ fontSize: 12, color: INK.meta }}>y {citados.length - visibles.length} más</Text> : null}
+        </>
+      ) : null}
+      {quien.length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 4, borderTopWidth: visibles.length ? 1 : 0, borderTopColor: RAYA, paddingTop: visibles.length ? 8 : 0 }}>
+          <Text style={{ fontSize: 12, color: INK.meta }}>{clase === 'interpelacion' ? 'Interpeló' : 'Citó'}</Text>
+          {quien.slice(0, 3).map((p) => (
+            <Nombre key={p.nombre} nombre={p.nombre} extra={p.bloque} tinta={paleta.tinta} onEntidad={onEntidad} />
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 

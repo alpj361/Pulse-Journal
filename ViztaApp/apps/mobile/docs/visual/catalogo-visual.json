@@ -1,0 +1,1569 @@
+{
+  "version": 1,
+  "root": "Vista",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "Vista": {
+        "$ref": "#/$defs/Vista"
+      },
+      "Seccion": {
+        "$ref": "#/$defs/Seccion"
+      },
+      "Pestanas": {
+        "$ref": "#/$defs/Pestanas"
+      },
+      "Pestana": {
+        "$ref": "#/$defs/Pestana"
+      },
+      "Texto": {
+        "$ref": "#/$defs/Texto"
+      },
+      "Cita": {
+        "$ref": "#/$defs/Cita"
+      },
+      "Aviso": {
+        "$ref": "#/$defs/Aviso"
+      },
+      "Cifras": {
+        "$ref": "#/$defs/Cifras"
+      },
+      "Cifra": {
+        "$ref": "#/$defs/Cifra"
+      },
+      "Barras": {
+        "$ref": "#/$defs/Barras"
+      },
+      "Barra": {
+        "$ref": "#/$defs/Barra"
+      },
+      "Hemiciclo": {
+        "$ref": "#/$defs/Hemiciclo"
+      },
+      "LineaDeTiempo": {
+        "$ref": "#/$defs/LineaDeTiempo"
+      },
+      "Hito": {
+        "$ref": "#/$defs/Hito"
+      },
+      "Actor": {
+        "$ref": "#/$defs/Actor"
+      },
+      "Actores": {
+        "$ref": "#/$defs/Actores"
+      },
+      "Relaciones": {
+        "$ref": "#/$defs/Relaciones"
+      },
+      "Personas": {
+        "$ref": "#/$defs/Personas"
+      },
+      "Persona": {
+        "$ref": "#/$defs/Persona"
+      },
+      "Relacion": {
+        "$ref": "#/$defs/Relacion"
+      },
+      "Hecho": {
+        "$ref": "#/$defs/Hecho"
+      }
+    },
+    "required": [
+      "Vista",
+      "Seccion",
+      "Pestanas",
+      "Pestana",
+      "Texto",
+      "Cita",
+      "Aviso",
+      "Cifras",
+      "Cifra",
+      "Barras",
+      "Barra",
+      "Hemiciclo",
+      "LineaDeTiempo",
+      "Hito",
+      "Actor",
+      "Actores",
+      "Relaciones",
+      "Personas",
+      "Persona",
+      "Relacion",
+      "Hecho"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+      "Vista": {
+        "type": "object",
+        "properties": {
+          "titulo": {
+            "type": "string"
+          },
+          "contenido": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Seccion"
+                },
+                {
+                  "$ref": "#/$defs/Pestanas"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Texto"
+                    },
+                    {
+                      "$ref": "#/$defs/Cita"
+                    },
+                    {
+                      "$ref": "#/$defs/Aviso"
+                    },
+                    {
+                      "$ref": "#/$defs/Cifras"
+                    },
+                    {
+                      "$ref": "#/$defs/Barras"
+                    },
+                    {
+                      "$ref": "#/$defs/Hemiciclo"
+                    },
+                    {
+                      "$ref": "#/$defs/LineaDeTiempo"
+                    },
+                    {
+                      "$ref": "#/$defs/Actor"
+                    },
+                    {
+                      "$ref": "#/$defs/Actores"
+                    },
+                    {
+                      "$ref": "#/$defs/Relaciones"
+                    },
+                    {
+                      "$ref": "#/$defs/Personas"
+                    },
+                    {
+                      "$ref": "#/$defs/Relacion"
+                    },
+                    {
+                      "$ref": "#/$defs/Hecho"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "bajada": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "titulo",
+          "contenido"
+        ],
+        "additionalProperties": false,
+        "id": "Vista",
+        "description": "La raíz: título, una bajada de una línea con lo que se ve, y su contenido."
+      },
+      "Seccion": {
+        "type": "object",
+        "properties": {
+          "titulo": {
+            "type": "string"
+          },
+          "contenido": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Texto"
+                },
+                {
+                  "$ref": "#/$defs/Cita"
+                },
+                {
+                  "$ref": "#/$defs/Aviso"
+                },
+                {
+                  "$ref": "#/$defs/Cifras"
+                },
+                {
+                  "$ref": "#/$defs/Barras"
+                },
+                {
+                  "$ref": "#/$defs/Hemiciclo"
+                },
+                {
+                  "$ref": "#/$defs/LineaDeTiempo"
+                },
+                {
+                  "$ref": "#/$defs/Actor"
+                },
+                {
+                  "$ref": "#/$defs/Actores"
+                },
+                {
+                  "$ref": "#/$defs/Relaciones"
+                },
+                {
+                  "$ref": "#/$defs/Personas"
+                },
+                {
+                  "$ref": "#/$defs/Relacion"
+                },
+                {
+                  "$ref": "#/$defs/Hecho"
+                }
+              ]
+            }
+          },
+          "icono": {
+            "type": "string",
+            "enum": [
+              "actores",
+              "actor",
+              "entidad",
+              "congreso",
+              "relaciones",
+              "tiempo",
+              "noticias",
+              "cifras",
+              "lugar",
+              "cita",
+              "info"
+            ]
+          }
+        },
+        "required": [
+          "titulo",
+          "contenido"
+        ],
+        "additionalProperties": false,
+        "id": "Seccion",
+        "description": "Un bloque con título. icono: actores, actor, entidad, congreso, relaciones, tiempo, noticias, cifras, lugar, cita, info."
+      },
+      "Texto": {
+        "type": "object",
+        "properties": {
+          "texto": {
+            "type": "string"
+          },
+          "tono": {
+            "type": "string",
+            "enum": [
+              "cuerpo",
+              "meta",
+              "destacado"
+            ]
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "additionalProperties": false,
+        "id": "Texto",
+        "description": "Un párrafo corto. tono \"destacado\" para la idea principal, \"meta\" para aclaraciones."
+      },
+      "Cita": {
+        "type": "object",
+        "properties": {
+          "texto": {
+            "type": "string"
+          },
+          "quien": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "additionalProperties": false,
+        "id": "Cita",
+        "description": "Una frase literal de alguien, con quién la dijo."
+      },
+      "Aviso": {
+        "type": "object",
+        "properties": {
+          "texto": {
+            "type": "string"
+          },
+          "tono": {
+            "type": "string",
+            "enum": [
+              "info",
+              "alerta"
+            ]
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "additionalProperties": false,
+        "id": "Aviso",
+        "description": "Una advertencia sobre cómo leer los datos (datos incompletos, fechas, fuentes). Úsalo poco."
+      },
+      "Cifras": {
+        "type": "object",
+        "properties": {
+          "cifras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Cifra"
+            }
+          }
+        },
+        "required": [
+          "cifras"
+        ],
+        "additionalProperties": false,
+        "id": "Cifras",
+        "description": "Una fila de cifras, de 2 a 4."
+      },
+      "Cifra": {
+        "type": "object",
+        "properties": {
+          "valor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "etiqueta": {
+            "type": "string"
+          },
+          "detalle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "valor",
+          "etiqueta"
+        ],
+        "additionalProperties": false,
+        "id": "Cifra",
+        "description": "Un número grande con lo que cuenta («27 partidos vigentes»)."
+      },
+      "Barras": {
+        "type": "object",
+        "properties": {
+          "barras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Barra"
+            }
+          },
+          "unidad": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "barras"
+        ],
+        "additionalProperties": false,
+        "id": "Barras",
+        "description": "Comparar cantidades entre categorías (barras horizontales, de mayor a menor)."
+      },
+      "Barra": {
+        "type": "object",
+        "properties": {
+          "etiqueta": {
+            "type": "string"
+          },
+          "valor": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "etiqueta",
+          "valor"
+        ],
+        "additionalProperties": false,
+        "id": "Barra",
+        "description": "Una barra de Barras."
+      },
+      "Hemiciclo": {
+        "type": "object",
+        "properties": {
+          "favor": {
+            "type": "number"
+          },
+          "contra": {
+            "type": "number"
+          },
+          "ausentes": {
+            "type": "number"
+          },
+          "titulo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "favor"
+        ],
+        "additionalProperties": false,
+        "id": "Hemiciclo",
+        "description": "Una votación del Congreso (160 curules): votos a favor, en contra y ausentes. Solo con votos contados."
+      },
+      "LineaDeTiempo": {
+        "type": "object",
+        "properties": {
+          "hitos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Hito"
+            }
+          }
+        },
+        "required": [
+          "hitos"
+        ],
+        "additionalProperties": false,
+        "id": "LineaDeTiempo",
+        "description": "Qué pasó y cuándo, en orden."
+      },
+      "Hito": {
+        "type": "object",
+        "properties": {
+          "fecha": {
+            "type": "string"
+          },
+          "titulo": {
+            "type": "string"
+          },
+          "detalle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fecha",
+          "titulo"
+        ],
+        "additionalProperties": false,
+        "id": "Hito",
+        "description": "Un momento de una LineaDeTiempo. fecha como se lee («12 oct 2026»)."
+      },
+      "Actor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nota": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "id": "Actor",
+        "description": "La ficha de UNA persona o entidad del Codex, por su id (búscalo antes con el Codex). Se ve su foto o logo, nombre, cargo y partido; se toca para abrir su ficha. nota: por qué está aquí, en una línea."
+      },
+      "Actores": {
+        "type": "object",
+        "properties": {
+          "actores": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "agruparPor": {
+            "type": "string",
+            "enum": [
+              "partido",
+              "tipo"
+            ]
+          },
+          "forma": {
+            "type": "string",
+            "enum": [
+              "rejilla",
+              "lista"
+            ]
+          }
+        },
+        "required": [
+          "actores"
+        ],
+        "additionalProperties": false,
+        "id": "Actores",
+        "description": "Varias personas o entidades del Codex, por id (o los items de un Query), con sus caras. \"rejilla\" para mapear a muchos de un vistazo (precandidatos, una bancada); \"lista\" para leer su cargo y partido. agruparPor \"partido\" los junta por partido."
+      },
+      "Relaciones": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "limite": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "id": "Relaciones",
+        "description": "Con quién y con qué está vinculado un item del Codex (partidos, cargos, alianzas), leído de sus relaciones guardadas."
+      },
+      "Personas": {
+        "type": "object",
+        "properties": {
+          "personas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Persona"
+            }
+          },
+          "agregar": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "personas"
+        ],
+        "additionalProperties": false,
+        "id": "Personas",
+        "description": "Personas o entidades de un post (quién aparece, a quién se menciona, qué organizaciones). Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos."
+      },
+      "Persona": {
+        "type": "object",
+        "properties": {
+          "texto": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          },
+          "rol": {
+            "type": "string"
+          },
+          "detalle": {
+            "type": "string"
+          },
+          "voz": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "additionalProperties": false,
+        "id": "Persona",
+        "description": "Alguien de un post: su nombre como sale en el post y, si ya está en el Codex, su id. rol: qué hace en el video («conduce», «invitado», «habla a cámara»); detalle: cómo se le reconoce si no tiene nombre."
+      },
+      "Relacion": {
+        "type": "object",
+        "properties": {
+          "a": {
+            "type": "string"
+          },
+          "verbo": {
+            "type": "string"
+          },
+          "b": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "a",
+          "verbo",
+          "b"
+        ],
+        "additionalProperties": false,
+        "id": "Relacion",
+        "description": "Un vínculo que dice un post («Jev es desarrollado por TypeSafe AI»). En la ficha del post, un + lo guarda en el Codex."
+      },
+      "Hecho": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "texto": {
+            "type": "string"
+          },
+          "cita": {
+            "type": "string"
+          },
+          "quien": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "texto"
+        ],
+        "additionalProperties": false,
+        "id": "Hecho",
+        "description": "Algo que afirma un post, con su cita literal si la hay. En la ficha del post, se guarda como hecho del Codex."
+      },
+      "Pestanas": {
+        "type": "object",
+        "properties": {
+          "pestanas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/Pestana"
+            }
+          }
+        },
+        "required": [
+          "pestanas"
+        ],
+        "additionalProperties": false,
+        "id": "Pestanas",
+        "description": "Pestañas para separar vistas de lo mismo (por partido, por tema). De 2 a 5."
+      },
+      "Pestana": {
+        "type": "object",
+        "properties": {
+          "nombre": {
+            "type": "string"
+          },
+          "contenido": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Seccion"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Texto"
+                    },
+                    {
+                      "$ref": "#/$defs/Cita"
+                    },
+                    {
+                      "$ref": "#/$defs/Aviso"
+                    },
+                    {
+                      "$ref": "#/$defs/Cifras"
+                    },
+                    {
+                      "$ref": "#/$defs/Barras"
+                    },
+                    {
+                      "$ref": "#/$defs/Hemiciclo"
+                    },
+                    {
+                      "$ref": "#/$defs/LineaDeTiempo"
+                    },
+                    {
+                      "$ref": "#/$defs/Actor"
+                    },
+                    {
+                      "$ref": "#/$defs/Actores"
+                    },
+                    {
+                      "$ref": "#/$defs/Relaciones"
+                    },
+                    {
+                      "$ref": "#/$defs/Personas"
+                    },
+                    {
+                      "$ref": "#/$defs/Relacion"
+                    },
+                    {
+                      "$ref": "#/$defs/Hecho"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "nombre",
+          "contenido"
+        ],
+        "additionalProperties": false,
+        "id": "Pestana",
+        "description": "Una pestaña de Pestanas."
+      }
+    }
+  },
+  "spec": {
+    "root": "Vista",
+    "components": {
+      "Vista": {
+        "signature": "Vista(titulo: string, contenido: (Seccion | Pestanas | Texto | Cita | Aviso | Cifras | Barras | Hemiciclo | LineaDeTiempo | Actor | Actores | Relaciones | Personas | Relacion | Hecho)[], bajada?: string)",
+        "description": "La raíz: título, una bajada de una línea con lo que se ve, y su contenido."
+      },
+      "Seccion": {
+        "signature": "Seccion(titulo: string, contenido: (Texto | Cita | Aviso | Cifras | Barras | Hemiciclo | LineaDeTiempo | Actor | Actores | Relaciones | Personas | Relacion | Hecho)[], icono?: \"actores\" | \"actor\" | \"entidad\" | \"congreso\" | \"relaciones\" | \"tiempo\" | \"noticias\" | \"cifras\" | \"lugar\" | \"cita\" | \"info\")",
+        "description": "Un bloque con título. icono: actores, actor, entidad, congreso, relaciones, tiempo, noticias, cifras, lugar, cita, info."
+      },
+      "Pestanas": {
+        "signature": "Pestanas(pestanas: Pestana[])",
+        "description": "Pestañas para separar vistas de lo mismo (por partido, por tema). De 2 a 5."
+      },
+      "Pestana": {
+        "signature": "Pestana(nombre: string, contenido: (Seccion | Texto | Cita | Aviso | Cifras | Barras | Hemiciclo | LineaDeTiempo | Actor | Actores | Relaciones | Personas | Relacion | Hecho)[])",
+        "description": "Una pestaña de Pestanas."
+      },
+      "Texto": {
+        "signature": "Texto(texto: string, tono?: \"cuerpo\" | \"meta\" | \"destacado\")",
+        "description": "Un párrafo corto. tono \"destacado\" para la idea principal, \"meta\" para aclaraciones."
+      },
+      "Cita": {
+        "signature": "Cita(texto: string, quien?: string)",
+        "description": "Una frase literal de alguien, con quién la dijo."
+      },
+      "Aviso": {
+        "signature": "Aviso(texto: string, tono?: \"info\" | \"alerta\")",
+        "description": "Una advertencia sobre cómo leer los datos (datos incompletos, fechas, fuentes). Úsalo poco."
+      },
+      "Cifras": {
+        "signature": "Cifras(cifras: Cifra[])",
+        "description": "Una fila de cifras, de 2 a 4."
+      },
+      "Cifra": {
+        "signature": "Cifra(valor: string | number, etiqueta: string, detalle?: string)",
+        "description": "Un número grande con lo que cuenta («27 partidos vigentes»)."
+      },
+      "Barras": {
+        "signature": "Barras(barras: Barra[], unidad?: string)",
+        "description": "Comparar cantidades entre categorías (barras horizontales, de mayor a menor)."
+      },
+      "Barra": {
+        "signature": "Barra(etiqueta: string, valor: number)",
+        "description": "Una barra de Barras."
+      },
+      "Hemiciclo": {
+        "signature": "Hemiciclo(favor: number, contra?: number, ausentes?: number, titulo?: string)",
+        "description": "Una votación del Congreso (160 curules): votos a favor, en contra y ausentes. Solo con votos contados."
+      },
+      "LineaDeTiempo": {
+        "signature": "LineaDeTiempo(hitos: Hito[])",
+        "description": "Qué pasó y cuándo, en orden."
+      },
+      "Hito": {
+        "signature": "Hito(fecha: string, titulo: string, detalle?: string)",
+        "description": "Un momento de una LineaDeTiempo. fecha como se lee («12 oct 2026»)."
+      },
+      "Actor": {
+        "signature": "Actor(id: string, nota?: string)",
+        "description": "La ficha de UNA persona o entidad del Codex, por su id (búscalo antes con el Codex). Se ve su foto o logo, nombre, cargo y partido; se toca para abrir su ficha. nota: por qué está aquí, en una línea."
+      },
+      "Actores": {
+        "signature": "Actores(actores: (string | {id: string})[], agruparPor?: \"partido\" | \"tipo\", forma?: \"rejilla\" | \"lista\")",
+        "description": "Varias personas o entidades del Codex, por id (o los items de un Query), con sus caras. \"rejilla\" para mapear a muchos de un vistazo (precandidatos, una bancada); \"lista\" para leer su cargo y partido. agruparPor \"partido\" los junta por partido."
+      },
+      "Relaciones": {
+        "signature": "Relaciones(id: string, limite?: number)",
+        "description": "Con quién y con qué está vinculado un item del Codex (partidos, cargos, alianzas), leído de sus relaciones guardadas."
+      },
+      "Personas": {
+        "signature": "Personas(personas: Persona[], agregar?: boolean)",
+        "description": "Personas o entidades de un post (quién aparece, a quién se menciona, qué organizaciones). Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos."
+      },
+      "Persona": {
+        "signature": "Persona(texto: string, id?: string, tipo?: string, rol?: string, detalle?: string, voz?: string)",
+        "description": "Alguien de un post: su nombre como sale en el post y, si ya está en el Codex, su id. rol: qué hace en el video («conduce», «invitado», «habla a cámara»); detalle: cómo se le reconoce si no tiene nombre."
+      },
+      "Relacion": {
+        "signature": "Relacion(a: string, verbo: string, b: string)",
+        "description": "Un vínculo que dice un post («Jev es desarrollado por TypeSafe AI»). En la ficha del post, un + lo guarda en el Codex."
+      },
+      "Hecho": {
+        "signature": "Hecho(id: string, texto: string, cita?: string, quien?: string)",
+        "description": "Algo que afirma un post, con su cita literal si la hay. En la ficha del post, se guarda como hecho del Codex."
+      }
+    },
+    "componentGroups": [
+      {
+        "name": "Estructura",
+        "components": [
+          "Vista",
+          "Seccion",
+          "Pestanas",
+          "Pestana"
+        ]
+      },
+      {
+        "name": "Personas y entidades del Codex",
+        "components": [
+          "Actor",
+          "Actores",
+          "Relaciones"
+        ],
+        "notes": [
+          "Siempre por id del Codex: nunca escribas nombres ni fotos a mano."
+        ]
+      },
+      {
+        "name": "Datos",
+        "components": [
+          "Cifras",
+          "Cifra",
+          "Barras",
+          "Barra",
+          "Hemiciclo",
+          "LineaDeTiempo",
+          "Hito"
+        ]
+      },
+      {
+        "name": "Texto",
+        "components": [
+          "Texto",
+          "Cita",
+          "Aviso"
+        ]
+      },
+      {
+        "name": "Un post",
+        "components": [
+          "Personas",
+          "Persona",
+          "Relacion",
+          "Hecho"
+        ],
+        "notes": [
+          "Para la vista de un post: en su ficha ofrecen guardar en el Codex lo que falta."
+        ]
+      }
+    ],
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "Vista": {
+          "$ref": "#/$defs/Vista"
+        },
+        "Seccion": {
+          "$ref": "#/$defs/Seccion"
+        },
+        "Pestanas": {
+          "$ref": "#/$defs/Pestanas"
+        },
+        "Pestana": {
+          "$ref": "#/$defs/Pestana"
+        },
+        "Texto": {
+          "$ref": "#/$defs/Texto"
+        },
+        "Cita": {
+          "$ref": "#/$defs/Cita"
+        },
+        "Aviso": {
+          "$ref": "#/$defs/Aviso"
+        },
+        "Cifras": {
+          "$ref": "#/$defs/Cifras"
+        },
+        "Cifra": {
+          "$ref": "#/$defs/Cifra"
+        },
+        "Barras": {
+          "$ref": "#/$defs/Barras"
+        },
+        "Barra": {
+          "$ref": "#/$defs/Barra"
+        },
+        "Hemiciclo": {
+          "$ref": "#/$defs/Hemiciclo"
+        },
+        "LineaDeTiempo": {
+          "$ref": "#/$defs/LineaDeTiempo"
+        },
+        "Hito": {
+          "$ref": "#/$defs/Hito"
+        },
+        "Actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "Actores": {
+          "$ref": "#/$defs/Actores"
+        },
+        "Relaciones": {
+          "$ref": "#/$defs/Relaciones"
+        },
+        "Personas": {
+          "$ref": "#/$defs/Personas"
+        },
+        "Persona": {
+          "$ref": "#/$defs/Persona"
+        },
+        "Relacion": {
+          "$ref": "#/$defs/Relacion"
+        },
+        "Hecho": {
+          "$ref": "#/$defs/Hecho"
+        }
+      },
+      "required": [
+        "Vista",
+        "Seccion",
+        "Pestanas",
+        "Pestana",
+        "Texto",
+        "Cita",
+        "Aviso",
+        "Cifras",
+        "Cifra",
+        "Barras",
+        "Barra",
+        "Hemiciclo",
+        "LineaDeTiempo",
+        "Hito",
+        "Actor",
+        "Actores",
+        "Relaciones",
+        "Personas",
+        "Persona",
+        "Relacion",
+        "Hecho"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "Vista": {
+          "type": "object",
+          "properties": {
+            "titulo": {
+              "type": "string"
+            },
+            "contenido": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Seccion"
+                  },
+                  {
+                    "$ref": "#/$defs/Pestanas"
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Texto"
+                      },
+                      {
+                        "$ref": "#/$defs/Cita"
+                      },
+                      {
+                        "$ref": "#/$defs/Aviso"
+                      },
+                      {
+                        "$ref": "#/$defs/Cifras"
+                      },
+                      {
+                        "$ref": "#/$defs/Barras"
+                      },
+                      {
+                        "$ref": "#/$defs/Hemiciclo"
+                      },
+                      {
+                        "$ref": "#/$defs/LineaDeTiempo"
+                      },
+                      {
+                        "$ref": "#/$defs/Actor"
+                      },
+                      {
+                        "$ref": "#/$defs/Actores"
+                      },
+                      {
+                        "$ref": "#/$defs/Relaciones"
+                      },
+                      {
+                        "$ref": "#/$defs/Personas"
+                      },
+                      {
+                        "$ref": "#/$defs/Relacion"
+                      },
+                      {
+                        "$ref": "#/$defs/Hecho"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "bajada": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "titulo",
+            "contenido"
+          ],
+          "additionalProperties": false,
+          "id": "Vista",
+          "description": "La raíz: título, una bajada de una línea con lo que se ve, y su contenido."
+        },
+        "Seccion": {
+          "type": "object",
+          "properties": {
+            "titulo": {
+              "type": "string"
+            },
+            "contenido": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Texto"
+                  },
+                  {
+                    "$ref": "#/$defs/Cita"
+                  },
+                  {
+                    "$ref": "#/$defs/Aviso"
+                  },
+                  {
+                    "$ref": "#/$defs/Cifras"
+                  },
+                  {
+                    "$ref": "#/$defs/Barras"
+                  },
+                  {
+                    "$ref": "#/$defs/Hemiciclo"
+                  },
+                  {
+                    "$ref": "#/$defs/LineaDeTiempo"
+                  },
+                  {
+                    "$ref": "#/$defs/Actor"
+                  },
+                  {
+                    "$ref": "#/$defs/Actores"
+                  },
+                  {
+                    "$ref": "#/$defs/Relaciones"
+                  },
+                  {
+                    "$ref": "#/$defs/Personas"
+                  },
+                  {
+                    "$ref": "#/$defs/Relacion"
+                  },
+                  {
+                    "$ref": "#/$defs/Hecho"
+                  }
+                ]
+              }
+            },
+            "icono": {
+              "type": "string",
+              "enum": [
+                "actores",
+                "actor",
+                "entidad",
+                "congreso",
+                "relaciones",
+                "tiempo",
+                "noticias",
+                "cifras",
+                "lugar",
+                "cita",
+                "info"
+              ]
+            }
+          },
+          "required": [
+            "titulo",
+            "contenido"
+          ],
+          "additionalProperties": false,
+          "id": "Seccion",
+          "description": "Un bloque con título. icono: actores, actor, entidad, congreso, relaciones, tiempo, noticias, cifras, lugar, cita, info."
+        },
+        "Texto": {
+          "type": "object",
+          "properties": {
+            "texto": {
+              "type": "string"
+            },
+            "tono": {
+              "type": "string",
+              "enum": [
+                "cuerpo",
+                "meta",
+                "destacado"
+              ]
+            }
+          },
+          "required": [
+            "texto"
+          ],
+          "additionalProperties": false,
+          "id": "Texto",
+          "description": "Un párrafo corto. tono \"destacado\" para la idea principal, \"meta\" para aclaraciones."
+        },
+        "Cita": {
+          "type": "object",
+          "properties": {
+            "texto": {
+              "type": "string"
+            },
+            "quien": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "texto"
+          ],
+          "additionalProperties": false,
+          "id": "Cita",
+          "description": "Una frase literal de alguien, con quién la dijo."
+        },
+        "Aviso": {
+          "type": "object",
+          "properties": {
+            "texto": {
+              "type": "string"
+            },
+            "tono": {
+              "type": "string",
+              "enum": [
+                "info",
+                "alerta"
+              ]
+            }
+          },
+          "required": [
+            "texto"
+          ],
+          "additionalProperties": false,
+          "id": "Aviso",
+          "description": "Una advertencia sobre cómo leer los datos (datos incompletos, fechas, fuentes). Úsalo poco."
+        },
+        "Cifras": {
+          "type": "object",
+          "properties": {
+            "cifras": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Cifra"
+              }
+            }
+          },
+          "required": [
+            "cifras"
+          ],
+          "additionalProperties": false,
+          "id": "Cifras",
+          "description": "Una fila de cifras, de 2 a 4."
+        },
+        "Cifra": {
+          "type": "object",
+          "properties": {
+            "valor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "etiqueta": {
+              "type": "string"
+            },
+            "detalle": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "valor",
+            "etiqueta"
+          ],
+          "additionalProperties": false,
+          "id": "Cifra",
+          "description": "Un número grande con lo que cuenta («27 partidos vigentes»)."
+        },
+        "Barras": {
+          "type": "object",
+          "properties": {
+            "barras": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Barra"
+              }
+            },
+            "unidad": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "barras"
+          ],
+          "additionalProperties": false,
+          "id": "Barras",
+          "description": "Comparar cantidades entre categorías (barras horizontales, de mayor a menor)."
+        },
+        "Barra": {
+          "type": "object",
+          "properties": {
+            "etiqueta": {
+              "type": "string"
+            },
+            "valor": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "etiqueta",
+            "valor"
+          ],
+          "additionalProperties": false,
+          "id": "Barra",
+          "description": "Una barra de Barras."
+        },
+        "Hemiciclo": {
+          "type": "object",
+          "properties": {
+            "favor": {
+              "type": "number"
+            },
+            "contra": {
+              "type": "number"
+            },
+            "ausentes": {
+              "type": "number"
+            },
+            "titulo": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "favor"
+          ],
+          "additionalProperties": false,
+          "id": "Hemiciclo",
+          "description": "Una votación del Congreso (160 curules): votos a favor, en contra y ausentes. Solo con votos contados."
+        },
+        "LineaDeTiempo": {
+          "type": "object",
+          "properties": {
+            "hitos": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Hito"
+              }
+            }
+          },
+          "required": [
+            "hitos"
+          ],
+          "additionalProperties": false,
+          "id": "LineaDeTiempo",
+          "description": "Qué pasó y cuándo, en orden."
+        },
+        "Hito": {
+          "type": "object",
+          "properties": {
+            "fecha": {
+              "type": "string"
+            },
+            "titulo": {
+              "type": "string"
+            },
+            "detalle": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "fecha",
+            "titulo"
+          ],
+          "additionalProperties": false,
+          "id": "Hito",
+          "description": "Un momento de una LineaDeTiempo. fecha como se lee («12 oct 2026»)."
+        },
+        "Actor": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "nota": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "id": "Actor",
+          "description": "La ficha de UNA persona o entidad del Codex, por su id (búscalo antes con el Codex). Se ve su foto o logo, nombre, cargo y partido; se toca para abrir su ficha. nota: por qué está aquí, en una línea."
+        },
+        "Actores": {
+          "type": "object",
+          "properties": {
+            "actores": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            "agruparPor": {
+              "type": "string",
+              "enum": [
+                "partido",
+                "tipo"
+              ]
+            },
+            "forma": {
+              "type": "string",
+              "enum": [
+                "rejilla",
+                "lista"
+              ]
+            }
+          },
+          "required": [
+            "actores"
+          ],
+          "additionalProperties": false,
+          "id": "Actores",
+          "description": "Varias personas o entidades del Codex, por id (o los items de un Query), con sus caras. \"rejilla\" para mapear a muchos de un vistazo (precandidatos, una bancada); \"lista\" para leer su cargo y partido. agruparPor \"partido\" los junta por partido."
+        },
+        "Relaciones": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "limite": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false,
+          "id": "Relaciones",
+          "description": "Con quién y con qué está vinculado un item del Codex (partidos, cargos, alianzas), leído de sus relaciones guardadas."
+        },
+        "Personas": {
+          "type": "object",
+          "properties": {
+            "personas": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Persona"
+              }
+            },
+            "agregar": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "personas"
+          ],
+          "additionalProperties": false,
+          "id": "Personas",
+          "description": "Personas o entidades de un post (quién aparece, a quién se menciona, qué organizaciones). Los que están en el Codex se ven con su cara y abren su ficha; los que no, con sus iniciales y, en la ficha del post, un + para agregarlos."
+        },
+        "Persona": {
+          "type": "object",
+          "properties": {
+            "texto": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "tipo": {
+              "type": "string"
+            },
+            "rol": {
+              "type": "string"
+            },
+            "detalle": {
+              "type": "string"
+            },
+            "voz": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "texto"
+          ],
+          "additionalProperties": false,
+          "id": "Persona",
+          "description": "Alguien de un post: su nombre como sale en el post y, si ya está en el Codex, su id. rol: qué hace en el video («conduce», «invitado», «habla a cámara»); detalle: cómo se le reconoce si no tiene nombre."
+        },
+        "Relacion": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "string"
+            },
+            "verbo": {
+              "type": "string"
+            },
+            "b": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "a",
+            "verbo",
+            "b"
+          ],
+          "additionalProperties": false,
+          "id": "Relacion",
+          "description": "Un vínculo que dice un post («Jev es desarrollado por TypeSafe AI»). En la ficha del post, un + lo guarda en el Codex."
+        },
+        "Hecho": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "texto": {
+              "type": "string"
+            },
+            "cita": {
+              "type": "string"
+            },
+            "quien": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "texto"
+          ],
+          "additionalProperties": false,
+          "id": "Hecho",
+          "description": "Algo que afirma un post, con su cita literal si la hay. En la ficha del post, se guarda como hecho del Codex."
+        },
+        "Pestanas": {
+          "type": "object",
+          "properties": {
+            "pestanas": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Pestana"
+              }
+            }
+          },
+          "required": [
+            "pestanas"
+          ],
+          "additionalProperties": false,
+          "id": "Pestanas",
+          "description": "Pestañas para separar vistas de lo mismo (por partido, por tema). De 2 a 5."
+        },
+        "Pestana": {
+          "type": "object",
+          "properties": {
+            "nombre": {
+              "type": "string"
+            },
+            "contenido": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Seccion"
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Texto"
+                      },
+                      {
+                        "$ref": "#/$defs/Cita"
+                      },
+                      {
+                        "$ref": "#/$defs/Aviso"
+                      },
+                      {
+                        "$ref": "#/$defs/Cifras"
+                      },
+                      {
+                        "$ref": "#/$defs/Barras"
+                      },
+                      {
+                        "$ref": "#/$defs/Hemiciclo"
+                      },
+                      {
+                        "$ref": "#/$defs/LineaDeTiempo"
+                      },
+                      {
+                        "$ref": "#/$defs/Actor"
+                      },
+                      {
+                        "$ref": "#/$defs/Actores"
+                      },
+                      {
+                        "$ref": "#/$defs/Relaciones"
+                      },
+                      {
+                        "$ref": "#/$defs/Personas"
+                      },
+                      {
+                        "$ref": "#/$defs/Relacion"
+                      },
+                      {
+                        "$ref": "#/$defs/Hecho"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "required": [
+            "nombre",
+            "contenido"
+          ],
+          "additionalProperties": false,
+          "id": "Pestana",
+          "description": "Una pestaña de Pestanas."
+        }
+      }
+    }
+  }
+}

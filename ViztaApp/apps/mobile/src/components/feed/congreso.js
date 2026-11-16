@@ -21,13 +21,38 @@ export async function traerCongreso() {
     .limit(200);
   if (error) throw error;
 
-  await completarTitulos(data || []);
+  const dias = await armarDias(data || []);
   // Lo nuevo del Congreso entra a la cola donde se buscan las menciones del
   // Codex. No se espera: el feed no depende de eso.
   supabase.rpc('codex_menciones_encolar_congreso').then(() => {}, () => {});
+  const visibles = dias.slice(0, 7);
+  await conVotaciones(visibles);
+  return visibles;
+}
 
+/**
+ * Un solo día del Congreso, el que se eligió en el calendario: lo que publicó
+ * y las votaciones del pleno. Si no hubo nada, la lista viene vacía.
+ */
+export async function traerDiaCongreso(fecha) {
+  const { data, error } = await supabase
+    .from('congreso_items_app_view')
+    .select(COLUMNAS)
+    .eq('digest_date', fecha)
+    .order('created_at', { ascending: true })
+    .limit(200);
+  if (error) throw error;
+  const dias = await armarDias(data || []);
+  const dia = dias[0] || { fecha, items: [] };
+  await conVotaciones([dia]);
+  return dia.items.length || dia.votaciones?.length ? [dia] : [];
+}
+
+/** Las filas del Congreso juntadas por día, con el noticiero arriba y sin repetidos. */
+async function armarDias(data) {
+  await completarTitulos(data);
   const dias = [];
-  for (const item of data || []) {
+  for (const item of data) {
     let dia = dias.find((d) => d.fecha === item.digest_date);
     if (!dia) {
       dia = { fecha: item.digest_date, items: [] };
@@ -43,25 +68,27 @@ export async function traerCongreso() {
   // Fuera lo que no cuenta nada, y una sola vez lo que llegó dos veces el
   // mismo día (por el sitio y por la cuenta, o en dos corridas del monitor).
   for (const d of dias) d.items = unaVez(d.items.filter((i) => i.tipo === 'noticiero' || !esRelleno(i)));
-  const visibles = dias.slice(0, 7);
+  return dias;
+}
 
-  // Las votaciones del pleno de esos días. Vienen de su propio registro, con
-  // los 160 votos contados; se juntan con las noticias solo por la fecha, que
-  // es lo único que de verdad comparten. Si fallan, el día se muestra igual.
-  if (visibles.length) {
-    const { data: votaciones } = await supabase
-      .from('votaciones')
-      .select(COLUMNAS_VOTACION)
-      .in('fecha', visibles.map((d) => d.fecha))
-      .order('created_at', { ascending: true });
-    for (const d of visibles) {
-      const delDia = (votaciones || []).filter((v) => v.fecha === d.fecha);
-      // Primero lo que decide algo; aprobar el orden del día es trámite.
-      const tramite = (v) => /orden del d[ií]a|acta de la sesi[oó]n/i.test(v.asunto || '');
-      d.votaciones = delDia.sort((a, b) => tramite(a) - tramite(b));
-    }
+/**
+ * Las votaciones del pleno de esos días. Vienen de su propio registro, con
+ * los 160 votos contados; se juntan con las noticias solo por la fecha, que
+ * es lo único que de verdad comparten. Si fallan, el día se muestra igual.
+ */
+async function conVotaciones(dias) {
+  if (!dias.length) return;
+  const { data: votaciones } = await supabase
+    .from('votaciones')
+    .select(COLUMNAS_VOTACION)
+    .in('fecha', dias.map((d) => d.fecha))
+    .order('created_at', { ascending: true });
+  for (const d of dias) {
+    const delDia = (votaciones || []).filter((v) => v.fecha === d.fecha);
+    // Primero lo que decide algo; aprobar el orden del día es trámite.
+    const tramite = (v) => /orden del d[ií]a|acta de la sesi[oó]n/i.test(v.asunto || '');
+    d.votaciones = delDia.sort((a, b) => tramite(a) - tramite(b));
   }
-  return visibles;
 }
 
 /** Archivo disponible de noticias; independiente de los días del tablero. */

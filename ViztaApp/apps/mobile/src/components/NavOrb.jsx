@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -11,8 +11,10 @@ import Animated, {
   withRepeat,
   withSequence,
   withSpring,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { ChevronsUp, ClipboardPen, Plus } from 'lucide-react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { MONO } from './codex/mono';
 import { roce, toque } from '../utils/haptics';
@@ -28,6 +30,14 @@ const CUERPO = '#3E6B4C';
 const TOPE_Y = 78; // recorrido máximo hacia arriba
 const TOPE_X = 26; // lo poco que cede a los lados
 const UMBRAL = 46; // a partir de acá, soltar abre Posts
+const TINTA_ORBE = '#F7F6EF';
+// Las flechas enseñan el gesto una vez al abrir y otra tras un rato sin tocar
+// el orbe. Nunca en bucle.
+const PISTA_AL_ABRIR = 1200;
+// Apagadas por ahora (PJ, 15-nov): sirven mientras se aprende el gesto y se
+// están revisando. Volver a `true` las trae con su pista.
+const CON_FLECHAS = false;
+const PISTA_TRAS_QUIETUD = 45000;
 
 /**
  * Esfera verde centrada sobre la tab bar.
@@ -73,6 +83,31 @@ export default function NavOrb({
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
   const armado = useSharedValue(0); // 1 = pasó el umbral
+  const giro = useSharedValue(0); // el «+» al tocar: un cuarto de vuelta
+  const salto = useSharedValue(0); // el ícono de posts al cruzar el umbral
+  const salida = useSharedValue(0); // el orbe se va hacia arriba al abrir posts
+  const pista = useSharedValue(0); // las flechas suben un poco y bajan
+
+  // La pista de las flechas: una vez al abrir y otra tras un rato quieto.
+  const reloj = useRef(null);
+  const mostrarPista = useCallback(() => {
+    pista.value = withSequence(
+      withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: 320, easing: Easing.inOut(Easing.quad) }),
+      withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: 320, easing: Easing.inOut(Easing.quad) })
+    );
+  }, [pista]);
+  const reiniciarQuietud = useCallback(() => {
+    clearTimeout(reloj.current);
+    if (onArriba && CON_FLECHAS) reloj.current = setTimeout(mostrarPista, PISTA_TRAS_QUIETUD);
+  }, [onArriba, mostrarPista]);
+  useEffect(() => {
+    if (!onArriba || !CON_FLECHAS) return undefined;
+    const t = setTimeout(mostrarPista, PISTA_AL_ABRIR);
+    reiniciarQuietud();
+    return () => { clearTimeout(t); clearTimeout(reloj.current); };
+  }, [onArriba, mostrarPista, reiniciarQuietud]);
 
   // Respiración: solo mientras el orbe es el tab activo.
   useEffect(() => {
@@ -95,7 +130,14 @@ export default function NavOrb({
   const disparar = () => {
     ripple.value = 0;
     ripple.value = withTiming(1, { duration: 520, easing: Easing.out(Easing.quad) });
+    giro.value = 0;
+    giro.value = withTiming(1, { duration: 260, easing: Easing.out(Easing.back(1.6)) });
+    reiniciarQuietud();
     onPress?.();
+  };
+  const abrirArriba = () => {
+    reiniciarQuietud();
+    onArriba?.();
   };
 
   const tap = Gesture.Tap()
@@ -125,14 +167,22 @@ export default function NavOrb({
       const pasa = ty.value <= -UMBRAL ? 1 : 0;
       if (pasa !== armado.value) {
         armado.value = pasa;
-        if (pasa) runOnJS(roce)();
+        if (pasa) {
+          salto.value = withSequence(withTiming(1, { duration: 90 }), withSpring(0, { damping: 9, stiffness: 260 }));
+          runOnJS(roce)();
+        }
       }
     })
     .onEnd(() => {
       const abre = ty.value <= -UMBRAL;
       if (abre && onArriba) {
         runOnJS(toque)();
-        runOnJS(onArriba)();
+        // Sale disparado hacia arriba y vuelve a su lugar ya con posts abierto.
+        salida.value = withSequence(
+          withTiming(1, { duration: 170, easing: Easing.out(Easing.quad) }),
+          withDelay(260, withTiming(0, { duration: 220 }))
+        );
+        runOnJS(abrirArriba)();
       }
       ty.value = withSpring(0, { damping: 15, stiffness: 190 });
       tx.value = withSpring(0, { damping: 15, stiffness: 190 });
@@ -147,7 +197,35 @@ export default function NavOrb({
   const cuerpo = useAnimatedStyle(() => {
     const escala = (1 - press.value * 0.12) * (1 + idle.value * 0.035);
     return {
-      transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: escala }],
+      opacity: 1 - salida.value * 0.85,
+      transform: [{ translateX: tx.value }, { translateY: ty.value - salida.value * 26 }, { scale: escala }],
+    };
+  });
+
+  // Lo que hay adentro dice qué va a pasar: «+» es una nota; al empujar, el
+  // «+» gira y se va, y entra el ícono de posts.
+  const iconoNota = useAnimatedStyle(() => {
+    const avance = interpolate(-ty.value, [6, UMBRAL], [0, 1], 'clamp');
+    return {
+      opacity: 1 - avance,
+      transform: [{ rotate: `${giro.value * 90 + avance * 90}deg` }, { scale: 1 - avance * 0.4 }],
+    };
+  });
+  const iconoPosts = useAnimatedStyle(() => {
+    const avance = interpolate(-ty.value, [6, UMBRAL], [0, 1], 'clamp');
+    return {
+      opacity: avance,
+      transform: [{ scale: 0.6 + avance * 0.4 + salto.value * 0.18 }, { translateY: -salto.value * 3 }],
+    };
+  });
+
+  // Las flechas de arriba: tenues en reposo, suben en la pista y se funden con
+  // la etiqueta a medida que se empuja.
+  const flechas = useAnimatedStyle(() => {
+    const avance = interpolate(-ty.value, [0, UMBRAL * 0.7], [0, 1], 'clamp');
+    return {
+      opacity: (0.5 + pista.value * 0.4) * (1 - avance),
+      transform: [{ translateY: -pista.value * 6 - avance * 10 }, { scaleX: 1 - avance * 0.5 }],
     };
   });
 
@@ -176,6 +254,13 @@ export default function NavOrb({
 
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Las flechas: el aviso de que el orbe también sube. */}
+      {onArriba && CON_FLECHAS ? (
+        <AV pointerEvents="none" style={[{ position: 'absolute', bottom: size + 2, alignItems: 'center' }, flechas]}>
+          <ChevronsUp size={18} color={CUERPO} strokeWidth={2.4} />
+        </AV>
+      ) : null}
+
       {/* Rótulo de destino. Vive fuera del orbe para no moverse con él. */}
       {onArriba ? (
         <AV
@@ -208,7 +293,7 @@ export default function NavOrb({
         <AV
           accessibilityRole="button"
           accessibilityLabel={etiqueta}
-          accessibilityHint={onArriba ? `Deslizá hacia arriba para abrir ${etiquetaArriba}` : undefined}
+          accessibilityHint={onArriba ? `Desliza hacia arriba para abrir ${etiquetaArriba}` : undefined}
           accessibilityState={{ selected: focused }}
           style={[
             {
@@ -241,6 +326,14 @@ export default function NavOrb({
           <Svg width={size} height={size}>
             <Circle cx={r} cy={r} r={r} fill={CUERPO} />
           </Svg>
+          <AV pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, width: size, height: size, alignItems: 'center', justifyContent: 'center' }, iconoNota]}>
+            <Plus size={size * 0.36} color={TINTA_ORBE} strokeWidth={2.4} />
+          </AV>
+          {onArriba ? (
+            <AV pointerEvents="none" style={[{ position: 'absolute', top: 0, left: 0, width: size, height: size, alignItems: 'center', justifyContent: 'center' }, iconoPosts]}>
+              <ClipboardPen size={size * 0.36} color={TINTA_ORBE} strokeWidth={2.1} />
+            </AV>
+          ) : null}
         </AV>
       </GestureDetector>
     </View>

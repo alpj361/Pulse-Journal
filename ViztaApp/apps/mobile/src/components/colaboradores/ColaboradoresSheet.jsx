@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Animated from 'react-native-reanimated';
+import { entrarPantalla } from './movimiento';
 import { Modal, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -54,6 +56,11 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
   const [buscandoPersona, setBuscandoPersona] = useState(false);
   const [chats, setChats] = useState({});
   const vista = pila[pila.length - 1];
+  // Hacia dónde se fue: a una pantalla nueva entra desde la derecha; al
+  // volver, la anterior desde la izquierda.
+  const hondo = useRef(pila.length);
+  const adelante = pila.length >= hondo.current;
+  hondo.current = pila.length;
   const ir = (v) => setPila((p) => [...p, v]);
   const volver = () => setPila((p) => (p.length > 1 ? p.slice(0, -1) : p));
   const aLaLista = () => setPila([{ tipo: 'lista' }]);
@@ -395,7 +402,9 @@ export default function ColaboradoresSheet({ inicial, onClose, onEntrar, topInse
         <StatusBar style="dark" />
         <LinearGradient colors={['#F4F3EE', '#EEF2EC']} style={StyleSheet.absoluteFill} />
 
-        <View style={{ flex: 1 }}>{pantalla}</View>
+        <Animated.View key={`${pila.length}-${vista.tipo}`} entering={pila.length > 1 || !adelante ? entrarPantalla(adelante) : undefined} style={{ flex: 1 }}>
+          {pantalla}
+        </Animated.View>
 
         {buscandoPersona ? (
           <BuscarPersona

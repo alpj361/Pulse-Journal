@@ -223,6 +223,32 @@ export async function guardarMaterial({ post, mencion, comoTipo = null }) {
   return { details, codex, creado };
 }
 
+/** La obra del post (`vistazo.obra_identificada`) como Ref en el Codex: para verla después. */
+export async function guardarObra({ obra }) {
+  const user_id = await idDeUsuario();
+  const material = obra.clase === 'serie' ? 'series' : 'film';
+  const { codex, creado } = await asegurarElemento(
+    {
+      texto: obra.titulo,
+      tipo: 'Ref',
+      material,
+      pista: `${obra.clase === 'serie' ? 'serie' : 'película'}${obra.anio ? ` de ${obra.anio}` : ''}`,
+      identidad: { titulo: obra.titulo, titulo_original: obra.titulo_original || null, anio: obra.anio || null, url: obra.url || null, imagen: obra.imagen || null, fuente: obra.fuente || null, material },
+    },
+    user_id
+  );
+  if (creado) invalidarIndice();
+  return codex;
+}
+
+/** ¿Esa obra ya está en el Codex? Por nombre exacto, entre las Ref. */
+export async function obraEnElCodex(obra) {
+  if (!obra?.titulo) return null;
+  const { data } = await supabase.from('codex_universe_items').select('id, name, aliases').eq('tipo', 'Ref').ilike('name', obra.titulo).limit(5);
+  const clave = claveDe(obra.titulo);
+  return (data || []).find((p) => claveDe(p.name) === clave) || null;
+}
+
 /** El + de una relación: la conexión, y los elementos que falten. */
 export async function agregarConexion({ post, analisis, relacion }) {
   if (relacion?.relation_id) return { details: post.details, creados: [] };
@@ -271,4 +297,84 @@ export async function agregarConexion({ post, analisis, relacion }) {
   ]);
 
   return { details, creados };
+}
+
+// ─── Quién aparece, a mano ────────────────────────────────────────────────────
+
+/**
+ * Quien aparece en un post y el análisis no detectó, o una voz que la persona
+ * nombra. Se guarda en el Codex como relación «persona — aparece en → post»: así
+ * se ve también desde la ficha de esa persona. La nota dice de qué voz se trata
+ * (`voz:H1`) cuando nombra una voz.
+ */
+export const VERBO_APARECE = 'aparece en';
+
+export async function quienesAparecen(postId) {
+  if (!postId) return [];
+  const { data, error } = await supabase
+    .from('codex_relations')
+    .select('id, subject_id, note')
+    .eq('object_id', postId)
+    .eq('verb', VERBO_APARECE)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  const ids = [...new Set((data || []).map((r) => r.subject_id))];
+  if (!ids.length) return [];
+  const { data: items } = await supabase.from('codex_universe_items').select('id, name, tipo').in('id', ids);
+  const por = new Map((items || []).map((i) => [i.id, i]));
+  return (data || [])
+    .map((r) => {
+      const it = por.get(r.subject_id);
+      if (!it) return null;
+      const voz = String(r.note || '').match(/\bvoz:([A-Za-z0-9_-]+)/)?.[1] || null;
+      return { id: it.id, name: it.name, tipo: it.tipo, voz, relationId: r.id };
+    })
+    .filter(Boolean);
+}
+
+/** Una persona nueva en el Codex, por su nombre (o la que ya está con ese nombre). */
+export async function personaPorNombre(nombre) {
+  const user_id = await idDeUsuario();
+  const { codex, creado } = await asegurarElemento({ texto: String(nombre).trim(), tipo: 'Actor' }, user_id);
+  if (creado) invalidarIndice();
+  return codex;
+}
+
+/** Que `persona` aparece en `post` (y, si se da, que es la voz `voz`). No duplica. */
+export async function apareceEnPost({ post, persona, voz = null }) {
+  const user_id = await idDeUsuario();
+  const { data: previas } = await supabase
+    .from('codex_relations')
+    .select('id, note')
+    .eq('subject_id', persona.id)
+    .eq('object_id', post.id)
+    .eq('verb', VERBO_APARECE)
+    .limit(1);
+  const nota = [voz ? `voz:${voz.id}${voz.rol ? ` · ${voz.rol}` : ''}` : 'Agregado a mano', post.details?.source_url].filter(Boolean).join(' · ');
+  if (previas?.[0]) {
+    if (voz && !String(previas[0].note || '').includes(`voz:${voz.id}`)) {
+      await supabase.from('codex_relations').update({ note: nota }).eq('id', previas[0].id);
+    }
+    return previas[0].id;
+  }
+  const { data, error } = await supabase
+    .from('codex_relations')
+    .insert({ user_id, subject_id: persona.id, verb: VERBO_APARECE, object_id: post.id, note: nota })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+/** Buscar personas del Codex por nombre, para decir quién aparece. */
+export async function buscarPersonas(texto) {
+  const t = String(texto || '').replace(/[%,()]/g, ' ').trim();
+  if (t.length < 2) return [];
+  const { data } = await supabase
+    .from('codex_universe_items')
+    .select('id, name, tipo, description')
+    .eq('tipo', 'Actor')
+    .ilike('name', `%${t}%`)
+    .limit(8);
+  return data || [];
 }

@@ -32,6 +32,8 @@ import {
 const OBSERVATORIOS = [
   {
     clave: 'cc',
+    // Oculto (PJ, 13-nov-2026): sus datos casi no se actualizan. Se vuelve a mostrar quitando esta línea.
+    oculto: true,
     nombre: 'Corte de Constitucionalidad',
     corto: 'Corte (CC)',
     icono: 'CONSTITUCIONAL',
@@ -53,22 +55,24 @@ const OBSERVATORIOS = [
   },
 ];
 
+const VISIBLES = OBSERVATORIOS.filter((o) => !o.oculto);
+
 const VISTAS = [
   ['tablero', 'Tablero'],
   ['organizado', 'Organizado'],
 ];
 
 export default function ObservatorioCC() {
-  const [cual, setCual] = useState('cc');
+  const [cual, setCual] = useState(VISIBLES[0].clave);
   const [vista, setVista] = useState('tablero');
   const [abierta, setAbierta] = useState(null);
-  const obs = OBSERVATORIOS.find((o) => o.clave === cual);
+  const obs = VISIBLES.find((o) => o.clave === cual) || VISIBLES[0];
 
   return (
     <View>
       <Elegir valor={cual} onCambiar={setCual} />
       <Encabezado obs={obs} />
-      {cual === 'cc' ? (
+      {obs.clave === 'cc' ? (
         <>
           <Pestanas valor={vista} onCambiar={setVista} />
           {vista === 'tablero' ? <Tablero onAbrir={setAbierta} /> : null}
@@ -86,7 +90,7 @@ export default function ObservatorioCC() {
 function Elegir({ valor, onCambiar }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14, marginHorizontal: -24 }} contentContainerStyle={{ paddingHorizontal: 24, gap: 10 }}>
-      {OBSERVATORIOS.map((o) => {
+      {VISIBLES.map((o) => {
         const activo = o.clave === valor;
         return (
           <Pressable
