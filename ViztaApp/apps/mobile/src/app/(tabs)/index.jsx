@@ -89,6 +89,8 @@ import { useUltimoLugarStore, useRecordarLugar } from '../../state/ultimoLugarSt
 
 /** Lo único que el feed puede borrar del registro de «dónde me quedé». */
 const TIPOS_MAPA = ['mapa'];
+// El mapa queda oculto mientras se decide qué hacer con él. El código sigue; para volver, `true`.
+const MAPA_VISIBLE = false;
 
 /** El ámbar de los puntos del mapa. No es un color nuevo: es el mismo acento
  *  que ya usa la app, puesto donde hacía falta que algo no fuera tinta. */
@@ -660,7 +662,8 @@ export default function Index() {
   const router = useRouter();
   const [viendoMapa, setViendoMapa] = useState(false);
   // El mapa, por ahora, solo para alfa y admin.
-  const conMapa = usePulseConnectionStore((s) => puedeVerMapa(s.connectedUser));
+  const puedeMapa = usePulseConnectionStore((s) => puedeVerMapa(s.connectedUser));
+  const conMapa = MAPA_VISIBLE && puedeMapa;
   const [viendoColaboradores, setViendoColaboradores] = useState(false);
   // Colaboradores es de la beta: con sesión y rol alfa, beta o admin.
   const colabora = usePulseConnectionStore((s) => puedeColaborar(s.connectedUser));
