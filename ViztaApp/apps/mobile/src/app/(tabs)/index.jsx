@@ -80,7 +80,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
-import { Library as LibraryIcon, Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
+import { Box as BoxIcon, Library as LibraryIcon, Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
 import ColaboradoresSheet from '../../components/colaboradores/ColaboradoresSheet';
 import { alTocarAvisoDeColab } from '../../utils/notificaciones';
 import { puedeColaborar, TONO as TONO_COLAB } from '../../components/colaboradores/piezas';
@@ -981,6 +981,13 @@ export default function Index() {
                 >
                   <LibraryIcon size={23} color={TONO_COLAB.verde} strokeWidth={2} />
                 </Pressable>
+              ) : null}
+
+              {/* Espacios: el ícono queda puesto, todavía no lleva a ningún lado. */}
+              {!conMapa ? (
+                <View accessible accessibilityLabel="Espacios">
+                  <BoxIcon size={23} color={TONO_COLAB.verde} strokeWidth={2} />
+                </View>
               ) : null}
 
               {/* Colaboradores, para la beta. Otra puerta de «salir del feed»,
