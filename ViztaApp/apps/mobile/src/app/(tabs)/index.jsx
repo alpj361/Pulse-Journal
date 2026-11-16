@@ -80,7 +80,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../utils/supabase';
 import { useRouter } from 'expo-router';
-import { Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
+import { Library as LibraryIcon, Settings as SettingsIcon, SlidersHorizontal, Users as UsersIcon } from 'lucide-react-native';
 import ColaboradoresSheet from '../../components/colaboradores/ColaboradoresSheet';
 import { alTocarAvisoDeColab } from '../../utils/notificaciones';
 import { puedeColaborar, TONO as TONO_COLAB } from '../../components/colaboradores/piezas';
@@ -969,6 +969,19 @@ export default function Index() {
               * nuevo a la app. */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
               {conMapa ? <Mundito size={30} onPress={() => setViendoMapa(true)} /> : null}
+
+              {/* La biblioteca, donde estaba el mapa mientras este sigue oculto. */}
+              {!conMapa ? (
+                <Pressable
+                  onPress={() => router.navigate('/codex')}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Biblioteca"
+                  style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+                >
+                  <LibraryIcon size={23} color={TONO_COLAB.verde} strokeWidth={2} />
+                </Pressable>
+              ) : null}
 
               {/* Colaboradores, para la beta. Otra puerta de «salir del feed»,
                   en el verde de la app: al lado del globo y la tuerca, un gris
