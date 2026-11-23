@@ -23,6 +23,7 @@ Pulse Journal es un ecosistema complejo de servicios interconectados para el pro
   - Workflows complejos para investigación periodística
   - Interface optimizada para productividad profesional
   - Funciones especializadas de verificación y fact-checking
+- **Vizta Web (vizta.pulzos.com)**: el mismo repo sirve también la edición pública de Vizta, un concepto distinto a pulzos.com. Antes de tocarla, lee `ThePulse/AGENTS.md`: reglas de diseño, mapa de archivos, SEO/GEO y pendientes.
 
 ### **3. Backend Principal - `ExtractorW`**
 - **Tecnología**: Node.js con Express
